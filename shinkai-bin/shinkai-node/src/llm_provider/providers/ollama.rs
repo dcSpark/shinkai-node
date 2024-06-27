@@ -3,7 +3,7 @@ use crate::llm_provider::providers::shared::ollama::{
     ollama_conversation_prepare_messages, OllamaAPIStreamingResponse,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use crate::network::ws_manager::WSUpdateHandler;
+use crate::network::ws_manager::{WSMetadata, WSUpdateHandler};
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::LLMService;
@@ -20,6 +20,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(images) = payload.get_mut("images") {
@@ -46,6 +47,7 @@ impl LLMService for Ollama {
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
+        let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");
 
@@ -116,12 +118,30 @@ impl LLMService for Ollama {
                                     if let Some(ref inbox_name) = inbox_name {
                                         let m = manager.lock().await;
                                         let inbox_name_string = inbox_name.to_string();
+
+                                        let metadata = WSMetadata {
+                                            id: Some(session_id.clone()),
+                                            is_done: data.done,
+                                            done_reason: if data.done { data.done_reason.clone() } else { None },
+                                            total_duration: if data.done {
+                                                data.total_duration.map(|d| d as u64)
+                                            } else {
+                                                None
+                                            },
+                                            eval_count: if data.done {
+                                                data.eval_count.map(|c| c as u64)
+                                            } else {
+                                                None
+                                            },
+                                        };
+
                                         let _ = m
                                             .queue_message(
                                                 WSTopic::Inbox,
                                                 inbox_name_string,
                                                 data.message.content,
-                                                true,
+                                                Some(metadata),
+                                                true
                                             )
                                             .await;
                                     }

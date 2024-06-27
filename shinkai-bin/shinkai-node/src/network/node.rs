@@ -623,7 +623,13 @@ impl Node {
         };
 
         let ws_manager = if ws_address.is_some() {
-            let manager = WebSocketManager::new(db_weak, node_name.clone(), identity_manager_trait).await;
+            let manager = WebSocketManager::new(
+                db_weak,
+                node_name.clone(),
+                identity_manager_trait,
+                clone_static_secret_key(&encryption_secret_key),
+            )
+            .await;
             Some(manager)
         } else {
             None

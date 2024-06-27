@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
-use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::VecDeque;
 use std::fmt;
@@ -23,10 +23,12 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use warp::ws::Message;
 use warp::ws::WebSocket;
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::db::ShinkaiDB;
 use crate::schemas::identity::Identity;
 
+use super::node_api::APIError;
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;
@@ -43,6 +45,17 @@ pub struct WSMessagePayload {
     pub inbox: String,
     pub message: Option<String>,
     pub error_message: Option<String>,
+    pub metadata: Option<WSMetadata>,
+    pub is_stream: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSMetadata {
+    pub id: Option<String>,
+    pub is_done: bool,
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub eval_count: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -50,6 +63,7 @@ pub enum WebSocketManagerError {
     UserValidationFailed(String),
     AccessDenied(String),
     MissingSharedKey(String),
+    InvalidSharedKey(String),
 }
 
 impl fmt::Display for WebSocketManagerError {
@@ -58,6 +72,7 @@ impl fmt::Display for WebSocketManagerError {
             WebSocketManagerError::UserValidationFailed(msg) => write!(f, "User validation failed: {}", msg),
             WebSocketManagerError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
             WebSocketManagerError::MissingSharedKey(msg) => write!(f, "Missing shared key: {}", msg),
+            WebSocketManagerError::InvalidSharedKey(msg) => write!(f, "Invalid shared key: {}", msg),
         }
     }
 }
@@ -76,10 +91,17 @@ impl fmt::Debug for WebSocketManager {
 
 #[async_trait]
 pub trait WSUpdateHandler {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool);
+    async fn queue_message(
+        &self,
+        topic: WSTopic,
+        subtopic: String,
+        update: String,
+        metadata: Option<WSMetadata>,
+        is_stream: bool,
+    );
 }
 
-pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, bool)>>>;
+pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, Option<WSMetadata>, bool)>>>;
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
@@ -89,6 +111,7 @@ pub struct WebSocketManager {
     shinkai_db: Weak<ShinkaiDB>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
+    encryption_secret_key: EncryptionStaticKey,
     message_queue: MessageQueue,
 }
 
@@ -101,6 +124,7 @@ impl Clone for WebSocketManager {
             shinkai_db: self.shinkai_db.clone(),
             node_name: self.node_name.clone(),
             identity_manager_trait: Arc::clone(&self.identity_manager_trait),
+            encryption_secret_key: self.encryption_secret_key.clone(),
             message_queue: Arc::clone(&self.message_queue),
         }
     }
@@ -111,6 +135,7 @@ impl WebSocketManager {
         shinkai_db: Weak<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
+        encryption_secret_key: EncryptionStaticKey,
     ) -> Arc<Mutex<Self>> {
         let manager = Arc::new(Mutex::new(Self {
             connections: HashMap::new(),
@@ -119,6 +144,7 @@ impl WebSocketManager {
             shinkai_db,
             node_name,
             identity_manager_trait,
+            encryption_secret_key,
             message_queue: Arc::new(Mutex::new(VecDeque::new())),
         }));
 
@@ -131,57 +157,50 @@ impl WebSocketManager {
         manager
     }
 
-    pub async fn start_message_sender(
-        manager: Arc<Mutex<Self>>,
-        message_queue: MessageQueue
-    ) {
+    pub async fn start_message_sender(manager: Arc<Mutex<Self>>, message_queue: MessageQueue) {
         loop {
-            // Sleep for a while
-            sleep(Duration::from_millis(200)).await;
-
-            // Check if there are any messages in the queue
             let message = {
                 let mut queue = message_queue.lock().await;
                 queue.pop_front()
             };
 
-            if let Some((topic, subtopic, update, bool)) = message {
-                shinkai_log(
-                    ShinkaiLogOption::WsAPI,
-                    ShinkaiLogLevel::Debug,
-                    format!("Sending update to topic: {}", topic).as_str(),
-                );
-                manager.lock().await.handle_update(topic, subtopic, update, bool).await;
+            match message {
+                Some((topic, subtopic, update, metadata, is_stream)) => {
+                    shinkai_log(
+                        ShinkaiLogOption::WsAPI,
+                        ShinkaiLogLevel::Debug,
+                        format!("Sending update to topic: {}", topic).as_str(),
+                    );
+                    manager
+                        .lock()
+                        .await
+                        .handle_update(topic, subtopic, update, metadata, is_stream)
+                        .await;
+                }
+                None => {
+                    // Sleep only when there are no messages in the queue
+                    sleep(Duration::from_millis(200)).await;
+                }
             }
         }
     }
 
-    pub async fn user_validation(&self, shinkai_name: ShinkaiName, message: &ShinkaiMessage) -> bool {
-        // Message can't be encrypted at this point
-        let is_body_encrypted = message.clone().is_body_currently_encrypted();
-        if is_body_encrypted {
-            shinkai_log(
-                ShinkaiLogOption::DetailedAPI,
-                ShinkaiLogLevel::Debug,
-                format!("Message body is encrypted, can't validate user: {}", shinkai_name).as_str(),
-            );
-            return false;
-        }
-
-        // Note: we generate a dummy encryption key because the message is not encrypted so we don't need the real key.
-        let (dummy_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
-
+    // TODO: shouldn't this be encrypted?
+    pub async fn user_validation(
+        &self,
+        shinkai_name: ShinkaiName,
+        message: &ShinkaiMessage,
+    ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        let cloned_enc_sk = clone_static_secret_key(&self.encryption_secret_key);
         let identity_manager_clone = self.identity_manager_trait.clone();
-        let result = validate_message_main_logic(
-            &dummy_encryption_sk,
+        validate_message_main_logic(
+            &cloned_enc_sk,
             identity_manager_clone,
             &shinkai_name.clone(),
             message.clone(),
             None,
         )
-        .await;
-
-        result.is_ok()
+        .await
     }
 
     pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
@@ -243,30 +262,66 @@ impl WebSocketManager {
 
     pub async fn manage_connections(
         &mut self,
-        shinkai_name: ShinkaiName,
-        message: ShinkaiMessage,
+        sender_shinkai_name: ShinkaiName,
+        potentially_encrypted_msg: ShinkaiMessage,
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-        ws_message: WSMessage,
     ) -> Result<(), WebSocketManagerError> {
+        eprintln!("Managing connections for shinkai_name: {}", sender_shinkai_name);
         shinkai_log(
             ShinkaiLogOption::WsAPI,
             ShinkaiLogLevel::Info,
-            format!("Adding connection for shinkai_name: {}", shinkai_name).as_str(),
+            format!("Adding connection for shinkai_name: {}", sender_shinkai_name).as_str(),
         );
 
-        if !self.user_validation(shinkai_name.clone(), &message).await {
-            shinkai_log(
-                ShinkaiLogOption::WsAPI,
-                ShinkaiLogLevel::Error,
-                format!("User validation failed for shinkai_name: {}", shinkai_name).as_str(),
-            );
-            return Err(WebSocketManagerError::UserValidationFailed(format!(
-                "User validation failed for shinkai_name: {}",
-                shinkai_name
-            )));
+        let validation_result = self
+            .user_validation(self.node_name.clone(), &potentially_encrypted_msg)
+            .await;
+        let (validated_message, _sender_identity) = match validation_result {
+            Ok((msg, identity)) => (msg, identity),
+            Err(api_error) => {
+                shinkai_log(
+                    ShinkaiLogOption::WsAPI,
+                    ShinkaiLogLevel::Error,
+                    format!(
+                        "User validation failed for shinkai_name: {}: {:?}",
+                        sender_shinkai_name, api_error
+                    )
+                    .as_str(),
+                );
+                return Err(WebSocketManagerError::UserValidationFailed(format!(
+                    "User validation failed for shinkai_name: {}: {:?}",
+                    sender_shinkai_name, api_error
+                )));
+            }
+        };
+
+        let sender_shinkai_name =
+            ShinkaiName::from_shinkai_message_using_sender_subidentity(&validated_message.clone()).map_err(|e| {
+                WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e))
+            })?;
+
+        let content_str = validated_message.get_message_content().map_err(|e| {
+            WebSocketManagerError::UserValidationFailed(format!("Failed to get message content: {}", e))
+        })?;
+
+        let ws_message = serde_json::from_str::<WSMessage>(&content_str).map_err(|e| {
+            WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e))
+        })?;
+
+        eprintln!("ws_message: {:?}", ws_message);
+
+        // Validate shared_key if it exists
+        if let Some(shared_key) = &ws_message.shared_key {
+            if !Self::is_valid_hex_key(shared_key) {
+                return Err(WebSocketManagerError::InvalidSharedKey(
+                    "Provided shared_key is not a valid hexadecimal string".to_string(),
+                ));
+            }
         }
 
-        let shinkai_profile_name = shinkai_name.to_string();
+        // Decrypt Message
+
+        let shinkai_profile_name = sender_shinkai_name.to_string();
         let shared_key = ws_message.shared_key.clone();
 
         // Initialize the topic map for the new connection
@@ -276,7 +331,7 @@ impl WebSocketManager {
         for subscription in ws_message.subscriptions.iter() {
             if !self
                 .has_access(
-                    shinkai_name.clone(),
+                    sender_shinkai_name.clone(),
                     subscription.topic.clone(),
                     subscription.subtopic.clone(),
                 )
@@ -284,12 +339,12 @@ impl WebSocketManager {
             {
                 eprintln!(
                     "Access denied for shinkai_name: {} on topic: {:?} and subtopic: {:?}",
-                    shinkai_name, subscription.topic, subscription.subtopic
+                    sender_shinkai_name, subscription.topic, subscription.subtopic
                 );
                 // TODO: should we send a ShinkaiMessage with an error inside back?
                 return Err(WebSocketManagerError::AccessDenied(format!(
                     "Access denied for shinkai_name: {} on topic: {:?} and subtopic: {:?}",
-                    shinkai_name, subscription.topic, subscription.subtopic
+                    sender_shinkai_name, subscription.topic, subscription.subtopic
                 )));
             }
 
@@ -306,12 +361,14 @@ impl WebSocketManager {
 
         if let Some(key) = shared_key {
             self.shared_keys.insert(shinkai_profile_name.clone(), key);
-        } else if !self.shared_keys.contains_key(&shinkai_profile_name) {
-            return Err(WebSocketManagerError::MissingSharedKey(format!(
-                "Missing shared key for shinkai_name: {}",
-                shinkai_profile_name
-            )));
         }
+        // Note: uncomment this enforce having a shared encryption key
+        // else if !self.shared_keys.contains_key(&shinkai_profile_name) {
+        //     return Err(WebSocketManagerError::MissingSharedKey(format!(
+        //         "Missing shared key for shinkai_name: {}",
+        //         shinkai_profile_name
+        //     )));
+        // }
 
         // Handle adding and removing subscriptions
         let subscriptions_to_add: Vec<(WSTopic, Option<String>)> = ws_message
@@ -330,10 +387,27 @@ impl WebSocketManager {
         shinkai_log(
             ShinkaiLogOption::WsAPI,
             ShinkaiLogLevel::Info,
-            format!("Successfully added connection for shinkai_name: {}", shinkai_name).as_str(),
+            format!(
+                "Successfully added connection for shinkai_name: {}",
+                sender_shinkai_name
+            )
+            .as_str(),
         );
 
         Ok(())
+    }
+
+    fn is_valid_hex_key(key: &str) -> bool {
+        // Check if the key is a valid hexadecimal string
+        if key.len() != 64 || !key.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+
+        // Attempt to decode the key
+        match hex::decode(key) {
+            Ok(decoded) => decoded.len() == 32, // 32 bytes for AES-256
+            Err(_) => false,
+        }
     }
 
     // Method to update subscriptions
@@ -366,7 +440,14 @@ impl WebSocketManager {
         );
     }
 
-    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool) {
+    pub async fn handle_update(
+        &self,
+        topic: WSTopic,
+        subtopic: String,
+        update: String,
+        metadata: Option<WSMetadata>,
+        is_stream: bool,
+    ) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         shinkai_log(
             ShinkaiLogOption::WsAPI,
@@ -376,10 +457,16 @@ impl WebSocketManager {
 
         // Create the WSMessagePayload
         let payload = WSMessagePayload {
-            message_type: if is_stream { MessageType::Stream } else { MessageType::ShinkaiMessage },
+            message_type: if metadata.is_some() {
+                MessageType::Stream
+            } else {
+                MessageType::ShinkaiMessage
+            },
             inbox: subtopic.clone(),
             message: Some(update.clone()),
             error_message: None,
+            metadata,
+            is_stream,
         };
 
         // Serialize the payload to JSON
@@ -425,15 +512,31 @@ impl WebSocketManager {
 
                 let mut connection = connection.lock().await;
 
-                // Encrypt the update using the shared key
-                let shared_key = self.shared_keys.get(id).unwrap();
-                let shared_key_bytes = hex::decode(shared_key).expect("Failed to decode shared key");
-                let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
-                let nonce = GenericArray::from_slice(&[0u8; 12]);
-                let encrypted_update = cipher.encrypt(nonce, payload_json.as_ref()).expect("encryption failure!");
-                let encrypted_update_hex = hex::encode(&encrypted_update);
+                let message_to_send = if let Some(shared_key) = self.shared_keys.get(id) {
+                    // Encrypt the update using the shared key
+                    let shared_key_bytes = match hex::decode(shared_key) {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::WsAPI,
+                                ShinkaiLogLevel::Error,
+                                format!("Failed to decode shared key for connection {}: {}", id, e).as_str(),
+                            );
+                            continue;
+                        }
+                    };
+                    let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
+                    let nonce = GenericArray::from_slice(&[0u8; 12]);
+                    let encrypted_update = cipher
+                        .encrypt(nonce, payload_json.as_ref())
+                        .expect("encryption failure!");
+                    hex::encode(&encrypted_update)
+                } else {
+                    // If no shared key, send the message without encryption
+                    payload_json.clone()
+                };
 
-                match connection.send(Message::text(encrypted_update_hex.clone())).await {
+                match connection.send(Message::text(message_to_send.clone())).await {
                     Ok(_) => shinkai_log(
                         ShinkaiLogOption::WsAPI,
                         ShinkaiLogLevel::Info,
@@ -476,8 +579,19 @@ impl WebSocketManager {
 
 #[async_trait]
 impl WSUpdateHandler for WebSocketManager {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool) {
+    async fn queue_message(
+        &self,
+        topic: WSTopic,
+        subtopic: String,
+        update: String,
+        metadata: Option<WSMetadata>,
+        is_stream: bool,
+    ) {
+        eprintln!("Queueing message for topic: {:?}", topic);
+        eprintln!("Queueing message for subtopic: {:?}", subtopic);
+        eprintln!("Queueing message for update: {:?}", update);
+        eprintln!("Queueing message for is_stream: {:?}", metadata);
         let mut queue = self.message_queue.lock().await;
-        queue.push_back((topic, subtopic, update, is_stream));
+        queue.push_back((topic, subtopic, update, metadata, is_stream));
     }
 }
