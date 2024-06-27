@@ -56,39 +56,6 @@ fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {
 // }
 
 // #[tokio::test]
-async fn test_js_toolkit_execution() {
-    init_default_tracing();
-    setup();
-    // Load the toolkit
-    let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
-
-    // Create the executor
-    let executor = JSToolkitExecutor::new_local().await.unwrap();
-
-    // Test submit_toolkit_json_request
-    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).await.unwrap();
-    assert_eq!(&toolkit.name, "@shinkai_network/toolkit-example");
-    assert_eq!(toolkit.tools.len(), 2);
-
-    // Test submit_headers_validation_request
-    let header_values = &default_toolkit_header_values().await.unwrap();
-    let headers_validation_result = executor
-        .submit_headers_validation_request(&toolkit_js_code, &header_values)
-        .await
-        .unwrap();
-    // Test submit_tool_execution_request
-    let tool = "isEven";
-    let input_data = &serde_json::json!({"number": 56});
-    let tool_execution_result = executor
-        .submit_tool_execution_request(tool, input_data, &toolkit_js_code, header_values)
-        .await
-        .unwrap();
-
-    assert_eq!(tool_execution_result.result[0].output.as_bool().unwrap(), true);
-    assert_eq!(tool_execution_result.tool, "isEven");
-}
-
-// #[tokio::test]
 async fn test_toolkit_installation_and_retrieval() {
     init_default_tracing();
     setup();
