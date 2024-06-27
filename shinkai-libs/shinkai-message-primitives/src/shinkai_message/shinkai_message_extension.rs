@@ -102,10 +102,12 @@ impl ShinkaiMessage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_body_currently_encrypted(&self) -> bool {
         matches!(self.body, MessageBody::Encrypted(_))
     }
 
+    #[allow(dead_code)]
     pub fn is_content_currently_encrypted(&self) -> bool {
         match &self.body {
             MessageBody::Encrypted(_) => true,
@@ -113,6 +115,7 @@ impl ShinkaiMessage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_encryption_status(self) -> EncryptionStatus {
         if self.is_body_currently_encrypted() {
             EncryptionStatus::BodyEncrypted

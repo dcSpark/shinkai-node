@@ -34,6 +34,7 @@ use super::node_api_handlers::get_filenames_message_handler;
 use super::node_api_handlers::get_last_messages_from_inbox_handler;
 use super::node_api_handlers::get_last_messages_from_inbox_with_branches_handler;
 use super::node_api_handlers::get_last_unread_messages_from_inbox_handler;
+use super::node_api_handlers::get_local_processing_preference_handler;
 use super::node_api_handlers::get_my_subscribers_handler;
 use super::node_api_handlers::get_peers_handler;
 use super::node_api_handlers::get_public_key_handler;
@@ -53,6 +54,7 @@ use super::node_api_handlers::shinkai_health_handler;
 use super::node_api_handlers::subscribe_to_shared_folder_handler;
 use super::node_api_handlers::unsubscribe_handler;
 use super::node_api_handlers::update_job_to_finished_handler;
+use super::node_api_handlers::update_local_processing_preference_handler;
 use super::node_api_handlers::update_smart_inbox_name_handler;
 use super::node_api_handlers::use_registration_code_handler;
 use super::node_api_handlers::NameToExternalProfileData;
@@ -98,7 +100,7 @@ pub struct APIError {
 }
 
 impl APIError {
-    fn new(code: StatusCode, error: &str, message: &str) -> Self {
+    pub fn new(code: StatusCode, error: &str, message: &str) -> Self {
         Self {
             code: code.as_u16(),
             error: error.to_string(),
@@ -388,7 +390,9 @@ pub async fn run_api(
         warp::path!("v1" / "available_agents")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| available_llm_providers_handler(node_commands_sender.clone(), message))
+            .and_then(move |message: ShinkaiMessage| {
+                available_llm_providers_handler(node_commands_sender.clone(), message)
+            })
     };
 
     // POST v1/add_agent
@@ -749,6 +753,28 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| change_job_agent_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/local_processing_preference
+    let get_local_processing_preference = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_local_processing_preference")
+            .and(warp::get())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_local_processing_preference_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/local_processing_preference
+    let update_local_processing_preference = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_local_processing_preference")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                update_local_processing_preference_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -810,6 +836,8 @@ pub async fn run_api(
         .or(retrieve_vrpack)
         .or(get_subscription_links)
         .or(change_job_agent)
+        .or(get_local_processing_preference)
+        .or(update_local_processing_preference)
         .recover(handle_rejection)
         .with(log)
         .with(cors);

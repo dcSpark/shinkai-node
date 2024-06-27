@@ -1,13 +1,23 @@
 use async_channel::Sender;
+use futures::StreamExt;
+use futures::TryFutureExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use futures::TryFutureExt;
-use futures::StreamExt;
-use warp::Buf;
 use serde_json::json;
-use shinkai_message_primitives::{shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::APIAvailableSharedItems}, shinkai_utils::{encryption::encryption_public_key_to_string, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::signature_public_key_to_string}};
+use shinkai_message_primitives::{
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::APIAvailableSharedItems},
+    shinkai_utils::{
+        encryption::encryption_public_key_to_string,
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::signature_public_key_to_string,
+    },
+};
+use warp::Buf;
 
-use super::{node::NodeCommand, node_api::{handle_node_command, APIError, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData}};
+use super::{
+    node::NodeCommand,
+    node_api::{handle_node_command, APIError, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData},
+};
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {
@@ -886,6 +896,26 @@ pub async fn change_job_agent_handler(
             msg: message,
             res: res_sender,
         }
+    })
+    .await
+}
+
+pub async fn get_local_processing_preference_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |sender, msg, res| {
+        NodeCommand::APIGetLocalProcessingPreference { msg, res }
+    })
+    .await
+}
+
+pub async fn update_local_processing_preference_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |sender, msg, res| {
+        NodeCommand::APIUpdateLocalProcessingPreference { preference: msg, res }
     })
     .await
 }

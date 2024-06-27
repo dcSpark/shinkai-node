@@ -106,6 +106,14 @@ impl Identity {
             Identity::Device(device) => device.full_identity_name.clone().to_string(),
         }
     }
+
+    pub fn has_admin_permissions(&self) -> bool {
+        match self {
+            Identity::Standard(std_identity) => std_identity.permission_type == IdentityPermissions::Admin,
+            Identity::LLMProvider(_) => false, // Assuming LLM providers don't have admin permissions
+            Identity::Device(device) => device.permission_type == IdentityPermissions::Admin,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

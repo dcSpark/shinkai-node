@@ -185,7 +185,7 @@ impl ShinkaiDB {
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
                 if let Ok(msg_string) = message.to_string() {
-                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, false).await;
+                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, None, false).await;
                 }
             }
         }
