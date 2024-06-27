@@ -6,10 +6,10 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 image = "0.25.1"
-ocrs = "0.7.0"
-pdfium-render = { version = "=0.8.20" }
+ocrs = "0.8.0"
+pdfium-render = { version = "=0.8.22" }
 reqwest = { version = "0.12" }
-rten = { version = "0.9.0" }
+rten = { version = "0.10.0" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
