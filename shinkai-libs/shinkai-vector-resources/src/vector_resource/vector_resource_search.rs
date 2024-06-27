@@ -63,7 +63,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     /// Of note: This method does not guarantee ordering of the nodes, no matter what kind of VR this is used on.
     fn retrieve_nodes_exhaustive_unordered(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
         let empty_embedding = Embedding::new_empty();
-        let mut nodes = self.vector_search_customized(
+        let nodes = self.vector_search_customized(
             empty_embedding,
             0,
             TraversalMethod::UnscoredAllNodes,
@@ -102,17 +102,26 @@ pub trait VectorResourceSearch: VectorResourceCore {
         nodes
     }
 
-    /// Prints all nodes and their paths to easily/quickly examine a Vector Resource.
+    /// Retrieves all nodes and their paths to easily/quickly examine a Vector Resource.
     /// This is exhaustive and can begin from any starting_path.
     /// `shorten_data` - Cuts the string content short to improve readability.
     /// `resources_only` - Only prints Vector Resources
-    fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
-        let mut nodes = vec![];
-        if resources_only {
-            nodes = self.retrieve_resource_nodes_exhaustive(starting_path);
+    /// `add_merkle_hash` - Adds the merkle hash to each node
+    fn retrieve_all_nodes_contents_by_hierarchy(
+        &self,
+        starting_path: Option<VRPath>,
+        shorten_data: bool,
+        resources_only: bool,
+        add_merkle_hash: bool,
+    ) -> Vec<String> {
+        let nodes = if resources_only {
+            self.retrieve_resource_nodes_exhaustive(starting_path)
         } else {
-            nodes = self.retrieve_nodes_exhaustive_unordered(starting_path);
-        }
+            self.retrieve_nodes_exhaustive_unordered(starting_path)
+        };
+
+        let mut result = Vec::new();
+
         for node in nodes {
             let ret_path = node.retrieval_path;
             let _path = ret_path.format_to_string();
@@ -148,21 +157,37 @@ pub trait VectorResourceSearch: VectorResourceCore {
             };
             // Adding merkle hash if it exists to output string
             let mut merkle_hash = String::new();
-            if let Ok(hash) = node.node.get_merkle_hash() {
-                if hash.chars().count() > 15 {
-                    merkle_hash = hash.chars().take(15).collect::<String>() + "..."
-                } else {
-                    merkle_hash = hash.to_string()
+            if add_merkle_hash {
+                if let Ok(hash) = node.node.get_merkle_hash() {
+                    if hash.chars().count() > 15 {
+                        merkle_hash = hash.chars().take(15).collect::<String>() + "..."
+                    } else {
+                        merkle_hash = hash.to_string()
+                    }
                 }
             }
 
             // Create indent string and do the final print
             let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
             if merkle_hash.len() == 0 {
-                eprintln!("{}{}", indent_string, data,);
+                result.push(format!("{}{}", indent_string, data));
             } else {
-                eprintln!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
+                result.push(format!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash));
             }
+        }
+
+        result
+    }
+
+    /// Prints all nodes and their paths to easily/quickly examine a Vector Resource.
+    /// This is exhaustive and can begin from any starting_path.
+    /// `shorten_data` - Cuts the string content short to improve readability.
+    /// `resources_only` - Only prints Vector Resources
+    fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
+        let contents = self.retrieve_all_nodes_contents_by_hierarchy(starting_path, shorten_data, resources_only, true);
+
+        for content in contents {
+            eprintln!("{}", content);
         }
     }
 
@@ -386,56 +411,55 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         // Check if we need to adjust based on the ResultsMode
         if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
-            if let ResultsMode::ProximitySearch(proximity_window, num_of_top_results) = result_mode {
-                let mut paths_checked = HashMap::new();
-                let mut new_results = Vec::new();
-                let mut new_top_results_added = 0;
-                let mut iter = results.iter().cloned();
+            let ResultsMode::ProximitySearch(proximity_window, num_of_top_results) = result_mode;
+            let mut paths_checked = HashMap::new();
+            let mut new_results = Vec::new();
+            let mut new_top_results_added = 0;
+            let mut iter = results.iter().cloned();
 
-                while new_top_results_added < num_of_top_results as usize {
-                    if let Some(top_result) = iter.next() {
-                        // Check if the node has already been included, then skip
-                        if paths_checked.contains_key(&top_result.retrieval_path.clone()) {
-                            continue;
-                        }
-
-                        match self.proximity_retrieve_nodes_at_path(
-                            top_result.retrieval_path.clone(),
-                            proximity_window,
-                            Some(query.clone()),
-                        ) {
-                            Ok(mut proximity_results) => {
-                                let mut non_duplicates = vec![];
-                                let top_result_path = top_result.retrieval_path.clone();
-                                for proximity_result in &mut proximity_results {
-                                    // Replace the retrieved node with the actual top result node (to preserve results from other scoring logic, ie. hierarchical)
-                                    let mut proximity_result = if top_result_path == proximity_result.retrieval_path {
-                                        top_result.clone()
-                                    } else {
-                                        proximity_result.clone()
-                                    };
-
-                                    // Update the proximity result and push it into the list of non duplicate results
-                                    if !paths_checked.contains_key(&proximity_result.retrieval_path) {
-                                        proximity_result.resource_header = root_vr_header.clone();
-                                        proximity_result.set_proximity_group_id(new_top_results_added.to_string());
-                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
-                                        non_duplicates.push(proximity_result.clone());
-                                    }
-                                }
-
-                                new_results.append(&mut non_duplicates);
-                                new_top_results_added += 1;
-                            }
-                            Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
-                        }
-                    } else {
-                        // Break the loop if there are no more top results to process
-                        break;
+            while new_top_results_added < num_of_top_results as usize {
+                if let Some(top_result) = iter.next() {
+                    // Check if the node has already been included, then skip
+                    if paths_checked.contains_key(&top_result.retrieval_path.clone()) {
+                        continue;
                     }
+
+                    match self.proximity_retrieve_nodes_at_path(
+                        top_result.retrieval_path.clone(),
+                        proximity_window,
+                        Some(query.clone()),
+                    ) {
+                        Ok(mut proximity_results) => {
+                            let mut non_duplicates = vec![];
+                            let top_result_path = top_result.retrieval_path.clone();
+                            for proximity_result in &mut proximity_results {
+                                // Replace the retrieved node with the actual top result node (to preserve results from other scoring logic, ie. hierarchical)
+                                let mut proximity_result = if top_result_path == proximity_result.retrieval_path {
+                                    top_result.clone()
+                                } else {
+                                    proximity_result.clone()
+                                };
+
+                                // Update the proximity result and push it into the list of non duplicate results
+                                if !paths_checked.contains_key(&proximity_result.retrieval_path) {
+                                    proximity_result.resource_header = root_vr_header.clone();
+                                    proximity_result.set_proximity_group_id(new_top_results_added.to_string());
+                                    paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                    non_duplicates.push(proximity_result.clone());
+                                }
+                            }
+
+                            new_results.append(&mut non_duplicates);
+                            new_top_results_added += 1;
+                        }
+                        Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
+                    }
+                } else {
+                    // Break the loop if there are no more top results to process
+                    break;
                 }
-                results = new_results;
             }
+            results = new_results;
         }
 
         // Check if we are using traversal method unscored all nodes
@@ -481,25 +505,20 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         // Score embeddings based on traversal method
         let mut score_num_of_results = num_of_results;
-        let mut scores = vec![];
-        match traversal_method {
+        let scores = match traversal_method {
             // Score all if exhaustive
             TraversalMethod::Exhaustive => {
                 score_num_of_results = embeddings_to_score.len() as u64;
-                scores = query.score_similarities(&embeddings_to_score, score_num_of_results);
+                query.score_similarities(&embeddings_to_score, score_num_of_results)
             }
             // Fake score all as 0 if unscored exhaustive
-            TraversalMethod::UnscoredAllNodes => {
-                scores = embeddings_to_score
-                    .iter()
-                    .map(|embedding| (0.0, embedding.id.clone()))
-                    .collect();
-            }
+            TraversalMethod::UnscoredAllNodes => embeddings_to_score
+                .iter()
+                .map(|embedding| (0.0, embedding.id.clone()))
+                .collect(),
             // Else score as normal
-            _ => {
-                scores = query.score_similarities(&embeddings_to_score, score_num_of_results);
-            }
-        }
+            _ => query.score_similarities(&embeddings_to_score, score_num_of_results),
+        };
 
         self._order_vector_search_results(
             scores,

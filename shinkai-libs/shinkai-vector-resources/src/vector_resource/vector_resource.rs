@@ -10,7 +10,6 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::model_type::EmbeddingModelTypeString;
 use crate::model_type::OllamaTextEmbeddingsInference;
-use crate::model_type::TextEmbeddingsInference;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::DistributionInfo;
