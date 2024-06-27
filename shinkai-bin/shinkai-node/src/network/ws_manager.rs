@@ -5,17 +5,14 @@ use aes_gcm::KeyInit;
 use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
-use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
-use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::VecDeque;
 use std::fmt;
@@ -48,6 +45,16 @@ pub struct WSMessagePayload {
     pub inbox: String,
     pub message: Option<String>,
     pub error_message: Option<String>,
+    pub metadata: Option<WSMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSMetadata {
+    pub id: Option<String>,
+    pub is_done: bool,
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub eval_count: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -83,10 +90,10 @@ impl fmt::Debug for WebSocketManager {
 
 #[async_trait]
 pub trait WSUpdateHandler {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool);
+    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, stream: Option<WSMetadata>);
 }
 
-pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, bool)>>>;
+pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, Option<WSMetadata>)>>>;
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
@@ -150,13 +157,13 @@ impl WebSocketManager {
             };
     
             match message {
-                Some((topic, subtopic, update, is_stream)) => {
+                Some((topic, subtopic, update, stream)) => {
                     shinkai_log(
                         ShinkaiLogOption::WsAPI,
                         ShinkaiLogLevel::Debug,
                         format!("Sending update to topic: {}", topic).as_str(),
                     );
-                    manager.lock().await.handle_update(topic, subtopic, update, is_stream).await;
+                    manager.lock().await.handle_update(topic, subtopic, update, stream).await;
                 }
                 None => {
                     // Sleep only when there are no messages in the queue
@@ -422,7 +429,7 @@ impl WebSocketManager {
         );
     }
 
-    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool) {
+    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String, stream: Option<WSMetadata>) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         shinkai_log(
             ShinkaiLogOption::WsAPI,
@@ -432,7 +439,7 @@ impl WebSocketManager {
 
         // Create the WSMessagePayload
         let payload = WSMessagePayload {
-            message_type: if is_stream {
+            message_type: if stream.is_some() {
                 MessageType::Stream
             } else {
                 MessageType::ShinkaiMessage
@@ -440,6 +447,7 @@ impl WebSocketManager {
             inbox: subtopic.clone(),
             message: Some(update.clone()),
             error_message: None,
+            metadata: stream,
         };
 
         // Serialize the payload to JSON
@@ -552,12 +560,12 @@ impl WebSocketManager {
 
 #[async_trait]
 impl WSUpdateHandler for WebSocketManager {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool) {
+    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, stream: Option<WSMetadata>) {
         eprintln!("Queueing message for topic: {:?}", topic);
         eprintln!("Queueing message for subtopic: {:?}", subtopic);
         eprintln!("Queueing message for update: {:?}", update);
-        eprintln!("Queueing message for is_stream: {:?}", is_stream);
+        eprintln!("Queueing message for is_stream: {:?}", stream);
         let mut queue = self.message_queue.lock().await;
-        queue.push_back((topic, subtopic, update, is_stream));
+        queue.push_back((topic, subtopic, update, stream));
     }
 }
