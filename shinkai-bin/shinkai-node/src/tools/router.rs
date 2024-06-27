@@ -14,6 +14,7 @@ use shinkai_vector_resources::vector_resource::{
 pub enum ShinkaiTool {
     Rust(RustTool),
     JS(JSTool),
+    // Add Workflow here
 }
 
 impl ShinkaiTool {
@@ -118,6 +119,7 @@ impl ShinkaiTool {
     }
 
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
+    // TODO: improve the formatting so it's better for vector embeddings
     pub fn format_embedding_string(&self) -> String {
         let mut embedding_string = format!("{}:{}\n", self.name(), self.description());
 

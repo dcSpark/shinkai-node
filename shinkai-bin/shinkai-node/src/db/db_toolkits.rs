@@ -115,14 +115,11 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Activates a JSToolkit and then propagating the internal tools to the ToolRouter. Of note,
-    /// this function validates the toolkit headers values are available in DB (or errors), thus after installing
-    /// a toolkit they must be set before calling activate.
+    /// Activates a JSToolkit and then propagating the internal tools to the ToolRouter.
     pub async fn activate_toolkit(
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,
-        toolkit_executor: &JSToolkitExecutor,
         embedding_generator: Box<dyn EmbeddingGenerator>,
     ) -> Result<(), ShinkaiDBError> {
         // 1. Check if toolkit is active then error
@@ -134,9 +131,6 @@ impl ShinkaiDB {
         // 2. Check that the toolkit headers are set and validate
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
         let header_values = self.get_toolkit_header_values(toolkit_name, profile)?;
-        toolkit_executor
-            .submit_headers_validation_request(&toolkit.js_code, &header_values)
-            .await?;
 
         // 3. Propagate the internal tools to the ToolRouter
         // TODO: Use a write batch for 3/4
@@ -190,15 +184,10 @@ impl ShinkaiDB {
         toolkit_name: &str,
         profile: &ShinkaiName,
         header_values: &JsonValue,
-        toolkit_executor: &JSToolkitExecutor,
     ) -> Result<(), ShinkaiDBError> {
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
-        // 1. Test the header values by using them with the validation function in the JS toolkit executor
-        toolkit_executor
-            .submit_headers_validation_request(&toolkit.js_code, header_values)
-            .await?;
 
-        // 2. Validate that the header_values keys cover the header definitions in the toolkit.
+        // 1. Validate that the header_values keys cover the header definitions in the toolkit.
         // If so, save the header values in the db
         let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
         for header in toolkit.header_definitions {
@@ -214,13 +203,13 @@ impl ShinkaiDB {
             }
         }
 
-        // 3. Updates the headers_set of the toolkit in the map
+        // 2. Updates the headers_set of the toolkit in the map
         let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
         toolkit_map.update_headers_set(toolkit_name, true)?;
         let (bytes, cf) = self._prepare_profile_toolkit_map(&toolkit_map, profile)?;
         pb_batch.pb_put_cf(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes);
 
-        // 4. Write the batch to the DB
+        // 3. Write the batch to the DB
         self.write_pb(pb_batch)?;
         eprintln!(
             "set_toolkit_header_values> profile set header values: {:?}",

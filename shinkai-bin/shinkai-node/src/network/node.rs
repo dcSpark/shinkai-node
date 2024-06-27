@@ -470,8 +470,6 @@ pub struct Node {
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
-    // JS Toolkit Executor Remote
-    pub js_toolkit_executor_remote: Option<String>,
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
@@ -516,7 +514,6 @@ impl Node {
         proxy_identity: Option<String>,
         first_device_needs_registration_code: bool,
         initial_llm_providers: Vec<SerializedLLMProvider>,
-        js_toolkit_executor_remote: Option<String>,
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
         unstructured_api: Option<UnstructuredAPI>,
@@ -697,7 +694,6 @@ impl Node {
             cron_manager: None,
             first_device_needs_registration_code,
             initial_llm_providers,
-            js_toolkit_executor_remote,
             vector_fs: vector_fs_arc.clone(),
             embedding_generator,
             unstructured_api,
@@ -1488,7 +1484,6 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                                            let js_toolkit_executor_remote = self.js_toolkit_executor_remote.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_toolkit(
                                                     db_clone,
@@ -1496,7 +1491,6 @@ impl Node {
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
-                                                    js_toolkit_executor_remote,
                                                     msg,
                                                     res,
                                                 ).await;

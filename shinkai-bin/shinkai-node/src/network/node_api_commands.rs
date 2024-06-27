@@ -17,7 +17,7 @@ use crate::{
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::js_toolkit_executor::JSToolkitExecutor,
+    tools::js_toolkit::JSToolkit,
     utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
@@ -1413,7 +1413,6 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
-        js_toolkit_executor_remote: Option<String>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1494,18 +1493,13 @@ impl Node {
         };
         let header_values = serde_json::from_str(&header_values_json).unwrap_or(JsonValue::Null);
 
-        // initialize the executor (locally or remotely depending on ENV)
-        let executor_result = match &js_toolkit_executor_remote {
-            Some(remote_address) => JSToolkitExecutor::new_remote(remote_address.clone()).await,
-            None => JSToolkitExecutor::new_local().await,
-        };
-
-        let executor = match executor_result {
-            Ok(executor) => executor,
+        // Parse the toolkit file into JSON
+        let parsed_json = match serde_json::from_str(&toolkit_file) {
+            Ok(json) => json,
             Err(err) => {
                 let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "User Error".to_string(),
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
@@ -1514,13 +1508,13 @@ impl Node {
         };
 
         // Generate toolkit json from JS source code
-        let toolkit = executor.submit_toolkit_json_request(&toolkit_file).await;
-        if let Err(err) = toolkit {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "User Error".to_string(),
-                message: format!("{}", err),
-            };
+        let toolkit = JSToolkit::from_toolkit_json(&parsed_json, &toolkit_file).map_err(|err| APIError {
+            code: StatusCode::BAD_REQUEST.as_u16(),
+            error: "User Error".to_string(),
+            message: format!("{}", err),
+        });
+
+        if let Err(api_error) = toolkit {
             let _ = res.send(Err(api_error)).await;
             return Ok(());
         }
@@ -1561,12 +1555,7 @@ impl Node {
                 header_values
             );
             let set_header_result = db
-                .set_toolkit_header_values(
-                    &toolkit.name.clone(),
-                    &profile.clone(),
-                    &header_values.clone(),
-                    &executor,
-                )
+                .set_toolkit_header_values(&toolkit.name.clone(), &profile.clone(), &header_values.clone())
                 .await;
             if let Err(err) = set_header_result {
                 let api_error = APIError {
@@ -1580,7 +1569,7 @@ impl Node {
 
             eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
             let activate_toolkit_result = db
-                .activate_toolkit(&toolkit.name.clone(), &profile.clone(), &executor, embedding_generator)
+                .activate_toolkit(&toolkit.name.clone(), &profile.clone(), embedding_generator)
                 .await;
             if let Err(err) = activate_toolkit_result {
                 let api_error = APIError {

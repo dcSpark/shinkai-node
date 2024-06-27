@@ -94,3 +94,9 @@ impl From<anyhow::Error> for ToolError {
         ToolError::ParseError(err.to_string())
     }
 }
+
+impl From<shinkai_tools_runner::tools::quickjs_runtime::execution_error::ExecutionError> for ToolError {
+    fn from(err: shinkai_tools_runner::tools::quickjs_runtime::execution_error::ExecutionError) -> ToolError {
+        ToolError::ParseError(err.to_string())
+    }
+}
