@@ -144,22 +144,24 @@ impl WebSocketManager {
 
     pub async fn start_message_sender(manager: Arc<Mutex<Self>>, message_queue: MessageQueue) {
         loop {
-            // Sleep for a while
-            sleep(Duration::from_millis(200)).await;
-
-            // Check if there are any messages in the queue
             let message = {
                 let mut queue = message_queue.lock().await;
                 queue.pop_front()
             };
-
-            if let Some((topic, subtopic, update, bool)) = message {
-                shinkai_log(
-                    ShinkaiLogOption::WsAPI,
-                    ShinkaiLogLevel::Debug,
-                    format!("Sending update to topic: {}", topic).as_str(),
-                );
-                manager.lock().await.handle_update(topic, subtopic, update, bool).await;
+    
+            match message {
+                Some((topic, subtopic, update, is_stream)) => {
+                    shinkai_log(
+                        ShinkaiLogOption::WsAPI,
+                        ShinkaiLogLevel::Debug,
+                        format!("Sending update to topic: {}", topic).as_str(),
+                    );
+                    manager.lock().await.handle_update(topic, subtopic, update, is_stream).await;
+                }
+                None => {
+                    // Sleep only when there are no messages in the queue
+                    sleep(Duration::from_millis(200)).await;
+                }
             }
         }
     }
