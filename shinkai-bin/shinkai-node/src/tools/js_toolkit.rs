@@ -189,7 +189,7 @@ impl JSToolkit {
             header_definitions: vec![], // Empty headers
             author: "Dummy author".to_string(), // Dummy author
             version: "1.0.0".to_string(), // Dummy version
-            activated: true,
+            activated: false,
             headers_set: true,
         }
     }

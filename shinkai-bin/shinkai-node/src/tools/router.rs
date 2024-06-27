@@ -181,6 +181,9 @@ impl ToolRouter {
         // Generate the static Rust tools
         let rust_tools = RustTool::static_tools(generator).await;
 
+        // print the total number of tools
+        eprintln!("Total number of tools: {}", rust_tools.len());
+
         // Insert each Rust tool into the routing resource
         for tool in rust_tools {
             let shinkai_tool = ShinkaiTool::Rust(tool.clone());
@@ -240,6 +243,7 @@ impl ToolRouter {
     /// Returns a list of ShinkaiTools of the most similar.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ShinkaiTool> {
         let nodes = self.routing_resource.vector_search(query, num_of_results);
+        eprintln!("nodes: {:?}", nodes);
         self.ret_nodes_to_tools(&nodes)
     }
 
