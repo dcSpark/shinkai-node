@@ -1,13 +1,13 @@
+use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
-use crate::db::ShinkaiDB;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::network::ws_manager::{self, WSUpdateHandler};
-use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
+use crate::network::ws_manager::WSUpdateHandler;
+use crate::tools::js_toolkit::JSToolkit;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
@@ -25,12 +25,11 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
-use tokio::sync::Mutex;
-use warp::filters::ws;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 use tracing::instrument;
 
@@ -41,6 +40,7 @@ use super::user_message_parser::ParsedUserMessage;
 impl JobManager {
     /// Processes a job message which will trigger a job step
     #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db, ws_manager))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<ShinkaiDB>,
@@ -70,8 +70,15 @@ impl JobManager {
         let user_profile = match user_profile {
             Some(profile) => profile,
             None => {
-                return Self::handle_error(&db, None, &job_id, &identity_secret_key, LLMProviderError::NoUserProfileFound, ws_manager)
-                    .await
+                return Self::handle_error(
+                    &db,
+                    None,
+                    &job_id,
+                    &identity_secret_key,
+                    LLMProviderError::NoUserProfileFound,
+                    ws_manager,
+                )
+                .await
             }
         };
 
@@ -80,6 +87,16 @@ impl JobManager {
             user_profile.profile_name.unwrap_or_default(),
         )
         .unwrap();
+
+        // 0.- Check that we have installed the JS tooling. Temporal solution until we have a better way to handle this.
+        let toolkit_map = db.get_installed_toolkit_map(&user_profile)?;
+        if toolkit_map.get_all_toolkit_infos().is_empty() {
+            let tools = shinkai_tools_runner::built_in_tools::get_tools();
+            for (name, js_code) in tools {
+                let toolkit = JSToolkit::new_semi_dummy_with_defaults(&name, &js_code);
+                db.install_toolkit(&toolkit, &user_profile)?;
+            }
+        }
 
         // 1.- Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(
@@ -114,7 +131,9 @@ impl JobManager {
 
         let workflow_found = match workflow_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
+            Err(e) => {
+                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+            }
         };
         if workflow_found {
             return Ok(job_id);
@@ -135,7 +154,9 @@ impl JobManager {
         .await;
         let jobkai_found = match jobkai_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
+            Err(e) => {
+                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+            }
         };
         if jobkai_found {
             return Ok(job_id);
@@ -675,17 +696,18 @@ impl JobManager {
             }
         };
 
-         // Filter out image files
-         // TODO: Eventually we will add extra embeddings that support images
-         let files: Vec<(String, Vec<u8>)> = files.into_iter()
-         .filter(|(name, _)| {
-             let name_lower = name.to_lowercase();
-             !name_lower.ends_with(".png")
-                 && !name_lower.ends_with(".jpg")
-                 && !name_lower.ends_with(".jpeg")
-                 && !name_lower.ends_with(".gif")
-         })
-         .collect();
+        // Filter out image files
+        // TODO: Eventually we will add extra embeddings that support images
+        let files: Vec<(String, Vec<u8>)> = files
+            .into_iter()
+            .filter(|(name, _)| {
+                let name_lower = name.to_lowercase();
+                !name_lower.ends_with(".png")
+                    && !name_lower.ends_with(".jpg")
+                    && !name_lower.ends_with(".jpeg")
+                    && !name_lower.ends_with(".gif")
+            })
+            .collect();
 
         // Sort out the vrpacks from the rest
         #[allow(clippy::type_complexity)]

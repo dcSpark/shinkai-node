@@ -28,7 +28,8 @@ mod it {
     mod performance_tests;
     mod planner_integration_tests;
     mod planner_tests;
-    mod toolkit_tests;
+    // mod toolkit_tests;
+    mod new_toolkit_tests;
     mod utils;
     mod vector_fs_api_tests;
     mod vector_fs_tests;

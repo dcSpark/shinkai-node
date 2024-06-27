@@ -175,6 +175,25 @@ impl JSToolkit {
         key
     }
 
+     /// Creates a new JSToolkit with the provided name and js_code, and default values for other fields.
+     pub fn new_semi_dummy_with_defaults(name: &str, js_code: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            js_code: js_code.to_string(),
+            tools: vec![JSTool {
+                toolkit_name: name.to_string(),
+                name: name.to_string(),
+                description: "Dummy description".to_string(), // Dummy description
+                input_args: vec![], // Empty arguments
+            }],
+            header_definitions: vec![], // Empty headers
+            author: "Dummy author".to_string(), // Dummy author
+            version: "1.0.0".to_string(), // Dummy version
+            activated: true,
+            headers_set: true,
+        }
+    }
+
     /// Given a toolkit definition json, create a JSToolkit
     pub fn from_toolkit_json(parsed_json: &JsonValue, js_code: &str) -> Result<Self, ToolError> {
         // Name parse

@@ -4,6 +4,7 @@ use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
 use crate::tools::js_toolkit_executor::JSToolkitExecutor;
 use crate::tools::router::{ShinkaiTool, ToolRouter};
+use crate::vector_fs::db::fs_db::TransactionOperation;
 use serde_json::from_str;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -131,6 +132,7 @@ impl ShinkaiDB {
         // 2. Check that the toolkit headers are set and validate
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
         let header_values = self.get_toolkit_header_values(toolkit_name, profile)?;
+        // TODO: connect header_values
 
         // 3. Propagate the internal tools to the ToolRouter
         // TODO: Use a write batch for 3/4
@@ -209,13 +211,27 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_profile_toolkit_map(&toolkit_map, profile)?;
         pb_batch.pb_put_cf(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes);
 
-        // 3. Write the batch to the DB
-        self.write_pb(pb_batch)?;
+        // 3. Write the batch using rocksdb::WriteBatch
+        let mut batch = rocksdb::WriteBatch::default();
+        for op in pb_batch.operations {
+            match op {
+                TransactionOperation::Write(cf_name, key, value) => {
+                    let cf_handle = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::FailedFetchingCF)?;
+                    batch.put_cf(cf_handle, key.as_bytes(), &value);
+                }
+                TransactionOperation::Delete(cf_name, key) => {
+                    let cf_handle = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::FailedFetchingCF)?;
+                    batch.delete_cf(cf_handle, key.as_bytes());
+                }
+            }
+        }
+        self.db.write(batch)?;
+
         eprintln!(
             "set_toolkit_header_values> profile set header values: {:?}",
             header_values
         );
-
+        
         Ok(())
     }
 
@@ -286,7 +302,23 @@ impl ShinkaiDB {
         pb_batch.pb_put_cf(cf, &InstalledJSToolkitMap::shinkai_db_key(), &bytes);
 
         // Write the batch
-        self.write_pb(pb_batch)?;
+        // self.write_pb(pb_batch)?;
+
+        // Write the batch using rocksdb::WriteBatch
+        let mut batch = rocksdb::WriteBatch::default();
+        for op in pb_batch.operations {
+            match op {
+                TransactionOperation::Write(cf_name, key, value) => {
+                    let cf_handle = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::FailedFetchingCF)?;
+                    batch.put_cf(cf_handle, key.as_bytes(), &value);
+                }
+                TransactionOperation::Delete(cf_name, key) => {
+                    let cf_handle = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::FailedFetchingCF)?;
+                    batch.delete_cf(cf_handle, key.as_bytes());
+                }
+            }
+        }
+        self.db.write(batch)?;
 
         Ok(())
     }

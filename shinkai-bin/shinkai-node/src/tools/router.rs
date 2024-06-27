@@ -289,7 +289,6 @@ impl ToolRouter {
     pub fn delete_shinkai_tool(&mut self, tool_name: &str, toolkit_name: &str) -> Result<(), ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         self.routing_resource.print_all_nodes_exhaustive(None, false, false);
-        println!("Tool key: {}", key);
         self.routing_resource.remove_node_dt_specified(key, None, true)?;
         Ok(())
     }

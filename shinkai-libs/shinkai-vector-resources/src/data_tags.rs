@@ -14,8 +14,8 @@ pub struct DataTag {
 impl DataTag {
     /// Validates the provided regex string and creates a new DataTag
     pub fn new(name: &str, description: &str, regex_str: &str) -> Result<Self, Box<dyn Error>> {
-        if regex_str.len() > 0 {
-            Regex::new(&regex_str)?; // Attempt to compile regex, will error if invalid
+        if !regex_str.is_empty() {
+            Regex::new(regex_str)?; // Attempt to compile regex, will error if invalid
         }
         Ok(Self {
             name: name.to_string(),
@@ -34,7 +34,7 @@ impl DataTag {
     }
 
     /// Validates a list of tags and returns those that pass validation
-    pub fn validate_tag_list(input_string: &str, tag_list: &Vec<DataTag>) -> Vec<DataTag> {
+    pub fn validate_tag_list(input_string: &str, tag_list: &[DataTag]) -> Vec<DataTag> {
         tag_list
             .iter()
             .filter(|tag| tag.validate(input_string))
@@ -46,6 +46,13 @@ impl DataTag {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DataTagIndex {
     index: HashMap<String, Vec<String>>,
+}
+
+// Add Default implementation for DataTagIndex
+impl Default for DataTagIndex {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DataTagIndex {
@@ -73,8 +80,8 @@ impl DataTagIndex {
     /// Deletes all references in the index associated with old_node,
     /// replacing them with the new_node
     pub fn replace_node(&mut self, old_node: &Node, new_node: &Node) {
-        self.remove_node(&old_node);
-        self.add_node(&new_node);
+        self.remove_node(old_node);
+        self.add_node(new_node);
     }
 
     /// Add a node id under several DataTags in the index
@@ -93,7 +100,7 @@ impl DataTagIndex {
 
     /// Add a node id under a DataTag in the index
     fn add_node_id(&mut self, id: &str, tag_name: &str) {
-        let entry = self.index.entry(tag_name.to_string()).or_insert_with(Vec::new);
+        let entry = self.index.entry(tag_name.to_string()).or_default();
         if !entry.contains(&id.to_string()) {
             entry.push(id.to_string());
         }
