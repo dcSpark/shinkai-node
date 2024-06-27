@@ -587,10 +587,6 @@ impl WSUpdateHandler for WebSocketManager {
         metadata: Option<WSMetadata>,
         is_stream: bool,
     ) {
-        eprintln!("Queueing message for topic: {:?}", topic);
-        eprintln!("Queueing message for subtopic: {:?}", subtopic);
-        eprintln!("Queueing message for update: {:?}", update);
-        eprintln!("Queueing message for is_stream: {:?}", metadata);
         let mut queue = self.message_queue.lock().await;
         queue.push_back((topic, subtopic, update, metadata, is_stream));
     }

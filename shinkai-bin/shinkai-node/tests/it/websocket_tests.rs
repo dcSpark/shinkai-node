@@ -296,6 +296,7 @@ async fn test_websocket() {
             "job_inbox::test_job::false".to_string(),
             "Hello, world!".to_string(),
             None,
+            false,
         )
         .await;
 
