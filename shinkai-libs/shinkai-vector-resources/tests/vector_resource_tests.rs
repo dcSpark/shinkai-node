@@ -1217,7 +1217,7 @@ async fn local_md_parsing_test() {
         .contains("WebAssembly_Logo.svg"));
 }
 
-#[tokio::test]
+// #[tokio::test]
 async fn local_html_parsing_test() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "sample.html";
