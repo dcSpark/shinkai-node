@@ -17,10 +17,10 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use uuid::Uuid;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(images) = payload.get_mut("images") {
@@ -119,16 +119,20 @@ impl LLMService for Ollama {
                                         let m = manager.lock().await;
                                         let inbox_name_string = inbox_name.to_string();
 
-                                        let metadata = if data.done {
-                                            Some(WSMetadata {
-                                                id: Some(session_id.clone()),
-                                                is_done: data.done,
-                                                done_reason: data.done_reason.clone(),
-                                                total_duration: data.total_duration.map(|d| d as u64),
-                                                eval_count: data.eval_count.map(|c| c as u64),
-                                            })
-                                        } else {
-                                            None
+                                        let metadata = WSMetadata {
+                                            id: Some(session_id.clone()),
+                                            is_done: data.done,
+                                            done_reason: if data.done { data.done_reason.clone() } else { None },
+                                            total_duration: if data.done {
+                                                data.total_duration.map(|d| d as u64)
+                                            } else {
+                                                None
+                                            },
+                                            eval_count: if data.done {
+                                                data.eval_count.map(|c| c as u64)
+                                            } else {
+                                                None
+                                            },
                                         };
 
                                         let _ = m
@@ -136,7 +140,8 @@ impl LLMService for Ollama {
                                                 WSTopic::Inbox,
                                                 inbox_name_string,
                                                 data.message.content,
-                                                metadata,
+                                                Some(metadata),
+                                                true
                                             )
                                             .await;
                                     }

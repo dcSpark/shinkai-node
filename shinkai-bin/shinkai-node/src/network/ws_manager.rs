@@ -46,6 +46,7 @@ pub struct WSMessagePayload {
     pub message: Option<String>,
     pub error_message: Option<String>,
     pub metadata: Option<WSMetadata>,
+    pub is_stream: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,10 +91,17 @@ impl fmt::Debug for WebSocketManager {
 
 #[async_trait]
 pub trait WSUpdateHandler {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, stream: Option<WSMetadata>);
+    async fn queue_message(
+        &self,
+        topic: WSTopic,
+        subtopic: String,
+        update: String,
+        metadata: Option<WSMetadata>,
+        is_stream: bool,
+    );
 }
 
-pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, Option<WSMetadata>)>>>;
+pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, Option<WSMetadata>, bool)>>>;
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
@@ -155,15 +163,19 @@ impl WebSocketManager {
                 let mut queue = message_queue.lock().await;
                 queue.pop_front()
             };
-    
+
             match message {
-                Some((topic, subtopic, update, stream)) => {
+                Some((topic, subtopic, update, metadata, is_stream)) => {
                     shinkai_log(
                         ShinkaiLogOption::WsAPI,
                         ShinkaiLogLevel::Debug,
                         format!("Sending update to topic: {}", topic).as_str(),
                     );
-                    manager.lock().await.handle_update(topic, subtopic, update, stream).await;
+                    manager
+                        .lock()
+                        .await
+                        .handle_update(topic, subtopic, update, metadata, is_stream)
+                        .await;
                 }
                 None => {
                     // Sleep only when there are no messages in the queue
@@ -307,7 +319,6 @@ impl WebSocketManager {
             }
         }
 
-
         // Decrypt Message
 
         let shinkai_profile_name = sender_shinkai_name.to_string();
@@ -391,7 +402,7 @@ impl WebSocketManager {
         if key.len() != 64 || !key.chars().all(|c| c.is_ascii_hexdigit()) {
             return false;
         }
-    
+
         // Attempt to decode the key
         match hex::decode(key) {
             Ok(decoded) => decoded.len() == 32, // 32 bytes for AES-256
@@ -429,7 +440,14 @@ impl WebSocketManager {
         );
     }
 
-    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String, stream: Option<WSMetadata>) {
+    pub async fn handle_update(
+        &self,
+        topic: WSTopic,
+        subtopic: String,
+        update: String,
+        metadata: Option<WSMetadata>,
+        is_stream: bool,
+    ) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         shinkai_log(
             ShinkaiLogOption::WsAPI,
@@ -439,7 +457,7 @@ impl WebSocketManager {
 
         // Create the WSMessagePayload
         let payload = WSMessagePayload {
-            message_type: if stream.is_some() {
+            message_type: if metadata.is_some() {
                 MessageType::Stream
             } else {
                 MessageType::ShinkaiMessage
@@ -447,7 +465,8 @@ impl WebSocketManager {
             inbox: subtopic.clone(),
             message: Some(update.clone()),
             error_message: None,
-            metadata: stream,
+            metadata,
+            is_stream,
         };
 
         // Serialize the payload to JSON
@@ -560,12 +579,19 @@ impl WebSocketManager {
 
 #[async_trait]
 impl WSUpdateHandler for WebSocketManager {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, stream: Option<WSMetadata>) {
+    async fn queue_message(
+        &self,
+        topic: WSTopic,
+        subtopic: String,
+        update: String,
+        metadata: Option<WSMetadata>,
+        is_stream: bool,
+    ) {
         eprintln!("Queueing message for topic: {:?}", topic);
         eprintln!("Queueing message for subtopic: {:?}", subtopic);
         eprintln!("Queueing message for update: {:?}", update);
-        eprintln!("Queueing message for is_stream: {:?}", stream);
+        eprintln!("Queueing message for is_stream: {:?}", metadata);
         let mut queue = self.message_queue.lock().await;
-        queue.push_back((topic, subtopic, update, stream));
+        queue.push_back((topic, subtopic, update, metadata, is_stream));
     }
 }
