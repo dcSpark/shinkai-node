@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use uuid::Uuid;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -46,6 +47,7 @@ impl LLMService for Ollama {
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
+        let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");
 
@@ -119,7 +121,7 @@ impl LLMService for Ollama {
 
                                         let metadata = if data.done {
                                             Some(WSMetadata {
-                                                id: None,
+                                                id: Some(session_id.clone()),
                                                 is_done: data.done,
                                                 done_reason: data.done_reason.clone(),
                                                 total_duration: data.total_duration.map(|d| d as u64),

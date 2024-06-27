@@ -295,7 +295,7 @@ async fn test_websocket() {
             WSTopic::Inbox,
             "job_inbox::test_job::false".to_string(),
             "Hello, world!".to_string(),
-            false,
+            None,
         )
         .await;
 
