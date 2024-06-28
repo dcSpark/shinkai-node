@@ -1,5 +1,4 @@
 use pdfium_render::prelude::*;
-use std::io::Write;
 
 use crate::image_parser::ImageParser;
 
@@ -22,7 +21,7 @@ impl PDFParser {
     pub fn new() -> anyhow::Result<Self> {
         let image_parser = ImageParser::new()?;
 
-        #[cfg(not(feature = "static"))]
+        #[cfg(feature = "dynamic-pdf-parser")]
         let pdfium = {
             let lib_path = match std::env::var("PDFIUM_DYNAMIC_LIB_PATH").ok() {
                 Some(lib_path) => lib_path,
@@ -49,7 +48,7 @@ impl PDFParser {
             Pdfium::new(Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap())
         };
 
-        #[cfg(feature = "static")]
+        #[cfg(feature = "static-pdf-parser")]
         let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
 
         Ok(PDFParser { image_parser, pdfium })

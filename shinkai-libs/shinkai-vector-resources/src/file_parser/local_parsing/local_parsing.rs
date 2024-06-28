@@ -24,8 +24,7 @@ impl LocalFileParser {
             VRSourceReference::Standard(source) => match source {
                 SourceReference::Other(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
                 SourceReference::FileRef(file_source) => match file_source.clone().file_type {
-                    SourceFileType::Image(_)
-                    | SourceFileType::Code(_)
+                    SourceFileType::Code(_)
                     | SourceFileType::ConfigFileType(_)
                     | SourceFileType::Video(_)
                     | SourceFileType::Audio(_)
@@ -47,6 +46,7 @@ impl LocalFileParser {
 
                         _ => Err(VRError::UnsupportedFileType(file_name.to_string())),
                     },
+                    SourceFileType::Image(_) => LocalFileParser::process_image_file(file_buffer, max_node_text_size),
                 },
                 SourceReference::ExternalURI(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
             },

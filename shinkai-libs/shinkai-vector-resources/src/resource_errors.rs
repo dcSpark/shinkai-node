@@ -11,6 +11,7 @@ pub enum VRError {
     FailedEmbeddingGeneration(String),
     NoNodeFound,
     InvalidModelArchitecture,
+    FailedImageParsing,
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
@@ -54,6 +55,7 @@ impl fmt::Display for VRError {
             VRError::InvalidModelArchitecture => {
                 write!(f, "An unsupported model architecture was specified.")
             }
+            VRError::FailedImageParsing => write!(f, "Failed image parsing."),
             VRError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             VRError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             VRError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
