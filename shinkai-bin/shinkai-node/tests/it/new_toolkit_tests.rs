@@ -2,7 +2,6 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::tools::js_toolkit::JSToolkit;
-use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -62,6 +61,13 @@ async fn test_toolkit_installation_from_built_in_tools() {
     // Perform a tool search for "weather" and check that one tool is returned
     let query = generator.generate_embedding_default("weather").await.unwrap();
     let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
+
+
+    // db.update_tool_router(&profile, |tool_router| {
+    //     tool_router.add_shinkai_tool(&new_tool, /* embedding */)?;
+    //     Ok(())
+    // })?;
+
     let results = tool_router.vector_search(query, 1);
     // eprintln!("results: {:?}", results);
     for result in &results {

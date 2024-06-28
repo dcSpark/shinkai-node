@@ -82,6 +82,7 @@ impl ShinkaiDB {
                 "node_and_users" => Some(47),
                 "all_messages" => Some(47),
                 "subscriptions" => Some(47),
+                "toolkits" => Some(47),
                 "any_queues_prefixed" => Some(24),
                 _ => None, // No prefix extractor for other CFs
             };

@@ -1432,155 +1432,155 @@ impl Node {
             }
         };
 
-        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?;
+        // let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?;
 
-        let hex_blake3_hash = msg.get_message_content()?;
+        // let hex_blake3_hash = msg.get_message_content()?;
 
-        let files = {
-            match vector_fs.db.get_all_files_from_inbox(hex_blake3_hash) {
-                Ok(files) => files,
-                Err(err) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("{}", err),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            }
-        };
+        // let files = {
+        //     match vector_fs.db.get_all_files_from_inbox(hex_blake3_hash) {
+        //         Ok(files) => files,
+        //         Err(err) => {
+        //             let _ = res
+        //                 .send(Err(APIError {
+        //                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                     error: "Internal Server Error".to_string(),
+        //                     message: format!("{}", err),
+        //                 }))
+        //                 .await;
+        //             return Ok(());
+        //         }
+        //     }
+        // };
 
-        let header_file = files.iter().find(|(name, _)| name.ends_with(".json"));
-        let packaged_toolkit = files.iter().find(|(name, _)| name.ends_with(".js"));
+        // let header_file = files.iter().find(|(name, _)| name.ends_with(".json"));
+        // let packaged_toolkit = files.iter().find(|(name, _)| name.ends_with(".js"));
 
-        if header_file.is_none() || packaged_toolkit.is_none() {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: "Required file is missing".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
+        // if header_file.is_none() || packaged_toolkit.is_none() {
+        //     let api_error = APIError {
+        //         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //         error: "Internal Server Error".to_string(),
+        //         message: "Required file is missing".to_string(),
+        //     };
+        //     let _ = res.send(Err(api_error)).await;
+        //     return Ok(());
+        // }
 
-        // get and validate packaged_toolkit
-        let toolkit_file = String::from_utf8(packaged_toolkit.unwrap().1.clone());
-        if let Err(err) = toolkit_file {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("{}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-        let toolkit_file = toolkit_file.unwrap();
+        // // get and validate packaged_toolkit
+        // let toolkit_file = String::from_utf8(packaged_toolkit.unwrap().1.clone());
+        // if let Err(err) = toolkit_file {
+        //     let api_error = APIError {
+        //         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //         error: "Internal Server Error".to_string(),
+        //         message: format!("{}", err),
+        //     };
+        //     let _ = res.send(Err(api_error)).await;
+        //     return Ok(());
+        // }
+        // let toolkit_file = toolkit_file.unwrap();
 
-        // Get and validate header values file
-        let header_values_json = match String::from_utf8(header_file.unwrap().1.clone()) {
-            Ok(s) => s,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let header_values = serde_json::from_str(&header_values_json).unwrap_or(JsonValue::Null);
+        // // Get and validate header values file
+        // let header_values_json = match String::from_utf8(header_file.unwrap().1.clone()) {
+        //     Ok(s) => s,
+        //     Err(err) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("{}", err),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let header_values = serde_json::from_str(&header_values_json).unwrap_or(JsonValue::Null);
 
-        // Parse the toolkit file into JSON
-        let parsed_json = match serde_json::from_str(&toolkit_file) {
-            Ok(json) => json,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "User Error".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // // Parse the toolkit file into JSON
+        // let parsed_json = match serde_json::from_str(&toolkit_file) {
+        //     Ok(json) => json,
+        //     Err(err) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "User Error".to_string(),
+        //             message: format!("{}", err),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        // Generate toolkit json from JS source code
-        let toolkit = JSToolkit::from_toolkit_json(&parsed_json, &toolkit_file).map_err(|err| APIError {
-            code: StatusCode::BAD_REQUEST.as_u16(),
-            error: "User Error".to_string(),
-            message: format!("{}", err),
-        });
+        // // Generate toolkit json from JS source code
+        // let toolkit = JSToolkit::from_toolkit_json(&parsed_json, &toolkit_file).map_err(|err| APIError {
+        //     code: StatusCode::BAD_REQUEST.as_u16(),
+        //     error: "User Error".to_string(),
+        //     message: format!("{}", err),
+        // });
 
-        if let Err(api_error) = toolkit {
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-        let toolkit = toolkit.unwrap();
+        // if let Err(api_error) = toolkit {
+        //     let _ = res.send(Err(api_error)).await;
+        //     return Ok(());
+        // }
+        // let toolkit = toolkit.unwrap();
 
-        {
-            // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
-            let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
+        // {
+        //     // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
+        //     let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
 
-            eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
-            let init_result = db
-                .init_profile_tool_structs(&profile, embedding_generator.clone())
-                .await;
-            if let Err(err) = init_result {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
+        //     eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
+        //     let init_result = db
+        //         .init_profile_tool_structs(&profile, embedding_generator.clone())
+        //         .await;
+        //     if let Err(err) = init_result {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("{}", err),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
 
-            eprintln!("api_add_toolkit> profile install toolkit: {:?}", profile);
-            let install_result = db.install_toolkit(&toolkit, &profile);
-            if let Err(err) = install_result {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
+        //     eprintln!("api_add_toolkit> profile install toolkit: {:?}", profile);
+        //     let install_result = db.install_toolkit(&toolkit, &profile);
+        //     if let Err(err) = install_result {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("{}", err),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
 
-            eprintln!(
-                "api_add_toolkit> profile setting toolkit header values: {:?}",
-                header_values
-            );
-            let set_header_result = db
-                .set_toolkit_header_values(&toolkit.name.clone(), &profile.clone(), &header_values.clone())
-                .await;
-            if let Err(err) = set_header_result {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
+        //     eprintln!(
+        //         "api_add_toolkit> profile setting toolkit header values: {:?}",
+        //         header_values
+        //     );
+        //     let set_header_result = db
+        //         .set_toolkit_header_values(&toolkit.name.clone(), &profile.clone(), &header_values.clone())
+        //         .await;
+        //     if let Err(err) = set_header_result {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("{}", err),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
 
-            eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
-            let activate_toolkit_result = db
-                .activate_toolkit(&toolkit.name.clone(), &profile.clone(), embedding_generator)
-                .await;
-            if let Err(err) = activate_toolkit_result {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        }
+        //     eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
+        //     let activate_toolkit_result = db
+        //         .activate_toolkit(&toolkit.name.clone(), &profile.clone(), embedding_generator)
+        //         .await;
+        //     if let Err(err) = activate_toolkit_result {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("{}", err),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // }
         let _ = res.send(Ok("Toolkit installed successfully".to_string())).await;
         Ok(())
     }
@@ -1601,58 +1601,58 @@ impl Node {
             Some(MessageSchemaType::TextContent),
         )
         .await;
-        let (msg, _) = match validation_result {
-            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let (msg, _) = match validation_result {
+        //     Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+        //     Err(api_error) => {
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
-        if let Err(err) = profile {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: err.to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-        let profile = profile.unwrap();
-        let toolkit_map;
-        {
-            toolkit_map = match db.get_installed_toolkit_map(&profile) {
-                Ok(t) => t,
-                Err(err) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("{}", err),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            };
-        }
+        // let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
+        // if let Err(err) = profile {
+        //     let api_error = APIError {
+        //         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //         error: "Internal Server Error".to_string(),
+        //         message: err.to_string(),
+        //     };
+        //     let _ = res.send(Err(api_error)).await;
+        //     return Ok(());
+        // }
+        // let profile = profile.unwrap();
+        // let toolkit_map;
+        // {
+        //     toolkit_map = match db.get_installed_toolkit_map(&profile) {
+        //         Ok(t) => t,
+        //         Err(err) => {
+        //             let _ = res
+        //                 .send(Err(APIError {
+        //                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                     error: "Internal Server Error".to_string(),
+        //                     message: format!("{}", err),
+        //                 }))
+        //                 .await;
+        //             return Ok(());
+        //         }
+        //     };
+        // }
 
-        // Convert the toolkit_map into a JSON string
-        let toolkit_map_json = match serde_json::to_string(&toolkit_map) {
-            Ok(json) => json,
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to convert toolkit map to JSON: {}", err),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
+        // // Convert the toolkit_map into a JSON string
+        // let toolkit_map_json = match serde_json::to_string(&toolkit_map) {
+        //     Ok(json) => json,
+        //     Err(err) => {
+        //         let _ = res
+        //             .send(Err(APIError {
+        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                 error: "Internal Server Error".to_string(),
+        //                 message: format!("Failed to convert toolkit map to JSON: {}", err),
+        //             }))
+        //             .await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let _ = res.send(Ok(toolkit_map_json)).await;
+        // let _ = res.send(Ok(toolkit_map_json)).await;
         Ok(())
     }
 

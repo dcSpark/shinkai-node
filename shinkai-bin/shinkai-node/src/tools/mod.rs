@@ -6,3 +6,4 @@ pub mod js_toolkit_headers;
 pub mod js_tools;
 pub mod router;
 pub mod rust_tools;
+pub mod shinkai_tool;

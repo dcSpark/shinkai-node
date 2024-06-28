@@ -1,168 +1,20 @@
-use crate::tools::argument::ToolArgument;
+use std::sync::{Arc, Weak};
+
+use crate::db::ShinkaiDB;
 use crate::tools::error::ToolError;
-use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
 use serde_json;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ShinkaiTool {
-    Rust(RustTool),
-    JS(JSTool),
-    // Add Workflow here
-}
+use super::shinkai_tool::ShinkaiTool;
 
-impl ShinkaiTool {
-    /// The key that this tool will be stored under in the tool router
-    pub fn tool_router_key(&self) -> String {
-        let (name, toolkit_name) = (
-            self.name(),
-            match self {
-                ShinkaiTool::Rust(r) => r.toolkit_type_name(),
-                ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
-            },
-        );
-
-        Self::gen_router_key(name, toolkit_name)
-    }
-
-    /// Tool name
-    pub fn name(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r) => r.name.clone(),
-            ShinkaiTool::JS(j) => j.name.clone(),
-        }
-    }
-    /// Tool description
-    pub fn description(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r) => r.description.clone(),
-            ShinkaiTool::JS(j) => j.description.clone(),
-        }
-    }
-
-    /// Toolkit name the tool is from
-    pub fn toolkit_name(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r) => r.name.clone(),
-            ShinkaiTool::JS(j) => j.name.clone(),
-        }
-    }
-
-    /// Toolkit name the tool is from
-    pub fn toolkit_type_name(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r) => r.toolkit_type_name().clone(),
-            ShinkaiTool::JS(j) => j.toolkit_name.clone(),
-        }
-    }
-
-    /// Returns the input arguments of the tool
-    pub fn input_args(&self) -> Vec<ToolArgument> {
-        match self {
-            ShinkaiTool::Rust(r) => r.input_args.clone(),
-            ShinkaiTool::JS(j) => j.input_args.clone(),
-        }
-    }
-
-    /// Returns a formatted summary of the tool
-    pub fn formatted_tool_summary(&self) -> String {
-        format!(
-            "Tool Name: {}\nToolkit Name: {}\nDescription: {}",
-            self.name(),
-            self.toolkit_type_name(),
-            self.description(),
-        )
-    }
-
-    pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
-        let mut properties = serde_json::Map::new();
-        let mut required_args = vec![];
-
-        for arg in self.input_args() {
-            properties.insert(
-                arg.name.clone(),
-                serde_json::json!({
-                    "type": "string",
-                    "description": arg.description.clone(),
-                }),
-            );
-            if arg.is_required {
-                required_args.push(arg.name.clone());
-            }
-        }
-
-        let summary = serde_json::json!({
-            "type": "function",
-            "function": {
-                "name": self.name(),
-                "description": self.description(),
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required_args,
-                },
-            },
-        });
-
-        Ok(summary)
-    }
-
-    pub fn json_string_function_call_format(&self) -> Result<String, ToolError> {
-        let summary_value = self.json_function_call_format()?;
-        serde_json::to_string(&summary_value).map_err(|_| ToolError::FailedJSONParsing)
-    }
-
-    /// Formats the tool's info into a String to be used for generating the tool's embedding.
-    // TODO: improve the formatting so it's better for vector embeddings
-    pub fn format_embedding_string(&self) -> String {
-        let mut embedding_string = format!("{}:{}\n", self.name(), self.description());
-
-        embedding_string.push_str("Input Args:\n");
-
-        for arg in self.input_args() {
-            embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
-        }
-
-        embedding_string
-    }
-
-    /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(name: String, toolkit_name: String) -> String {
-        // We replace any `/` in order to not have the names break VRPaths
-        format!("{}:::{}", toolkit_name, name).replace('/', "|")
-    }
-
-    /// Convert to json
-    pub fn to_json(&self) -> Result<String, ToolError> {
-        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
-    }
-
-    /// Convert from json
-    pub fn from_json(json: &str) -> Result<Self, ToolError> {
-        let deserialized: Self = serde_json::from_str(json).map_err(|e| ToolError::ParseError(e.to_string()))?;
-        Ok(deserialized)
-    }
-}
-
-impl From<RustTool> for ShinkaiTool {
-    fn from(tool: RustTool) -> Self {
-        ShinkaiTool::Rust(tool)
-    }
-}
-
-impl From<JSTool> for ShinkaiTool {
-    fn from(tool: JSTool) -> Self {
-        ShinkaiTool::JS(tool)
-    }
-}
-
-/// A top level struct which indexes JSTools installed in the Shinkai Node
+/// A top level struct which indexes Tools (Rust or JS or Workflows) installed in the Shinkai Node
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRouter {
     pub routing_resource: MapVectorResource,
@@ -170,7 +22,7 @@ pub struct ToolRouter {
 
 impl ToolRouter {
     /// Create a new ToolRouter instance from scratch.
-    pub async fn new(generator: Box<dyn EmbeddingGenerator>) -> Self {
+    pub async fn new(generator: Box<dyn EmbeddingGenerator>, db: Weak<ShinkaiDB>, profile: ShinkaiName) -> Self {
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
         let source = VRSourceReference::None;
@@ -178,6 +30,18 @@ impl ToolRouter {
         // Initialize the MapVectorResource and add all of the rust tools by default
         let mut routing_resource = MapVectorResource::new_empty(name, desc, source, true);
 
+        // Add Rust tools
+        Self::add_rust_tools(&mut routing_resource, generator.box_clone()).await;
+
+        // Add JS tools
+        if let Some(db) = db.upgrade() {
+            Self::add_js_tools(&mut routing_resource, generator, db, profile).await;
+        }
+
+        ToolRouter { routing_resource }
+    }
+
+    async fn add_rust_tools(routing_resource: &mut MapVectorResource, generator: Box<dyn EmbeddingGenerator>) {
         // Generate the static Rust tools
         let rust_tools = RustTool::static_tools(generator).await;
 
@@ -186,6 +50,8 @@ impl ToolRouter {
 
         // Insert each Rust tool into the routing resource
         for tool in rust_tools {
+            eprintln!("Inserting tool: {:?}", tool.name);
+            eprintln!("Tool: {:?}", tool.clone());
             let shinkai_tool = ShinkaiTool::Rust(tool.clone());
             let _ = routing_resource.insert_text_node(
                 shinkai_tool.tool_router_key(),
@@ -195,70 +61,48 @@ impl ToolRouter {
                 &vec![],
             );
         }
-
-        ToolRouter { routing_resource }
     }
 
-    fn tool_type_metadata_key() -> String {
-        "tool_type".to_string()
-    }
+    async fn add_js_tools(
+        routing_resource: &mut MapVectorResource,
+        generator: Box<dyn EmbeddingGenerator>,
+        db: Arc<ShinkaiDB>,
+        profile: ShinkaiName,
+    ) {
+        match db.all_tools_for_user(&profile) {
+            Ok(tools) => {
+                for tool in tools {
+                    if let ShinkaiTool::JS(mut js_tool) = tool {
+                        let js_lite_tool = js_tool.to_without_code();
+                        let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
 
-    fn tool_type_rust_value() -> String {
-        "rust".to_string()
-    }
+                        let embedding = if let Some(embedding) = js_tool.embedding.clone() {
+                            embedding
+                        } else {
+                            let new_embedding = generator
+                                .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                                .await
+                                .unwrap();
+                            js_tool.embedding = Some(new_embedding.clone());
+                            // Update the JS tool in the database
+                            if let Err(e) = db.add_shinkai_tool(ShinkaiTool::JS(js_tool.clone()), profile.clone()) {
+                                eprintln!("Error updating JS tool in DB: {:?}", e);
+                            }
+                            new_embedding
+                        };
 
-    fn tool_type_js_value() -> String {
-        "js".to_string()
-    }
-
-    /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal Node
-    /// within the ToolRouter.
-    pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
-        let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
-        let node = self.routing_resource.get_root_node(key)?;
-        ShinkaiTool::from_json(node.get_text_content()?)
-    }
-
-    /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
-    /// No other resource is allowed to use this shinkai_db_key (this is enforced
-    /// automatically because all resources have a two-part key)
-    pub fn profile_router_shinkai_db_key() -> String {
-        "profile_tool_router".to_string()
-    }
-
-    /// Returns a list of ShinkaiTools of the most similar that
-    /// have matching data tag names.
-    pub fn syntactic_vector_search(
-        &self,
-        query: Embedding,
-        num_of_results: u64,
-        data_tag_names: &Vec<String>,
-    ) -> Vec<ShinkaiTool> {
-        let nodes = self
-            .routing_resource
-            .syntactic_vector_search(query, num_of_results, data_tag_names);
-        self.ret_nodes_to_tools(&nodes)
-    }
-
-    /// Returns a list of ShinkaiTools of the most similar.
-    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ShinkaiTool> {
-        let nodes = self.routing_resource.vector_search(query, num_of_results);
-        eprintln!("nodes: {:?}", nodes);
-        self.ret_nodes_to_tools(&nodes)
-    }
-
-    /// Takes a list of RetrievedNodes and outputs a list of ShinkaiTools
-    fn ret_nodes_to_tools(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<ShinkaiTool> {
-        let mut shinkai_tools = vec![];
-        for ret_node in ret_nodes {
-            // Ignores tools added to the router which are invalid by matching on the Ok()
-            if let Ok(data_string) = ret_node.node.get_text_content() {
-                if let Ok(shinkai_tool) = ShinkaiTool::from_json(data_string) {
-                    shinkai_tools.push(shinkai_tool);
+                        let _ = routing_resource.insert_text_node(
+                            shinkai_tool.tool_router_key(),
+                            shinkai_tool.to_json().unwrap(),
+                            None,
+                            embedding,
+                            &vec![],
+                        );
+                    }
                 }
             }
+            Err(e) => eprintln!("Error fetching JS tools: {:?}", e),
         }
-        shinkai_tools
     }
 
     /// Adds a tool into the ToolRouter instance.
@@ -268,7 +112,6 @@ impl ToolRouter {
         let metadata = None;
 
         // Setup the metadata based on tool type
-
         match self.routing_resource.get_root_node(router_key.clone()) {
             Ok(_) => {
                 // If a Shinkai tool with same key is already found, error
@@ -295,6 +138,48 @@ impl ToolRouter {
         self.routing_resource.print_all_nodes_exhaustive(None, false, false);
         self.routing_resource.remove_node_dt_specified(key, None, true)?;
         Ok(())
+    }
+
+    /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal Node
+    /// within the ToolRouter.
+    pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
+        let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
+        let node = self.routing_resource.get_root_node(key)?;
+        ShinkaiTool::from_json(node.get_text_content()?)
+    }
+
+    /// Returns a list of ShinkaiTools of the most similar that
+    /// have matching data tag names.
+    pub fn syntactic_vector_search(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+    ) -> Vec<ShinkaiTool> {
+        let nodes = self
+            .routing_resource
+            .syntactic_vector_search(query, num_of_results, data_tag_names);
+        self.ret_nodes_to_tools(&nodes)
+    }
+
+    /// Returns a list of ShinkaiTools of the most similar.
+    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ShinkaiTool> {
+        let nodes = self.routing_resource.vector_search(query, num_of_results);
+        self.ret_nodes_to_tools(&nodes)
+    }
+
+    /// Takes a list of RetrievedNodes and outputs a list of ShinkaiTools
+    fn ret_nodes_to_tools(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<ShinkaiTool> {
+        let mut shinkai_tools = vec![];
+        for ret_node in ret_nodes {
+            // Ignores tools added to the router which are invalid by matching on the Ok()
+            if let Ok(data_string) = ret_node.node.get_text_content() {
+                if let Ok(shinkai_tool) = ShinkaiTool::from_json(data_string) {
+                    shinkai_tools.push(shinkai_tool);
+                }
+            }
+        }
+        shinkai_tools
     }
 
     /// Acquire the tool embedding for a given ShinkaiTool.

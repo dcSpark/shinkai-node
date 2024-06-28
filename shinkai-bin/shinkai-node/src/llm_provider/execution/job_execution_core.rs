@@ -89,14 +89,14 @@ impl JobManager {
         .unwrap();
 
         // 0.- Check that we have installed the JS tooling. Temporal solution until we have a better way to handle this.
-        let toolkit_map = db.get_installed_toolkit_map(&user_profile)?;
-        if toolkit_map.get_all_toolkit_infos().is_empty() {
-            let tools = shinkai_tools_runner::built_in_tools::get_tools();
-            for (name, js_code) in tools {
-                let toolkit = JSToolkit::new_semi_dummy_with_defaults(&name, &js_code);
-                db.install_toolkit(&toolkit, &user_profile)?;
-            }
-        }
+        // let toolkit_map = db.get_installed_toolkit_map(&user_profile)?;
+        // if toolkit_map.get_all_toolkit_infos().is_empty() {
+        //     let tools = shinkai_tools_runner::built_in_tools::get_tools();
+        //     for (name, js_code) in tools {
+        //         let toolkit = JSToolkit::new_semi_dummy_with_defaults(&name, &js_code);
+        //         db.install_toolkit(&toolkit, &user_profile)?;
+        //     }
+        // }
 
         // 1.- Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(

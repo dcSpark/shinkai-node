@@ -49,6 +49,7 @@ pub struct JobManager {
 }
 
 impl JobManager {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
