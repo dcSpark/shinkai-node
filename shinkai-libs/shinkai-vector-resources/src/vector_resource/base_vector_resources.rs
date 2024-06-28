@@ -117,6 +117,12 @@ impl BaseVectorResource {
     pub fn resource_base_type(&self) -> VRBaseType {
         self.as_trait_object().resource_base_type()
     }
+
+    pub fn resource_contents_by_hierarchy_to_string(&self) -> String {
+        self.as_trait_object()
+            .retrieve_all_nodes_contents_by_hierarchy(None, false, false, false)
+            .join("\n")
+    }
 }
 
 impl From<DocumentVectorResource> for BaseVectorResource {
