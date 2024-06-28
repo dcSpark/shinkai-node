@@ -280,16 +280,16 @@ impl ToolRouter {
             .get(&profile.to_string())
             .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
         let nodes = routing_resource.vector_search(query, num_of_results);
-        // Print out the score and toolkit name for each node
-        for node in &nodes {
-            if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
-                eprintln!(
-                    "Node Score: {}, Toolkit Name: {}",
-                    node.score,
-                    shinkai_tool.toolkit_name()
-                );
-            }
-        }
+        // // Print out the score and toolkit name for each node
+        // for node in &nodes {
+        //     if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
+        //         eprintln!(
+        //             "Node Score: {}, Toolkit Name: {}",
+        //             node.score,
+        //             shinkai_tool.toolkit_name()
+        //         );
+        //     }
+        // }
         Ok(self.ret_nodes_to_tools(&nodes))
     }
 

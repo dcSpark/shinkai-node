@@ -35,14 +35,14 @@ async fn test_toolkit_installation_from_built_in_tools() {
         }
     }
 
-    // Verify that 4 toolkits were installed
-    let toolkit_list = shinkai_db.list_toolkits_for_user(&profile).unwrap();
-    for toolkit in &toolkit_list {
-        println!("Toolkit name: {}", toolkit.name);
-        for tool in &toolkit.tools {
-            println!("  Tool name: {}", tool.name);
-        }
-    }
+    // // Verify that 4 toolkits were installed
+    // let toolkit_list = shinkai_db.list_toolkits_for_user(&profile).unwrap();
+    // for toolkit in &toolkit_list {
+    //     println!("Toolkit name: {}", toolkit.name);
+    //     for tool in &toolkit.tools {
+    //         println!("  Tool name: {}", tool.name);
+    //     }
+    // }
     eprintln!("toolkit_list.len(): {}", toolkit_list.len());
     assert_eq!(toolkit_list.len(), 4);
 
