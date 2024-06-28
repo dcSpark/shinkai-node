@@ -289,6 +289,7 @@ impl ModelCapabilitiesManager {
                 if ollama.model_type.starts_with("mistral")
                     || ollama.model_type.starts_with("llama2")
                     || ollama.model_type.starts_with("llama3")
+                    || ollama.model_type.starts_with("gemma2")
                     || ollama.model_type.starts_with("wizardlm2")
                     || ollama.model_type.starts_with("starling-lm")
                     || ollama.model_type.starts_with("neural-chat")
@@ -399,6 +400,7 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("dolphin-llama3") => 8_000,
                     model_type if model_type.starts_with("command-r-plus") => 128_000,
                     model_type if model_type.starts_with("codestral") => 32_000,
+                    model_type if model_type.starts_with("gemma2") => 8_000,
                     model_type if model_type.starts_with("qwen2:0.5b") => 32_000,
                     model_type if model_type.starts_with("qwen2:1.5b") => 32_000,
                     model_type if model_type.starts_with("qwen2:7b") => 128_000,
