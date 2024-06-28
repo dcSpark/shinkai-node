@@ -132,12 +132,12 @@ impl ShinkaiTool {
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
     // TODO: improve the formatting so it's better for vector embeddings
     pub fn format_embedding_string(&self) -> String {
-        let mut embedding_string = format!("{}:{}\n", self.name(), self.description());
+        let mut embedding_string = format!("{} {}\n", self.name(), self.description());
 
         embedding_string.push_str("Input Args:\n");
 
         for arg in self.input_args() {
-            embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
+            embedding_string.push_str(&format!("- {} : {}\n", arg.name, arg.description));
         }
 
         embedding_string

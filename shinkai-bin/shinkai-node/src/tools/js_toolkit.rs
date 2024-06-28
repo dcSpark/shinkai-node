@@ -14,15 +14,21 @@ pub struct JSToolkit {
 impl JSToolkit {
     /// Creates a new JSToolkit with the provided name and js_code, and default values for other fields.
     pub fn new_semi_dummy_with_defaults(name: &str, js_code: &str) -> Self {
+        let description = name
+            .split('-')
+            .skip(2) // Skip "shinkai" and "tool"
+            .collect::<Vec<&str>>()
+            .join(" ");
+
         Self {
             name: name.to_string(),
             tools: vec![JSTool {
                 toolkit_name: name.to_string(),
                 name: name.to_string(),
                 author: "Dummy author".to_string(), // Dummy author
-                config: vec![], // Empty headers
+                config: vec![],                     // Empty headers
                 js_code: js_code.to_string(),
-                description: "Dummy description".to_string(), // Dummy description
+                description, // Ultra basic description
                 input_args: vec![],                           // Empty arguments
                 activated: false,
                 config_set: true,

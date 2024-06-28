@@ -200,14 +200,14 @@ impl RustTool {
             generator.generate_embedding_default(&print_arg_desc).await.unwrap(),
         ));
 
-        let return_error_message_desc = "Returns an error message.".to_string();
+        let return_error_message_desc = "The error message to return. Useful for debugging in workflows.".to_string();
         tools.push(RustTool::new(
             "return_error_message".to_string(),
             return_error_message_desc.clone(),
             vec![ToolArgument::new(
                 "error_message".to_string(),
                 "string".to_string(),
-                "The error message to return".to_string(),
+                "The error message to return. Useful for debugging in workflows.".to_string(),
                 true,
             )],
             generator

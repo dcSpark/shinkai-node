@@ -23,6 +23,7 @@ pub enum ToolError {
     ToolkitAlreadyActivated(String),
     ToolkitAlreadyDeactivated(String),
     SerializationError(String),
+    InvalidProfile(String),
 }
 
 impl fmt::Display for ToolError {
@@ -48,6 +49,7 @@ impl fmt::Display for ToolError {
             ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
             ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
             ToolError::SerializationError(ref e) => write!(f, "Serialization error: {}", e),
+            ToolError::InvalidProfile(ref e) => write!(f, "Invalid profile: {}", e),
         }
     }
 }
