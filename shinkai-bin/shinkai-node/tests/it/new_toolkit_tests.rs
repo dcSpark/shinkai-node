@@ -117,8 +117,8 @@ async fn test_call_function_weather_by_city() {
 
     // Define the function call
     let function_call = FunctionCall {
-        name: "shinkai__weather_by_city".to_string(),
-        arguments: json!({"city": "Austin"}),
+        name: "shinkai__web3_eth_balance".to_string(),
+        arguments: json!({"address": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"}),
     };
 
     // Find the tool with the name from the function_call
@@ -148,7 +148,8 @@ async fn test_call_function_weather_by_city() {
     match result {
         Ok(response) => {
             println!("Function response: {}", response.response);
-            assert!(response.response.contains("weather"));
+            assert!(response.response.contains("balance"));
+            assert!(response.response.contains("ETH"));
         }
         Err(e) => panic!("Function call failed with error: {:?}", e),
     }
