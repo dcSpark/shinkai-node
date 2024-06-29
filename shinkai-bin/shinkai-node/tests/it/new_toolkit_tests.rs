@@ -142,7 +142,7 @@ async fn test_call_function_weather_by_city() {
 
     // Call the function using ToolRouter
     let result = tool_router
-        .call_function(function_call, &context, &shinkai_tool.clone(), &profile)
+        .call_function(function_call, shinkai_db, &context, &shinkai_tool.clone(), &profile)
         .await;
 
     // Check the result

@@ -247,7 +247,7 @@ impl GenericInferenceChain {
                     .unwrap()
                     .lock()
                     .await
-                    .call_function(function_call, &context, shinkai_tool.unwrap(), &user_profile)
+                    .call_function(function_call, db.clone(), &context, shinkai_tool.unwrap(), &user_profile)
                     .await?;
 
                 // 7) Call LLM again with the response (for formatting)

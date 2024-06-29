@@ -408,6 +408,7 @@ impl ToolRouter {
     pub async fn call_function(
         &self,
         function_call: FunctionCall,
+        db: Arc<ShinkaiDB>,
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
         user_profile: &ShinkaiName,
@@ -445,10 +446,13 @@ impl ToolRouter {
                 });
             }
             ShinkaiTool::JSLite(js_lite_tool) => {
-                // Fetch the full ShinkaiTool::JS
-                let full_js_tool = self
-                    .get_shinkai_tool(&user_profile, &js_lite_tool.name, &js_lite_tool.toolkit_name)
-                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                // Fetch the full ShinkaiTool::JS (so it has the code that needs to be executed)
+                let tool_key =
+                    ShinkaiTool::gen_router_key(js_lite_tool.name.clone(), js_lite_tool.toolkit_name.clone());
+                let full_js_tool = db.get_shinkai_tool(&tool_key, user_profile).map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!("Failed to fetch tool from DB: {}", e))
+                })?;
+
                 if let ShinkaiTool::JS(js_tool) = full_js_tool {
                     let result = js_tool
                         .run(function_args)
