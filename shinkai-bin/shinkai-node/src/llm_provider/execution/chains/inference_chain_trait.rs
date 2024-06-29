@@ -3,6 +3,7 @@ use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::network::ws_manager::WSUpdateHandler;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
@@ -152,6 +153,7 @@ pub struct InferenceChainContext {
     pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
 }
 
 impl InferenceChainContext {
@@ -169,6 +171,7 @@ impl InferenceChainContext {
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Self {
         Self {
             db,
@@ -185,6 +188,7 @@ impl InferenceChainContext {
             score_results,
             raw_files: None,
             ws_manager_trait,
+            tool_router,
         }
     }
 

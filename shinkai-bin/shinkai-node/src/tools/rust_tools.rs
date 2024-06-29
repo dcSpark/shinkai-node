@@ -1,3 +1,6 @@
+use std::any::Any;
+
+use crate::llm_provider::error::LLMProviderError;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -295,5 +298,48 @@ impl RustTool {
         ));
 
         tools
+    }
+
+    pub fn convert_args_from_fn_call(function_args: serde_json::Value) -> Result<Vec<Box<dyn Any + Send>>, LLMProviderError> {
+        match function_args {
+            serde_json::Value::Array(arr) => arr
+                .into_iter()
+                .map(|arg| match arg {
+                    serde_json::Value::String(s) => Ok(Box::new(s) as Box<dyn Any + Send>),
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            Ok(Box::new(i) as Box<dyn Any + Send>)
+                        } else if let Some(f) = n.as_f64() {
+                            Ok(Box::new(f) as Box<dyn Any + Send>)
+                        } else {
+                            Ok(Box::new(n.to_string()) as Box<dyn Any + Send>)
+                        }
+                    }
+                    serde_json::Value::Bool(b) => Ok(Box::new(b) as Box<dyn Any + Send>),
+                    _ => Ok(Box::new(arg.to_string()) as Box<dyn Any + Send>),
+                })
+                .collect(),
+            serde_json::Value::Object(map) => map
+                .into_iter()
+                .map(|(_, value)| match value {
+                    serde_json::Value::String(s) => Ok(Box::new(s) as Box<dyn Any + Send>),
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            Ok(Box::new(i) as Box<dyn Any + Send>)
+                        } else if let Some(f) = n.as_f64() {
+                            Ok(Box::new(f) as Box<dyn Any + Send>)
+                        } else {
+                            Ok(Box::new(n.to_string()) as Box<dyn Any + Send>)
+                        }
+                    }
+                    serde_json::Value::Bool(b) => Ok(Box::new(b) as Box<dyn Any + Send>),
+                    _ => Ok(Box::new(value.to_string()) as Box<dyn Any + Send>),
+                })
+                .collect(),
+            _ => Err(LLMProviderError::InvalidFunctionArguments(format!(
+                "Invalid arguments: {:?}",
+                function_args
+            ))),
+        }
     }
 }

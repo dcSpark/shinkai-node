@@ -10,9 +10,7 @@ use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::network::ws_manager::WSUpdateHandler;
-use crate::tools::argument::ToolArgument;
-use crate::tools::rust_tools::RustTool;
-use crate::tools::shinkai_tool::ShinkaiTool;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
@@ -75,6 +73,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.max_iterations,
             self.context.max_tokens_in_prompt,
             self.ws_manager_trait.clone(),
+            self.context.tool_router.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -108,6 +107,7 @@ impl GenericInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -154,48 +154,20 @@ impl GenericInferenceChain {
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(openai) = &llm_provider.model.clone() {
-            // Search in JS Tools
+        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
+            if let Some(tool_router) = &tool_router {
+                let tool_router = tool_router.lock().await;
+                // Search in JS Tools
 
-            // Perform the specific action for OpenAI models
-            // delete
-            let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
-            let tool = RustTool::new(
-                "concat_strings".to_string(),
-                concat_strings_desc.clone(),
-                vec![
-                    ToolArgument::new(
-                        "first_string".to_string(),
-                        "string".to_string(),
-                        "The first string to concatenate".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "second_string".to_string(),
-                        "string".to_string(),
-                        "The second string to concatenate".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "third_string".to_string(),
-                        "string".to_string(),
-                        "The third string to concatenate (optional)".to_string(),
-                        false,
-                    ),
-                    ToolArgument::new(
-                        "fourth_string".to_string(),
-                        "string".to_string(),
-                        "The fourth string to concatenate (optional)".to_string(),
-                        false,
-                    ),
-                ],
-                generator
-                    .generate_embedding_default(&concat_strings_desc)
+                let query = generator
+                    .generate_embedding_default(&user_message.clone())
                     .await
-                    .unwrap(),
-            );
-            tools.push(ShinkaiTool::Rust(tool));
-            // end delete
+                    .unwrap();
+                let results = tool_router.vector_search(&user_profile, query, 3).unwrap();
+                for result in results {
+                    tools.push(result);
+                }
+            }
         }
 
         // 3) Generate Prompt
@@ -258,10 +230,25 @@ impl GenericInferenceChain {
                     max_tokens_in_prompt,
                     HashMap::new(),
                     ws_manager_trait.clone(),
+                    tool_router.clone(),
                 );
 
                 // 6) Call workflow or tooling
-                let function_response = Self::call_function(function_call, &context).await?;
+                // Find the ShinkaiTool that has a tool with the function name
+                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
+                if shinkai_tool.is_none() {
+                    return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
+                }
+
+                // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
+
+                let function_response = tool_router
+                    .as_ref()
+                    .unwrap()
+                    .lock()
+                    .await
+                    .call_function(function_call, &context, shinkai_tool.unwrap(), &user_profile)
+                    .await?;
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -282,82 +269,5 @@ impl GenericInferenceChain {
             // Increment the iteration count
             iteration_count += 1;
         }
-    }
-
-    async fn call_function(
-        function_call: FunctionCall,
-        context: &dyn InferenceChainContextTrait,
-    ) -> Result<FunctionCallResponse, LLMProviderError> {
-        // TODO: Update to support JS -- It's only for rust for now
-
-        // Extract function name and arguments from the function_call
-        let function_name = function_call.name.clone();
-        let function_args = function_call.arguments.clone();
-
-        eprintln!("function_name: {:?}", function_name);
-        eprintln!("function_args: {:?}", function_args);
-
-        // Find the function in the tool map
-        let tool_function = RustToolFunctions::get_tool_function(&function_name)
-            .ok_or_else(|| LLMProviderError::FunctionNotFound(function_name.clone()))?;
-
-        // Convert arguments to the required format
-        let args: Vec<Box<dyn Any + Send>> = match function_args {
-            serde_json::Value::Array(arr) => arr
-                .into_iter()
-                .map(|arg| match arg {
-                    serde_json::Value::String(s) => Box::new(s) as Box<dyn Any + Send>,
-                    serde_json::Value::Number(n) => {
-                        if let Some(i) = n.as_i64() {
-                            Box::new(i) as Box<dyn Any + Send>
-                        } else if let Some(f) = n.as_f64() {
-                            Box::new(f) as Box<dyn Any + Send>
-                        } else {
-                            Box::new(n.to_string()) as Box<dyn Any + Send>
-                        }
-                    }
-                    serde_json::Value::Bool(b) => Box::new(b) as Box<dyn Any + Send>,
-                    _ => Box::new(arg.to_string()) as Box<dyn Any + Send>,
-                })
-                .collect(),
-            serde_json::Value::Object(map) => map
-                .into_iter()
-                .map(|(_, value)| match value {
-                    serde_json::Value::String(s) => Box::new(s) as Box<dyn Any + Send>,
-                    serde_json::Value::Number(n) => {
-                        if let Some(i) = n.as_i64() {
-                            Box::new(i) as Box<dyn Any + Send>
-                        } else if let Some(f) = n.as_f64() {
-                            Box::new(f) as Box<dyn Any + Send>
-                        } else {
-                            Box::new(n.to_string()) as Box<dyn Any + Send>
-                        }
-                    }
-                    serde_json::Value::Bool(b) => Box::new(b) as Box<dyn Any + Send>,
-                    _ => Box::new(value.to_string()) as Box<dyn Any + Send>,
-                })
-                .collect(),
-            _ => {
-                return Err(LLMProviderError::InvalidFunctionArguments(format!(
-                    "Invalid arguments: {:?}",
-                    function_args
-                )))
-            }
-        };
-
-        // Call the function
-        let result =
-            tool_function(context, args).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-
-        // Convert the result back to a string (assuming the result is a string)
-        let result_str = result
-            .downcast_ref::<String>()
-            .ok_or_else(|| LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result)))?
-            .clone();
-
-        Ok(FunctionCallResponse {
-            response: result_str,
-            function_call,
-        })
     }
 }

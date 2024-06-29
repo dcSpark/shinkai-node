@@ -2,7 +2,7 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
-use serde_json;
+use serde_json::{self, Value};
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::js_tools::JSToolWithoutCode;

@@ -7,7 +7,8 @@ use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::network::ws_manager::WSUpdateHandler;
-use crate::tools::router::ToolRouter;
+use crate::tools::js_toolkit::JSToolkit;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
@@ -21,6 +22,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
@@ -39,7 +41,15 @@ use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db, ws_manager))]
+    #[instrument(skip(
+        identity_secret_key,
+        generator,
+        unstructured_api,
+        vector_fs,
+        db,
+        ws_manager,
+        tool_router
+    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
@@ -60,6 +70,7 @@ impl JobManager {
             ShinkaiLogLevel::Debug,
             &format!("Processing job: {}", job_id),
         );
+
         // Fetch data we need to execute job step
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
         let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
@@ -89,15 +100,36 @@ impl JobManager {
         )
         .unwrap();
 
-        // 0.- Check that we have installed the JS tooling. Temporal solution until we have a better way to handle this.
-        // let toolkit_map = db.get_installed_toolkit_map(&user_profile)?;
-        // if toolkit_map.get_all_toolkit_infos().is_empty() {
-        //     let tools = shinkai_tools_runner::built_in_tools::get_tools();
-        //     for (name, js_code) in tools {
-        //         let toolkit = JSToolkit::new_semi_dummy_with_defaults(&name, &js_code);
-        //         db.install_toolkit(&toolkit, &user_profile)?;
-        //     }
-        // }
+        // Temporal
+        if let Some(tool_router_arc) = &tool_router {
+            let mut tool_router = tool_router_arc.lock().await;
+            if !tool_router.is_started() {
+                let start_time = Instant::now(); // Start time measurement
+
+                // Remove all toolkits for the user
+                db.remove_all_toolkits_for_user(&user_profile).unwrap();
+
+                // Add the tools again
+                let tools = built_in_tools::get_tools();
+                for (name, definition) in tools {
+                    let toolkit = JSToolkit::new(&name, definition);
+                    db.add_jstoolkit(toolkit, user_profile.clone()).unwrap();
+                }
+
+                if let Err(e) = tool_router
+                    .start(Box::new(generator.clone()), Arc::downgrade(&db), user_profile.clone())
+                    .await
+                {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to start tool router: {}", e),
+                    );
+                }
+                let duration = start_time.elapsed();
+                eprintln!("ToolRouter start call duration: {:?}", duration);
+            }
+        }
 
         // 1.- Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(
@@ -127,6 +159,7 @@ impl JobManager {
             generator.clone(),
             user_profile.clone(),
             ws_manager.clone(),
+            tool_router.clone(),
         )
         .await;
 
@@ -174,6 +207,7 @@ impl JobManager {
             user_profile.clone(),
             generator,
             ws_manager.clone(),
+            tool_router.clone(),
         )
         .await;
 
@@ -225,7 +259,7 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(identity_secret_key, db, vector_fs, generator, ws_manager))]
+    #[instrument(skip(identity_secret_key, db, vector_fs, generator, ws_manager, tool_router))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
@@ -237,6 +271,7 @@ impl JobManager {
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<(), LLMProviderError> {
         let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
@@ -266,6 +301,7 @@ impl JobManager {
             generator,
             user_profile,
             ws_manager.clone(),
+            tool_router.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -322,6 +358,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<bool, LLMProviderError> {
         if job_message.workflow.is_none() {
             return Ok(false);
@@ -364,6 +401,7 @@ impl JobManager {
             max_tokens_in_prompt,
             HashMap::new(),
             ws_manager.clone(),
+            tool_router.clone(),
         );
 
         // Note: we do this once so we are not re-reading the files multiple times for each operation

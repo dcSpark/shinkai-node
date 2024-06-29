@@ -1,6 +1,7 @@
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit_headers::BasicConfig;
 use crate::tools::js_tools::JSTool;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
@@ -59,11 +60,14 @@ impl JSToolkit {
             vec![]
         };
 
+        let name_pattern = Regex::new(r"[^a-zA-Z0-9_-]").unwrap();
+        let tool_name = name_pattern.replace_all(&definition.name, "_").to_lowercase();
+
         Self {
             name: name.to_string(),
             tools: vec![JSTool {
                 toolkit_name: name.to_string(),
-                name: definition.name.clone(),
+                name: tool_name.clone(),
                 author: definition.author.clone(),
                 config,
                 js_code: definition.code.clone().unwrap_or_default(),
@@ -145,7 +149,7 @@ mod tests {
         assert_eq!(toolkit.name, "Weather Toolkit");
         assert_eq!(toolkit.tools.len(), 1);
         let tool = &toolkit.tools[0];
-        assert_eq!(tool.name, "Shinkai: Weather By City");
+        assert_eq!(tool.name, "shinkai__weather_by_city");
         assert_eq!(tool.description, "Get weather information for a city name");
         assert_eq!(tool.js_code, "var tool;\n/******/ (() => { // webpackBootstrap\n/*");
         assert_eq!(tool.input_args.len(), 1);

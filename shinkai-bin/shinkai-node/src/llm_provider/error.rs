@@ -73,6 +73,7 @@ pub enum LLMProviderError {
     InvalidFunctionArguments(String),
     InvalidFunctionResult(String),
     MaxIterationsReached(String),
+    ToolRouterError(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -152,6 +153,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::InvalidFunctionArguments(s) => write!(f, "{}", s),
             LLMProviderError::InvalidFunctionResult(s) => write!(f, "{}", s),
             LLMProviderError::MaxIterationsReached(s) => write!(f, "{}", s),
+            LLMProviderError::ToolRouterError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -221,6 +223,7 @@ impl LLMProviderError {
             LLMProviderError::InvalidFunctionArguments(_) => "InvalidFunctionArguments",
             LLMProviderError::InvalidFunctionResult(_) => "InvalidFunctionResult",
             LLMProviderError::MaxIterationsReached(_) => "MaxIterationsReached",
+            LLMProviderError::ToolRouterError(_) => "ToolRouterError",
         };
 
         let error_message = format!("{}", self);

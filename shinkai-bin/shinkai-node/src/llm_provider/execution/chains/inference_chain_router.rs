@@ -6,14 +6,15 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::network::ws_manager::{self, WSUpdateHandler};
+use crate::network::ws_manager::WSUpdateHandler;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use tokio::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::instrument;
 
 impl JobManager {
@@ -32,6 +33,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         // Initializations
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -52,6 +54,7 @@ impl JobManager {
             max_tokens_in_prompt,
             HashMap::new(),
             ws_manager_trait.clone(),
+            tool_router.clone(),
         );
 
         let mut generic_chain = GenericInferenceChain::new(chain_context, ws_manager_trait);

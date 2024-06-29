@@ -1,10 +1,14 @@
 use crate::it::utils::db_handlers::setup;
+use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_node::db::ShinkaiDB;
+use shinkai_node::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
+use shinkai_node::llm_provider::execution::chains::inference_chain_trait::MockInferenceChainContext;
+use shinkai_node::llm_provider::providers::shared::openai::FunctionCall;
 use shinkai_node::tools::js_toolkit::JSToolkit;
-use shinkai_node::tools::router::ToolRouter;
 use shinkai_node::tools::shinkai_tool::ShinkaiTool;
+use shinkai_node::tools::tool_router::ToolRouter;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -77,4 +81,75 @@ async fn test_toolkit_installation_from_built_in_tools() {
     //     println!("Toolkit name: {}, description: {}", toolkit.name, toolkit.author);
     // }
     assert_eq!(results[0].name(), "Shinkai: Weather By City");
+}
+
+#[tokio::test]
+async fn test_call_function_weather_by_city() {
+    init_default_tracing();
+    setup();
+
+    // Initialize the database and profile
+    let db_path = format!("db_tests/{}", "toolkit");
+    let shinkai_db = Arc::new(ShinkaiDB::new(&db_path).unwrap());
+    let profile = default_test_profile();
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    // Add built-in toolkits
+    let tools = built_in_tools::get_tools();
+    for (name, definition) in tools {
+        let toolkit = JSToolkit::new(&name, definition);
+        shinkai_db.add_jstoolkit(toolkit, profile.clone()).unwrap();
+    }
+
+    // Initialize ToolRouter
+    let mut tool_router = ToolRouter::new();
+    tool_router
+        .start(
+            Box::new(generator.clone()),
+            Arc::downgrade(&shinkai_db),
+            profile.clone(),
+        )
+        .await
+        .unwrap();
+
+    // Create a mock context
+    let context = MockInferenceChainContext::default();
+
+    // Define the function call
+    let function_call = FunctionCall {
+        name: "shinkai__weather_by_city".to_string(),
+        arguments: json!({"city": "Austin"}),
+    };
+
+    // Find the tool with the name from the function_call
+    let toolkit_list = shinkai_db.list_toolkits_for_user(&profile).unwrap();
+    let mut shinkai_tool = None;
+    for toolkit in &toolkit_list {
+        for tool in &toolkit.tools {
+            if tool.name == function_call.name {
+                shinkai_tool = Some(ShinkaiTool::JS(tool.clone()));
+                break;
+            }
+        }
+        if shinkai_tool.is_some() {
+            break;
+        }
+    }
+
+    // Ensure the tool was found
+    let shinkai_tool = shinkai_tool.expect("Tool not found");
+
+    // Call the function using ToolRouter
+    let result = tool_router
+        .call_function(function_call, &context, &shinkai_tool.clone(), &profile)
+        .await;
+
+    // Check the result
+    match result {
+        Ok(response) => {
+            println!("Function response: {}", response.response);
+            assert!(response.response.contains("weather"));
+        }
+        Err(e) => panic!("Function call failed with error: {:?}", e),
+    }
 }

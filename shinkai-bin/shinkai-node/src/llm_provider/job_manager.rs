@@ -5,7 +5,7 @@ use crate::llm_provider::job::JobLike;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::ws_manager::WSUpdateHandler;
-use crate::tools::router::ToolRouter;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;

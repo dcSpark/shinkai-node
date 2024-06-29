@@ -1,7 +1,12 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 
 use crate::db::ShinkaiDB;
+use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
+use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use keyphrases::KeyPhraseExtractor;
@@ -23,6 +28,12 @@ pub struct ToolRouter {
     // We use started so we can defer the initialization of the routing_resources using a
     // generator that may not be available at the time of creation
     started: bool,
+}
+
+impl Default for ToolRouter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ToolRouter {
@@ -106,10 +117,6 @@ impl ToolRouter {
                     if let ShinkaiTool::JS(mut js_tool) = tool {
                         let js_lite_tool = js_tool.to_without_code();
                         let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
-
-                        // Print tool name and embedding string
-                        eprintln!("Tool Name: {}", shinkai_tool.name());
-                        eprintln!("Embedding String: {}", shinkai_tool.format_embedding_string());
 
                         let embedding = if let Some(embedding) = js_tool.embedding.clone() {
                             embedding
@@ -329,16 +336,17 @@ impl ToolRouter {
             .get(&profile.to_string())
             .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
         let nodes = routing_resource.vector_search(query, num_of_results);
-        // // Print out the score and toolkit name for each node
-        // for node in &nodes {
-        //     if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
-        //         eprintln!(
-        //             "Node Score: {}, Toolkit Name: {}",
-        //             node.score,
-        //             shinkai_tool.toolkit_name()
-        //         );
-        //     }
-        // }
+
+        // Print out the score and toolkit name for each node
+        for node in &nodes {
+            if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
+                eprintln!(
+                    "Node Score: {}, Toolkit Name: {}",
+                    node.score,
+                    shinkai_tool.toolkit_name()
+                );
+            }
+        }
         Ok(self.ret_nodes_to_tools(&nodes))
     }
 
@@ -393,6 +401,70 @@ impl ToolRouter {
             routing_resources: serde_json::from_str(json).map_err(|_| ToolError::FailedJSONParsing)?,
             started: false,
         })
+    }
+
+    /// Calls a function given a function call, context, and ShinkaiTool.
+    pub async fn call_function(
+        &self,
+        function_call: FunctionCall,
+        context: &dyn InferenceChainContextTrait,
+        shinkai_tool: &ShinkaiTool,
+        user_profile: &ShinkaiName,
+    ) -> Result<FunctionCallResponse, LLMProviderError> {
+        let function_name = function_call.name.clone();
+        let function_args = function_call.arguments.clone();
+
+        match shinkai_tool {
+            ShinkaiTool::Rust(_) => {
+                if let Some(rust_function) = RustToolFunctions::get_tool_function(&function_name) {
+                    let args: Vec<Box<dyn Any + Send>> = RustTool::convert_args_from_fn_call(function_args)?;
+                    let result = rust_function(context, args)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    let result_str = result
+                        .downcast_ref::<String>()
+                        .ok_or_else(|| {
+                            LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
+                        })?
+                        .clone();
+                    return Ok(FunctionCallResponse {
+                        response: result_str,
+                        function_call,
+                    });
+                }
+            }
+            ShinkaiTool::JS(js_tool) => {
+                let result = js_tool
+                    .run(function_args)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                return Ok(FunctionCallResponse {
+                    response: result_str,
+                    function_call,
+                });
+            }
+            ShinkaiTool::JSLite(js_lite_tool) => {
+                // Fetch the full ShinkaiTool::JS
+                let full_js_tool = self
+                    .get_shinkai_tool(&user_profile, &js_lite_tool.name, &js_lite_tool.toolkit_name)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                if let ShinkaiTool::JS(js_tool) = full_js_tool {
+                    let result = js_tool
+                        .run(function_args)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    let result_str = serde_json::to_string(&result)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    return Ok(FunctionCallResponse {
+                        response: result_str,
+                        function_call,
+                    });
+                } else {
+                    return Err(LLMProviderError::FunctionNotFound(function_name));
+                }
+            }
+        }
+
+        Err(LLMProviderError::FunctionNotFound(function_name))
     }
 
     /// Convert to json

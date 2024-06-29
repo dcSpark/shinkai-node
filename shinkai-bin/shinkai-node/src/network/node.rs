@@ -18,7 +18,7 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::ws_routes::run_ws_api;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
-use crate::tools::router::ToolRouter;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;

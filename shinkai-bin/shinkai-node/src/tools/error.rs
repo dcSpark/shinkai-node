@@ -26,6 +26,8 @@ pub enum ToolError {
     InvalidProfile(String),
     AlreadyStarted,
     NotStarted,
+    ToolNotRunnable(String),
+    ExecutionError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -54,6 +56,8 @@ impl fmt::Display for ToolError {
             ToolError::InvalidProfile(ref e) => write!(f, "Invalid profile: {}", e),
             ToolError::AlreadyStarted => write!(f, "Tool is already started."),
             ToolError::NotStarted => write!(f, "Tool is not started."),
+            ToolError::ToolNotRunnable(ref t) => write!(f, "Tool is not runnable: {}", t),
+            ToolError::ExecutionError(ref e) => write!(f, "Execution error: {}", e),
         }
     }
 }

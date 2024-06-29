@@ -18,7 +18,7 @@ use shinkai_message_primitives::{
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::db::{ShinkaiDB, Topic};
-use shinkai_node::tools::router::ToolRouter;
+use shinkai_node::tools::tool_router::ToolRouter;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
