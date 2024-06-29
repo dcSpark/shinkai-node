@@ -229,7 +229,7 @@ impl ToolRouter {
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
         for tool in toolkit {
-            if let ShinkaiTool::JS(mut js_tool) = tool {
+            if let ShinkaiTool::JS(mut js_tool) = tool.clone() {
                 let js_lite_tool = js_tool.to_without_code();
                 let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
 
@@ -244,7 +244,8 @@ impl ToolRouter {
                     new_embedding
                 };
 
-                self.add_shinkai_tool(&profile, &shinkai_tool, embedding)?;
+                // We save tool instead of shinkai_tool so it also includes the code
+                self.add_shinkai_tool(&profile, &tool, embedding)?;
             }
         }
         Ok(())

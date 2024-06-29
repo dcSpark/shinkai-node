@@ -1,6 +1,14 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool};
+use crate::tools::{js_toolkit::JSToolkit, js_tools::JSTool, shinkai_tool::ShinkaiTool};
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+
+// Only used for storage in the database
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct JSToolkitWithToolReferences {
+    pub toolkit: JSToolkit,
+    pub tool_keys: Vec<String>,
+}
 
 impl ShinkaiDB {
     /// Returns the first half of the blake3 hash of the folder name value
@@ -11,6 +19,16 @@ impl ShinkaiDB {
 
     /// Adds a ShinkaiTool to the database under the Toolkits topic.
     pub fn add_shinkai_tool(&self, tool: ShinkaiTool, profile: ShinkaiName) -> Result<(), ShinkaiDBError> {
+        // Verify that the tool is of type JS
+        match tool {
+            ShinkaiTool::JS(_) => {}
+            _ => {
+                return Err(ShinkaiDBError::InvalidToolType(
+                    "Only JS tools can be added".to_string(),
+                ))
+            }
+        }
+
         // Generate the key for the tool using tool_router_key
         let key = format!(
             "user_ts_tools_{}_{}",
@@ -175,14 +193,29 @@ impl ShinkaiDB {
             self.add_shinkai_tool(shinkai_tool, profile.clone())?;
         }
 
-        // Serialize the toolkit to bytes
-        let toolkit_bytes = bincode::serialize(&toolkit).expect("Failed to serialize toolkit");
+        // Create JSToolkitWithToolReferences
+        let toolkit_with_references = JSToolkitWithToolReferences {
+            toolkit: JSToolkit {
+                name: toolkit.name.clone(),
+                tools: Vec::new(), // Empty vec as requested
+                author: toolkit.author.clone(),
+                version: toolkit.version.clone(),
+            },
+            tool_keys: toolkit
+                .tools
+                .iter()
+                .map(|t| ShinkaiTool::gen_router_key(t.name.clone(), toolkit.name.clone()))
+                .collect(),
+        };
+
+        // Serialize the toolkit with references
+        let toolkit_bytes = bincode::serialize(&toolkit_with_references).expect("Failed to serialize toolkit");
 
         // Generate the key for the toolkit
         let key = format!(
             "user_toolkits_{}_{}",
             Self::user_profile_to_half_hash(profile.clone()),
-            toolkit.name
+            toolkit_with_references.toolkit.name
         );
 
         // Use shared CFs
@@ -210,9 +243,27 @@ impl ShinkaiDB {
 
         for item in iterator {
             let (_, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
-            let toolkit: JSToolkit = bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
+            let toolkit_with_references: JSToolkitWithToolReferences =
+                bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
 
-            toolkits.push(toolkit);
+            // Reconstruct the full toolkit by fetching each tool
+            let full_tools = toolkit_with_references
+                .tool_keys
+                .into_iter()
+                .map(|key| match self.get_shinkai_tool(&key, profile)? {
+                    ShinkaiTool::JS(full_tool) => Ok(full_tool),
+                    _ => Err(ShinkaiDBError::InvalidToolType("Expected JS tool".to_string())),
+                })
+                .collect::<Result<Vec<JSTool>, ShinkaiDBError>>()?;
+
+            let full_toolkit = JSToolkit {
+                name: toolkit_with_references.toolkit.name,
+                tools: full_tools,
+                author: toolkit_with_references.toolkit.author,
+                version: toolkit_with_references.toolkit.version,
+            };
+
+            toolkits.push(full_toolkit);
         }
 
         Ok(toolkits)
@@ -232,10 +283,25 @@ impl ShinkaiDB {
             .get_cf(cf_toolkits, key.as_bytes())?
             .ok_or_else(|| ShinkaiDBError::ToolkitNotFound(format!("Toolkit not found for name: {}", toolkit_name)))?;
 
-        let toolkit: JSToolkit = bincode::deserialize(&toolkit_bytes)
+        let toolkit_with_references: JSToolkitWithToolReferences = bincode::deserialize(&toolkit_bytes)
             .map_err(|_| ShinkaiDBError::DeserializationFailed("Failed to deserialize toolkit".to_string()))?;
 
-        Ok(toolkit)
+        // Reconstruct the full toolkit by fetching each tool
+        let full_tools = toolkit_with_references
+            .tool_keys
+            .into_iter()
+            .map(|key| match self.get_shinkai_tool(&key, profile)? {
+                ShinkaiTool::JS(full_tool) => Ok(full_tool),
+                _ => Err(ShinkaiDBError::InvalidToolType("Expected JS tool".to_string())),
+            })
+            .collect::<Result<Vec<JSTool>, ShinkaiDBError>>()?;
+
+        Ok(JSToolkit {
+            name: toolkit_with_references.toolkit.name,
+            tools: full_tools,
+            author: toolkit_with_references.toolkit.author,
+            version: toolkit_with_references.toolkit.version,
+        })
     }
 
     /// Removes a JSToolkit and all of its tools from the database for the given profile and toolkit name.
@@ -250,19 +316,18 @@ impl ShinkaiDB {
         // Use shared CFs
         let cf_toolkits = self.get_cf_handle(Topic::Toolkits).unwrap();
 
-        // Fetch the toolkit to get its tools
+        // Fetch the toolkit to get its tool keys
         let toolkit_bytes = self
             .db
             .get_cf(cf_toolkits, toolkit_key.as_bytes())?
             .ok_or_else(|| ShinkaiDBError::ToolkitNotFound(format!("Toolkit not found for name: {}", toolkit_name)))?;
 
-        let toolkit: JSToolkit = bincode::deserialize(&toolkit_bytes)
+        let toolkit_with_references: JSToolkitWithToolReferences = bincode::deserialize(&toolkit_bytes)
             .map_err(|_| ShinkaiDBError::DeserializationFailed("Failed to deserialize toolkit".to_string()))?;
 
         // Remove each tool in the toolkit using remove_shinkai_tool
-        for tool in &toolkit.tools {
-            let shinkai_tool = ShinkaiTool::JS(tool.clone());
-            self.remove_shinkai_tool(&shinkai_tool.tool_router_key(), profile)?;
+        for tool_key in &toolkit_with_references.tool_keys {
+            self.remove_shinkai_tool(tool_key, profile)?;
         }
 
         // Create a write batch to remove the toolkit itself

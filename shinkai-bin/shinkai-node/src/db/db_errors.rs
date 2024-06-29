@@ -56,6 +56,7 @@ pub enum ShinkaiDBError {
     ToolNotFound(String),
     DeserializationFailed(String),
     ToolkitNotFound(String),
+    InvalidToolType(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -120,6 +121,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::ToolNotFound(e) => write!(f, "Tool not found: {}", e),
             ShinkaiDBError::DeserializationFailed(e) => write!(f, "Deserialization failed: {}", e),
             ShinkaiDBError::ToolkitNotFound(e) => write!(f, "Toolkit not found: {}", e),
+            ShinkaiDBError::InvalidToolType(e) => write!(f, "Invalid tool type: {}", e),
         }
     }
 }

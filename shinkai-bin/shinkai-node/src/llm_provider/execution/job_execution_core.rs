@@ -112,7 +112,7 @@ impl JobManager {
                 // Add the tools again
                 let tools = built_in_tools::get_tools();
                 for (name, definition) in tools {
-                    let toolkit = JSToolkit::new(&name, definition);
+                    let toolkit = JSToolkit::new(&name, vec![definition]);
                     db.add_jstoolkit(toolkit, user_profile.clone()).unwrap();
                 }
 
