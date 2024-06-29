@@ -18,6 +18,7 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::ws_routes::run_ws_api;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
+use crate::tools::router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
@@ -496,6 +497,8 @@ pub struct Node {
     pub ws_address: Option<SocketAddr>,
     // Websocket Server
     pub ws_server: Option<tokio::task::JoinHandle<()>>,
+    // Tool Router. Option so it is less painful to test
+    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
 }
 
 impl Node {
@@ -677,6 +680,9 @@ impl Node {
         )
         .await;
 
+        // Initialize ToolRouter
+        let tool_router = ToolRouter::new();
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -707,6 +713,7 @@ impl Node {
             ws_address,
             ws_manager_trait,
             ws_server: None,
+            tool_router: Some(Arc::new(Mutex::new(tool_router))),
         }))
     }
 
@@ -724,6 +731,7 @@ impl Node {
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
                 self.ws_manager_trait.clone(),
+                self.tool_router.clone(),
             )
             .await,
         )));

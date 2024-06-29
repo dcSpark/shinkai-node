@@ -29,20 +29,20 @@ async fn test_toolkit_installation_from_built_in_tools() {
     let toolkit_list = shinkai_db.list_toolkits_for_user(&profile).unwrap();
     if toolkit_list.is_empty() {
         let tools = built_in_tools::get_tools();
-        for (name, js_code) in tools {
-            let toolkit = JSToolkit::new_semi_dummy_with_defaults(&name, &js_code);
+        for (name, definition) in tools {
+            let toolkit = JSToolkit::new(&name, definition);
             shinkai_db.add_jstoolkit(toolkit, profile.clone()).unwrap();
         }
     }
 
-    // // Verify that 4 toolkits were installed
-    // let toolkit_list = shinkai_db.list_toolkits_for_user(&profile).unwrap();
-    // for toolkit in &toolkit_list {
-    //     println!("Toolkit name: {}", toolkit.name);
-    //     for tool in &toolkit.tools {
-    //         println!("  Tool name: {}", tool.name);
-    //     }
-    // }
+    // Verify that 4 toolkits were installed
+    let toolkit_list = shinkai_db.list_toolkits_for_user(&profile).unwrap();
+    for toolkit in &toolkit_list {
+        println!("Toolkit name: {}", toolkit.name);
+        for tool in &toolkit.tools {
+            println!("  Tool name: {}", tool.name);
+        }
+    }
     eprintln!("toolkit_list.len(): {}", toolkit_list.len());
     assert_eq!(toolkit_list.len(), 4);
 
@@ -57,19 +57,24 @@ async fn test_toolkit_installation_from_built_in_tools() {
     }
 
     // Initialize ToolRouter
-    let tool_router = ToolRouter::new(
-        Box::new(generator.clone()),
-        Arc::downgrade(&shinkai_db),
-        profile.clone(),
-    )
-    .await
-    .unwrap();
+    let mut tool_router = ToolRouter::new();
+    tool_router
+        .start(
+            Box::new(generator.clone()),
+            Arc::downgrade(&shinkai_db),
+            profile.clone(),
+        )
+        .await
+        .unwrap();
 
     // Perform a tool search for "weather" and check that one tool is returned
-    let query = generator.generate_embedding_default("I want to know the weather in Austin").await.unwrap();
+    let query = generator
+        .generate_embedding_default("I want to know the weather in Austin")
+        .await
+        .unwrap();
     let results = tool_router.vector_search(&profile, query, 15).unwrap();
-    for toolkit in &toolkit_list {
-        println!("Toolkit name: {}, description: {}", toolkit.name, toolkit.author);
-    }
-    assert_eq!(results[0].name(), "shinkai-tool-weather-by-city");
+    // for toolkit in &toolkit_list {
+    //     println!("Toolkit name: {}, description: {}", toolkit.name, toolkit.author);
+    // }
+    assert_eq!(results[0].name(), "Shinkai: Weather By City");
 }

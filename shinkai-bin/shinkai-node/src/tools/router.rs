@@ -20,16 +20,36 @@ use super::shinkai_tool::ShinkaiTool;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRouter {
     pub routing_resources: HashMap<String, MapVectorResource>,
+    // We use started so we can defer the initialization of the routing_resources using a
+    // generator that may not be available at the time of creation
+    started: bool,
 }
 
 impl ToolRouter {
-    /// Create a new ToolRouter instance from scratch.
-    pub async fn new(
+    /// Create a new ToolRouter instance with empty routing_resources.
+    pub fn new() -> Self {
+        ToolRouter {
+            routing_resources: HashMap::new(),
+            started: false,
+        }
+    }
+
+    /// Check if the ToolRouter instance has already been started.
+    pub fn is_started(&self) -> bool {
+        self.started
+    }
+
+    /// Start the ToolRouter instance.
+    pub async fn start(
+        &mut self,
         generator: Box<dyn EmbeddingGenerator>,
         db: Weak<ShinkaiDB>,
         profile: ShinkaiName,
-    ) -> Result<Self, ToolError> {
-        let mut routing_resources = HashMap::new();
+    ) -> Result<(), ToolError> {
+        if self.started {
+            return Err(ToolError::AlreadyStarted);
+        }
+
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
         let source = VRSourceReference::None;
@@ -50,8 +70,9 @@ impl ToolRouter {
             Self::add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
         }
 
-        routing_resources.insert(profile.to_string(), routing_resource);
-        Ok(ToolRouter { routing_resources })
+        self.routing_resources.insert(profile.to_string(), routing_resource);
+        self.started = true;
+        Ok(())
     }
 
     async fn add_rust_tools(routing_resource: &mut MapVectorResource, generator: Box<dyn EmbeddingGenerator>) {
@@ -126,6 +147,10 @@ impl ToolRouter {
         shinkai_tool: &ShinkaiTool,
         embedding: Embedding,
     ) -> Result<(), ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -165,6 +190,10 @@ impl ToolRouter {
         tool_name: &str,
         toolkit_name: &str,
     ) -> Result<(), ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -185,6 +214,10 @@ impl ToolRouter {
         toolkit: Vec<ShinkaiTool>,
         generator: Box<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -212,6 +245,10 @@ impl ToolRouter {
 
     /// Removes a JSToolkit from the ToolRouter instance.
     pub fn remove_js_toolkit(&mut self, profile: &ShinkaiName, toolkit: Vec<ShinkaiTool>) -> Result<(), ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -233,6 +270,10 @@ impl ToolRouter {
         tool_name: &str,
         toolkit_name: &str,
     ) -> Result<ShinkaiTool, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -254,6 +295,10 @@ impl ToolRouter {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Result<Vec<ShinkaiTool>, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -272,6 +317,10 @@ impl ToolRouter {
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiTool>, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -313,6 +362,10 @@ impl ToolRouter {
         profile: &ShinkaiName,
         shinkai_tool: &ShinkaiTool,
     ) -> Result<Embedding, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
@@ -338,6 +391,7 @@ impl ToolRouter {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         Ok(ToolRouter {
             routing_resources: serde_json::from_str(json).map_err(|_| ToolError::FailedJSONParsing)?,
+            started: false,
         })
     }
 

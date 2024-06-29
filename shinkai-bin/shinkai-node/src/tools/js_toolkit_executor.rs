@@ -7,7 +7,7 @@ use shinkai_tools_runner::tools::tool::Tool;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolExecutionResult {
     pub tool: String,
-    pub result: String,
+    pub result: JsonValue,
 }
 
 pub struct JSToolkitExecutor;
@@ -30,7 +30,7 @@ impl JSToolkitExecutor {
         let result = tool.run(&fn_args.to_string()).await.map_err(ToolError::from)?;
         Ok(ToolExecutionResult {
             tool: tool_name,
-            result,
+            result: result.data,
         })
     }
 }

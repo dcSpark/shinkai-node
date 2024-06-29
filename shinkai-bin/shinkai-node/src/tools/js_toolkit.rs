@@ -1,6 +1,10 @@
 use crate::tools::error::ToolError;
+use crate::tools::js_toolkit_headers::BasicConfig;
 use crate::tools::js_tools::JSTool;
 use serde::{Deserialize, Serialize};
+use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
+
+use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig};
 
 /// A JSToolkit is a collection of JSTools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -12,30 +16,66 @@ pub struct JSToolkit {
 }
 
 impl JSToolkit {
-    /// Creates a new JSToolkit with the provided name and js_code, and default values for other fields.
-    pub fn new_semi_dummy_with_defaults(name: &str, js_code: &str) -> Self {
-        let description = name
-            .split('-')
-            .skip(2) // Skip "shinkai" and "tool"
-            .collect::<Vec<&str>>()
-            .join(" ");
+    /// Creates a new JSToolkit with the provided name and definition, and default values for other fields.
+    pub fn new(name: &str, definition: ToolDefinition) -> Self {
+        let config_set = definition.configurations.is_null()
+            || definition.configurations.as_object().map_or(true, |obj| obj.is_empty());
+
+        let input_args = if let Some(parameters) = definition.parameters.as_object() {
+            parameters["properties"].as_object().map_or(vec![], |props| {
+                props
+                    .iter()
+                    .map(|(key, value)| ToolArgument {
+                        name: key.clone(),
+                        arg_type: value["type"].as_str().unwrap_or("string").to_string(),
+                        description: value["description"].as_str().unwrap_or("").to_string(),
+                        is_required: definition.parameters["required"]
+                            .as_array()
+                            .map_or(false, |req| req.iter().any(|r| r == key)),
+                    })
+                    .collect()
+            })
+        } else {
+            vec![]
+        };
+
+        let config = if let Some(configurations) = definition.configurations.as_object() {
+            configurations["properties"].as_object().map_or(vec![], |props| {
+                props
+                    .iter()
+                    .map(|(key, value)| {
+                        ToolConfig::BasicConfig(BasicConfig {
+                            name: key.clone(),
+                            description: value["description"].as_str().unwrap_or("").to_string(),
+                            required: definition.configurations["required"]
+                                .as_array()
+                                .map_or(false, |req| req.iter().any(|r| r == key)),
+                            key: key.clone(),
+                        })
+                    })
+                    .collect()
+            })
+        } else {
+            vec![]
+        };
 
         Self {
             name: name.to_string(),
             tools: vec![JSTool {
                 toolkit_name: name.to_string(),
-                name: name.to_string(),
-                author: "Dummy author".to_string(), // Dummy author
-                config: vec![],                     // Empty headers
-                js_code: js_code.to_string(),
-                description, // Ultra basic description
-                input_args: vec![],                           // Empty arguments
+                name: definition.name.clone(),
+                author: definition.author.clone(),
+                config,
+                js_code: definition.code.clone().unwrap_or_default(),
+                description: definition.description.clone(),
+                keywords: definition.keywords.clone(),
+                input_args,
                 activated: false,
-                config_set: true,
+                config_set,
                 embedding: None,
             }],
-            author: "Dummy author".to_string(), // Dummy author
-            version: "1.0.0".to_string(),       // Dummy version
+            author: definition.author.clone(),
+            version: "1.0.0".to_string(), // Dummy version
         }
     }
 
@@ -53,5 +93,76 @@ impl JSToolkit {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         let deserialized: Self = serde_json::from_str(json)?;
         Ok(deserialized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
+
+    #[test]
+    fn test_new_jstoolkit() {
+        let definition = ToolDefinition {
+            id: "shinkai-tool-weather-by-city".to_string(),
+            name: "Shinkai: Weather By City".to_string(),
+            description: "Get weather information for a city name".to_string(),
+            configurations: json!({
+                "type": "object",
+                "properties": {
+                    "apiKey": {
+                        "type": "string"
+                    }
+                },
+                "required": ["apiKey"]
+            }),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string"
+                    }
+                },
+                "required": ["city"]
+            }),
+            result: json!({
+                "type": "object",
+                "properties": {
+                    "weather": {
+                        "type": "string"
+                    }
+                },
+                "required": ["weather"]
+            }),
+            author: "".to_string(),
+            keywords: vec![],
+            code: Some("var tool;\n/******/ (() => { // webpackBootstrap\n/*".to_string()),
+        };
+
+        let toolkit = JSToolkit::new("Weather Toolkit", definition);
+
+        assert_eq!(toolkit.name, "Weather Toolkit");
+        assert_eq!(toolkit.tools.len(), 1);
+        let tool = &toolkit.tools[0];
+        assert_eq!(tool.name, "Shinkai: Weather By City");
+        assert_eq!(tool.description, "Get weather information for a city name");
+        assert_eq!(tool.js_code, "var tool;\n/******/ (() => { // webpackBootstrap\n/*");
+        assert_eq!(tool.input_args.len(), 1);
+        assert_eq!(tool.input_args[0].name, "city");
+        assert_eq!(tool.input_args[0].arg_type, "string");
+        assert!(tool.input_args[0].is_required);
+
+        // Check for config
+        assert_eq!(tool.config.len(), 1);
+        let config = &tool.config[0];
+        if let ToolConfig::BasicConfig(basic_config) = config {
+            assert_eq!(basic_config.name, "apiKey");
+            assert_eq!(basic_config.description, "");
+            assert!(basic_config.required);
+            assert_eq!(basic_config.key, "apiKey");
+        } else {
+            panic!("Expected BasicConfig");
+        }
     }
 }

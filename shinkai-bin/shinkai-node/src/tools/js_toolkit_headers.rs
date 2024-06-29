@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub enum ToolConfig {
     OAuth(OAuth),
     GenericHeader(GenericHeader),
+    BasicConfig(BasicConfig),
 }
 
 impl ToolConfig {
@@ -13,6 +14,7 @@ impl ToolConfig {
         match self {
             ToolConfig::OAuth(oauth) => oauth.name.clone(),
             ToolConfig::GenericHeader(header) => header.name.clone(),
+            ToolConfig::BasicConfig(config) => config.name.clone(),
         }
     }
 
@@ -21,6 +23,7 @@ impl ToolConfig {
         match self {
             ToolConfig::OAuth(oauth) => oauth.description.clone(),
             ToolConfig::GenericHeader(header) => header.description.clone(),
+            ToolConfig::BasicConfig(config) => config.description.clone(),
         }
     }
 
@@ -29,6 +32,7 @@ impl ToolConfig {
         match self {
             ToolConfig::OAuth(oauth) => oauth.header.clone(),
             ToolConfig::GenericHeader(header) => header.header.clone(),
+            ToolConfig::BasicConfig(config) => config.key.clone(),
         }
     }
 
@@ -59,4 +63,12 @@ pub struct OAuth {
     scope: Vec<String>,
     cloud_oauth_name: String, // Ie. Google OAuth App name
     header: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BasicConfig {
+    pub name: String,
+    pub description: String,
+    pub required: bool,
+    pub key: String,
 }
