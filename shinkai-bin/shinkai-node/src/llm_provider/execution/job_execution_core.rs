@@ -278,7 +278,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            &format!("Inference chain - Processing Job: {:?}", full_job),
+            &format!("Inference chain - Processing Job: {:?}", full_job.job_id),
         );
 
         // Setup initial data to get ready to call a specific inference chain

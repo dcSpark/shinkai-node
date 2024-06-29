@@ -351,6 +351,38 @@ impl ToolRouter {
         Ok(self.ret_nodes_to_tools(&nodes))
     }
 
+    /// Returns a list of default ShinkaiTools that should always be included.
+    pub fn get_default_tools(&self, profile: &ShinkaiName) -> Result<Vec<ShinkaiTool>, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
+        let profile = profile
+            .extract_profile()
+            .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
+        let routing_resource = self
+            .routing_resources
+            .get(&profile.to_string())
+            .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
+
+        let mut default_tools = Vec::new();
+
+        // Always include shinkai__math_expression_evaluator if it exists
+        let math_tool_key = ShinkaiTool::gen_router_key(
+            "shinkai__math_expression_evaluator".to_string(),
+            "shinkai-tool-math-exp".to_string(),
+        );
+        if let Ok(node) = routing_resource.get_root_node(math_tool_key) {
+            if let Ok(tool) = ShinkaiTool::from_json(node.get_text_content()?) {
+                default_tools.push(tool);
+            }
+        }
+
+        // Add more default tools here if needed in the future
+
+        Ok(default_tools)
+    }
+
     /// Takes a list of RetrievedNodes and outputs a list of ShinkaiTools
     fn ret_nodes_to_tools(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<ShinkaiTool> {
         let mut shinkai_tools = vec![];

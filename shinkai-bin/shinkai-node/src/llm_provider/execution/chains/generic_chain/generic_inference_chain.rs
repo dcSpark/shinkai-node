@@ -157,8 +157,13 @@ impl GenericInferenceChain {
         if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
             if let Some(tool_router) = &tool_router {
                 let tool_router = tool_router.lock().await;
-                // Search in JS Tools
 
+                // Get default tools
+                if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
+                    tools.extend(default_tools);
+                }
+
+                // Search in JS Tools
                 let query = generator
                     .generate_embedding_default(&user_message.clone())
                     .await
@@ -241,13 +246,18 @@ impl GenericInferenceChain {
                 }
 
                 // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
-
                 let function_response = tool_router
                     .as_ref()
                     .unwrap()
                     .lock()
                     .await
-                    .call_function(function_call, db.clone(), &context, shinkai_tool.unwrap(), &user_profile)
+                    .call_function(
+                        function_call,
+                        db.clone(),
+                        &context,
+                        shinkai_tool.unwrap(),
+                        &user_profile,
+                    )
                     .await?;
 
                 // 7) Call LLM again with the response (for formatting)

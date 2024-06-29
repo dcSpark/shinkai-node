@@ -1432,25 +1432,25 @@ impl Node {
             }
         };
 
-        // let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?;
+        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?;
 
-        // let hex_blake3_hash = msg.get_message_content()?;
+        let hex_blake3_hash = msg.get_message_content()?;
 
-        // let files = {
-        //     match vector_fs.db.get_all_files_from_inbox(hex_blake3_hash) {
-        //         Ok(files) => files,
-        //         Err(err) => {
-        //             let _ = res
-        //                 .send(Err(APIError {
-        //                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //                     error: "Internal Server Error".to_string(),
-        //                     message: format!("{}", err),
-        //                 }))
-        //                 .await;
-        //             return Ok(());
-        //         }
-        //     }
-        // };
+        let files = {
+            match vector_fs.db.get_all_files_from_inbox(hex_blake3_hash) {
+                Ok(files) => files,
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("{}", err),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        };
 
         // let header_file = files.iter().find(|(name, _)| name.ends_with(".json"));
         // let packaged_toolkit = files.iter().find(|(name, _)| name.ends_with(".js"));
@@ -1601,58 +1601,57 @@ impl Node {
             Some(MessageSchemaType::TextContent),
         )
         .await;
-        // let (msg, _) = match validation_result {
-        //     Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
-        //     Err(api_error) => {
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        let (msg, _) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
-        // let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
-        // if let Err(err) = profile {
-        //     let api_error = APIError {
-        //         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //         error: "Internal Server Error".to_string(),
-        //         message: err.to_string(),
-        //     };
-        //     let _ = res.send(Err(api_error)).await;
-        //     return Ok(());
-        // }
-        // let profile = profile.unwrap();
-        // let toolkit_map;
-        // {
-        //     toolkit_map = match db.get_installed_toolkit_map(&profile) {
-        //         Ok(t) => t,
-        //         Err(err) => {
-        //             let _ = res
-        //                 .send(Err(APIError {
-        //                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //                     error: "Internal Server Error".to_string(),
-        //                     message: format!("{}", err),
-        //                 }))
-        //                 .await;
-        //             return Ok(());
-        //         }
-        //     };
-        // }
+        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
+        if let Err(err) = profile {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: err.to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let profile = profile.unwrap();
 
-        // // Convert the toolkit_map into a JSON string
-        // let toolkit_map_json = match serde_json::to_string(&toolkit_map) {
-        //     Ok(json) => json,
-        //     Err(err) => {
-        //         let _ = res
-        //             .send(Err(APIError {
-        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //                 error: "Internal Server Error".to_string(),
-        //                 message: format!("Failed to convert toolkit map to JSON: {}", err),
-        //             }))
-        //             .await;
-        //         return Ok(());
-        //     }
-        // };
+        // Fetch all toolkits for the user
+        let toolkits = match db.list_toolkits_for_user(&profile) {
+            Ok(t) => t,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to fetch toolkits: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
 
-        // let _ = res.send(Ok(toolkit_map_json)).await;
+        // Convert the toolkits into a JSON string
+        let toolkits_json = match serde_json::to_string(&toolkits) {
+            Ok(json) => json,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to convert toolkits to JSON: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let _ = res.send(Ok(toolkits_json)).await;
         Ok(())
     }
 

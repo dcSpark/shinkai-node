@@ -66,7 +66,6 @@ pub enum LlmMessageError {
 impl LlmMessage {
     /// Imports an LlmMessage from a JSON value.
     pub fn import_functions_from_value(value: Value) -> Result<Self, LlmMessageError> {
-        eprintln!("Importing functions from value: {:?}", value);
         let role = None;
         let content = None;
         let name = None;
