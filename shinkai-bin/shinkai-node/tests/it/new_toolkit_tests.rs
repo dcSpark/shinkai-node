@@ -11,8 +11,11 @@ use shinkai_node::tools::js_tools::JSTool;
 use shinkai_node::tools::shinkai_tool::ShinkaiTool;
 use shinkai_node::tools::tool_router::ToolRouter;
 use shinkai_tools_runner::built_in_tools;
+use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 
 fn default_test_profile() -> ShinkaiName {
@@ -292,4 +295,63 @@ async fn test_create_update_and_read_toolkit() {
         remaining_tools.is_empty(),
         "No tools should remain after removing the toolkit"
     );
+}
+
+#[tokio::test]
+async fn test_create_toolkit_from_file() {
+    init_default_tracing();
+    setup();
+
+    // Initialize the database and profile
+    let db_path = format!("db_tests/{}", "toolkit_from_file");
+    let shinkai_db = Arc::new(ShinkaiDB::new(&db_path).unwrap());
+    let profile = default_test_profile();
+
+    // Read the echo_definition.json file
+    let file_path = Path::new("../../files/echo_definition.json");
+    let definition_json = fs::read_to_string(file_path).expect("Failed to read echo_definition.json");
+
+    // Parse the toolkit file into ToolDefinition
+    let tool_definition: ToolDefinition =
+        serde_json::from_str(&definition_json).expect("Failed to parse JSON into ToolDefinition");
+
+    // Validate that the code field is not None
+    assert!(
+        tool_definition.code.is_some(),
+        "Tool definition is missing the code field"
+    );
+
+    // Create JSToolkit
+    let toolkit = JSToolkit::new(&tool_definition.name, vec![tool_definition.clone()]);
+
+    // Add the toolkit to the database
+    shinkai_db.add_jstoolkit(toolkit, profile.clone()).unwrap();
+
+    // Read the toolkit from the database
+    let read_toolkit = shinkai_db.get_toolkit(&tool_definition.name, &profile).unwrap();
+
+    // Verify that the toolkit was created correctly
+    assert_eq!(read_toolkit.name, tool_definition.name);
+    assert_eq!(read_toolkit.tools.len(), 1);
+
+    let read_tool = &read_toolkit.tools[0];
+    assert_eq!(read_tool.name, "shinkai__echo");
+    assert_eq!(read_tool.description, tool_definition.description);
+    assert_eq!(read_tool.js_code, tool_definition.code.unwrap());
+
+    // Verify that the tool can be activated
+    let shinkai_tool = ShinkaiTool::JS(read_tool.clone());
+    shinkai_db
+        .activate_jstool(&shinkai_tool.tool_router_key(), &profile)
+        .unwrap();
+
+    // Verify that the tool is in the list of active tools
+    let active_tools = shinkai_db.all_tools_for_user(&profile).unwrap();
+    assert!(
+        active_tools.iter().any(|t| t.name() == read_tool.name),
+        "The new tool should be in the list of active tools"
+    );
+
+    // Clean up: remove the toolkit
+    shinkai_db.remove_jstoolkit(&tool_definition.name, &profile).unwrap();
 }
