@@ -26,6 +26,9 @@ pub struct JSTool {
 
 impl JSTool {
     pub fn run(&self, input_json: JsonValue) -> Result<RunResult, ToolError> {
+        eprintln!("Running JSTool named: {}", self.name);
+        eprintln!("Running JSTool with input: {}", input_json);
+
         let code = self.js_code.clone();
         let config = serde_json::to_string(&self.config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
         let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
