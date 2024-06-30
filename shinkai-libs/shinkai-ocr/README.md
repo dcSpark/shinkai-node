@@ -18,10 +18,10 @@ RUSTFLAGS=-g cargo build --release
 
 ### Static linking PDFium
 
-By default the project binds to the PDFium dynamic library at runtime. To statically link PDFium build with feature `static` enabled:
+By default the project binds to the PDFium dynamic library at runtime. To statically link PDFium build with feature `static-pdf-parser` enabled:
 
 ```sh
-cargo build --release --features static
+cargo build --release --features static-pdf-parser
 ```
 
 The project needs to link the PDFium static library which should be available as `libpdfium.a` in the PDFium directory. If you wish to build PDFium from source follow the steps in the *Building PDFium static library from source* section.
@@ -77,5 +77,5 @@ PDFIUM_DYNAMIC_LIB_PATH=$(PWD)/pdfium/linux-x64 cargo test -- --test-threads=1
 ## Running tests
 
 ```sh
-cargo test --features static -- --test-threads=1
+cargo test --features static-pdf-parser -- --test-threads=1
 ```
