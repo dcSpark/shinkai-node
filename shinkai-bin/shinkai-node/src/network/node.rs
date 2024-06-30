@@ -615,11 +615,9 @@ impl Node {
         })));
         let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
-        let identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
-            let identity_manager_inner = identity_manager.lock().await;
-            let boxed_identity_manager =
-                Box::new(identity_manager_inner.clone()) as Box<dyn IdentityManagerTrait + Send + 'static>;
-            Arc::new(Mutex::new(boxed_identity_manager))
+        let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>> = {
+            // Cast the Arc<Mutex<IdentityManager>> to Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
+            identity_manager.clone() as Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
         };
 
         let ws_manager = if ws_address.is_some() {

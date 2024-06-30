@@ -110,7 +110,7 @@ pub struct WebSocketManager {
     shared_keys: HashMap<String, String>,
     shinkai_db: Weak<ShinkaiDB>,
     node_name: ShinkaiName,
-    identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
+    identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
     encryption_secret_key: EncryptionStaticKey,
     message_queue: MessageQueue,
 }
@@ -134,7 +134,7 @@ impl WebSocketManager {
     pub async fn new(
         shinkai_db: Weak<ShinkaiDB>,
         node_name: ShinkaiName,
-        identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
+        identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         encryption_secret_key: EncryptionStaticKey,
     ) -> Arc<Mutex<Self>> {
         let manager = Arc::new(Mutex::new(Self {
@@ -185,7 +185,6 @@ impl WebSocketManager {
         }
     }
 
-    // TODO: shouldn't this be encrypted?
     pub async fn user_validation(
         &self,
         shinkai_name: ShinkaiName,
@@ -308,7 +307,7 @@ impl WebSocketManager {
             WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e))
         })?;
 
-        eprintln!("ws_message: {:?}", ws_message);
+        // eprintln!("ws_message: {:?}", ws_message);
 
         // Validate shared_key if it exists
         if let Some(shared_key) = &ws_message.shared_key {
