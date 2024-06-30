@@ -66,12 +66,9 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> = identity_manager.lock().await.clone_box();
-        // Decrypt the message body if needed
-
         validate_message_main_logic(
             &encryption_secret_key,
-            Arc::new(Mutex::new(identity_manager_trait)),
+            identity_manager,
             &node_name.clone(),
             potentially_encrypted_msg,
             schema_type,
