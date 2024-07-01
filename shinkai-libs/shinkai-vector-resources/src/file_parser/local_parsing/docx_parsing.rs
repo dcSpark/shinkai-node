@@ -15,8 +15,8 @@ use super::LocalFileParser;
 
 impl LocalFileParser {
     pub fn process_docx_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
-        let docx = DocxFile::from_reader(Cursor::new(file_buffer)).map_err(|_| VRError::FailedCSVParsing)?;
-        let docx = docx.parse().map_err(|_| VRError::FailedCSVParsing)?;
+        let docx = DocxFile::from_reader(Cursor::new(file_buffer)).map_err(|_| VRError::FailedDOCXParsing)?;
+        let docx = docx.parse().map_err(|_| VRError::FailedDOCXParsing)?;
 
         let mut text_groups = Vec::new();
         let mut current_text = "".to_string();

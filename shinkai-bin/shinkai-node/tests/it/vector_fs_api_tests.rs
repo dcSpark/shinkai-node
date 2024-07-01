@@ -4,7 +4,9 @@ use aes_gcm::KeyInit;
 use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, Ollama, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -23,11 +25,12 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_node::network::node::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
+use std::sync::Arc;
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
-use super::utils::node_test_api::{api_llm_provider_registration, api_initial_registration_with_no_code_for_device};
+use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
 
 #[allow(clippy::too_many_arguments)]
@@ -75,6 +78,8 @@ fn vector_fs_api_tests() {
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
             let node1_abort_handler = env.node1_abort_handler;
+
+            let node1_db_weak = Arc::downgrade(&env.node1_db);
 
             // For this test
             let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
@@ -183,6 +188,10 @@ fn vector_fs_api_tests() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
+                // Use Unstructrued for PDF parsing until the local one is integrated
+                let db_strong = node1_db_weak.upgrade().unwrap();
+                db_strong.update_local_processing_preference(false).unwrap();
+
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
                     path: "/".to_string(),

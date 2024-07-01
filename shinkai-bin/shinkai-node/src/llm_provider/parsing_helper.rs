@@ -1,24 +1,17 @@
-use crate::network::ws_manager::WSUpdateHandler;
-
 use super::error::LLMProviderError;
-use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::JobPromptGenerator;
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use regex::Regex;
-use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
 use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
-use tokio::sync::Mutex;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub struct ParsingHelper {}
 
@@ -34,12 +27,13 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), None, None).await {
-                Ok(json) => json,
-                Err(_e) => {
-                    continue; // Continue to the next iteration on error
-                }
-            };
+            let response_json =
+                match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), None, None).await {
+                    Ok(json) => json,
+                    Err(_e) => {
+                        continue; // Continue to the next iteration on error
+                    }
+                };
             extracted_answer = Some(response_json.response_string);
             break; // Exit the loop if successful
         }
@@ -73,7 +67,7 @@ impl ParsingHelper {
         parsing_tags: &Vec<DataTag>,
         agent: Option<SerializedLLMProvider>,
         max_node_text_size: u64,
-        unstructured_api: UnstructuredAPI,
+        file_parser: FileParser,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, LLMProviderError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
@@ -83,7 +77,7 @@ impl ParsingHelper {
             file_name,
             max_node_text_size,
             source.clone(),
-            unstructured_api,
+            file_parser,
         )
         .await?;
 
@@ -120,7 +114,7 @@ impl ParsingHelper {
         files: Vec<(String, Vec<u8>, DistributionInfo)>,
         generator: &dyn EmbeddingGenerator,
         agent: Option<SerializedLLMProvider>,
-        unstructured_api: UnstructuredAPI,
+        file_parser: FileParser,
     ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
         #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (
@@ -159,7 +153,7 @@ impl ParsingHelper {
                 &vec![],
                 agent.clone(),
                 (generator.model_type().max_input_token_count() - 20) as u64,
-                unstructured_api.clone(),
+                file_parser.clone(),
                 file.2.clone(),
             )
             .await?;

@@ -17,22 +17,10 @@ impl LocalFileParser {
             .map_err(|_| VRError::FailedPDFParsing)?;
 
         let mut text_groups = Vec::new();
-        let mut text_depth: usize = 0;
 
         for page in parsed_pages.into_iter() {
             for pdf_text in page.content.into_iter() {
-                text_depth = if pdf_text.likely_heading { 0 } else { text_depth };
-
-                ShinkaiFileParser::push_text_group_by_depth(
-                    &mut text_groups,
-                    text_depth,
-                    pdf_text.text,
-                    max_node_text_size,
-                );
-
-                if pdf_text.likely_heading {
-                    text_depth = 1;
-                }
+                ShinkaiFileParser::push_text_group_by_depth(&mut text_groups, 0, pdf_text.text, max_node_text_size);
             }
         }
 

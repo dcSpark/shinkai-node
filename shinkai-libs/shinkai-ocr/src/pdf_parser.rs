@@ -1,5 +1,4 @@
 use pdfium_render::prelude::*;
-use std::io::Write;
 
 use crate::image_parser::ImageParser;
 
@@ -83,6 +82,10 @@ impl PDFParser {
                         let text_object = object.as_text_object().unwrap();
                         let text = text_object.text();
 
+                        if text.is_empty() {
+                            continue;
+                        }
+
                         let current_text_position = TextPosition {
                             x: text_object.get_translation().0.value,
                             y: text_object.get_translation().1.value,
@@ -106,19 +109,21 @@ impl PDFParser {
                         let likely_paragraph = if let (Some(previous_text_position), Some(previous_text_font)) =
                             (previous_text_position.as_ref(), previous_text_font.as_ref())
                         {
-                            current_text_position.y < previous_text_position.y
+                            (current_text_position.y < previous_text_position.y
                                 && (previous_text_position.y - current_text_position.y)
-                                    > previous_text_font.font_size * 1.5
+                                    > previous_text_font.font_size * 1.5)
+                                || (previous_text_position.y < current_text_position.y
+                                    && (current_text_position.y - previous_text_position.y)
+                                        > previous_text_font.font_size * 1.5)
                         } else {
                             false
                         };
 
-                        let likely_heading = (likely_paragraph || previous_text_position.is_none())
-                            && previous_text_font.is_none()
-                            || previous_text_font.is_some_and(|f| f.font_size < current_text_font.font_size)
-                                && current_text_font.font_size > 12.0
-                                && is_bold
-                                && text.len() > 1;
+                        let likely_heading = previous_text_font
+                            .is_some_and(|f| f.font_size < current_text_font.font_size)
+                            && current_text_font.font_size > 12.0
+                            && is_bold
+                            && text.len() > 1;
 
                         // Same line, append text
                         if previous_text_position.is_some()
@@ -129,7 +134,7 @@ impl PDFParser {
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
-                                    text: page_text.clone(),
+                                    text: page_text.clone().trim().to_string(),
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
@@ -139,7 +144,7 @@ impl PDFParser {
 
                             // Add heading to the top level
                             let pdf_text = PDFText {
-                                text: text.clone(),
+                                text: text.clone().trim().to_string(),
                                 likely_heading: true,
                             };
                             pdf_texts.push(pdf_text);
@@ -149,7 +154,7 @@ impl PDFParser {
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
-                                    text: page_text.clone(),
+                                    text: page_text.clone().trim().to_string(),
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
@@ -173,7 +178,7 @@ impl PDFParser {
                         // Save text from previous text objects.
                         if !page_text.is_empty() {
                             let pdf_text = PDFText {
-                                text: page_text.clone(),
+                                text: page_text.clone().trim().to_string(),
                                 likely_heading: false,
                             };
                             pdf_texts.push(pdf_text);
@@ -202,7 +207,7 @@ impl PDFParser {
             // Drop parsed page numbers as text
             if !page_text.is_empty() && page_text != format!("{}", page_index + 1) {
                 let pdf_text = PDFText {
-                    text: page_text.clone(),
+                    text: page_text.clone().trim().to_string(),
                     likely_heading: false,
                 };
                 pdf_texts.push(pdf_text);
@@ -218,7 +223,7 @@ impl PDFParser {
 
         if !page_text.is_empty() {
             let pdf_text = PDFText {
-                text: page_text.clone(),
+                text: page_text.clone().trim().to_string(),
                 likely_heading: false,
             };
             pdf_pages

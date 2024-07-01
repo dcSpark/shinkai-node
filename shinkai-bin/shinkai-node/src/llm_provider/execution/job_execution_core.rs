@@ -1,13 +1,12 @@
+use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
-use crate::db::ShinkaiDB;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::network::ws_manager::{self, WSUpdateHandler};
-use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
@@ -22,15 +21,15 @@ use shinkai_message_primitives::{
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::file_parser::file_parser::FileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
-use tokio::sync::Mutex;
-use warp::filters::ws;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 use tracing::instrument;
 
@@ -70,8 +69,15 @@ impl JobManager {
         let user_profile = match user_profile {
             Some(profile) => profile,
             None => {
-                return Self::handle_error(&db, None, &job_id, &identity_secret_key, LLMProviderError::NoUserProfileFound, ws_manager)
-                    .await
+                return Self::handle_error(
+                    &db,
+                    None,
+                    &job_id,
+                    &identity_secret_key,
+                    LLMProviderError::NoUserProfileFound,
+                    ws_manager,
+                )
+                .await
             }
         };
 
@@ -114,7 +120,9 @@ impl JobManager {
 
         let workflow_found = match workflow_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
+            Err(e) => {
+                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+            }
         };
         if workflow_found {
             return Ok(job_id);
@@ -135,7 +143,9 @@ impl JobManager {
         .await;
         let jobkai_found = match jobkai_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
+            Err(e) => {
+                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+            }
         };
         if jobkai_found {
             return Ok(job_id);
@@ -653,7 +663,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        _db: Arc<ShinkaiDB>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         agent: Option<SerializedLLMProvider>,
         files_inbox: String,
@@ -675,17 +685,18 @@ impl JobManager {
             }
         };
 
-         // Filter out image files
-         // TODO: Eventually we will add extra embeddings that support images
-         let files: Vec<(String, Vec<u8>)> = files.into_iter()
-         .filter(|(name, _)| {
-             let name_lower = name.to_lowercase();
-             !name_lower.ends_with(".png")
-                 && !name_lower.ends_with(".jpg")
-                 && !name_lower.ends_with(".jpeg")
-                 && !name_lower.ends_with(".gif")
-         })
-         .collect();
+        // Filter out image files
+        // TODO: Eventually we will add extra embeddings that support images
+        let files: Vec<(String, Vec<u8>)> = files
+            .into_iter()
+            .filter(|(name, _)| {
+                let name_lower = name.to_lowercase();
+                !name_lower.ends_with(".png")
+                    && !name_lower.ends_with(".jpg")
+                    && !name_lower.ends_with(".jpeg")
+                    && !name_lower.ends_with(".gif")
+            })
+            .collect();
 
         // Sort out the vrpacks from the rest
         #[allow(clippy::type_complexity)]
@@ -700,9 +711,13 @@ impl JobManager {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
+        let file_parser = match db.get_local_processing_preference()? {
+            true => FileParser::Local,
+            false => FileParser::Unstructured(unstructured_api),
+        };
+
         let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), unstructured_api.clone())
-                .await?;
+            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), file_parser).await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

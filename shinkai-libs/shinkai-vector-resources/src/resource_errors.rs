@@ -13,6 +13,7 @@ pub enum VRError {
     InvalidModelArchitecture,
     FailedJSONParsing,
     FailedCSVParsing,
+    FailedDOCXParsing,
     FailedPDFParsing,
     FailedMDParsing,
     FailedTXTParsing,
@@ -56,6 +57,7 @@ impl fmt::Display for VRError {
             }
             VRError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             VRError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
+            VRError::FailedDOCXParsing => write!(f, "Failed DOCX parsing."),
             VRError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
             VRError::FailedMDParsing => write!(f, "Failed MD parsing."),
             VRError::FailedTXTParsing => write!(f, "Failed TXT parsing."),

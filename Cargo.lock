@@ -982,7 +982,7 @@ dependencies = [
  "bitflags 2.4.0",
  "cexpr",
  "clang-sys",
- "itertools 0.11.0",
+ "itertools 0.12.1",
  "lazy_static",
  "lazycell",
  "log 0.4.21",
@@ -3979,15 +3979,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iter_tools"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55f9f40b3308a2367d5201430790786748b3e038982317dd880677c0f7b3f3f0"
-dependencies = [
- "itertools 0.11.0",
-]
-
-[[package]]
 name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4901,9 +4892,9 @@ dependencies = [
 
 [[package]]
 name = "ocrs"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37875b0b8c19cb9691dc15e882a6782810fb1f00967dfdbd43c0a93963807147"
+checksum = "04022287d9279e74c3d718cc7fd06fa57b48998bb2a24eb6e8582934220212a0"
 dependencies = [
  "anyhow",
  "rayon",
@@ -5340,9 +5331,9 @@ dependencies = [
 
 [[package]]
 name = "pdfium-render"
-version = "0.8.20"
+version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f18a35caa489bb0b6f52c3318aefdc1a13262770697835d7692928186575560a"
+checksum = "50d2f2669618a1ae68a86fe975fdda1c6a0b6dc9d5358ea8d2cdcd8da3307e5a"
 dependencies = [
  "bindgen",
  "bitflags 2.4.0",
@@ -5352,7 +5343,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log 1.0.0",
  "image 0.25.1",
- "iter_tools",
+ "itertools 0.12.1",
  "js-sys",
  "libloading",
  "log 0.4.21",
@@ -6744,13 +6735,15 @@ dependencies = [
 
 [[package]]
 name = "rten"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb9d6d80601e57cab46f477955be6e3be1a4c92ed0aebb3376e1f19d24e83bb1"
+checksum = "09c030cdf90e64c5eeeba389ca59da14b0a106b1b8366c15591251bb6a2e777f"
 dependencies = [
  "flatbuffers",
  "libm",
+ "num_cpus",
  "rayon",
+ "rten-simd",
  "rten-tensor",
  "rten-vecmath",
  "rustc-hash",
@@ -6760,27 +6753,36 @@ dependencies = [
 
 [[package]]
 name = "rten-imageproc"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "529fdef25f8232ebb08fb6cfc785ec97a7fb268bebc4895e36e8750e2bbeaa51"
+checksum = "5ba61077269b2b2c90445bfd55fb798dcd544b56e7fd78faaea51940b8e429ae"
 dependencies = [
  "rten-tensor",
 ]
 
 [[package]]
-name = "rten-tensor"
-version = "0.9.0"
+name = "rten-simd"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffa78180a98337a43163e9da8f202120e9ae3b82366cccfb05a5a854e48cd581"
+checksum = "8eb16da64e0d08ce56dc17d8304ab2da541176ee30430c0b0e581a7841a660ae"
+
+[[package]]
+name = "rten-tensor"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52f5e53d2e43bb736e89e4ea41b707e024190f8ba47c3eddf5a3c2d022089909"
 dependencies = [
  "smallvec 1.13.2",
 ]
 
 [[package]]
 name = "rten-vecmath"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "495f48d459768d61ca37b418f79ac7aac3a707024c79fa49a14dd2c1ad8a2c0e"
+checksum = "56eccc46a7e7a2df2cebb7ba95e613a01942a01e0f2f2f7d6122176ab7372e9f"
+dependencies = [
+ "rten-simd",
+]
 
 [[package]]
 name = "rust_decimal"

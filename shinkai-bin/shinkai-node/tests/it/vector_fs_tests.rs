@@ -1,8 +1,8 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use shinkai_node::llm_provider::parsing_helper::ParsingHelper;
-use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_node::vector_fs::vector_fs_reader::VFSReader;
@@ -10,7 +10,7 @@ use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
 use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector_fs_error::VectorFSError};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
@@ -76,7 +76,7 @@ pub async fn get_shinkai_intro_doc_async(
         data_tags,
         500,
         DistributionInfo::new_empty(),
-        unstructured,
+        FileParser::Unstructured(unstructured),
     )
     .await
     .unwrap();
