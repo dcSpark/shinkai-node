@@ -5,7 +5,7 @@ use super::{
     subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
 };
 use crate::{
-    llm_provider::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
+    db::ShinkaiDB, llm_provider::parsing_helper::ParsingHelper, managers::IdentityManager,
     network::subscription_manager::external_subscriber_manager::SharedFolderInfo, schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };
@@ -24,6 +24,7 @@ use shinkai_message_primitives::{
             APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
         },
     },
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
@@ -434,6 +435,20 @@ impl Node {
                 (content, path_ids, score)
             })
             .collect();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Top 5 search results:\n{}",
+                results
+                    .iter()
+                    .take(5)
+                    .map(|(text, _, score)| format!("score: {}, text: {}\n", score, text))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        );
 
         let _ = res.send(Ok(results)).await.map_err(|_| ());
         Ok(())

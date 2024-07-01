@@ -1,6 +1,6 @@
-use crate::llm_provider::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_manager::JobManager;
 use crate::vector_fs::vector_fs::VectorFS;
 use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -15,7 +15,6 @@ use shinkai_vector_resources::vector_resource::{
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-
 
 impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
@@ -180,6 +179,24 @@ impl JobManager {
         // for node in &final_nodes {
         //     eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
         // }
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Top 5 search results:\n{}",
+                final_nodes
+                    .iter()
+                    .take(5)
+                    .map(|node| format!(
+                        "score: {}, text: {}\n",
+                        node.score,
+                        node.node.get_text_content().unwrap_or("")
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        );
 
         Ok((final_nodes, first_intro_text))
     }
@@ -375,11 +392,7 @@ impl JobManager {
                     ret_node.score = deep_search_scores_average_out(
                         None,
                         resource_score,
-                        resource
-                            .as_trait_object()
-                            .description()
-                            .unwrap_or("")
-                            .to_string(),
+                        resource.as_trait_object().description().unwrap_or("").to_string(),
                         ret_node.score,
                         ret_node.node.get_text_content().unwrap_or("").to_string(),
                     );
