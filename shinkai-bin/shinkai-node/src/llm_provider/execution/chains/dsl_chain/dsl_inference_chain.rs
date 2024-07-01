@@ -1,8 +1,15 @@
 use std::{any::Any, collections::HashMap, fmt, marker::PhantomData};
 
-use crate::llm_provider::{execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike};
+use crate::{
+    llm_provider::{
+        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike,
+        providers::shared::openai::FunctionCall,
+    },
+    tools::shinkai_tool::ShinkaiTool,
+};
 use async_trait::async_trait;
 use dashmap::DashMap;
+use serde_json::Value as JsonValue;
 use shinkai_dsl::{
     dsl_schemas::Workflow,
     sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
@@ -126,6 +133,34 @@ impl<'a> DslChain<'a> {
         );
     }
 
+    pub async fn add_tools_from_router(&mut self) -> Result<(), WorkflowError> {
+        let tool_router = self
+            .context
+            .tool_router
+            .as_ref()
+            .ok_or_else(|| WorkflowError::ExecutionError("ToolRouter not available".to_string()))?
+            .lock()
+            .await;
+
+        let tools = tool_router
+            .all_available_js_tools(&self.context.user_profile, self.context.db.clone())
+            .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
+
+        for tool in tools {
+            let function_name = format!("{}_{}", tool.toolkit_name(), tool.name());
+            eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
+            self.functions.insert(
+                function_name.clone(),
+                Box::new(ShinkaiToolFunction {
+                    tool: tool.clone(),
+                    context: self.context.clone(),
+                }),
+            );
+        }
+
+        Ok(())
+    }
+
     pub fn add_all_generic_functions(&mut self) {
         self.add_generic_function("concat", |context, args| {
             generic_functions::concat_strings(&*context, args)
@@ -243,6 +278,88 @@ impl AsyncFunction for InferenceFunction {
         );
 
         Ok(Box::new(answer))
+    }
+}
+
+struct ShinkaiToolFunction {
+    tool: ShinkaiTool,
+    context: InferenceChainContext,
+}
+
+#[async_trait]
+impl AsyncFunction for ShinkaiToolFunction {
+    async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+        if args.len() != 1 {
+            return Err(WorkflowError::InvalidArgument(
+                "Expected 1 argument: function_args".to_string(),
+            ));
+        }
+
+        let mut params = serde_json::Map::new();
+
+        // Iterate through the tool's input_args and the provided args
+        for (i, arg) in self.tool.input_args().iter().enumerate() {
+            if i >= args.len() {
+                if arg.is_required {
+                    return Err(WorkflowError::InvalidArgument(format!(
+                        "Missing required argument: {}",
+                        arg.name
+                    )));
+                }
+                continue;
+            }
+
+            let value = args[i]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::InvalidArgument(format!("Invalid argument for {}", arg.name)))?;
+
+            params.insert(arg.name.clone(), serde_json::Value::String(value.clone()));
+        }
+
+        let function_call = FunctionCall {
+            name: self.tool.name(),
+            arguments: serde_json::Value::Object(params),
+        };
+
+        let result = match &self.tool {
+            ShinkaiTool::JS(js_tool) => {
+                let result = js_tool
+                    .run(function_call.arguments)
+                    .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+                let data = &result.data;
+
+                // Check if the result has only one main type
+                let main_result = if let Some(main_type) = js_tool.result.properties.as_object().and_then(|props| {
+                    if props.len() == 1 {
+                        props.keys().next().cloned()
+                    } else {
+                        None
+                    }
+                }) {
+                    data.get(&main_type).cloned().unwrap_or_else(|| data.clone())
+                } else {
+                    data.clone()
+                };
+
+                match main_result {
+                    serde_json::Value::String(s) => s,
+                    _ => serde_json::to_string(&main_result)
+                        .map_err(|e| WorkflowError::ExecutionError(format!("Failed to stringify result: {}", e)))?,
+                }
+            }
+            ShinkaiTool::JSLite(_) => {
+                return Err(WorkflowError::ExecutionError(
+                    "Simplified JS tools are not supported in this context".to_string(),
+                ));
+            }
+            ShinkaiTool::Rust(_) => {
+                return Err(WorkflowError::ExecutionError(
+                    "Rust tools are not supported in this context".to_string(),
+                ));
+            }
+        };
+
+        Ok(Box::new(result))
     }
 }
 

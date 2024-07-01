@@ -28,6 +28,7 @@ pub enum ToolError {
     NotStarted,
     ToolNotRunnable(String),
     ExecutionError(String),
+    DatabaseError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -58,6 +59,7 @@ impl fmt::Display for ToolError {
             ToolError::NotStarted => write!(f, "Tool is not started."),
             ToolError::ToolNotRunnable(ref t) => write!(f, "Tool is not runnable: {}", t),
             ToolError::ExecutionError(ref e) => write!(f, "Execution error: {}", e),
+            ToolError::DatabaseError(ref e) => write!(f, "Database error: {}", e),
         }
     }
 }

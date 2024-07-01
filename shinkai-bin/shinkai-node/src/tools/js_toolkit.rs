@@ -5,7 +5,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
-use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig};
+use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig, js_tools::JSToolResult};
 
 /// A JSToolkit is a collection of JSTools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,6 +41,15 @@ impl JSToolkit {
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
 
+        let result = JSToolResult {
+            result_type: definition.result["type"].as_str().unwrap_or("object").to_string(),
+            properties: definition.result["properties"].clone(),
+            required: definition.result["required"]
+                .as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default(),
+        };
+
         JSTool {
             toolkit_name: toolkit_name.to_string(),
             name: tool_name,
@@ -53,6 +62,7 @@ impl JSToolkit {
             activated: false,
             config_set,
             embedding: None,
+            result,
         }
     }
 

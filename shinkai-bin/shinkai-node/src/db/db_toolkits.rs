@@ -284,7 +284,7 @@ impl ShinkaiDB {
             .ok_or_else(|| ShinkaiDBError::ToolkitNotFound(format!("Toolkit not found for name: {}", toolkit_name)))?;
 
         let toolkit_with_references: JSToolkitWithToolReferences = bincode::deserialize(&toolkit_bytes)
-            .map_err(|_| ShinkaiDBError::DeserializationFailed("Failed to deserialize toolkit".to_string()))?;
+            .map_err(|e| ShinkaiDBError::DeserializationFailed(format!("Failed to deserialize toolkit: {}", e)))?;
 
         // Reconstruct the full toolkit by fetching each tool
         let full_tools = toolkit_with_references

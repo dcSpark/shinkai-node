@@ -3,6 +3,7 @@ use std::thread;
 use super::js_toolkit_headers::ToolConfig;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::tool::Tool;
@@ -22,6 +23,7 @@ pub struct JSTool {
     pub config_set: bool,
     pub activated: bool,
     pub embedding: Option<Embedding>,
+    pub result: JSToolResult,
 }
 
 impl JSTool {
@@ -68,6 +70,68 @@ impl JSTool {
             config_set: self.config_set,
             activated: self.activated,
             embedding: self.embedding.clone(),
+            result: self.result.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JSToolResult {
+    pub result_type: String,
+    pub properties: serde_json::Value,
+    pub required: Vec<String>,
+}
+
+impl Serialize for JSToolResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let properties_str = serde_json::to_string(&self.properties)
+            .map_err(serde::ser::Error::custom)?;
+        
+        let helper = Helper {
+            result_type: self.result_type.clone(),
+            properties: properties_str,
+            required: self.required.clone(),
+        };
+        
+        helper.serialize(serializer)
+    }
+}
+
+
+impl<'de> Deserialize<'de> for JSToolResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let helper = Helper::deserialize(deserializer)?;
+        let properties: JsonValue = serde_json::from_str(&helper.properties)
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(JSToolResult {
+            result_type: helper.result_type,
+            properties,
+            required: helper.required,
+        })
+    }
+}
+
+
+#[derive(Serialize, Deserialize)]
+struct Helper {
+    result_type: String,
+    properties: String,
+    required: Vec<String>,
+}
+
+impl JSToolResult {
+    pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
+        JSToolResult {
+            result_type,
+            properties,
+            required,
         }
     }
 }
@@ -84,6 +148,7 @@ pub struct JSToolWithoutCode {
     pub config_set: bool,
     pub activated: bool,
     pub embedding: Option<Embedding>,
+    pub result: JSToolResult,
 }
 
 impl JSToolWithoutCode {
@@ -99,6 +164,7 @@ impl JSToolWithoutCode {
             config_set: tool.config_set,
             activated: tool.activated,
             embedding: tool.embedding.clone(),
+            result: tool.result.clone(),
         }
     }
 }

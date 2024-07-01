@@ -397,6 +397,35 @@ impl ToolRouter {
         shinkai_tools
     }
 
+    /// Returns all available JS tools for a given user profile
+    pub fn all_available_js_tools(
+        &self,
+        profile: &ShinkaiName,
+        db: Arc<ShinkaiDB>,
+    ) -> Result<Vec<ShinkaiTool>, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
+        let profile = profile
+            .extract_profile()
+            .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
+
+        match db.all_tools_for_user(&profile) {
+            Ok(tools) => {
+                let js_tools: Vec<ShinkaiTool> = tools
+                    .into_iter()
+                    .filter_map(|tool| match tool {
+                        ShinkaiTool::JS(_) | ShinkaiTool::JSLite(_) => Some(tool),
+                        _ => None,
+                    })
+                    .collect();
+                Ok(js_tools)
+            }
+            Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+        }
+    }
+
     /// Acquire the tool embedding for a given ShinkaiTool.
     pub fn get_tool_embedding(
         &self,

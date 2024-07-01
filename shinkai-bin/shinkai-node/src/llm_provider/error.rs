@@ -327,3 +327,9 @@ impl From<String> for LLMProviderError {
         LLMProviderError::WorkflowExecutionError(err)
     }
 }
+
+impl From<shinkai_dsl::sm_executor::WorkflowError> for LLMProviderError {
+    fn from(err: shinkai_dsl::sm_executor::WorkflowError) -> LLMProviderError {
+        LLMProviderError::WorkflowExecutionError(err.to_string())
+    }
+}

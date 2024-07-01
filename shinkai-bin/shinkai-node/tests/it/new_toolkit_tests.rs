@@ -339,6 +339,17 @@ async fn test_create_toolkit_from_file() {
     assert_eq!(read_tool.description, tool_definition.description);
     assert_eq!(read_tool.js_code, tool_definition.code.unwrap());
 
+    // Verify the result field
+    assert_eq!(read_tool.result.result_type, tool_definition.result["type"].as_str().unwrap_or("object"));
+    assert_eq!(read_tool.result.properties, tool_definition.result["properties"]);
+    assert_eq!(
+        read_tool.result.required,
+        tool_definition.result["required"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>())
+            .unwrap_or_default()
+    );
+
     // Verify that the tool can be activated
     let shinkai_tool = ShinkaiTool::JS(read_tool.clone());
     shinkai_db
