@@ -5,20 +5,19 @@ use crate::{
         execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike,
         providers::shared::openai::FunctionCall,
     },
-    tools::shinkai_tool::ShinkaiTool,
+    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use serde_json::Value as JsonValue;
 use shinkai_dsl::{
     dsl_schemas::Workflow,
     sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use shinkai_message_primitives::{
-    schemas::inbox_name::{self, InboxName},
+    schemas::inbox_name::InboxName,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+use shinkai_vector_resources::{embeddings::Embedding, vector_resource::RetrievedNode};
 
 use crate::llm_provider::{
     error::LLMProviderError,
@@ -33,15 +32,14 @@ use super::generic_functions;
 
 pub struct DslChain<'a> {
     pub context: InferenceChainContext,
-    pub workflow: Workflow,
+    pub workflow_tool: WorkflowTool,
     pub functions: FunctionMap<'a>,
 }
 
 impl<'a> fmt::Debug for DslChain<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DslChain")
-            .field("context", &self.context)
-            .field("workflow", &self.workflow)
+            .field("workflow_tool", &self.workflow_tool)
             .field("functions", &"<functions>")
             .finish()
     }
@@ -67,7 +65,11 @@ impl<'a> InferenceChain for DslChain<'a> {
             "$INPUT".to_string(),
             self.context.user_message.clone().original_user_message_string,
         );
-        let executor = engine.iter(&self.workflow, Some(final_registers.clone()), Some(logs.clone()));
+        let executor = engine.iter(
+            &self.workflow_tool.workflow,
+            Some(final_registers.clone()),
+            Some(logs.clone()),
+        );
 
         for result in executor {
             match result {
@@ -99,9 +101,16 @@ impl<'a> DslChain<'a> {
     pub fn new(context: InferenceChainContext, workflow: Workflow, functions: FunctionMap<'a>) -> Self {
         Self {
             context,
-            workflow,
+            workflow_tool: WorkflowTool {
+                workflow,
+                embedding: None,
+            },
             functions,
         }
+    }
+
+    pub fn update_embedding(&mut self, new_embedding: Embedding) {
+        self.workflow_tool.embedding = Some(new_embedding);
     }
 
     pub fn add_inference_function(&mut self) {
@@ -121,6 +130,7 @@ impl<'a> DslChain<'a> {
             ) -> Result<Box<dyn Any + Send>, WorkflowError>
             + Send
             + Sync
+            + Clone
             + 'a,
     {
         self.functions.insert(
@@ -197,6 +207,7 @@ impl<'a> DslChain<'a> {
     }
 }
 
+#[derive(Clone)]
 struct InferenceFunction {
     context: InferenceChainContext,
 }
@@ -281,6 +292,7 @@ impl AsyncFunction for InferenceFunction {
     }
 }
 
+#[derive(Clone)]
 struct ShinkaiToolFunction {
     tool: ShinkaiTool,
     context: InferenceChainContext,
@@ -357,6 +369,12 @@ impl AsyncFunction for ShinkaiToolFunction {
                     "Rust tools are not supported in this context".to_string(),
                 ));
             }
+            ShinkaiTool::Workflow(_) => {
+                // TODO: we should allow for a workflow to call another workflow
+                return Err(WorkflowError::ExecutionError(
+                    "Workflows are not supported in this context".to_string(),
+                ));
+            }
         };
 
         Ok(Box::new(result))
@@ -364,11 +382,13 @@ impl AsyncFunction for ShinkaiToolFunction {
 }
 
 #[allow(dead_code)]
+#[derive(Clone)]
 struct GenericFunction<F>
 where
     F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>
         + Send
-        + Sync,
+        + Sync
+        + Clone,
 {
     func: F,
     context: Box<dyn InferenceChainContextTrait>,
@@ -380,7 +400,8 @@ impl<F> AsyncFunction for GenericFunction<F>
 where
     F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>
         + Send
-        + Sync,
+        + Sync
+        + Clone,
 {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         (self.func)(self.context.clone(), args)

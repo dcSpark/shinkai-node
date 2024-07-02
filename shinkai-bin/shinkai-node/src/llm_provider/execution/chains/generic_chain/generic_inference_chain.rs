@@ -1,14 +1,12 @@
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
-use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -23,7 +21,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
-use std::any::Any;
 use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
