@@ -2,17 +2,17 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
-use serde_json::{self, Value};
+use serde_json::{self};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::js_tools::JSToolWithoutCode;
+use super::{js_tools::JSToolWithoutCode, workflow_tool::WorkflowTool};
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ShinkaiTool {
     Rust(RustTool),
     JS(JSTool),
     JSLite(JSToolWithoutCode),
-    // Add Workflow here
+    Workflow(WorkflowTool),
 }
 
 impl ShinkaiTool {
@@ -24,6 +24,7 @@ impl ShinkaiTool {
                 ShinkaiTool::Rust(r) => r.toolkit_type_name(),
                 ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
                 ShinkaiTool::JSLite(j) => j.toolkit_name.to_string(),
+                ShinkaiTool::Workflow(w) => w.get_name(),
             },
         );
 
@@ -42,6 +43,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => r.name.clone(),
             ShinkaiTool::JS(j) => j.name.clone(),
             ShinkaiTool::JSLite(j) => j.name.clone(),
+            ShinkaiTool::Workflow(w) => w.get_name(),
         }
     }
     /// Tool description
@@ -50,6 +52,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => r.description.clone(),
             ShinkaiTool::JS(j) => j.description.clone(),
             ShinkaiTool::JSLite(j) => j.description.clone(),
+            ShinkaiTool::Workflow(w) => w.get_description(),
         }
     }
 
@@ -59,6 +62,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => r.name.clone(),
             ShinkaiTool::JS(j) => j.name.clone(),
             ShinkaiTool::JSLite(j) => j.name.clone(),
+            ShinkaiTool::Workflow(w) => w.get_name(),
         }
     }
 
@@ -68,6 +72,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => r.toolkit_type_name().clone(),
             ShinkaiTool::JS(j) => j.toolkit_name.clone(),
             ShinkaiTool::JSLite(j) => j.toolkit_name.clone(),
+            ShinkaiTool::Workflow(w) => w.get_name(),
         }
     }
 
@@ -77,6 +82,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => r.input_args.clone(),
             ShinkaiTool::JS(j) => j.input_args.clone(),
             ShinkaiTool::JSLite(j) => j.input_args.clone(),
+            ShinkaiTool::Workflow(w) => w.get_input_args(),
         }
     }
 
@@ -149,6 +155,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => Some(r.tool_embedding.clone()),
             ShinkaiTool::JS(j) => j.embedding.clone(),
             ShinkaiTool::JSLite(j) => j.embedding.clone(),
+            ShinkaiTool::Workflow(w) => w.embedding.clone(),
         }
     }
 

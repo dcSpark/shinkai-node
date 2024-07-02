@@ -528,6 +528,9 @@ impl ToolRouter {
                     return Err(LLMProviderError::FunctionNotFound(function_name));
                 }
             }
+            ShinkaiTool::Workflow(_) => {
+                unimplemented!("Workflow not implemented");
+            }
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))
