@@ -1,108 +1,170 @@
+use std::thread;
+
+use super::js_toolkit_headers::ToolConfig;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use shinkai_tools_runner::tools::run_result::RunResult;
+use shinkai_tools_runner::tools::tool::Tool;
+use shinkai_vector_resources::embeddings::Embedding;
+use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JSTool {
     pub toolkit_name: String,
     pub name: String,
+    pub author: String,
+    pub js_code: String,
+    pub config: Vec<ToolConfig>,
     pub description: String,
+    pub keywords: Vec<String>,
     pub input_args: Vec<ToolArgument>,
+    pub config_set: bool,
+    pub activated: bool,
+    pub embedding: Option<Embedding>,
+    pub result: JSToolResult,
 }
 
 impl JSTool {
-    pub fn run(&self, _input_json: JsonValue) -> Result<(), ToolError> {
-        // Implement the functionality here
-        Ok(())
+    pub fn run(&self, input_json: JsonValue) -> Result<RunResult, ToolError> {
+        eprintln!("Running JSTool named: {}", self.name);
+        eprintln!("Running JSTool with input: {}", input_json);
+
+        let code = self.js_code.clone();
+        let config = serde_json::to_string(&self.config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+        let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+
+        // Create a new thread with its own Tokio runtime
+        thread::spawn(move || {
+            let rt = Runtime::new().expect("Failed to create Tokio runtime");
+            rt.block_on(async {
+                let mut tool = Tool::new();
+                tool.load_from_code(&code, &config)
+                    .await
+                    .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+                tool.run(&input)
+                    .await
+                    .map_err(|e| ToolError::ExecutionError(e.to_string()))
+            })
+        })
+        .join()
+        .expect("Thread panicked")
     }
 
     /// Convert to JSON string
     pub fn to_json_string(&self) -> Result<String, ToolError> {
-        let json_value = self.to_json()?;
-        serde_json::to_string(&json_value).map_err(|e| ToolError::SerializationError(e.to_string()))
+        serde_json::to_string(self).map_err(|e| ToolError::SerializationError(e.to_string()))
     }
 
-    /// Convert from JSON string
-    pub fn from_json_string(json_str: &str) -> Result<Self, ToolError> {
-        let json_value: JsonValue = serde_json::from_str(json_str).map_err(|e| ToolError::ParseError(e.to_string()))?;
-        Self::from_json(&json_value)
-    }
-
-    /// Convert to json
-    pub fn to_json(&self) -> Result<JsonValue, ToolError> {
-        let mut properties = serde_json::Map::new();
-        let mut required = Vec::new();
-
-        for arg in &self.input_args {
-            properties.insert(
-                arg.name.clone(),
-                serde_json::json!({
-                    "type": arg.arg_type,
-                    "description": arg.description,
-                }),
-            );
-            if arg.is_required {
-                required.push(arg.name.clone());
-            }
+    /// Convert to JSToolWithoutCode
+    pub fn to_without_code(&self) -> JSToolWithoutCode {
+        JSToolWithoutCode {
+            toolkit_name: self.toolkit_name.clone(),
+            name: self.name.clone(),
+            author: self.author.clone(),
+            config: self.config.clone(),
+            description: self.description.clone(),
+            keywords: self.keywords.clone(),
+            input_args: self.input_args.clone(),
+            config_set: self.config_set,
+            activated: self.activated,
+            embedding: self.embedding.clone(),
+            result: self.result.clone(),
         }
-
-        let json_value = serde_json::json!({
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            },
-        });
-
-        Ok(json_value)
     }
+}
 
-    /// Convert from json
-    pub fn from_json(json: &JsonValue) -> Result<Self, ToolError> {
-        let name = json["name"].as_str().ok_or(ToolError::ParseError("name".to_string()))?;
-        let description = json["description"]
-            .as_str()
-            .ok_or(ToolError::ParseError("description".to_string()))?;
-        let parameters = json["parameters"]
-            .as_object()
-            .ok_or(ToolError::ParseError("parameters".to_string()))?;
-        let properties = parameters["properties"]
-            .as_object()
-            .ok_or(ToolError::ParseError("properties".to_string()))?;
-        let required = parameters["required"]
-            .as_array()
-            .ok_or(ToolError::ParseError("required".to_string()))?;
+#[derive(Debug, Clone, PartialEq)]
+pub struct JSToolResult {
+    pub result_type: String,
+    pub properties: serde_json::Value,
+    pub required: Vec<String>,
+}
 
-        let mut input_args = Vec::new();
-        for (name, prop) in properties {
-            let arg_type = prop["type"].as_str().ok_or(ToolError::ParseError("type".to_string()))?;
-            let description = prop["description"]
-                .as_str()
-                .ok_or(ToolError::ParseError("description".to_string()))?;
-            let is_required = required.iter().any(|r| r.as_str() == Some(name));
+impl Serialize for JSToolResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let properties_str = serde_json::to_string(&self.properties)
+            .map_err(serde::ser::Error::custom)?;
+        
+        let helper = Helper {
+            result_type: self.result_type.clone(),
+            properties: properties_str,
+            required: self.required.clone(),
+        };
+        
+        helper.serialize(serializer)
+    }
+}
 
-            input_args.push(ToolArgument {
-                name: name.clone(),
-                arg_type: arg_type.to_string(),
-                description: description.to_string(),
-                is_required,
-            });
-        }
 
-        Ok(Self {
-            toolkit_name: "".to_string(), // Assuming toolkit_name is not part of the JSON structure
-            name: name.to_string(),
-            description: description.to_string(),
-            input_args,
+impl<'de> Deserialize<'de> for JSToolResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let helper = Helper::deserialize(deserializer)?;
+        let properties: JsonValue = serde_json::from_str(&helper.properties)
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(JSToolResult {
+            result_type: helper.result_type,
+            properties,
+            required: helper.required,
         })
     }
+}
 
-    /// Convert from toolkit JSON
-    pub fn from_toolkit_json(toolkit_name: &str, json: &JsonValue) -> Result<Self, ToolError> {
-        let mut tool = Self::from_json(json)?;
-        tool.toolkit_name = toolkit_name.to_string();
-        Ok(tool)
+
+#[derive(Serialize, Deserialize)]
+struct Helper {
+    result_type: String,
+    properties: String,
+    required: Vec<String>,
+}
+
+impl JSToolResult {
+    pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
+        JSToolResult {
+            result_type,
+            properties,
+            required,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct JSToolWithoutCode {
+    pub toolkit_name: String,
+    pub name: String,
+    pub author: String,
+    pub config: Vec<ToolConfig>,
+    pub description: String,
+    pub keywords: Vec<String>,
+    pub input_args: Vec<ToolArgument>,
+    pub config_set: bool,
+    pub activated: bool,
+    pub embedding: Option<Embedding>,
+    pub result: JSToolResult,
+}
+
+impl JSToolWithoutCode {
+    pub fn from_jstool(tool: &JSTool) -> Self {
+        JSToolWithoutCode {
+            toolkit_name: tool.toolkit_name.clone(),
+            name: tool.name.clone(),
+            author: tool.author.clone(),
+            config: tool.config.clone(),
+            description: tool.description.clone(),
+            keywords: tool.keywords.clone(),
+            input_args: tool.input_args.clone(),
+            config_set: tool.config_set,
+            activated: tool.activated,
+            embedding: tool.embedding.clone(),
+            result: tool.result.clone(),
+        }
     }
 }

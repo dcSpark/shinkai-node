@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, OllamaTextEmbeddingsInference};
 use crate::resource_errors::VRError;
-use crate::shinkai_time::{ShinkaiTime};
+use crate::shinkai_time::ShinkaiTime;
 use crate::source::{DistributionInfo, SourceReference, VRSourceReference};
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::vector_resource::vector_search_traversal::VRHeader;
@@ -369,8 +369,7 @@ impl VectorResourceCore for MapVectorResource {
         let mut results = vec![];
 
         for id in ids {
-            let result =
-                self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone(), update_merkle_hashes)?;
+            let result = self.remove_node_dt_specified(id.to_string(), new_written_datetime, update_merkle_hashes)?;
             results.push(result);
         }
 
@@ -382,6 +381,7 @@ impl MapVectorResource {
     /// Create a new MapVectorResource.
     /// If is_merkelized == true, then this VR will automatically generate a merkle root
     /// & merkle hashes for all nodes.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: &str,
         desc: Option<&str>,

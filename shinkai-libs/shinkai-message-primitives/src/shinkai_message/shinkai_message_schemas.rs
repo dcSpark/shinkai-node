@@ -61,6 +61,9 @@ pub enum MessageSchemaType {
     SubscriptionRequiresTreeUpdateResponse,
     UpdateLocalProcessingPreference,
     GetProcessingPreference,
+    APIRemoveToolkit,
+    APIAddToolkit,
+    APIListToolkits,
 }
 
 impl MessageSchemaType {
@@ -117,6 +120,9 @@ impl MessageSchemaType {
             "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
             "UpdateLocalProcessingPreference" => Some(Self::UpdateLocalProcessingPreference),
             "GetProcessingPreference" => Some(Self::GetProcessingPreference),
+            "APIRemoveToolkit" => Some(Self::APIRemoveToolkit),
+            "APIAddToolkit" => Some(Self::APIAddToolkit),
+            "APIListToolkits" => Some(Self::APIListToolkits),
             _ => None,
         }
     }
@@ -173,6 +179,9 @@ impl MessageSchemaType {
             Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
             Self::UpdateLocalProcessingPreference => "UpdateLocalProcessingPreference",
             Self::GetProcessingPreference => "GetProcessingPreference",
+            Self::APIRemoveToolkit => "APIRemoveToolkit",
+            Self::APIAddToolkit => "APIAddToolkit",
+            Self::APIListToolkits => "APIListToolkits",
             Self::Empty => "",
         }
     }

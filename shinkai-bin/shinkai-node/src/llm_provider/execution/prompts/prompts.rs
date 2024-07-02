@@ -3,7 +3,7 @@ use crate::{
         error::LLMProviderError,
         job::JobStepResult,
         providers::shared::{
-            llm_message::{DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage},
+            llm_message::{DetailedFunctionCall,LlmMessage},
             openai::{FunctionCall, FunctionCallResponse},
         },
     },
@@ -465,7 +465,7 @@ mod tests {
         llm_provider::providers::shared::llm_message::{
             DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage,
         },
-        tools::{argument::ToolArgument, router::ShinkaiTool, rust_tools::RustTool},
+        tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
     };
     use shinkai_vector_resources::embeddings::Embedding;
 

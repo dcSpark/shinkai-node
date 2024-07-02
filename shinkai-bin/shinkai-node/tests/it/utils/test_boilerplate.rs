@@ -96,7 +96,6 @@ where
             proxy_identity,
             false,
             vec![],
-            None,
             node1_fs_db_path,
             None,
             None,

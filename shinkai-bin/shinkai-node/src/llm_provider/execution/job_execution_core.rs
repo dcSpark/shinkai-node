@@ -1,13 +1,14 @@
+use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
-use crate::db::ShinkaiDB;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::network::ws_manager::{self, WSUpdateHandler};
-use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
+use crate::network::ws_manager::WSUpdateHandler;
+use crate::tools::js_toolkit::JSToolkit;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
@@ -21,16 +22,16 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
-use tokio::sync::Mutex;
-use warp::filters::ws;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 use tracing::instrument;
 
@@ -40,7 +41,16 @@ use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db, ws_manager))]
+    #[instrument(skip(
+        identity_secret_key,
+        generator,
+        unstructured_api,
+        vector_fs,
+        db,
+        ws_manager,
+        tool_router
+    ))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<ShinkaiDB>,
@@ -50,6 +60,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -59,6 +70,7 @@ impl JobManager {
             ShinkaiLogLevel::Debug,
             &format!("Processing job: {}", job_id),
         );
+
         // Fetch data we need to execute job step
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
         let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
@@ -70,8 +82,15 @@ impl JobManager {
         let user_profile = match user_profile {
             Some(profile) => profile,
             None => {
-                return Self::handle_error(&db, None, &job_id, &identity_secret_key, LLMProviderError::NoUserProfileFound, ws_manager)
-                    .await
+                return Self::handle_error(
+                    &db,
+                    None,
+                    &job_id,
+                    &identity_secret_key,
+                    LLMProviderError::NoUserProfileFound,
+                    ws_manager,
+                )
+                .await
             }
         };
 
@@ -80,6 +99,37 @@ impl JobManager {
             user_profile.profile_name.unwrap_or_default(),
         )
         .unwrap();
+
+        // Temporal
+        if let Some(tool_router_arc) = &tool_router {
+            let mut tool_router = tool_router_arc.lock().await;
+            if !tool_router.is_started() {
+                let start_time = Instant::now(); // Start time measurement
+
+                // Remove all toolkits for the user
+                db.remove_all_toolkits_for_user(&user_profile).unwrap();
+
+                // Add the tools again
+                let tools = built_in_tools::get_tools();
+                for (name, definition) in tools {
+                    let toolkit = JSToolkit::new(&name, vec![definition]);
+                    db.add_jstoolkit(toolkit, user_profile.clone()).unwrap();
+                }
+
+                if let Err(e) = tool_router
+                    .start(Box::new(generator.clone()), Arc::downgrade(&db), user_profile.clone())
+                    .await
+                {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to start tool router: {}", e),
+                    );
+                }
+                let duration = start_time.elapsed();
+                eprintln!("ToolRouter start call duration: {:?}", duration);
+            }
+        }
 
         // 1.- Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(
@@ -109,12 +159,15 @@ impl JobManager {
             generator.clone(),
             user_profile.clone(),
             ws_manager.clone(),
+            tool_router.clone(),
         )
         .await;
 
         let workflow_found = match workflow_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
+            Err(e) => {
+                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+            }
         };
         if workflow_found {
             return Ok(job_id);
@@ -135,7 +188,9 @@ impl JobManager {
         .await;
         let jobkai_found = match jobkai_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
+            Err(e) => {
+                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+            }
         };
         if jobkai_found {
             return Ok(job_id);
@@ -152,6 +207,7 @@ impl JobManager {
             user_profile.clone(),
             generator,
             ws_manager.clone(),
+            tool_router.clone(),
         )
         .await;
 
@@ -203,7 +259,7 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(identity_secret_key, db, vector_fs, generator, ws_manager))]
+    #[instrument(skip(identity_secret_key, db, vector_fs, generator, ws_manager, tool_router))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
@@ -215,13 +271,14 @@ impl JobManager {
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<(), LLMProviderError> {
         let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            &format!("Inference chain - Processing Job: {:?}", full_job),
+            &format!("Inference chain - Processing Job: {:?}", full_job.job_id),
         );
 
         // Setup initial data to get ready to call a specific inference chain
@@ -244,6 +301,7 @@ impl JobManager {
             generator,
             user_profile,
             ws_manager.clone(),
+            tool_router.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -300,6 +358,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<bool, LLMProviderError> {
         if job_message.workflow.is_none() {
             return Ok(false);
@@ -342,6 +401,7 @@ impl JobManager {
             max_tokens_in_prompt,
             HashMap::new(),
             ws_manager.clone(),
+            tool_router.clone(),
         );
 
         // Note: we do this once so we are not re-reading the files multiple times for each operation
@@ -364,11 +424,12 @@ impl JobManager {
         // TODO: read from tooling storage what we may have available
 
         // Call the inference chain router to choose which chain to use, and call it
-        let mut dsl_inference = DslChain::new(chain_context, workflow, functions);
+        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
 
         // Add the inference function to the functions map
         dsl_inference.add_inference_function();
         dsl_inference.add_all_generic_functions();
+        dsl_inference.add_tools_from_router().await?;
 
         // Execute the workflow using run_chain
         let start = Instant::now();
@@ -675,17 +736,18 @@ impl JobManager {
             }
         };
 
-         // Filter out image files
-         // TODO: Eventually we will add extra embeddings that support images
-         let files: Vec<(String, Vec<u8>)> = files.into_iter()
-         .filter(|(name, _)| {
-             let name_lower = name.to_lowercase();
-             !name_lower.ends_with(".png")
-                 && !name_lower.ends_with(".jpg")
-                 && !name_lower.ends_with(".jpeg")
-                 && !name_lower.ends_with(".gif")
-         })
-         .collect();
+        // Filter out image files
+        // TODO: Eventually we will add extra embeddings that support images
+        let files: Vec<(String, Vec<u8>)> = files
+            .into_iter()
+            .filter(|(name, _)| {
+                let name_lower = name.to_lowercase();
+                !name_lower.ends_with(".png")
+                    && !name_lower.ends_with(".jpg")
+                    && !name_lower.ends_with(".jpeg")
+                    && !name_lower.ends_with(".gif")
+            })
+            .collect();
 
         // Sort out the vrpacks from the rest
         #[allow(clippy::type_complexity)]

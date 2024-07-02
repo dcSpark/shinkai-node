@@ -18,12 +18,10 @@ impl ParsedUserMessage {
         // Clean the original user message string by removing trailing newlines/whitespace
         let original_user_message_string = original_user_message_string.trim_end_matches('\n').trim().to_string();
         let elements = Self::parse_original_user_message_string(&original_user_message_string);
-        let pjt = ParsedUserMessage {
+        ParsedUserMessage {
             original_user_message_string,
             elements,
-        };
-        println!("ParsedUserMessage: {:?}", pjt);
-        pjt
+        }
     }
 
     /// Creates a new `ParsedUserMessage` using the given elements (recreates original user message string)

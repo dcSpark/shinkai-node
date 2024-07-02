@@ -145,7 +145,6 @@ fn node_llm_provider_registration() {
             None,
             true,
             vec![llm_provider],
-            None,
             node1_fs_db_path,
             None,
             None,

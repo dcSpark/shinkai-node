@@ -1,6 +1,12 @@
 use std::{any::Any, collections::HashMap, fmt, marker::PhantomData};
 
-use crate::llm_provider::{execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike};
+use crate::{
+    llm_provider::{
+        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike,
+        providers::shared::openai::FunctionCall,
+    },
+    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
+};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use shinkai_dsl::{
@@ -8,10 +14,10 @@ use shinkai_dsl::{
     sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use shinkai_message_primitives::{
-    schemas::inbox_name::{self, InboxName},
+    schemas::inbox_name::InboxName,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+use shinkai_vector_resources::{embeddings::Embedding, vector_resource::RetrievedNode};
 
 use crate::llm_provider::{
     error::LLMProviderError,
@@ -25,16 +31,15 @@ use crate::llm_provider::{
 use super::generic_functions;
 
 pub struct DslChain<'a> {
-    pub context: InferenceChainContext,
-    pub workflow: Workflow,
+    pub context: Box<dyn InferenceChainContextTrait>,
+    pub workflow_tool: WorkflowTool,
     pub functions: FunctionMap<'a>,
 }
 
 impl<'a> fmt::Debug for DslChain<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DslChain")
-            .field("context", &self.context)
-            .field("workflow", &self.workflow)
+            .field("workflow_tool", &self.workflow_tool)
             .field("functions", &"<functions>")
             .finish()
     }
@@ -46,8 +51,8 @@ impl<'a> InferenceChain for DslChain<'a> {
         "dsl_chain".to_string()
     }
 
-    fn chain_context(&mut self) -> &mut InferenceChainContext {
-        &mut self.context
+    fn chain_context(&mut self) -> &mut dyn InferenceChainContextTrait {
+        &mut *self.context
     }
 
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
@@ -58,9 +63,13 @@ impl<'a> InferenceChain for DslChain<'a> {
         // Inject user_message into $R0
         final_registers.insert(
             "$INPUT".to_string(),
-            self.context.user_message.clone().original_user_message_string,
+            self.context.user_message().clone().original_user_message_string,
         );
-        let executor = engine.iter(&self.workflow, Some(final_registers.clone()), Some(logs.clone()));
+        let executor = engine.iter(
+            &self.workflow_tool.workflow,
+            Some(final_registers.clone()),
+            Some(logs.clone()),
+        );
 
         for result in executor {
             match result {
@@ -89,19 +98,26 @@ impl<'a> InferenceChain for DslChain<'a> {
 }
 
 impl<'a> DslChain<'a> {
-    pub fn new(context: InferenceChainContext, workflow: Workflow, functions: FunctionMap<'a>) -> Self {
+    pub fn new(context: Box<dyn InferenceChainContextTrait>, workflow: Workflow, functions: FunctionMap<'a>) -> Self {
         Self {
             context,
-            workflow,
+            workflow_tool: WorkflowTool {
+                workflow,
+                embedding: None,
+            },
             functions,
         }
+    }
+
+    pub fn update_embedding(&mut self, new_embedding: Embedding) {
+        self.workflow_tool.embedding = Some(new_embedding);
     }
 
     pub fn add_inference_function(&mut self) {
         self.functions.insert(
             "inference".to_string(),
             Box::new(InferenceFunction {
-                context: self.context.clone(),
+                context: self.context.clone_box(),
             }),
         );
     }
@@ -114,16 +130,46 @@ impl<'a> DslChain<'a> {
             ) -> Result<Box<dyn Any + Send>, WorkflowError>
             + Send
             + Sync
+            + Clone
             + 'a,
     {
         self.functions.insert(
             name.to_string(),
             Box::new(GenericFunction {
                 func,
-                context: Box::new(self.context.clone()) as Box<dyn InferenceChainContextTrait>,
+                context: self.context.clone_box(),
                 _marker: PhantomData,
             }),
         );
+    }
+
+    pub async fn add_tools_from_router(&mut self) -> Result<(), WorkflowError> {
+        let tool_router = self
+            .context
+            .tool_router()
+            .as_ref()
+            .ok_or_else(|| WorkflowError::ExecutionError("ToolRouter not available".to_string()))?
+            .clone();
+
+        let tool_router_locked = tool_router.lock().await;
+
+        let tools = tool_router_locked
+            .all_available_js_tools(&self.context.user_profile(), self.context.db().clone())
+            .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
+
+        for tool in tools {
+            let function_name = format!("{}_{}", tool.toolkit_name(), tool.name());
+            eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
+            self.functions.insert(
+                function_name.clone(),
+                Box::new(ShinkaiToolFunction {
+                    tool: tool.clone(),
+                    context: self.context.clone_box(),
+                }),
+            );
+        }
+
+        Ok(())
     }
 
     pub fn add_all_generic_functions(&mut self) {
@@ -162,8 +208,9 @@ impl<'a> DslChain<'a> {
     }
 }
 
+#[derive(Clone)]
 struct InferenceFunction {
-    context: InferenceChainContext,
+    context: Box<dyn InferenceChainContextTrait>,
 }
 
 #[async_trait]
@@ -174,13 +221,13 @@ impl AsyncFunction for InferenceFunction {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
 
-        let db = self.context.db.clone();
-        let vector_fs = self.context.vector_fs.clone();
-        let full_job = self.context.full_job.clone();
-        let llm_provider = self.context.llm_provider.clone();
-        let generator = self.context.generator.clone();
-        let user_profile = self.context.user_profile.clone();
-        let max_tokens_in_prompt = self.context.max_tokens_in_prompt;
+        let db = self.context.db();
+        let vector_fs = self.context.vector_fs();
+        let full_job = self.context.full_job();
+        let llm_provider = self.context.agent();
+        let generator = self.context.generator();
+        let user_profile = self.context.user_profile();
+        let max_tokens_in_prompt = self.context.max_tokens_in_prompt();
 
         let query_text = user_message.clone();
 
@@ -220,7 +267,6 @@ impl AsyncFunction for InferenceFunction {
         );
 
         // Handle response_res without using the `?` operator
-        // Handle response_res without using the `?` operator
         let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone()) {
             Ok(name) => Some(name),
             Err(_) => None,
@@ -229,7 +275,7 @@ impl AsyncFunction for InferenceFunction {
             llm_provider.clone(),
             filled_prompt.clone(),
             inbox_name,
-            self.context.ws_manager_trait.clone(),
+            self.context.ws_manager_trait(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -246,12 +292,103 @@ impl AsyncFunction for InferenceFunction {
     }
 }
 
+#[derive(Clone)]
+struct ShinkaiToolFunction {
+    tool: ShinkaiTool,
+    context: Box<dyn InferenceChainContextTrait>,
+}
+
+#[async_trait]
+impl AsyncFunction for ShinkaiToolFunction {
+    async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+        if args.len() != 1 {
+            return Err(WorkflowError::InvalidArgument(
+                "Expected 1 argument: function_args".to_string(),
+            ));
+        }
+
+        let mut params = serde_json::Map::new();
+
+        // Iterate through the tool's input_args and the provided args
+        for (i, arg) in self.tool.input_args().iter().enumerate() {
+            if i >= args.len() {
+                if arg.is_required {
+                    return Err(WorkflowError::InvalidArgument(format!(
+                        "Missing required argument: {}",
+                        arg.name
+                    )));
+                }
+                continue;
+            }
+
+            let value = args[i]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::InvalidArgument(format!("Invalid argument for {}", arg.name)))?;
+
+            params.insert(arg.name.clone(), serde_json::Value::String(value.clone()));
+        }
+
+        let function_call = FunctionCall {
+            name: self.tool.name(),
+            arguments: serde_json::Value::Object(params),
+        };
+
+        let result = match &self.tool {
+            ShinkaiTool::JS(js_tool) => {
+                let result = js_tool
+                    .run(function_call.arguments)
+                    .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+                let data = &result.data;
+
+                // Check if the result has only one main type
+                let main_result = if let Some(main_type) = js_tool.result.properties.as_object().and_then(|props| {
+                    if props.len() == 1 {
+                        props.keys().next().cloned()
+                    } else {
+                        None
+                    }
+                }) {
+                    data.get(&main_type).cloned().unwrap_or_else(|| data.clone())
+                } else {
+                    data.clone()
+                };
+
+                match main_result {
+                    serde_json::Value::String(s) => s,
+                    _ => serde_json::to_string(&main_result)
+                        .map_err(|e| WorkflowError::ExecutionError(format!("Failed to stringify result: {}", e)))?,
+                }
+            }
+            ShinkaiTool::JSLite(_) => {
+                return Err(WorkflowError::ExecutionError(
+                    "Simplified JS tools are not supported in this context".to_string(),
+                ));
+            }
+            ShinkaiTool::Rust(_) => {
+                return Err(WorkflowError::ExecutionError(
+                    "Rust tools are not supported in this context".to_string(),
+                ));
+            }
+            ShinkaiTool::Workflow(_) => {
+                // TODO: we should allow for a workflow to call another workflow
+                return Err(WorkflowError::ExecutionError(
+                    "Workflows are not supported in this context".to_string(),
+                ));
+            }
+        };
+
+        Ok(Box::new(result))
+    }
+}
+
 #[allow(dead_code)]
+#[derive(Clone)]
 struct GenericFunction<F>
 where
     F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>
         + Send
-        + Sync,
+        + Sync
+        + Clone,
 {
     func: F,
     context: Box<dyn InferenceChainContextTrait>,
@@ -263,7 +400,8 @@ impl<F> AsyncFunction for GenericFunction<F>
 where
     F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>
         + Send
-        + Sync,
+        + Sync
+        + Clone,
 {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         (self.func)(self.context.clone(), args)

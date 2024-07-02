@@ -20,6 +20,7 @@ pub struct JobForProcessing {
     pub job_message: JobMessage,
     pub profile: ShinkaiName,
     pub date_created: String,
+    // TODO: add a new optional field for callbacks
 }
 
 impl JobForProcessing {

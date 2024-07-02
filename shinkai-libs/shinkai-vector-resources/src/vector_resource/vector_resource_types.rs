@@ -712,6 +712,7 @@ pub struct VRHeader {
 
 impl VRHeader {
     /// Create a new VRHeader
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         resource_name: &str,
         resource_id: &str,

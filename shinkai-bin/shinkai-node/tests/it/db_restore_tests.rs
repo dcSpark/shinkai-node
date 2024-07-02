@@ -53,7 +53,6 @@ mod tests {
                 None,
                 true,
                 vec![],
-                None,
                 node1_vector_fs_path,
                 None,
                 None,

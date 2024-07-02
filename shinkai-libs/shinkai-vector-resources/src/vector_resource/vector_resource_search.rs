@@ -63,15 +63,13 @@ pub trait VectorResourceSearch: VectorResourceCore {
     /// Of note: This method does not guarantee ordering of the nodes, no matter what kind of VR this is used on.
     fn retrieve_nodes_exhaustive_unordered(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
         let empty_embedding = Embedding::new_empty();
-        let nodes = self.vector_search_customized(
+        self.vector_search_customized(
             empty_embedding,
             0,
             TraversalMethod::UnscoredAllNodes,
             &vec![],
             starting_path,
-        );
-
-        nodes
+        )
     }
 
     /// Retrieves any resource nodes from the Vector Resource at any level of depth under starting path.
@@ -132,7 +130,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     if shorten_data && s.chars().count() > 25 {
                         format!("{} - {}", node_id, s.chars().take(25).collect::<String>() + "...")
                     } else {
-                        format!("{} - {}", node_id, s.to_string())
+                        format!("{} - {}", node_id, s)
                     }
                 }
                 NodeContent::Resource(resource) => {
@@ -169,7 +167,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
             // Create indent string and do the final print
             let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
-            if merkle_hash.len() == 0 {
+            if merkle_hash.is_empty() {
                 result.push(format!("{}{}", indent_string, data));
             } else {
                 result.push(format!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash));
@@ -471,6 +469,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     }
 
     /// Internal method which is used to keep track of traversal info
+    #[allow(clippy::too_many_arguments)]
     fn _vector_search_customized_core(
         &self,
         query: Embedding,
@@ -533,6 +532,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     }
 
     /// Internal method that orders all scores, and importantly traverses into any nodes holding further BaseVectorResources.
+    #[allow(clippy::too_many_arguments)]
     fn _order_vector_search_results(
         &self,
         scores: Vec<(f32, String)>,
@@ -630,6 +630,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     }
 
     /// Internal method for recursing into deeper levels of Vector Resources
+    #[allow(clippy::too_many_arguments)]
     fn _recursive_data_extraction(
         &self,
         node: Node,
@@ -776,7 +777,5 @@ pub fn deep_search_scores_average_out(
     // Go with a simple additional approach rather than actual average, so that low vr_scores never decrease actual node scores
     let vr_weight = 0.2;
     let adjusted_vr_score = (vr_score * vr_weight).min(0.2);
-    let final_score = node_score + adjusted_vr_score;
-
-    final_score
+    node_score + adjusted_vr_score // final score
 }

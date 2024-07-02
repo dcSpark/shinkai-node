@@ -538,7 +538,7 @@ impl WebSocketManager {
                 match connection.send(Message::text(message_to_send.clone())).await {
                     Ok(_) => shinkai_log(
                         ShinkaiLogOption::WsAPI,
-                        ShinkaiLogLevel::Info,
+                        ShinkaiLogLevel::Debug,
                         format!("Successfully sent update to connection {}", id).as_str(),
                     ),
                     Err(e) => shinkai_log(

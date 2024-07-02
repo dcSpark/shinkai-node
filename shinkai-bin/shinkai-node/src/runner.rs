@@ -174,7 +174,6 @@ pub async fn initialize_node() -> Result<
         node_env.proxy_identity.clone(),
         node_env.first_device_needs_registration_code,
         initial_llm_providers,
-        node_env.js_toolkit_executor_remote.clone(),
         vector_fs_db_path.clone(),
         Some(embedding_generator),
         Some(unstructured_api),

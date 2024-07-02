@@ -208,7 +208,6 @@ fn mirror_sync_tests() {
             None,
             true,
             vec![],
-            None,
             node1_fs_db_path,
             None,
             None,

@@ -17,7 +17,6 @@ pub struct NodeEnvironment {
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
-    pub js_toolkit_executor_remote: Option<String>,
     pub no_secrets_file: bool,
     pub node_storage_path: Option<String>,
     pub unstructured_server_url: Option<String>,
@@ -134,8 +133,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse needs registration code");
 
-    let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
-
     let no_secrets_file: bool = env::var("NO_SECRET_FILE")
         .unwrap_or_else(|_| "false".to_string())
         .parse()
@@ -183,7 +180,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         starting_num_qr_profiles,
         starting_num_qr_devices,
         first_device_needs_registration_code,
-        js_toolkit_executor_remote,
         no_secrets_file,
         node_storage_path,
         unstructured_server_url,

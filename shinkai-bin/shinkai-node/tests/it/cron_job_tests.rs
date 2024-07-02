@@ -113,6 +113,7 @@ mod tests {
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
                 None,
+                None,
             )
             .await,
         ));

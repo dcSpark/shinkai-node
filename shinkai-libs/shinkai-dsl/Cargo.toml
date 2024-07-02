@@ -6,13 +6,13 @@ edition = "2021"
 [dependencies]
 pest = "2.7.10"
 pest_derive = "2.7.10"
-serde_json = "1.0.105"
+serde_json = "1.0.117"
 async-trait = "0.1.74"
 futures = "0.3.30"
 tokio = { version = "1.36", features = ["full"] }
 dashmap = "5.5.3"
 chrono = "0.4"
-reqwest = "0.11.26"
+reqwest = "0.12.5"
 
 [dependencies.serde]
 version = "1.0.188"
