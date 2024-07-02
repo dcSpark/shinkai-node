@@ -70,15 +70,15 @@ impl LLMService for OpenAI {
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Print messages_json as a pretty JSON string
-                // match serde_json::to_string_pretty(&messages_json) {
-                //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                // };
+                match serde_json::to_string_pretty(&messages_json) {
+                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+                };
 
-                // match serde_json::to_string_pretty(&tools_json) {
-                //     Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                //     Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                // };
+                match serde_json::to_string_pretty(&tools_json) {
+                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
+                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+                };
 
                 let mut payload = json!({
                     "model": self.model_type,

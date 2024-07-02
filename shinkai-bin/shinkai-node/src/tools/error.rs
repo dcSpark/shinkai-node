@@ -23,6 +23,12 @@ pub enum ToolError {
     ToolkitAlreadyActivated(String),
     ToolkitAlreadyDeactivated(String),
     SerializationError(String),
+    InvalidProfile(String),
+    AlreadyStarted,
+    NotStarted,
+    ToolNotRunnable(String),
+    ExecutionError(String),
+    DatabaseError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -48,6 +54,12 @@ impl fmt::Display for ToolError {
             ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
             ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
             ToolError::SerializationError(ref e) => write!(f, "Serialization error: {}", e),
+            ToolError::InvalidProfile(ref e) => write!(f, "Invalid profile: {}", e),
+            ToolError::AlreadyStarted => write!(f, "Tool is already started."),
+            ToolError::NotStarted => write!(f, "Tool is not started."),
+            ToolError::ToolNotRunnable(ref t) => write!(f, "Tool is not runnable: {}", t),
+            ToolError::ExecutionError(ref e) => write!(f, "Execution error: {}", e),
+            ToolError::DatabaseError(ref e) => write!(f, "Database error: {}", e),
         }
     }
 }
@@ -91,6 +103,12 @@ impl From<SerdeError> for ToolError {
 
 impl From<anyhow::Error> for ToolError {
     fn from(err: anyhow::Error) -> ToolError {
+        ToolError::ParseError(err.to_string())
+    }
+}
+
+impl From<shinkai_tools_runner::tools::quickjs_runtime::execution_error::ExecutionError> for ToolError {
+    fn from(err: shinkai_tools_runner::tools::quickjs_runtime::execution_error::ExecutionError) -> ToolError {
         ToolError::ParseError(err.to_string())
     }
 }
