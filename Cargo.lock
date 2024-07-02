@@ -7775,9 +7775,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.7.1-dev.1"
+version = "0.7.1-dev.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d3cb4e2d73e47eba946a374ce1e7d101412102103bddbff6620aff18e19e4f1"
+checksum = "b679dc2422ddbf23384a1cfc3404ea0c259ede1b3c64dec39dea0f02bb5736b9"
 dependencies = [
  "futures",
  "lazy_static",
