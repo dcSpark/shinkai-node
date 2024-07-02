@@ -31,7 +31,7 @@ use crate::llm_provider::{
 use super::generic_functions;
 
 pub struct DslChain<'a> {
-    pub context: InferenceChainContext,
+    pub context: Box<dyn InferenceChainContextTrait>,
     pub workflow_tool: WorkflowTool,
     pub functions: FunctionMap<'a>,
 }
@@ -51,8 +51,8 @@ impl<'a> InferenceChain for DslChain<'a> {
         "dsl_chain".to_string()
     }
 
-    fn chain_context(&mut self) -> &mut InferenceChainContext {
-        &mut self.context
+    fn chain_context(&mut self) -> &mut dyn InferenceChainContextTrait {
+        &mut *self.context
     }
 
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
@@ -63,7 +63,7 @@ impl<'a> InferenceChain for DslChain<'a> {
         // Inject user_message into $R0
         final_registers.insert(
             "$INPUT".to_string(),
-            self.context.user_message.clone().original_user_message_string,
+            self.context.user_message().clone().original_user_message_string,
         );
         let executor = engine.iter(
             &self.workflow_tool.workflow,
@@ -98,7 +98,7 @@ impl<'a> InferenceChain for DslChain<'a> {
 }
 
 impl<'a> DslChain<'a> {
-    pub fn new(context: InferenceChainContext, workflow: Workflow, functions: FunctionMap<'a>) -> Self {
+    pub fn new(context: Box<dyn InferenceChainContextTrait>, workflow: Workflow, functions: FunctionMap<'a>) -> Self {
         Self {
             context,
             workflow_tool: WorkflowTool {
@@ -117,7 +117,7 @@ impl<'a> DslChain<'a> {
         self.functions.insert(
             "inference".to_string(),
             Box::new(InferenceFunction {
-                context: self.context.clone(),
+                context: self.context.clone_box(),
             }),
         );
     }
@@ -137,7 +137,7 @@ impl<'a> DslChain<'a> {
             name.to_string(),
             Box::new(GenericFunction {
                 func,
-                context: Box::new(self.context.clone()) as Box<dyn InferenceChainContextTrait>,
+                context: self.context.clone_box(),
                 _marker: PhantomData,
             }),
         );
@@ -146,14 +146,15 @@ impl<'a> DslChain<'a> {
     pub async fn add_tools_from_router(&mut self) -> Result<(), WorkflowError> {
         let tool_router = self
             .context
-            .tool_router
+            .tool_router()
             .as_ref()
             .ok_or_else(|| WorkflowError::ExecutionError("ToolRouter not available".to_string()))?
-            .lock()
-            .await;
+            .clone();
 
-        let tools = tool_router
-            .all_available_js_tools(&self.context.user_profile, self.context.db.clone())
+        let tool_router_locked = tool_router.lock().await;
+
+        let tools = tool_router_locked
+            .all_available_js_tools(&self.context.user_profile(), self.context.db().clone())
             .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
 
         for tool in tools {
@@ -163,7 +164,7 @@ impl<'a> DslChain<'a> {
                 function_name.clone(),
                 Box::new(ShinkaiToolFunction {
                     tool: tool.clone(),
-                    context: self.context.clone(),
+                    context: self.context.clone_box(),
                 }),
             );
         }
@@ -209,7 +210,7 @@ impl<'a> DslChain<'a> {
 
 #[derive(Clone)]
 struct InferenceFunction {
-    context: InferenceChainContext,
+    context: Box<dyn InferenceChainContextTrait>,
 }
 
 #[async_trait]
@@ -220,13 +221,13 @@ impl AsyncFunction for InferenceFunction {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
 
-        let db = self.context.db.clone();
-        let vector_fs = self.context.vector_fs.clone();
-        let full_job = self.context.full_job.clone();
-        let llm_provider = self.context.llm_provider.clone();
-        let generator = self.context.generator.clone();
-        let user_profile = self.context.user_profile.clone();
-        let max_tokens_in_prompt = self.context.max_tokens_in_prompt;
+        let db = self.context.db();
+        let vector_fs = self.context.vector_fs();
+        let full_job = self.context.full_job();
+        let llm_provider = self.context.agent();
+        let generator = self.context.generator();
+        let user_profile = self.context.user_profile();
+        let max_tokens_in_prompt = self.context.max_tokens_in_prompt();
 
         let query_text = user_message.clone();
 
@@ -266,7 +267,6 @@ impl AsyncFunction for InferenceFunction {
         );
 
         // Handle response_res without using the `?` operator
-        // Handle response_res without using the `?` operator
         let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone()) {
             Ok(name) => Some(name),
             Err(_) => None,
@@ -275,7 +275,7 @@ impl AsyncFunction for InferenceFunction {
             llm_provider.clone(),
             filled_prompt.clone(),
             inbox_name,
-            self.context.ws_manager_trait.clone(),
+            self.context.ws_manager_trait(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -295,7 +295,7 @@ impl AsyncFunction for InferenceFunction {
 #[derive(Clone)]
 struct ShinkaiToolFunction {
     tool: ShinkaiTool,
-    context: InferenceChainContext,
+    context: Box<dyn InferenceChainContextTrait>,
 }
 
 #[async_trait]

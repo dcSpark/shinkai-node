@@ -1,7 +1,7 @@
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
 };
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -53,7 +53,7 @@ impl InferenceChain for GenericInferenceChain {
         "generic_inference_chain".to_string()
     }
 
-    fn chain_context(&mut self) -> &mut InferenceChainContext {
+    fn chain_context(&mut self) -> &mut dyn InferenceChainContextTrait {
         &mut self.context
     }
 

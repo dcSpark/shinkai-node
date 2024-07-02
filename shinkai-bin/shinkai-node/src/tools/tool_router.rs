@@ -4,13 +4,16 @@ use std::sync::{Arc, Weak};
 
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
+use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContext, InferenceChainContextTrait};
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use keyphrases::KeyPhraseExtractor;
 use serde_json;
+use shinkai_dsl::sm_executor::AsyncFunction;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
@@ -528,8 +531,26 @@ impl ToolRouter {
                     return Err(LLMProviderError::FunctionNotFound(function_name));
                 }
             }
-            ShinkaiTool::Workflow(_) => {
-                unimplemented!("Workflow not implemented");
+            ShinkaiTool::Workflow(workflow_tool) => {
+                // Available functions for the workflow
+                let functions: HashMap<String, Box<dyn AsyncFunction>> = HashMap::new();
+
+                // Call the inference chain router to choose which chain to use, and call it
+                let mut dsl_inference = DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
+
+                // Add the inference function to the functions map
+                dsl_inference.add_inference_function();
+                dsl_inference.add_all_generic_functions();
+                dsl_inference.add_tools_from_router().await?;
+
+                // TODO: we may need to inject other workflows as well?
+
+                let inference_result = dsl_inference.run_chain().await?;
+
+                return Ok(FunctionCallResponse {
+                    response: inference_result.response,
+                    function_call,
+                });
             }
         }
 

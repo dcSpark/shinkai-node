@@ -424,7 +424,7 @@ impl JobManager {
         // TODO: read from tooling storage what we may have available
 
         // Call the inference chain router to choose which chain to use, and call it
-        let mut dsl_inference = DslChain::new(chain_context, workflow, functions);
+        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
 
         // Add the inference function to the functions map
         dsl_inference.add_inference_function();
