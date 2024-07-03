@@ -1,5 +1,6 @@
 use pdfium_render::prelude::*;
 use regex::Regex;
+use std::{io::Write, time::Instant};
 
 use crate::image_parser::ImageParser;
 
@@ -56,6 +57,7 @@ impl PDFParser {
     }
 
     pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
+        let start_time = Instant::now();
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
         struct TextPosition {
@@ -118,6 +120,7 @@ impl PDFParser {
 
         // Process pages
         for (page_index, page) in document.pages().iter().enumerate() {
+            let page_start_time = Instant::now();
             let mut pdf_texts = Vec::new();
             let mut previous_text_position: Option<TextPosition> = None;
 
@@ -264,6 +267,11 @@ impl PDFParser {
                 page_number: page_index + 1,
                 content: pdf_texts,
             });
+
+            if std::env::var("DEBUG_VRKAI").is_ok() {
+                let page_duration = page_start_time.elapsed();
+                println!("Page {} parsed in {:?}", page_index + 1, page_duration);
+            }
         }
 
         if !page_text.is_empty() {
@@ -279,6 +287,11 @@ impl PDFParser {
                 })
                 .content
                 .push(pdf_text);
+        }
+
+        if std::env::var("DEBUG_VRKAI").is_ok() {
+            let total_duration = start_time.elapsed();
+            println!("Total PDF parsed in {:?}", total_duration);
         }
 
         Ok(pdf_pages)

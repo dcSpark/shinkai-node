@@ -90,7 +90,7 @@ impl GenericInferenceChain {
     }
 
     #[async_recursion]
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait))]
+    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
