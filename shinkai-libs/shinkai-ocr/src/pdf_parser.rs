@@ -236,14 +236,22 @@ impl PDFParser {
 
                         let image_object = object.as_image_object().unwrap();
 
-                        if let Ok(image) = image_object.get_raw_image() {
-                            if let Ok(text) = self.image_parser.process_image(image) {
-                                if !text.is_empty() {
-                                    let pdf_text = PDFText {
-                                        text: Self::normalize_parsed_text(&text),
-                                        likely_heading: false,
-                                    };
-                                    pdf_texts.push(pdf_text);
+                        // Unwrap the width and height results
+                        let (width, height) = (
+                            image_object.width().unwrap().value,
+                            image_object.height().unwrap().value,
+                        );
+
+                        if width > 50.0 && height > 50.0 {
+                            if let Ok(image) = image_object.get_raw_image() {
+                                if let Ok(text) = self.image_parser.process_image(image) {
+                                    if !text.is_empty() {
+                                        let pdf_text = PDFText {
+                                            text: Self::normalize_parsed_text(&text),
+                                            likely_heading: false,
+                                        };
+                                        pdf_texts.push(pdf_text);
+                                    }
                                 }
                             }
                         }
