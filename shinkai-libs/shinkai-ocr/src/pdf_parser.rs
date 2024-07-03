@@ -1,5 +1,5 @@
 use pdfium_render::prelude::*;
-use std::io::Write;
+use regex::Regex;
 
 use crate::image_parser::ImageParser;
 
@@ -73,6 +73,50 @@ impl PDFParser {
         let mut page_text = "".to_owned();
         let mut previous_text_font: Option<TextFont> = None;
 
+        // Process metadata
+        let mut metadata_text = "".to_owned();
+        for tag in document.metadata().iter() {
+            match tag.tag_type() {
+                PdfDocumentMetadataTagType::Title => {
+                    let title = tag.value();
+                    if !title.is_empty() {
+                        metadata_text.push_str(&format!("Title: {}\n", title));
+                    }
+                }
+                PdfDocumentMetadataTagType::Author => {
+                    let author = tag.value();
+                    if !author.is_empty() {
+                        metadata_text.push_str(&format!("Author: {}\n", author));
+                    }
+                }
+                PdfDocumentMetadataTagType::Subject => {
+                    let subject = tag.value();
+                    if !subject.is_empty() {
+                        metadata_text.push_str(&format!("Subject: {}\n", subject));
+                    }
+                }
+                PdfDocumentMetadataTagType::Keywords => {
+                    let keywords = tag.value();
+                    if !keywords.is_empty() {
+                        metadata_text.push_str(&format!("Keywords: {}\n", keywords));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !metadata_text.is_empty() {
+            let pdf_text = PDFText {
+                text: metadata_text.trim().to_string(),
+                likely_heading: true,
+            };
+            pdf_pages.push(PDFPage {
+                page_number: 0,
+                content: vec![pdf_text],
+            });
+        }
+
+        // Process pages
         for (page_index, page) in document.pages().iter().enumerate() {
             let mut pdf_texts = Vec::new();
             let mut previous_text_position: Option<TextPosition> = None;
@@ -82,6 +126,10 @@ impl PDFParser {
                     PdfPageObjectType::Text => {
                         let text_object = object.as_text_object().unwrap();
                         let text = text_object.text();
+
+                        if text.is_empty() {
+                            continue;
+                        }
 
                         let current_text_position = TextPosition {
                             x: text_object.get_translation().0.value,
@@ -106,19 +154,21 @@ impl PDFParser {
                         let likely_paragraph = if let (Some(previous_text_position), Some(previous_text_font)) =
                             (previous_text_position.as_ref(), previous_text_font.as_ref())
                         {
-                            current_text_position.y < previous_text_position.y
+                            (current_text_position.y < previous_text_position.y
                                 && (previous_text_position.y - current_text_position.y)
-                                    > previous_text_font.font_size * 1.5
+                                    > previous_text_font.font_size * 1.5)
+                                || (previous_text_position.y < current_text_position.y
+                                    && (current_text_position.y - previous_text_position.y)
+                                        > previous_text_font.font_size * 1.5)
                         } else {
                             false
                         };
 
-                        let likely_heading = (likely_paragraph || previous_text_position.is_none())
-                            && previous_text_font.is_none()
-                            || previous_text_font.is_some_and(|f| f.font_size < current_text_font.font_size)
-                                && current_text_font.font_size > 12.0
-                                && is_bold
-                                && text.len() > 1;
+                        let likely_heading = previous_text_font
+                            .is_some_and(|f| f.font_size < current_text_font.font_size)
+                            && current_text_font.font_size > 12.0
+                            && is_bold
+                            && text.len() > 1;
 
                         // Same line, append text
                         if previous_text_position.is_some()
@@ -129,7 +179,7 @@ impl PDFParser {
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
-                                    text: page_text.clone(),
+                                    text: Self::normalize_parsed_text(&page_text),
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
@@ -139,7 +189,7 @@ impl PDFParser {
 
                             // Add heading to the top level
                             let pdf_text = PDFText {
-                                text: text.clone(),
+                                text: Self::normalize_parsed_text(&text),
                                 likely_heading: true,
                             };
                             pdf_texts.push(pdf_text);
@@ -149,7 +199,7 @@ impl PDFParser {
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
-                                    text: page_text.clone(),
+                                    text: Self::normalize_parsed_text(&page_text),
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
@@ -173,7 +223,7 @@ impl PDFParser {
                         // Save text from previous text objects.
                         if !page_text.is_empty() {
                             let pdf_text = PDFText {
-                                text: page_text.clone(),
+                                text: Self::normalize_parsed_text(&page_text),
                                 likely_heading: false,
                             };
                             pdf_texts.push(pdf_text);
@@ -187,7 +237,7 @@ impl PDFParser {
                             if let Ok(text) = self.image_parser.process_image(image) {
                                 if !text.is_empty() {
                                     let pdf_text = PDFText {
-                                        text,
+                                        text: Self::normalize_parsed_text(&text),
                                         likely_heading: false,
                                     };
                                     pdf_texts.push(pdf_text);
@@ -202,7 +252,7 @@ impl PDFParser {
             // Drop parsed page numbers as text
             if !page_text.is_empty() && page_text != format!("{}", page_index + 1) {
                 let pdf_text = PDFText {
-                    text: page_text.clone(),
+                    text: Self::normalize_parsed_text(&page_text),
                     likely_heading: false,
                 };
                 pdf_texts.push(pdf_text);
@@ -218,7 +268,7 @@ impl PDFParser {
 
         if !page_text.is_empty() {
             let pdf_text = PDFText {
-                text: page_text.clone(),
+                text: Self::normalize_parsed_text(&page_text),
                 likely_heading: false,
             };
             pdf_pages
@@ -232,5 +282,16 @@ impl PDFParser {
         }
 
         Ok(pdf_pages)
+    }
+
+    fn normalize_parsed_text(parsed_text: &str) -> String {
+        let re_whitespaces = Regex::new(r"\s{2,}|\n").unwrap();
+        let re_word_breaks = Regex::new(r"\s*").unwrap();
+
+        let normalized_text = re_whitespaces.replace_all(parsed_text, " ");
+        let normalized_text = re_word_breaks.replace_all(&normalized_text, "");
+        let normalized_text = normalized_text.trim().to_string();
+
+        normalized_text
     }
 }
