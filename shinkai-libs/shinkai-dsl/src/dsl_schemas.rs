@@ -1,5 +1,5 @@
 use pest_derive::Parser;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
@@ -10,6 +10,7 @@ pub struct Workflow {
     pub name: String,
     pub version: String,
     pub steps: Vec<Step>,
+    pub raw: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -22,9 +23,19 @@ pub struct Step {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum StepBody {
     Action(Action),
-    Condition { condition: Expression, body: Box<StepBody> },
-    ForLoop { var: String, in_expr: ForLoopExpression, body: Box<StepBody> },
-    RegisterOperation { register: String, value: WorkflowValue },
+    Condition {
+        condition: Expression,
+        body: Box<StepBody>,
+    },
+    ForLoop {
+        var: String,
+        in_expr: ForLoopExpression,
+        body: Box<StepBody>,
+    },
+    RegisterOperation {
+        register: String,
+        value: WorkflowValue,
+    },
     Composite(Vec<StepBody>),
 }
 
@@ -68,14 +79,8 @@ pub enum Expression {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ForLoopExpression {
-    Split {
-        source: Param,
-        delimiter: String,
-    },
-    Range {
-        start: Box<Param>,
-        end: Box<Param>,
-    },
+    Split { source: Param, delimiter: String },
+    Range { start: Box<Param>, end: Box<Param> },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -96,5 +101,5 @@ pub enum WorkflowValue {
     Boolean(bool),
     Identifier(String),
     Register(String),
-    FunctionCall(FunctionCall), 
+    FunctionCall(FunctionCall),
 }

@@ -1,8 +1,9 @@
-use std::io::Write;
+use std::{env, io::Write, path::PathBuf, time::Instant};
 
 use image::{DynamicImage, GenericImageView};
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use rten::Model;
+use uuid::Uuid;
 
 pub struct ImageParser {
     ocr_engine: OcrEngine,
@@ -37,6 +38,11 @@ impl ImageParser {
     }
 
     pub fn process_image(&self, image: DynamicImage) -> anyhow::Result<String> {
+        if env::var("OCR_ENABLED").unwrap_or_else(|_| "false".to_string()) != "true" {
+            return Ok("".to_string());
+        }
+
+        let start_time = Instant::now();
         let img_source = ImageSource::from_bytes(image.as_bytes(), image.dimensions())?;
 
         let ocr_input = self.ocr_engine.prepare_input(img_source)?;
@@ -63,6 +69,19 @@ impl ImageParser {
             })
             .collect::<Vec<_>>()
             .join("\n");
+
+        if env::var("DEBUG_VRKAI").is_ok() {
+            // Save the image to the tmp folder with a random name
+            let tmp_dir = PathBuf::from("tmp");
+            std::fs::create_dir_all(&tmp_dir)?;
+            let uuid = Uuid::new_v4();
+            let image_path = tmp_dir.join(format!("{}.png", uuid));
+            image.save(image_path.clone())?;
+
+            println!("Image saved to: {}", image_path.display());
+            println!("Text: {}", text);
+            println!("Time taken: {:?}", start_time.elapsed());
+        }
 
         Ok(text)
     }

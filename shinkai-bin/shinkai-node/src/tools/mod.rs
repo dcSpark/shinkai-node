@@ -4,5 +4,7 @@ pub mod js_toolkit;
 pub mod js_toolkit_executor;
 pub mod js_toolkit_headers;
 pub mod js_tools;
-pub mod router;
+pub mod tool_router;
 pub mod rust_tools;
+pub mod shinkai_tool;
+pub mod workflow_tool;

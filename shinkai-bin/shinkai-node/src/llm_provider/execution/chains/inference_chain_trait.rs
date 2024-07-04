@@ -3,6 +3,7 @@ use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::network::ws_manager::WSUpdateHandler;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
@@ -20,7 +21,7 @@ pub trait InferenceChain: Send + Sync {
     /// Returns a hardcoded String that uniquely identifies the chain
     fn chain_id() -> String;
     /// Returns the context for the inference chain
-    fn chain_context(&mut self) -> &mut InferenceChainContext;
+    fn chain_context(&mut self) -> &mut dyn InferenceChainContextTrait;
 
     /// Starts the inference chain
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError>;
@@ -29,10 +30,10 @@ pub trait InferenceChain: Send + Sync {
     /// it will return `backup_result` instead of iterating again. Returns error if something errors inside of the chain.
     async fn recurse_chain(&mut self, backup_result: InferenceChainResult) -> Result<InferenceChainResult, LLMProviderError> {
         let context = self.chain_context();
-        if context.iteration_count >= context.max_iterations {
+        if context.iteration_count() >= context.max_iterations() {
             return Ok(backup_result);
         }
-        context.iteration_count += 1;
+        context.update_iteration_count(context.iteration_count() + 1);
         self.run_chain().await
     }
 }
@@ -43,6 +44,7 @@ pub type RawFiles = Option<Arc<Vec<(String, Vec<u8>)>>>;
 pub trait InferenceChainContextTrait: Send + Sync {
     fn update_max_iterations(&mut self, new_max_iterations: u64);
     fn update_raw_files(&mut self, new_raw_files: RawFiles);
+    fn update_iteration_count(&mut self, new_iteration_count: u64);
 
     fn db(&self) -> Arc<ShinkaiDB>;
     fn vector_fs(&self) -> Arc<VectorFS>;
@@ -57,6 +59,8 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn max_tokens_in_prompt(&self) -> usize;
     fn score_results(&self) -> &HashMap<String, ScoreResult>;
     fn raw_files(&self) -> &RawFiles;
+    fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>;
+    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>>;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
 }
@@ -74,6 +78,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn update_raw_files(&mut self, new_raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>) {
         self.raw_files = new_raw_files;
+    }
+
+    fn update_iteration_count(&mut self, new_iteration_count: u64) {
+        self.iteration_count = new_iteration_count;
     }
 
     fn db(&self) -> Arc<ShinkaiDB> {
@@ -128,6 +136,14 @@ impl InferenceChainContextTrait for InferenceChainContext {
         &self.raw_files
     }
 
+    fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> {
+        self.ws_manager_trait.clone()
+    }
+
+    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+        self.tool_router.clone()
+    }
+
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         Box::new(self.clone())
     }
@@ -152,6 +168,7 @@ pub struct InferenceChainContext {
     pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
 }
 
 impl InferenceChainContext {
@@ -169,6 +186,7 @@ impl InferenceChainContext {
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Self {
         Self {
             db,
@@ -185,6 +203,7 @@ impl InferenceChainContext {
             score_results,
             raw_files: None,
             ws_manager_trait,
+            tool_router,
         }
     }
 
@@ -216,6 +235,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("score_results", &self.score_results)
             .field("raw_files", &self.raw_files)
             .field("ws_manager_trait", &self.ws_manager_trait.is_some())
+            .field("tool_router", &self.tool_router.is_some())
             .finish()
     }
 }
@@ -273,6 +293,84 @@ impl LLMInferenceResponse {
             json,
             function_call
         }
+    }
+}
+
+impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
+    fn update_max_iterations(&mut self, new_max_iterations: u64) {
+        (**self).update_max_iterations(new_max_iterations)
+    }
+
+    fn update_raw_files(&mut self, new_raw_files: RawFiles) {
+        (**self).update_raw_files(new_raw_files)
+    }
+
+    fn update_iteration_count(&mut self, new_iteration_count: u64) {
+        (**self).update_iteration_count(new_iteration_count)
+    }
+
+    fn db(&self) -> Arc<ShinkaiDB> {
+        (**self).db()
+    }
+
+    fn vector_fs(&self) -> Arc<VectorFS> {
+        (**self).vector_fs()
+    }
+
+    fn full_job(&self) -> &Job {
+        (**self).full_job()
+    }
+
+    fn user_message(&self) -> &ParsedUserMessage {
+        (**self).user_message()
+    }
+
+    fn agent(&self) -> &SerializedLLMProvider {
+        (**self).agent()
+    }
+
+    fn execution_context(&self) -> &HashMap<String, String> {
+        (**self).execution_context()
+    }
+
+    fn generator(&self) -> &RemoteEmbeddingGenerator {
+        (**self).generator()
+    }
+
+    fn user_profile(&self) -> &ShinkaiName {
+        (**self).user_profile()
+    }
+
+    fn max_iterations(&self) -> u64 {
+        (**self).max_iterations()
+    }
+
+    fn iteration_count(&self) -> u64 {
+        (**self).iteration_count()
+    }
+
+    fn max_tokens_in_prompt(&self) -> usize {
+        (**self).max_tokens_in_prompt()
+    }
+
+    fn score_results(&self) -> &HashMap<String, ScoreResult> {
+        (**self).score_results()
+    }
+
+    fn raw_files(&self) -> &RawFiles {
+        (**self).raw_files()
+    }
+
+    fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> {
+        (**self).ws_manager_trait()
+    }
+
+    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+        (**self).tool_router()
+    }
+
+    fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
+        (**self).clone_box()
     }
 }
 
@@ -342,6 +440,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.raw_files = new_raw_files;
     }
 
+    fn update_iteration_count(&mut self, new_iteration_count: u64) {
+        self.iteration_count = new_iteration_count;
+    }
+
     fn db(&self) -> Arc<ShinkaiDB> {
         unimplemented!()
     }
@@ -392,6 +494,14 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
         &self.raw_files
+    }
+
+    fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> {
+        unimplemented!()
+    }
+
+    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+        unimplemented!()
     }
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {

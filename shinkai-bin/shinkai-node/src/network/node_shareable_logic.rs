@@ -19,8 +19,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 pub async fn validate_message_main_logic(
     encryption_secret_key: &EncryptionStaticKey,
-    // identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
-    identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
+    identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
     node_profile_name: &ShinkaiName,
     potentially_encrypted_msg: ShinkaiMessage,
     schema_type: Option<MessageSchemaType>,

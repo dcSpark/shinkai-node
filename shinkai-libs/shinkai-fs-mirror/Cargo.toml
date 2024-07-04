@@ -10,7 +10,7 @@ ed25519-dalek = "2.1.0"
 rand = "0.8"
 tokio = { version = "1.36", features = ["full"] }
 anyhow = "1.0.72"
-serde_json = "1.0.105"
+serde_json = "1.0.117"
 clap = "3.0"
 chrono = "0.4"
 chrono-tz = "0.5"

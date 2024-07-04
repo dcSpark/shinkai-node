@@ -170,9 +170,8 @@ async fn test_websocket() {
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-    let identity_manager_trait = Arc::new(Mutex::new(
-        Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
-    ));
+    let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> = 
+        Arc::new(Mutex::new(MockIdentityManager::new()));
 
     let inbox_name1 = InboxName::get_job_inbox_name_from_params(job_id1.to_string()).unwrap();
     let inbox_name2 = InboxName::get_job_inbox_name_from_params(job_id2.to_string()).unwrap();
@@ -484,9 +483,8 @@ async fn test_websocket_smart_inbox() {
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-    let identity_manager_trait = Arc::new(Mutex::new(
-        Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
-    ));
+    let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> = 
+        Arc::new(Mutex::new(MockIdentityManager::new()));
 
     let inbox_name1 = InboxName::get_job_inbox_name_from_params(job_id1.to_string()).unwrap();
     let inbox_name1_string = match inbox_name1 {

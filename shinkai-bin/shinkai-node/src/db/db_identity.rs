@@ -9,7 +9,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string_ref, string_to_signature_public_key,
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey};
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 impl ShinkaiDB {
     pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiDBError> {
