@@ -2495,9 +2495,9 @@ impl Node {
 
                 // Calculate the message length excluding the identity length and the identity itself
                 let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
-
-                // Initialize buffer to fit the message
-                let mut buffer = vec![0u8; msg_length];
+                if msg_length < 0 {
+                    return; // Exit, malformed data, protect from capacity overflow
+                }
 
                 // Read the header byte to determine the message type
                 let mut header_byte = [0u8; 1];
@@ -2515,6 +2515,13 @@ impl Node {
                             return; // Exit the task if the message type is unknown
                         }
                     };
+
+                    if msg_length == 0 {
+                        return; // Exit, unless there is a message_type without body
+                    }
+
+                    // Initialize buffer to fit the message
+                    let mut buffer = vec![0u8; msg_length];
 
                     // Read the rest of the message into the buffer
                     if reader.read_exact(&mut buffer).await.is_ok() {
