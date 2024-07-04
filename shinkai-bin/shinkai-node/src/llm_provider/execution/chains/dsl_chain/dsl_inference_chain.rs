@@ -191,9 +191,9 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("array_to_markdown_template", |context, args| {
             generic_functions::array_to_markdown_template(&*context, args)
         });
-        self.add_generic_function("print_arg", |context, args| {
-            generic_functions::print_arg(&*context, args)
-        });
+        // self.add_generic_function("print_arg", |context, args| {
+        //     generic_functions::print_arg(&*context, args)
+        // });
         self.add_generic_function("count_files_from_input", |context, args| {
             generic_functions::count_files_from_input(&*context, args)
         });
