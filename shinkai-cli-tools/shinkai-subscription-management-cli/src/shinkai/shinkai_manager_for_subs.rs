@@ -265,7 +265,7 @@ impl ShinkaiManagerForSubs {
         subscription_req: SubscriptionPayment,
         http_preferred: Option<bool>,
         base_folder: Option<String>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         let formatted_path = if shared_folder_path == "/" {
             shared_folder_path.to_string()
         } else {
@@ -310,8 +310,8 @@ impl ShinkaiManagerForSubs {
             Ok(_) => {
                 // println!("Folder creation successful: {:?}", response);
             }
-            Err(_e) => {
-                return Err("Failed to create folder");
+            Err(e) => {
+                return Err(format!("Failed to create folder: {:?}", e)); // Return an owned String
             }
         }
 

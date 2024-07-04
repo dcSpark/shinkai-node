@@ -1,8 +1,8 @@
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use super::ws_manager::{self, WSUpdateHandler};
+use super::ws_manager::WSUpdateHandler;
 use super::Node;
-use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::{
@@ -299,6 +299,7 @@ impl Node {
         };
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn local_add_llm_provider(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -309,8 +310,16 @@ impl Node {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<String>,
     ) {
-        let result =
-            Self::internal_add_llm_provider(db, identity_manager, job_manager, identity_secret_key, agent, profile, ws_manager).await;
+        let result = Self::internal_add_llm_provider(
+            db,
+            identity_manager,
+            job_manager,
+            identity_secret_key,
+            agent,
+            profile,
+            ws_manager,
+        )
+        .await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),
@@ -344,6 +353,7 @@ impl Node {
         let _ = res.send(result.map_err(|e| e.message)).await;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn local_add_ollama_models(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,

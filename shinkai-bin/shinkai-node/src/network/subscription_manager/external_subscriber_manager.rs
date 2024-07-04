@@ -1,12 +1,12 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
+use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::ws_manager::{self, WSUpdateHandler};
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::Node;
 use crate::schemas::identity::StandardIdentity;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -96,6 +96,7 @@ pub struct ExternalSubscriberManager {
 }
 
 impl ExternalSubscriberManager {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,

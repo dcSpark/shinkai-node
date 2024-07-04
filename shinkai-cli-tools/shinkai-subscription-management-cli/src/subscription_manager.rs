@@ -62,7 +62,7 @@ impl SubscriptionManager {
         subscription_req: SubscriptionPayment,
         http_preferred: Option<bool>,
         base_folder: Option<String>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         self.shinkai_manager_for_subs
             .subscribe_to_folder(
                 &path,

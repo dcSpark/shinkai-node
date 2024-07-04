@@ -1,6 +1,6 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
+use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
@@ -71,6 +71,7 @@ pub struct MySubscriptionsManager {
 }
 
 impl MySubscriptionsManager {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -392,7 +393,6 @@ impl MySubscriptionsManager {
     // it needs to be able to ping the API and check if the folder has been updated
     // probably we can expand the api endpoint to return some versioning (timestamp / merkle tree root hash)
     // here or in download_manager we should be checking every X time
-
     #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(
         &self,
@@ -425,10 +425,13 @@ impl MySubscriptionsManager {
             );
             match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(_) => {
-                    // Already subscribed, no need to proceed further
-                    return Err(SubscriberManagerError::AlreadySubscribed(
-                        "Already subscribed to the folder".to_string(),
-                    ));
+                    // ONLY FOR DEBUG! Already subscribed, remove the existing subscription
+                    db_lock.remove_my_subscription(subscription_id.get_unique_id())?;
+                    // Restore this
+                    // // Already subscribed, no need to proceed further
+                    // return Err(SubscriberManagerError::AlreadySubscribed(
+                    //     "Already subscribed to the folder".to_string(),
+                    // ));
                 }
                 Err(ShinkaiDBError::DataNotFound) => {
                     // Subscription doesn't exist. Continue with the subscription process
@@ -581,6 +584,9 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    /// Shares the current shared folder state with the subscriber
+    /// It will return empty if the subscription is http-preferred
+    /// That way it doesn't trigger a TCP send from the streamer
     pub async fn share_local_shared_folder_copy_state(
         &self,
         streamer_node: ShinkaiName,
@@ -620,6 +626,11 @@ impl MySubscriptionsManager {
                 return Err(SubscriberManagerError::InvalidSubscriber(
                     "Subscription doesn't belong to the subscriber".to_string(),
                 ));
+            }
+
+            // Check if the subscription is http-preferred
+            if subscription.http_preferred.unwrap_or(false) {
+                return Ok(());
             }
 
             subscription_folder_path = Some(
@@ -897,7 +908,7 @@ impl MySubscriptionsManager {
             Some(proxy_info) => proxy_info,
             None => return None,
         };
-    
+
         let proxy_connection_info = proxy_connection_info.lock().await;
         if let Some(proxy_connection) = proxy_connection_info.as_ref() {
             let proxy_name = proxy_connection.proxy_identity.clone().get_node_name_string();
