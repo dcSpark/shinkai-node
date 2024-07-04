@@ -2,6 +2,9 @@ use shinkai_ocr::image_parser::ImageParser;
 
 #[tokio::test]
 async fn image_parsing() -> Result<(), Box<dyn std::error::Error>> {
+    // Set the OCR_ENABLED environment variable for this test
+    std::env::set_var("OCR_ENABLED", "true");
+
     ImageParser::check_and_download_dependencies().await?;
 
     let file = std::fs::read("../../files/product_table.png")?;
