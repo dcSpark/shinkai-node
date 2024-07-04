@@ -28,7 +28,7 @@ impl RustToolFunctions {
         tool_map.insert("html_to_markdown", html_to_markdown);
         tool_map.insert("array_to_markdown_template", array_to_markdown_template);
         tool_map.insert("fill_variable_in_md_template", fill_variable_in_md_template);
-        tool_map.insert("print_arg", print_arg);
+        // tool_map.insert("print_arg", print_arg);
         tool_map.insert("return_error_message", return_error_message);
         tool_map.insert("count_files_from_input", count_files_from_input);
         tool_map.insert("retrieve_file_from_input", retrieve_file_from_input);
