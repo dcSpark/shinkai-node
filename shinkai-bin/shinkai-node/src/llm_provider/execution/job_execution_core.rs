@@ -24,6 +24,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::file_parser::file_parser::FileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
@@ -714,7 +715,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        _db: Arc<ShinkaiDB>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         agent: Option<SerializedLLMProvider>,
         files_inbox: String,
@@ -762,9 +763,13 @@ impl JobManager {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
+        let file_parser = match db.get_local_processing_preference()? {
+            true => FileParser::Local,
+            false => FileParser::Unstructured(unstructured_api),
+        };
+
         let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), unstructured_api.clone())
-                .await?;
+            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), file_parser).await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

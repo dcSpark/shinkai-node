@@ -13,6 +13,13 @@ use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorR
 #[cfg(feature = "desktop-only")]
 use async_recursion::async_recursion;
 
+#[cfg(feature = "desktop-only")]
+#[derive(Clone)]
+pub enum FileParser {
+    Local,
+    Unstructured(UnstructuredAPI),
+}
+
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
@@ -33,7 +40,7 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
-        unstructured_api: UnstructuredAPI,
+        file_parser: FileParser,
     ) -> Result<BaseVectorResource, VRError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -42,7 +49,7 @@ impl ShinkaiFileParser {
             file_name,
             max_node_text_size,
             source.clone(),
-            unstructured_api,
+            file_parser,
         )
         .await?;
 
@@ -69,7 +76,7 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
-        unstructured_api: UnstructuredAPI,
+        file_parser: FileParser,
     ) -> Result<BaseVectorResource, VRError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -78,7 +85,7 @@ impl ShinkaiFileParser {
             file_name,
             max_node_text_size,
             source.clone(),
-            unstructured_api,
+            file_parser,
         )?;
 
         // Here, we switch to the blocking variant of `process_groups_into_resource`.
@@ -101,23 +108,18 @@ impl ShinkaiFileParser {
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
-        unstructured_api: UnstructuredAPI,
+        file_parser: FileParser,
     ) -> Result<Vec<TextGroup>, VRError> {
-        // If local processing is available, use it. Otherwise, use the unstructured API.
-        let text_groups = if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
-            file_buffer.clone(),
-            file_name.clone(),
-            max_node_text_size,
-            source.clone(),
-        ) {
-            groups
-        } else {
-            unstructured_api
-                .process_file_into_grouped_text(file_buffer, file_name.clone(), max_node_text_size)
-                .await?
-        };
-
-        Ok(text_groups)
+        match file_parser {
+            FileParser::Local => {
+                LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
+            }
+            FileParser::Unstructured(unstructured_api) => {
+                unstructured_api
+                    .process_file_into_grouped_text(file_buffer, file_name, max_node_text_size)
+                    .await
+            }
+        }
     }
 
     #[cfg(feature = "desktop-only")]
@@ -127,26 +129,16 @@ impl ShinkaiFileParser {
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
-        unstructured_api: UnstructuredAPI,
+        file_parser: FileParser,
     ) -> Result<Vec<TextGroup>, VRError> {
-        // If local processing is available, use it. Otherwise, use the unstructured API.
-        let text_groups = if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
-            file_buffer.clone(),
-            file_name.clone(),
-            max_node_text_size,
-            source.clone(),
-        ) {
-            groups
-        } else {
-            // Assuming `process_file_into_grouped_text_blocking` is a synchronous version of `process_file_into_grouped_text`
-            unstructured_api.process_file_into_grouped_text_blocking(
-                file_buffer,
-                file_name.clone(),
-                max_node_text_size,
-            )?
-        };
-
-        Ok(text_groups)
+        match file_parser {
+            FileParser::Local => {
+                LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
+            }
+            FileParser::Unstructured(unstructured_api) => {
+                unstructured_api.process_file_into_grouped_text_blocking(file_buffer, file_name, max_node_text_size)
+            }
+        }
     }
 
     #[cfg(feature = "desktop-only")]
