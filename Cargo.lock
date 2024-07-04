@@ -7726,6 +7726,7 @@ dependencies = [
  "reqwest 0.11.27",
  "rten",
  "tokio",
+ "uuid 0.8.2",
 ]
 
 [[package]]
