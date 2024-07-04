@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{env, fs, path::Path, sync::Arc};
 
 use super::{
     node_api::APIError, node_error::NodeError,
@@ -1319,6 +1319,16 @@ impl Node {
                 return Ok(());
             }
         };
+
+        if env::var("DEBUG_VRKAI").is_ok() {
+            let debug_content = result.resource.resource_contents_by_hierarchy_to_string();
+            let file_name = format!("tmp/{}.txt", input_payload.path.replace("/", "_"));
+            let path = Path::new(&file_name);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, debug_content).unwrap();
+        }
 
         let json_resp = match result.encode_as_base64() {
             Ok(result) => result,

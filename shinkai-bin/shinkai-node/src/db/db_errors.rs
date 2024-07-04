@@ -53,6 +53,10 @@ pub enum ShinkaiDBError {
     VectorFSError(String),
     InvalidAttributeName(String),
     BoolParseError(String),
+    ToolNotFound(String),
+    DeserializationFailed(String),
+    ToolkitNotFound(String),
+    InvalidToolType(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -114,6 +118,10 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::VectorFSError(e) => write!(f, "VectorFS error: {}", e),
             ShinkaiDBError::InvalidAttributeName(e) => write!(f, "Invalid attribute name: {}", e),
             ShinkaiDBError::BoolParseError(e) => write!(f, "Bool parse error: {}", e),
+            ShinkaiDBError::ToolNotFound(e) => write!(f, "Tool not found: {}", e),
+            ShinkaiDBError::DeserializationFailed(e) => write!(f, "Deserialization failed: {}", e),
+            ShinkaiDBError::ToolkitNotFound(e) => write!(f, "Toolkit not found: {}", e),
+            ShinkaiDBError::InvalidToolType(e) => write!(f, "Invalid tool type: {}", e),
         }
     }
 }

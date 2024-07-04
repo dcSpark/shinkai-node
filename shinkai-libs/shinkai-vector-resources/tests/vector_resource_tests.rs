@@ -336,7 +336,7 @@ fn test_manual_resource_vector_search() {
         &vec![TraversalOption::MinimumScore(0.01)],
         None,
     );
-    assert!(res.len() > 0);
+    assert!(!res.is_empty());
 
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
@@ -765,32 +765,32 @@ fn test_manual_syntactic_vector_search() {
     let query = generator
         .generate_embedding_default_blocking("What is the applicant's email?")
         .unwrap();
-    let fetched_data = doc.syntactic_vector_search(query, 1, &vec![email_tag.name.clone()]);
-    let fetched_node = fetched_data.get(0).unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 1, &[email_tag.name.clone()]);
+    let fetched_node = fetched_data.first().unwrap();
     assert_eq!(NodeContent::Text(fact1.to_string()), fetched_node.node.content);
 
     // Date syntactic vector search
     let query = generator
         .generate_embedding_default_blocking("What is the applicant's birthday?")
         .unwrap();
-    let fetched_data = doc.syntactic_vector_search(query, 10, &vec![date_tag.name.clone()]);
-    let fetched_node = fetched_data.get(0).unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 10, &[date_tag.name.clone()]);
+    let fetched_node = fetched_data.first().unwrap();
     assert_eq!(NodeContent::Text(fact2.to_string()), fetched_node.node.content);
 
     // Price syntactic vector search
     let query = generator
         .generate_embedding_default_blocking("Any notable accomplishments in previous positions?")
         .unwrap();
-    let fetched_data = doc.syntactic_vector_search(query, 2, &vec![price_tag.name.clone()]);
-    let fetched_node = fetched_data.get(0).unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 2, &[price_tag.name.clone()]);
+    let fetched_node = fetched_data.first().unwrap();
     assert_eq!(NodeContent::Text(fact3.to_string()), fetched_node.node.content);
 
     // Multiplier syntactic vector search
     let query = generator
         .generate_embedding_default_blocking("Any notable accomplishments in previous positions?")
         .unwrap();
-    let fetched_data = doc.syntactic_vector_search(query, 5, &vec![multiplier_tag.name.clone()]);
-    let fetched_node = fetched_data.get(0).unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 5, &[multiplier_tag.name.clone()]);
+    let fetched_node = fetched_data.first().unwrap();
     assert_eq!(NodeContent::Text(fact3.to_string()), fetched_node.node.content);
 }
 

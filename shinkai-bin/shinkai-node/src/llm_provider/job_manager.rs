@@ -5,6 +5,7 @@ use crate::llm_provider::job::JobLike;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::ws_manager::WSUpdateHandler;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
@@ -46,9 +47,12 @@ pub struct JobManager {
     pub unstructured_api: UnstructuredAPI,
     // Websocket manager for sending updates to the frontend
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    // Tool router for managing installed tools
+    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
 }
 
 impl JobManager {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -58,6 +62,7 @@ impl JobManager {
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -106,7 +111,8 @@ impl JobManager {
             embedding_generator.clone(),
             unstructured_api.clone(),
             ws_manager.clone(),
-            |job, db, vector_fs, node_profile_name, identity_sk, generator, unstructured_api, ws_manager| {
+            tool_router.clone(),
+            |job, db, vector_fs, node_profile_name, identity_sk, generator, unstructured_api, ws_manager, tool_router| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -116,6 +122,7 @@ impl JobManager {
                     generator,
                     unstructured_api,
                     ws_manager,
+                    tool_router,
                 ))
             },
         )
@@ -134,6 +141,7 @@ impl JobManager {
             embedding_generator,
             unstructured_api,
             ws_manager,
+            tool_router,
         }
     }
 
@@ -148,6 +156,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -157,6 +166,7 @@ impl JobManager {
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+                Option<Arc<Mutex<ToolRouter>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -227,6 +237,7 @@ impl JobManager {
                     let cloned_unstructured_api = unstructured_api.clone();
                     let node_profile_name = node_profile_name.clone();
                     let ws_manager = ws_manager.clone();
+                    let tool_router = tool_router.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -251,6 +262,7 @@ impl JobManager {
                                         cloned_generator,
                                         cloned_unstructured_api,
                                         ws_manager,
+                                        tool_router,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {

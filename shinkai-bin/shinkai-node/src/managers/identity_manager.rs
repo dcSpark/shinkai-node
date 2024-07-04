@@ -241,7 +241,6 @@ impl IdentityManager {
     }
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
-        // println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.clone()
     }
 
@@ -325,7 +324,6 @@ impl IdentityManager {
 #[async_trait]
 impl IdentityManagerTrait for IdentityManager {
     fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
-        // println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.iter().find(|identity| {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,

@@ -8,11 +8,13 @@ anyhow = "1.0.86"
 image = "0.25.1"
 ocrs = "0.8.0"
 pdfium-render = { version = "=0.8.22" }
-reqwest = { version = "0.12" }
+regex = "1"
+reqwest = { version = "0.11.26" }
 rten = { version = "0.10.0" }
+uuid = { version = "0.8", features = ["v4"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.36", features = ["full"] }
 
 [features]
 default = []

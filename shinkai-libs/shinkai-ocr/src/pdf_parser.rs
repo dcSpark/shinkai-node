@@ -1,4 +1,6 @@
 use pdfium_render::prelude::*;
+use regex::Regex;
+use std::{io::Write, time::Instant};
 
 use crate::image_parser::ImageParser;
 
@@ -55,6 +57,7 @@ impl PDFParser {
     }
 
     pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
+        let start_time = Instant::now();
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
         struct TextPosition {
@@ -72,7 +75,52 @@ impl PDFParser {
         let mut page_text = "".to_owned();
         let mut previous_text_font: Option<TextFont> = None;
 
+        // Process metadata
+        let mut metadata_text = "".to_owned();
+        for tag in document.metadata().iter() {
+            match tag.tag_type() {
+                PdfDocumentMetadataTagType::Title => {
+                    let title = tag.value();
+                    if !title.is_empty() {
+                        metadata_text.push_str(&format!("Title: {}\n", title));
+                    }
+                }
+                PdfDocumentMetadataTagType::Author => {
+                    let author = tag.value();
+                    if !author.is_empty() {
+                        metadata_text.push_str(&format!("Author: {}\n", author));
+                    }
+                }
+                PdfDocumentMetadataTagType::Subject => {
+                    let subject = tag.value();
+                    if !subject.is_empty() {
+                        metadata_text.push_str(&format!("Subject: {}\n", subject));
+                    }
+                }
+                PdfDocumentMetadataTagType::Keywords => {
+                    let keywords = tag.value();
+                    if !keywords.is_empty() {
+                        metadata_text.push_str(&format!("Keywords: {}\n", keywords));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !metadata_text.is_empty() {
+            let pdf_text = PDFText {
+                text: metadata_text.trim().to_string(),
+                likely_heading: true,
+            };
+            pdf_pages.push(PDFPage {
+                page_number: 0,
+                content: vec![pdf_text],
+            });
+        }
+
+        // Process pages
         for (page_index, page) in document.pages().iter().enumerate() {
+            let page_start_time = Instant::now();
             let mut pdf_texts = Vec::new();
             let mut previous_text_position: Option<TextPosition> = None;
 
@@ -134,7 +182,7 @@ impl PDFParser {
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
-                                    text: page_text.clone().trim().to_string(),
+                                    text: Self::normalize_parsed_text(&page_text),
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
@@ -144,7 +192,7 @@ impl PDFParser {
 
                             // Add heading to the top level
                             let pdf_text = PDFText {
-                                text: text.clone().trim().to_string(),
+                                text: Self::normalize_parsed_text(&text),
                                 likely_heading: true,
                             };
                             pdf_texts.push(pdf_text);
@@ -154,7 +202,7 @@ impl PDFParser {
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
-                                    text: page_text.clone().trim().to_string(),
+                                    text: Self::normalize_parsed_text(&page_text),
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
@@ -178,7 +226,7 @@ impl PDFParser {
                         // Save text from previous text objects.
                         if !page_text.is_empty() {
                             let pdf_text = PDFText {
-                                text: page_text.clone().trim().to_string(),
+                                text: Self::normalize_parsed_text(&page_text),
                                 likely_heading: false,
                             };
                             pdf_texts.push(pdf_text);
@@ -188,14 +236,22 @@ impl PDFParser {
 
                         let image_object = object.as_image_object().unwrap();
 
-                        if let Ok(image) = image_object.get_raw_image() {
-                            if let Ok(text) = self.image_parser.process_image(image) {
-                                if !text.is_empty() {
-                                    let pdf_text = PDFText {
-                                        text,
-                                        likely_heading: false,
-                                    };
-                                    pdf_texts.push(pdf_text);
+                        // Unwrap the width and height results
+                        let (width, height) = (
+                            image_object.width().unwrap().value,
+                            image_object.height().unwrap().value,
+                        );
+
+                        if width > 50.0 && height > 50.0 {
+                            if let Ok(image) = image_object.get_raw_image() {
+                                if let Ok(text) = self.image_parser.process_image(image) {
+                                    if !text.is_empty() {
+                                        let pdf_text = PDFText {
+                                            text: Self::normalize_parsed_text(&text),
+                                            likely_heading: false,
+                                        };
+                                        pdf_texts.push(pdf_text);
+                                    }
                                 }
                             }
                         }
@@ -207,7 +263,7 @@ impl PDFParser {
             // Drop parsed page numbers as text
             if !page_text.is_empty() && page_text != format!("{}", page_index + 1) {
                 let pdf_text = PDFText {
-                    text: page_text.clone().trim().to_string(),
+                    text: Self::normalize_parsed_text(&page_text),
                     likely_heading: false,
                 };
                 pdf_texts.push(pdf_text);
@@ -219,11 +275,16 @@ impl PDFParser {
                 page_number: page_index + 1,
                 content: pdf_texts,
             });
+
+            if std::env::var("DEBUG_VRKAI").is_ok() {
+                let page_duration = page_start_time.elapsed();
+                println!("Page {} parsed in {:?}", page_index + 1, page_duration);
+            }
         }
 
         if !page_text.is_empty() {
             let pdf_text = PDFText {
-                text: page_text.clone().trim().to_string(),
+                text: Self::normalize_parsed_text(&page_text),
                 likely_heading: false,
             };
             pdf_pages
@@ -236,6 +297,22 @@ impl PDFParser {
                 .push(pdf_text);
         }
 
+        if std::env::var("DEBUG_VRKAI").is_ok() {
+            let total_duration = start_time.elapsed();
+            println!("Total PDF parsed in {:?}", total_duration);
+        }
+
         Ok(pdf_pages)
+    }
+
+    fn normalize_parsed_text(parsed_text: &str) -> String {
+        let re_whitespaces = Regex::new(r"\s{2,}|\n").unwrap();
+        let re_word_breaks = Regex::new(r"\s*").unwrap();
+
+        let normalized_text = re_whitespaces.replace_all(parsed_text, " ");
+        let normalized_text = re_word_breaks.replace_all(&normalized_text, "");
+        let normalized_text = normalized_text.trim().to_string();
+
+        normalized_text
     }
 }
