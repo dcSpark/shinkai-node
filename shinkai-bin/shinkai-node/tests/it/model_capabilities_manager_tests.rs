@@ -55,7 +55,7 @@ mod tests {
 
         let capabilities = ModelCapabilitiesManager::get_capability(&gpt_3_5_llm_provider);
         assert_eq!(capabilities.0, vec![ModelCapability::TextInference]);
-        assert_eq!(capabilities.1, ModelCost::Cheap);
+        assert_eq!(capabilities.1, ModelCost::VeryCheap);
         assert_eq!(capabilities.2, ModelPrivacy::RemoteGreedy);
     }
 
