@@ -10,6 +10,8 @@ use crate::llm_provider::{
     execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt}, job_manager::JobManager,
 };
 
+use super::split_text_for_llm::split_text_for_llm;
+
 // TODO: we need to generate description for each function (LLM processing?)
 // we need to extend the description with keywords maybe use RAKE as well
 // then we need to generate embeddings for them
@@ -33,7 +35,9 @@ impl RustToolFunctions {
         tool_map.insert("count_files_from_input", count_files_from_input);
         tool_map.insert("retrieve_file_from_input", retrieve_file_from_input);
         tool_map.insert("extract_and_map_csv_column", extract_and_map_csv_column);
-        // tool_map.insert("process_embeddings_in_job_scope", process_embeddings_in_job_scope); // async fn
+        
+        tool_map.insert("process_embeddings_in_job_scope", process_embeddings_in_job_scope);
+        tool_map.insert("split_text_for_llm", split_text_for_llm);
 
         tool_map
     }
@@ -337,57 +341,71 @@ pub fn extract_and_map_csv_column(
     Ok(Box::new(mapped_values))
 }
 
-#[allow(dead_code)]
-// TODO: needs some work in the embedding <> fn usage
-pub async fn process_embeddings_in_job_scope(
+pub fn process_embeddings_in_job_scope(
     context: &dyn InferenceChainContextTrait,
     args: Vec<Box<dyn Any + Send>>,
 ) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 1 {
-        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
+    if args.len() > 1 {
+        return Err(WorkflowError::InvalidArgument("Expected 0 or 1 argument".to_string()));
     }
 
-    let map_fn = args[0]
-        .downcast_ref::<Box<dyn Fn(&str) -> String + Send + Sync>>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?;
+    let map_fn: &(dyn Fn(&str) -> String + Send + Sync) = if args.is_empty() {
+        &|s: &str| s.to_string() // Default map function
+    } else {
+        args[0]
+            .downcast_ref::<Box<dyn Fn(&str) -> String + Send + Sync>>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?
+            .as_ref()
+    };
 
-    let vector_fs = context.vector_fs();
-    let user_profile = context.user_profile();
-    let scope = context.full_job().scope.clone();
+    // Be aware that although this function avoids starving other independently spawned tasks, any other code running concurrently in the same task will be 
+    // suspended during the call to block_in_place. This can happen e.g. when using the [join] macro. To avoid this issue, use [spawn_blocking] instead of block_in_place.
+    let result = tokio::task::block_in_place(|| {
+        tokio::runtime::Runtime::new()
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?
+            .block_on(async {
+                let vector_fs = context.vector_fs();
+                let user_profile = context.user_profile();
+                let scope = context.full_job().scope.clone();
 
-    let resource_stream =
-        JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile).await;
-    let mut chunks = resource_stream.chunks(5);
+                let resource_stream =
+                    JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile).await;
+                let mut chunks = resource_stream.chunks(5);
 
-    let mut processed_embeddings = Vec::new();
-    while let Some(resources) = chunks.next().await {
-        let futures = resources.into_iter().map(|resource| async move {
-            let subprompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
-            let embedding = subprompts
-                .iter()
-                .map(|subprompt| map_fn(&subprompt.get_content()))
-                .collect::<Vec<String>>()
-                .join(" ");
-            Ok::<_, WorkflowError>(embedding)
-        });
-        let results = join_all(futures).await;
+                let mut processed_embeddings = Vec::new();
+                while let Some(resources) = chunks.next().await {
+                    let futures = resources.into_iter().map(|resource| async move {
+                        let subprompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
+                        let embedding = subprompts
+                            .iter()
+                            .map(|subprompt| map_fn(&subprompt.get_content()))
+                            .collect::<Vec<String>>()
+                            .join(" ");
+                        Ok::<_, WorkflowError>(embedding)
+                    });
+                    let results = join_all(futures).await;
 
-        for result in results {
-            match result {
-                Ok(processed) => processed_embeddings.push(processed),
-                // TODO: change this to use another type of local printing
-                Err(e) => shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    &format!("Error processing embedding: {}", e),
-                ),
-            }
-        }
-    }
+                    for result in results {
+                        match result {
+                            Ok(processed) => processed_embeddings.push(processed),
+                            // TODO: change this to use another type of local printing
+                            Err(e) => shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                &format!("Error processing embedding: {}", e),
+                            ),
+                        }
+                    }
+                }
 
-    let joined_results = processed_embeddings.join(":::");
-    Ok(Box::new(joined_results))
+                let joined_results = processed_embeddings.join(":::");
+                Ok::<_, WorkflowError>(joined_results)
+            })
+    })?;
+
+    Ok(Box::new(result))
 }
+
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

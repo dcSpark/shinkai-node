@@ -428,6 +428,8 @@ impl JobManager {
 
         // Add the inference function to the functions map
         dsl_inference.add_inference_function();
+        dsl_inference.add_inference_no_ws_function();
+        dsl_inference.add_multi_inference_function();
         dsl_inference.add_all_generic_functions();
         dsl_inference.add_tools_from_router().await?;
 

@@ -299,6 +299,7 @@ impl Node {
         };
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn local_add_llm_provider(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
