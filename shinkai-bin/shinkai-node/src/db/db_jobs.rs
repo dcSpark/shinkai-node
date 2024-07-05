@@ -241,6 +241,7 @@ impl ShinkaiDB {
     }
 
     /// Fetches data for a specific Job from the DB
+    #[allow(clippy::type_complexity)]
     fn get_job_data(
         &self,
         job_id: &str,

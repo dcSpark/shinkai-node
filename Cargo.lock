@@ -826,7 +826,7 @@ dependencies = [
  "serde",
  "time 0.3.30",
  "tokio",
- "tokio-util 0.7.8",
+ "tokio-util 0.7.11",
 ]
 
 [[package]]
@@ -2155,15 +2155,15 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "0.99.17"
+version = "0.99.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
+checksum = "5f33878137e4dafd7fa914ad4e259e18a4e8e532b9617a2d0150262bf53abfce"
 dependencies = [
  "convert_case 0.4.0",
  "proc-macro2 1.0.84",
  "quote 1.0.36",
  "rustc_version",
- "syn 1.0.109",
+ "syn 2.0.66",
 ]
 
 [[package]]
@@ -3345,7 +3345,7 @@ dependencies = [
  "indexmap 1.9.3",
  "slab",
  "tokio",
- "tokio-util 0.7.8",
+ "tokio-util 0.7.11",
  "tracing",
 ]
 
@@ -3364,7 +3364,7 @@ dependencies = [
  "indexmap 2.1.0",
  "slab",
  "tokio",
- "tokio-util 0.7.8",
+ "tokio-util 0.7.11",
  "tracing",
 ]
 
@@ -6686,7 +6686,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls 0.24.1",
- "tokio-util 0.7.8",
+ "tokio-util 0.7.11",
  "tower-service",
  "url 2.4.1",
  "wasm-bindgen",
@@ -7779,10 +7779,12 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.7.1-dev.10"
+version = "0.7.1-dev.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae42a24ee688bb6183be83136d5483cc8f466445e8b65ca454c804830a0233bb"
+checksum = "c78159a5164a500d91fe70fe8a7b7b77d3e8b9a60048caf683e15f3f3832eb86"
 dependencies = [
+ "derivative",
+ "derive_more",
  "futures",
  "lazy_static",
  "nanoid",
@@ -7792,6 +7794,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-util 0.7.11",
 ]
 
 [[package]]
@@ -8629,16 +8632,15 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.8"
+version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "806fe8c2c87eccc8b3267cbae29ed3ab2d0bd37fca70ab622e46aaa9375ddb7d"
+checksum = "9cf6b47b3771c49ac75ad09a6162f53ad4b8088b76ac60e8ec1455b31a189fe1"
 dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
  "pin-project-lite",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -8728,7 +8730,7 @@ dependencies = [
  "rand 0.8.5",
  "slab",
  "tokio",
- "tokio-util 0.7.8",
+ "tokio-util 0.7.11",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -9283,7 +9285,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-tungstenite 0.21.0",
- "tokio-util 0.7.8",
+ "tokio-util 0.7.11",
  "tower-service",
  "tracing",
 ]

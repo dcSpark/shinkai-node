@@ -56,7 +56,7 @@ pub fn ollama_conversation_prepare_messages(
     let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;
 
     // Get a more accurate estimate of the number of used tokens
-    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
     // Calculate the remaining output tokens available
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 

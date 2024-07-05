@@ -388,6 +388,7 @@ pub struct MockInferenceChainContext {
 
 impl MockInferenceChainContext {
     #[allow(clippy::complexity)]
+    #[allow(dead_code)]
     pub fn new(
         user_message: ParsedUserMessage,
         execution_context: HashMap<String, String>,

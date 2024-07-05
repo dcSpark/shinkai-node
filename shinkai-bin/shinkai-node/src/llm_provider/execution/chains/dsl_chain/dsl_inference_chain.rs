@@ -5,6 +5,7 @@ use crate::{
         execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike,
         providers::shared::openai::FunctionCall,
     },
+    managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
 };
 use async_trait::async_trait;
@@ -22,13 +23,16 @@ use shinkai_vector_resources::{embeddings::Embedding, vector_resource::Retrieved
 use crate::llm_provider::{
     error::LLMProviderError,
     execution::{
-        chains::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult},
+        chains::inference_chain_trait::{InferenceChain, InferenceChainResult},
         prompts::prompts::JobPromptGenerator,
     },
     job_manager::JobManager,
 };
 
-use super::generic_functions;
+use super::{
+    generic_functions,
+    split_text_for_llm::{split_text_at_token_limit, split_text_for_llm},
+};
 
 pub struct DslChain<'a> {
     pub context: Box<dyn InferenceChainContextTrait>,
@@ -118,6 +122,34 @@ impl<'a> DslChain<'a> {
             "inference".to_string(),
             Box::new(InferenceFunction {
                 context: self.context.clone_box(),
+                use_ws_manager: true,
+            }),
+        );
+    }
+
+    pub fn add_inference_no_ws_function(&mut self) {
+        self.functions.insert(
+            "inference_no_ws".to_string(),
+            Box::new(InferenceFunction {
+                context: self.context.clone_box(),
+                use_ws_manager: false,
+            }),
+        );
+    }
+
+    pub fn add_multi_inference_function(&mut self) {
+        self.functions.insert(
+            "multi_inference".to_string(),
+            Box::new(MultiInferenceFunction {
+                context: self.context.clone_box(),
+                inference_function_ws: InferenceFunction {
+                    context: self.context.clone_box(),
+                    use_ws_manager: true,
+                },
+                inference_function_no_ws: InferenceFunction {
+                    context: self.context.clone_box(),
+                    use_ws_manager: false,
+                },
             }),
         );
     }
@@ -154,7 +186,7 @@ impl<'a> DslChain<'a> {
         let tool_router_locked = tool_router.lock().await;
 
         let tools = tool_router_locked
-            .all_available_js_tools(&self.context.user_profile(), self.context.db().clone())
+            .all_available_js_tools(self.context.user_profile(), self.context.db().clone())
             .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
 
         for tool in tools {
@@ -203,6 +235,9 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("extract_and_map_csv_column", |context, args| {
             generic_functions::extract_and_map_csv_column(&*context, args)
         });
+        self.add_generic_function("process_embeddings_in_job_scope", |context, args| {
+            generic_functions::process_embeddings_in_job_scope(&*context, args)
+        });
         // TODO: add for local search of nodes (embeddings)
         // TODO: add for parse into chunks a text (so it fits in the context length of the model)
     }
@@ -211,10 +246,70 @@ impl<'a> DslChain<'a> {
 #[derive(Clone)]
 struct InferenceFunction {
     context: Box<dyn InferenceChainContextTrait>,
+    use_ws_manager: bool,
 }
 
 #[async_trait]
 impl AsyncFunction for InferenceFunction {
+    async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+        let user_message = args[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
+            .clone();
+
+        let full_job = self.context.full_job();
+        let llm_provider = self.context.agent();
+
+        // TODO: add more debugging to (ie add to logs) the diff operations
+        let filled_prompt = JobPromptGenerator::generic_inference_prompt(
+            None, // TODO: connect later on
+            None, // TODO: connect later on
+            user_message.clone(),
+            vec![],
+            None,
+            None,
+            vec![],
+            None,
+        );
+
+        // Handle response_res without using the `?` operator
+        let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone()) {
+            Ok(name) => Some(name),
+            Err(_) => None,
+        };
+        let response = JobManager::inference_with_llm_provider(
+            llm_provider.clone(),
+            filled_prompt.clone(),
+            inbox_name,
+            if self.use_ws_manager {
+                self.context.ws_manager_trait()
+            } else {
+                None
+            },
+        )
+        .await
+        .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+
+        let answer = response.response_string;
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Inference Answer: {:?}", answer.clone()).as_str(),
+        );
+
+        Ok(Box::new(answer))
+    }
+}
+
+#[derive(Clone)]
+struct OpinionatedInferenceFunction {
+    context: Box<dyn InferenceChainContextTrait>,
+    use_ws_manager: bool,
+}
+
+#[async_trait]
+impl AsyncFunction for OpinionatedInferenceFunction {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         let user_message = args[0]
             .downcast_ref::<String>()
@@ -244,7 +339,7 @@ impl AsyncFunction for InferenceFunction {
                 vector_fs.clone(),
                 full_job.scope(),
                 query_text.clone(),
-                &user_profile,
+                user_profile,
                 generator.clone(),
                 20,
                 max_tokens_in_prompt,
@@ -275,7 +370,11 @@ impl AsyncFunction for InferenceFunction {
             llm_provider.clone(),
             filled_prompt.clone(),
             inbox_name,
-            self.context.ws_manager_trait(),
+            if self.use_ws_manager {
+                self.context.ws_manager_trait()
+            } else {
+                None
+            },
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -289,6 +388,69 @@ impl AsyncFunction for InferenceFunction {
         );
 
         Ok(Box::new(answer))
+    }
+}
+
+#[derive(Clone)]
+struct MultiInferenceFunction {
+    context: Box<dyn InferenceChainContextTrait>,
+    inference_function_ws: InferenceFunction,
+    inference_function_no_ws: InferenceFunction,
+}
+
+#[async_trait]
+impl AsyncFunction for MultiInferenceFunction {
+    async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+        let first_argument = args[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for first argument".to_string()))?
+            .clone();
+
+        let split_result = split_text_for_llm(self.context.as_ref(), args)?;
+        let split_texts = split_result
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid split result".to_string()))?
+            .split(":::")
+            .map(|s| s.replace(":::", ""))
+            .collect::<Vec<String>>();
+
+        let mut responses = Vec::new();
+        let max_iterations = self.context.max_iterations().try_into().unwrap(); // Convert u64 to usize
+        let agent = self.context.agent();
+        let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+
+        for text in split_texts.iter().take(max_iterations) {
+            let inference_args = vec![Box::new(text.clone()) as Box<dyn Any + Send>];
+            let response = self.inference_function_no_ws.call(inference_args).await?;
+            let response_text = response
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::ExecutionError("Invalid response from inference".to_string()))?
+                .replace(":::", "");
+            responses.push(response_text);
+        }
+
+        // Perform one more inference with all the responses together
+        let combined_responses = responses.join(" ");
+        let combined_token_count = ModelCapabilitiesManager::count_tokens_from_message_llama3(&combined_responses);
+        let max_safe_tokens = (max_tokens as f64 * 0.8).ceil() as usize;
+
+        let final_text = if combined_token_count > max_safe_tokens {
+            let (part, _) = split_text_at_token_limit(&combined_responses, max_safe_tokens, combined_token_count);
+            part
+        } else {
+            combined_responses
+        };
+
+        // Concatenate the first argument with the final text for the final inference call
+        let concatenated_final_text = format!("{}{}", first_argument, final_text);
+        let final_inference_args = vec![Box::new(concatenated_final_text) as Box<dyn Any + Send>];
+        let final_response = self.inference_function_ws.call(final_inference_args).await?;
+        let final_response_text = final_response
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::ExecutionError("Invalid final response from inference".to_string()))?
+            .replace(":::", "");
+
+        Ok(Box::new(final_response_text))
     }
 }
 
