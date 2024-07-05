@@ -577,7 +577,13 @@ impl HttpSubscriptionUploadManager {
                 Ok(files) => files
                     .into_iter()
                     .filter(|file| !file.is_folder)
-                    .map(|file| file.path)
+                    .map(|file| {
+                        let mut path = file.path;
+                        if !path.starts_with('/') {
+                            path = format!("/{}", path);
+                        }
+                        path
+                    })
                     .collect::<Vec<String>>(),
                 Err(e) => {
                     shinkai_log(
@@ -626,7 +632,9 @@ impl HttpSubscriptionUploadManager {
 
             let resource = match Self::retrieve_base_vr(&vector_fs.clone(), &potentially_sync_file, &streamer).await {
                 Ok(res) => res,
-                Err(_) => {
+                Err(e) => {
+                    println!("Error retrieving base VR for file {}: {:?}", potentially_sync_file, e);
+                    // We couldn't retrieve the file, so we mark it for deletion as it's not locally available anymore
                     items_to_delete.push(potentially_sync_file.clone());
                     continue;
                 }
