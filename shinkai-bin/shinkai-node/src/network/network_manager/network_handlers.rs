@@ -434,7 +434,6 @@ pub async fn handle_network_message_cases(
         .await?;
     }
 
-    eprintln!("before get_message_content_schema");
     // Check the schema of the message and decide what to do
     match message.get_message_content_schema() {
         Ok(schema) => {
@@ -594,6 +593,7 @@ pub async fn handle_network_message_cases(
                                     streamer,
                                     subscription_request.path.clone(),
                                     subscription_request.payment,
+                                    subscription_request.http_preferred,
                                 )
                                 .await;
                             match result {

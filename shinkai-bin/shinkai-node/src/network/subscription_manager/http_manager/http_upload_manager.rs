@@ -152,6 +152,7 @@ impl HttpSubscriptionUploadManager {
         node_name: ShinkaiName,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
     ) -> Self {
+        eprintln!(">>> Starting HttpSubscriptionUploadManager");
         let subscription_file_map = Arc::new(DashMap::new());
         let subscription_status = Arc::new(DashMap::new());
         let file_links = Arc::new(DashMap::new());
@@ -215,8 +216,6 @@ impl HttpSubscriptionUploadManager {
 
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
-
                 match Self::controlled_subscription_http_check_loop(
                     db.clone(),
                     vector_fs.clone(),
@@ -239,6 +238,8 @@ impl HttpSubscriptionUploadManager {
                         );
                     }
                 }
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
             }
         })
     }

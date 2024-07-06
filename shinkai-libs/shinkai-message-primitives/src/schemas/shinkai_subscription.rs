@@ -178,6 +178,8 @@ pub struct ShinkaiSubscription {
 }
 
 impl ShinkaiSubscription {
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn new(
         shared_folder: String,
         streaming_node: ShinkaiName,
@@ -214,15 +216,32 @@ impl ShinkaiSubscription {
     }
 
     // Method to update the http_preferred field
+    #[allow(dead_code)]
     pub fn update_http_preferred(&mut self, preferred: Option<bool>) {
         self.http_preferred = preferred;
         self.last_modified = Utc::now();
     }
 
+    #[allow(dead_code)]
     pub fn with_state(mut self, new_state: ShinkaiSubscriptionStatus) -> Self {
         self.state = new_state;
         self.last_modified = Utc::now();
         self
+    }
+
+    /// Returns the subscriber with profile as ShinkaiName.
+    pub fn get_subscriber_with_profile(&self) -> Result<ShinkaiName, &'static str> {
+        ShinkaiName::from_node_and_profile_names(
+            self.subscriber_node.full_name.clone(),
+            self.subscriber_profile.clone(),
+        )
+        .map_err(|_| "Failed to create ShinkaiName from subscriber node and profile")
+    }
+
+    /// Returns the streamer with profile as ShinkaiName.
+    pub fn get_streamer_with_profile(&self) -> Result<ShinkaiName, &'static str> {
+        ShinkaiName::from_node_and_profile_names(self.streaming_node.full_name.clone(), self.streaming_profile.clone())
+            .map_err(|_| "Failed to create ShinkaiName from streamer node and profile")
     }
 }
 
