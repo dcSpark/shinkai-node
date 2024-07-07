@@ -274,6 +274,32 @@ impl FSEntryTreeGenerator {
         }
     }
 
+    /// Returns a new FSEntryTree with the specified prefix removed from all paths.
+    pub fn remove_prefix_from_paths(tree: &FSEntryTree, prefix: &str) -> FSEntryTree {
+        let new_path = if tree.path.starts_with(prefix) {
+            tree.path.replacen(prefix, "", 1)
+        } else {
+            tree.path.clone()
+        };
+
+        let new_children = tree
+            .children
+            .iter()
+            .map(|(name, child)| {
+                let new_child = Self::remove_prefix_from_paths(child, prefix);
+                (name.clone(), Arc::new(new_child))
+            })
+            .collect();
+
+        FSEntryTree {
+            name: tree.name.clone(),
+            path: new_path,
+            last_modified: tree.last_modified,
+            web_link: tree.web_link.clone(),
+            children: new_children,
+        }
+    }
+
     /// Identifies all deletions within a given FSEntryTree.
     /// A deletion is indicated by an item's last_modified date being set to the epoch start.
     pub fn find_deletions(tree: &FSEntryTree) -> Vec<String> {
@@ -1095,5 +1121,59 @@ mod tests {
             deletions.contains(&"/shared_test_folder/zeko/paper/zeko_intro".to_string()),
             "Expected deletion path to include '/shared_test_folder/zeko/paper/zeko_intro'"
         );
+    }
+
+    #[test]
+    fn test_remove_prefix_from_paths() {
+        let tree = FSEntryTree {
+            name: "shared test folder".to_string(),
+            path: "/My Subscriptions/shared test folder".to_string(),
+            last_modified: Utc::now(),
+            web_link: None,
+            children: {
+                let mut children = HashMap::new();
+                children.insert(
+                    "shinkai_intro".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "shinkai_intro".to_string(),
+                        path: "/My Subscriptions/shared test folder/shinkai_intro".to_string(),
+                        last_modified: Utc::now(),
+                        web_link: None,
+                        children: HashMap::new(),
+                    }),
+                );
+                children.insert(
+                    "crypto".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "crypto".to_string(),
+                        path: "/My Subscriptions/shared test folder/crypto".to_string(),
+                        last_modified: Utc::now(),
+                        web_link: None,
+                        children: {
+                            let mut crypto_children = HashMap::new();
+                            crypto_children.insert(
+                                "shinkai_intro".to_string(),
+                                Arc::new(FSEntryTree {
+                                    name: "shinkai_intro".to_string(),
+                                    path: "/My Subscriptions/shared test folder/crypto/shinkai_intro".to_string(),
+                                    last_modified: Utc::now(),
+                                    web_link: None,
+                                    children: HashMap::new(),
+                                }),
+                            );
+                            crypto_children
+                        },
+                    }),
+                );
+                children
+            },
+        };
+
+        let new_tree = FSEntryTreeGenerator::remove_prefix_from_paths(&tree, "/My Subscriptions");
+
+        assert_eq!(new_tree.path, "/shared test folder");
+        assert_eq!(new_tree.children["shinkai_intro"].path, "/shared test folder/shinkai_intro");
+        assert_eq!(new_tree.children["crypto"].path, "/shared test folder/crypto");
+        assert_eq!(new_tree.children["crypto"].children["shinkai_intro"].path, "/shared test folder/crypto/shinkai_intro");
     }
 }
