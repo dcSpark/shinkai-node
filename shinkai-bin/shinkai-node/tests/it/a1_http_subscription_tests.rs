@@ -587,6 +587,9 @@ fn http_subscription_manager_test() {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }
                 assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
+                if !structure_matched {
+                    panic!("The actual folder structure does not match the expected structure after all attempts.");
+                }
             }
             {
                 // Dont forget to do this at the end

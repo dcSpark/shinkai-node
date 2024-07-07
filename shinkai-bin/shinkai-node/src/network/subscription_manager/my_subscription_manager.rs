@@ -446,13 +446,13 @@ impl MySubscriptionsManager {
             );
             match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(subscription) => {
-                    // Force 
+                    // Force
                     db_lock.remove_my_subscription(subscription_id.get_unique_id())?;
 
                     match subscription.get_streamer_with_profile() {
                         Ok(streamer_full_name) => {
                             self.get_shared_folder(&streamer_full_name).await?;
-                        },
+                        }
                         Err(e) => {
                             shinkai_log(
                                 ShinkaiLogOption::MySubscriptions,
@@ -706,12 +706,17 @@ impl MySubscriptionsManager {
                 return Ok(());
             }
 
-            subscription_folder_path = Some(
-                subscription
-                    .subscriber_destination_path
-                    .clone()
-                    .unwrap_or_else(|| subscription.shared_folder.clone()),
-            );
+            let mut path = subscription
+                .subscriber_destination_path
+                .clone()
+                .unwrap_or_else(|| subscription.shared_folder.clone());
+
+            // Ensure the path starts with "/My Subscriptions"
+            if !path.starts_with("/My Subscriptions") {
+                path = format!("/My Subscriptions{}", path);
+            }
+
+            subscription_folder_path = Some(path);
             subscription_shared_path = subscription.shared_folder.clone();
         }
 
@@ -765,6 +770,8 @@ impl MySubscriptionsManager {
                 children: HashMap::new(),
             },
         };
+
+        let result = FSEntryTreeGenerator::remove_prefix_from_paths(&result, "/My Subscriptions");
 
         let result_json =
             serde_json::to_string(&result).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
@@ -1143,7 +1150,11 @@ impl MySubscriptionsManager {
                     shinkai_log(
                         ShinkaiLogOption::MySubscriptions,
                         ShinkaiLogLevel::Debug,
-                        format!("process_subscription_job_message_queued> No cached information for: {:?}", subscription.streaming_node).as_str(),
+                        format!(
+                            "process_subscription_job_message_queued> No cached information for: {:?}",
+                            subscription.streaming_node
+                        )
+                        .as_str(),
                     );
                 }
             }
@@ -1196,7 +1207,7 @@ impl MySubscriptionsManager {
             } else {
                 tree.path.clone()
             };
-            
+
             let vr_path = VRPath::from_string(&my_subscription_path)
                 .map_err(|_| SubscriberManagerError::InvalidRequest("Invalid VRPath".to_string()))?;
 

@@ -577,7 +577,14 @@ impl NetworkJobManager {
                     .unpack_all_vrkais()
                     .map_err(|e| NetworkJobQueueError::Other(format!("VR error: {}", e)))?;
                 for (vr_kai, vr_path) in unpacked_vrkais {
-                    let vr_kai_path = VRPath::from_string(&vr_path.to_string())
+                    // Ensure vr_path starts with "/My Subscriptions"
+                    let vr_path_str = if !vr_path.to_string().starts_with("/My Subscriptions") {
+                        format!("/My Subscriptions{}", vr_path)
+                    } else {
+                        vr_path.to_string()
+                    };
+
+                    let vr_kai_path = VRPath::from_string(&vr_path_str.to_string())
                         .map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
 
                     let _res = vector_fs_lock
@@ -588,7 +595,7 @@ impl NetworkJobManager {
                     let vrkai_destination_writer = vector_fs_lock
                         .new_writer(
                             local_subscriber.clone(),
-                            vr_path.parent_path(),
+                            vr_kai_path.parent_path(),
                             local_subscriber.clone(),
                         )
                         .await
@@ -610,6 +617,18 @@ impl NetworkJobManager {
                     ),
                 );
                 let mut deletions = FSEntryTreeGenerator::find_deletions(&vr_pack_plus_changes.diff);
+                // Ensure all deletions start with "/My Subscriptions"
+                deletions = deletions
+                    .into_iter()
+                    .map(|path| {
+                        if !path.starts_with("/My Subscriptions") {
+                            format!("/My Subscriptions{}", path)
+                        } else {
+                            path
+                        }
+                    })
+                    .collect();
+
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Debug,
