@@ -27,6 +27,8 @@ pub enum SubscriberManagerError {
     IdentityProfileNotFound(String),
     SerializationError(String),
     ProxyConnectionInfoUnavailable,
+    JobDequeueFailed(String),
+    JobEnqueueFailed(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -54,6 +56,8 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::IdentityProfileNotFound(e) => write!(f, "Identity profile not found: {}", e),
             SubscriberManagerError::SerializationError(e) => write!(f, "Serialization error: {}", e),
             SubscriberManagerError::ProxyConnectionInfoUnavailable => write!(f, "Proxy Connection Info unavailable"),
+            SubscriberManagerError::JobDequeueFailed(e) => write!(f, "Job dequeue failed: {}", e),
+            SubscriberManagerError::JobEnqueueFailed(e) => write!(f, "Job enqueue failed: {}", e),
         }
     }
 }

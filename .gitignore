@@ -70,3 +70,4 @@ storage_streamer_tcp
 streamer.key
 shinkai-libs/shinkai-dsl/tmp
 tmp
+storage_debug_my_local_ai

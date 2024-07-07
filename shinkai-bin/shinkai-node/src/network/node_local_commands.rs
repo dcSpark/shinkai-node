@@ -1,8 +1,9 @@
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use super::ws_manager::{self, WSUpdateHandler};
+use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
+use super::ws_manager::WSUpdateHandler;
 use super::Node;
-use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::{
@@ -310,8 +311,16 @@ impl Node {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<String>,
     ) {
-        let result =
-            Self::internal_add_llm_provider(db, identity_manager, job_manager, identity_secret_key, agent, profile, ws_manager).await;
+        let result = Self::internal_add_llm_provider(
+            db,
+            identity_manager,
+            job_manager,
+            identity_secret_key,
+            agent,
+            profile,
+            ws_manager,
+        )
+        .await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),
@@ -345,6 +354,7 @@ impl Node {
         let _ = res.send(result.map_err(|e| e.message)).await;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn local_add_ollama_models(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -369,12 +379,49 @@ impl Node {
     }
 
     pub async fn local_ext_manager_process_subscription_updates(
-        _ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<(), String>>,
     ) {
         {
-            let subscription_manager = _ext_subscription_manager.lock().await;
+            let subscription_manager = ext_subscription_manager.lock().await;
             subscription_manager.test_process_subscription_updates().await;
+        }
+
+        let _ = res.send(Ok(())).await;
+    }
+
+    pub async fn local_http_uploader_process_subscription_updates(
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        res: Sender<Result<(), String>>,
+    ) {
+        {
+            let subscription_manager = ext_subscription_manager.lock().await;
+            subscription_manager.test_process_http_upload_subscription_updates().await;
+        }
+
+        let _ = res.send(Ok(())).await;
+    }
+
+    pub async fn local_mysubscription_manager_process_download_updates(
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        res: Sender<Result<(), String>>,
+    ) {
+        {
+            let subscription_manager = my_subscription_manager.lock().await;
+            let _ = subscription_manager.call_process_subscription_job_message_queued().await;
+        }
+
+        let _ = res.send(Ok(())).await;
+    }
+
+    pub async fn local_mysubscription_trigger_http_download(
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        res: Sender<Result<(), String>>,
+    ) {
+        {
+            let subscription_manager = my_subscription_manager.lock().await;
+            let http_download_manager = subscription_manager.http_download_manager.lock().await;
+            let _ = http_download_manager.test_process_job_queue().await;
         }
 
         let _ = res.send(Ok(())).await;

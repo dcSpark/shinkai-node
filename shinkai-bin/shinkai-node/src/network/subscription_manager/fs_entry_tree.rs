@@ -58,6 +58,11 @@ impl FSEntryTree {
         self.name == "/" && self.path == "/" && self.children.is_empty()
     }
 
+    /// A folder may be empty if it has not children, so this method could be wrong on that case
+    pub fn is_folder(&self) -> bool {
+        !self.children.is_empty()
+    }
+
     // Method to transform the tree into a visually pleasant JSON string
     #[allow(dead_code)]
     pub fn to_pretty_json(&self) -> serde_json::Value {

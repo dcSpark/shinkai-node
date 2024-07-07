@@ -1,12 +1,12 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
+use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::ws_manager::{self, WSUpdateHandler};
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::Node;
 use crate::schemas::identity::StandardIdentity;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -96,6 +96,7 @@ pub struct ExternalSubscriberManager {
 }
 
 impl ExternalSubscriberManager {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -292,15 +293,33 @@ impl ExternalSubscriberManager {
             .into_iter()
             .filter(|subscription_id| {
                 let subscription_id_str = subscription_id.get_unique_id().to_string();
+
                 if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
                     let folder_path = &arc_tuple.0;
                     let last_sync_version = &arc_tuple.1;
-                    if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(folder_path) {
+
+                    let folder_key = format!(
+                        "{}:::{}",
+                        subscription_id.extract_streamer_profile().unwrap_or_default(),
+                        folder_path
+                    );
+                    if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(&folder_key) {
                         let current_version = *current_version_arc.value();
+
                         return current_version != *last_sync_version;
                     }
                 }
                 true
+            })
+            .filter(|subscription_id| {
+                let db = match db.upgrade() {
+                    Some(db) => db,
+                    None => return false,
+                };
+                match db.get_folder_requirements(&subscription_id.clone().extract_shared_folder().unwrap_or_default()) {
+                    Ok(req) => !req.has_web_alternative.unwrap_or(false),
+                    Err(_e) => false,
+                }
             })
             .collect::<Vec<SubscriptionId>>();
 
@@ -1331,6 +1350,7 @@ impl ExternalSubscriberManager {
         streamer_shinkai_identity: ShinkaiName,
         shared_folder: String,
         subscription_requirement: SubscriptionPayment,
+        http_preferred: Option<bool>,
     ) -> Result<bool, SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1378,6 +1398,14 @@ impl ExternalSubscriberManager {
             SubscriberManagerError::IdentityProfileNotFound("Profile name not found for origin".to_string()),
         )?;
 
+        // Check if the shared folder exists and is shared
+        let shared_folder_key = format!("{}:::{}", streamer_profile, shared_folder);
+        if !self.shared_folders_trees.contains_key(&shared_folder_key) {
+            return Err(SubscriberManagerError::InvalidRequest(
+                "Shared folder does not exist or is not shared".to_string(),
+            ));
+        }
+
         let subscription_id = SubscriptionId::new(
             streamer_shinkai_identity.extract_node(),
             streamer_profile.clone(),
@@ -1408,7 +1436,7 @@ impl ExternalSubscriberManager {
             }
         }
 
-        let subscription = ShinkaiSubscription::new(
+        let mut subscription = ShinkaiSubscription::new(
             shared_folder.clone(),
             streamer_shinkai_identity.extract_node(),
             streamer_profile,
@@ -1419,6 +1447,8 @@ impl ExternalSubscriberManager {
             None,
             None,
         );
+
+        subscription.update_http_preferred(http_preferred);
 
         db.add_subscriber_subscription(subscription)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -1523,6 +1553,7 @@ impl ExternalSubscriberManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_and_send_request_updated_state(
         subscription_id: SubscriptionId,
         db: Weak<ShinkaiDB>,
@@ -1725,6 +1756,13 @@ impl ExternalSubscriberManager {
             self.shared_folders_to_ephemeral_versioning.clone(),
             self.proxy_connection_info.clone(),
             self.ws_manager.clone(),
+        )
+        .await;
+    }
+
+    pub async fn test_process_http_upload_subscription_updates(&self) {
+        HttpSubscriptionUploadManager::trigger_controlled_subscription_http_check(
+            &self.http_subscription_upload_manager,
         )
         .await;
     }

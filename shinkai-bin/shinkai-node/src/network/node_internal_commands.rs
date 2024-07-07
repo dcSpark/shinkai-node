@@ -523,6 +523,7 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn ping_all(
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,

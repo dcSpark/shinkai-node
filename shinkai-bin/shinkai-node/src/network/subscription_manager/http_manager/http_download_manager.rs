@@ -1,9 +1,11 @@
 use crate::db::Topic;
+use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::{llm_provider::queue::job_queue_manager::JobQueueManager, db::ShinkaiDB};
+use crate::{db::ShinkaiDB, llm_provider::queue::job_queue_manager::JobQueueManager};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::schemas::shinkai_subscription::ShinkaiSubscription;
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_subscription::SubscriptionId};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
@@ -34,6 +36,28 @@ impl PartialOrd for HttpDownloadJob {
 impl Ord for HttpDownloadJob {
     fn cmp(&self, other: &Self) -> Ordering {
         self.date_created.cmp(&other.date_created)
+    }
+}
+
+impl HttpDownloadJob {
+    pub fn from_subscription_and_tree(subscription: ShinkaiSubscription, tree: &FSEntryTree) -> Result<Self, String> {
+        let file_link = tree
+            .web_link
+            .as_ref()
+            .ok_or_else(|| "WebLink is missing".to_string())
+            .map(|web_link| FileLink {
+                path: web_link.file.path.clone(),
+                link: web_link.file.link.clone(),
+                last_8_hash: web_link.file.last_8_hash.clone(),
+                expiration: web_link.file.expiration,
+            })?;
+
+        Ok(HttpDownloadJob {
+            subscription_id: subscription.subscription_id.clone(),
+            info: file_link.clone(),
+            url: file_link.link.clone(),
+            date_created: chrono::Utc::now().to_rfc3339(),
+        })
     }
 }
 
@@ -283,8 +307,9 @@ impl HttpDownloadManager {
         // Create a mutable copy of the job
         let mut job = job.clone();
 
+        // TODO: enable this when everything is working
         // Prepend "/subscription" to the path in the FileLink of the job copy
-        job.info.path = format!("/My_Subscriptions{}", job.info.path);
+        // job.info.path = format!("/My_Subscriptions{}", job.info.path);
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;
         let _ = job_queue_manager
@@ -292,5 +317,26 @@ impl HttpDownloadManager {
             .await;
 
         Ok(job.subscription_id.get_unique_id().to_string())
+    }
+
+    #[allow(dead_code)]
+    pub async fn test_process_job_queue(&self) -> Vec<tokio::task::JoinHandle<()>> {
+        let thread_number = env::var("HTTP_DOWNLOAD_MANAGER_THREADS")
+            .unwrap_or(NUM_THREADS.to_string())
+            .parse::<usize>()
+            .unwrap_or(NUM_THREADS);
+
+        let semaphore = Arc::new(Semaphore::new(thread_number));
+        let mut continue_immediately = false;
+
+        HttpDownloadManager::process_job_queue(
+            Arc::clone(&self.job_queue_manager),
+            self.vector_fs.clone(),
+            self.db.clone(),
+            thread_number,
+            Arc::clone(&semaphore),
+            &mut continue_immediately,
+        )
+        .await
     }
 }

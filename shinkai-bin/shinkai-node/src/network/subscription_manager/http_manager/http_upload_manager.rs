@@ -152,6 +152,7 @@ impl HttpSubscriptionUploadManager {
         node_name: ShinkaiName,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
     ) -> Self {
+        eprintln!(">>> Starting HttpSubscriptionUploadManager");
         let subscription_file_map = Arc::new(DashMap::new());
         let subscription_status = Arc::new(DashMap::new());
         let file_links = Arc::new(DashMap::new());
@@ -215,8 +216,6 @@ impl HttpSubscriptionUploadManager {
 
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
-
                 match Self::controlled_subscription_http_check_loop(
                     db.clone(),
                     vector_fs.clone(),
@@ -239,6 +238,8 @@ impl HttpSubscriptionUploadManager {
                         );
                     }
                 }
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
             }
         })
     }
@@ -577,7 +578,13 @@ impl HttpSubscriptionUploadManager {
                 Ok(files) => files
                     .into_iter()
                     .filter(|file| !file.is_folder)
-                    .map(|file| file.path)
+                    .map(|file| {
+                        let mut path = file.path;
+                        if !path.starts_with('/') {
+                            path = format!("/{}", path);
+                        }
+                        path
+                    })
                     .collect::<Vec<String>>(),
                 Err(e) => {
                     shinkai_log(
@@ -626,7 +633,9 @@ impl HttpSubscriptionUploadManager {
 
             let resource = match Self::retrieve_base_vr(&vector_fs.clone(), &potentially_sync_file, &streamer).await {
                 Ok(res) => res,
-                Err(_) => {
+                Err(e) => {
+                    println!("Error retrieving base VR for file {}: {:?}", potentially_sync_file, e);
+                    // We couldn't retrieve the file, so we mark it for deletion as it's not locally available anymore
                     items_to_delete.push(potentially_sync_file.clone());
                     continue;
                 }
@@ -821,17 +830,17 @@ impl HttpSubscriptionUploadManager {
                 }
             }
 
-            {
-                // Print out the content of subscription_file_map
-                for entry in subscription_file_map.iter() {
-                    let key = entry.key();
-                    let value = entry.value();
-                    println!("After everything - Folder Subscription: {:?}", key);
-                    for (file_path, status) in value.iter() {
-                        println!("  {} - {:?}", file_path, status);
-                    }
-                }
-            }
+            // {
+            //     // Print out the content of subscription_file_map
+            //     for entry in subscription_file_map.iter() {
+            //         let key = entry.key();
+            //         let value = entry.value();
+            //         println!("After everything - Folder Subscription: {:?}", key);
+            //         for (file_path, status) in value.iter() {
+            //             println!("  {} - {:?}", file_path, status);
+            //         }
+            //     }
+            // }
 
             // Update subscription status to Syncing
             subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::WaitingForLinks);

@@ -408,6 +408,18 @@ pub enum NodeCommand {
     LocalExtManagerProcessSubscriptionUpdates {
         res: Sender<Result<(), String>>,
     },
+    #[allow(dead_code)]
+    LocalHttpUploaderProcessSubscriptionUpdates {
+        res: Sender<Result<(), String>>,
+    },
+    #[allow(dead_code)]
+    LocalMySubscriptionCallJobMessageProcessing {
+        res: Sender<Result<(), String>>,
+    },
+    #[allow(dead_code)]
+    LocalMySubscriptionTriggerHttpDownload {
+        res: Sender<Result<(), String>>,
+    },
     APIGetLocalProcessingPreference {
         msg: ShinkaiMessage,
         res: Sender<Result<bool, APIError>>,
@@ -2145,6 +2157,36 @@ impl Node {
                                                             ).await;
                                                         });
                                                     },
+                                                    // NodeCommand::LocalHttpUploaderProcessSubscriptionUpdates { res } => self.local_http_uploader_process_subscription_updates(res).await,
+                                                    NodeCommand::LocalHttpUploaderProcessSubscriptionUpdates { res } => {
+                                                        let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                                        tokio::spawn(async move {
+                                                            let _ = Node::local_http_uploader_process_subscription_updates(
+                                                                ext_subscription_manager_clone,
+                                                                res,
+                                                            ).await;
+                                                        });
+                                                    },
+                                                    // NodeCommand:: { res } => self.local_mysubscription_manager_process_download_updates(res).await,
+                                                    NodeCommand::LocalMySubscriptionCallJobMessageProcessing { res } => {
+                                                        let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                                                        tokio::spawn(async move {
+                                                            let _ = Node::local_mysubscription_manager_process_download_updates(
+                                                                my_subscription_manager_clone,
+                                                                res,
+                                                            ).await;
+                                                        });
+                                                    },
+                                                    // NodeCommand:: { res } => self.local_mysubscription_trigger_http_download(res).await,
+                                                    NodeCommand::LocalMySubscriptionTriggerHttpDownload { res } => {
+                                                        let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                                                        tokio::spawn(async move {
+                                                            let _ = Node::local_mysubscription_trigger_http_download(
+                                                                my_subscription_manager_clone,
+                                                                res,
+                                                            ).await;
+                                                        });
+                                                    },
                                                     // Add these inside the match command block:
                                                     NodeCommand::APIGetLocalProcessingPreference { msg, res } => {
                                                         let db_clone = Arc::clone(&self.db);
@@ -2495,11 +2537,8 @@ impl Node {
 
                 // Calculate the message length excluding the identity length and the identity itself
                 let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
-                if msg_length < 0 {
-                    return; // Exit, malformed data, protect from capacity overflow
-                }
+                                                                         // Read the header byte to determine the message type
 
-                // Read the header byte to determine the message type
                 let mut header_byte = [0u8; 1];
                 if reader.read_exact(&mut header_byte).await.is_ok() {
                     let message_type = match header_byte[0] {

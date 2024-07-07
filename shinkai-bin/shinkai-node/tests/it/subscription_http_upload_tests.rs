@@ -395,7 +395,7 @@ fn subscription_http_upload() {
 
                     // After processing the download queue, retrieve file information for specific files
                     let file_info_shinkai_intro = testing_framework
-                        .retrieve_file_info("/My_Subscriptions/shinkai_sharing/shinkai_intro", true)
+                        .retrieve_file_info("/shinkai_sharing/shinkai_intro", true) // Add: My_Subscriptions/
                         .await;
                     eprintln!(
                         "File info for /shinkai_sharing/shinkai_intro: {:?}",
@@ -403,7 +403,7 @@ fn subscription_http_upload() {
                     );
 
                     let file_info_zeko_mini = testing_framework
-                        .retrieve_file_info("/My_Subscriptions/shinkai_sharing/zeko_mini", true)
+                        .retrieve_file_info("/shinkai_sharing/zeko_mini", true) // Add: My_Subscriptions/
                         .await;
                     eprintln!("File info for /shinkai_sharing/zeko_mini: {:?}", file_info_zeko_mini);
                 }
