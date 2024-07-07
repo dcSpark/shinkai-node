@@ -57,6 +57,7 @@ pub struct MySubscriptionsManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+    pub subscription_update_cache_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
     pub http_download_manager: Arc<Mutex<HttpDownloadManager>>,
 
     // Cache for shared folders including the ones that you are not subscribed to
@@ -126,6 +127,16 @@ impl MySubscriptionsManager {
         )
         .await;
 
+        let subscription_update_cache_task = MySubscriptionsManager::process_subscription_shared_folder_cache_updates(
+            db.clone(),
+            identity_manager.clone(),
+            proxy_connection_info.clone(),
+            node_name.clone(),
+            my_signature_secret_key.clone(),
+            my_encryption_secret_key.clone(),
+        )
+        .await;
+
         MySubscriptionsManager {
             db,
             vector_fs,
@@ -138,6 +149,7 @@ impl MySubscriptionsManager {
             my_encryption_secret_key,
             http_download_manager,
             proxy_connection_info,
+            subscription_update_cache_task: Some(subscription_update_cache_task),
             ws_manager,
         }
     }
@@ -404,7 +416,7 @@ impl MySubscriptionsManager {
     // here or in download_manager we should be checking every X time
     #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(
-        &self,
+        &mut self,
         streamer_node_name: ShinkaiName,
         streamer_profile: String,
         my_profile: String,
@@ -433,14 +445,22 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
             );
             match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
-                Ok(_) => {
-                    // ONLY FOR DEBUG! Already subscribed, remove the existing subscription
+                Ok(subscription) => {
+                    // Force 
                     db_lock.remove_my_subscription(subscription_id.get_unique_id())?;
-                    // Restore this
-                    // // Already subscribed, no need to proceed further
-                    // return Err(SubscriberManagerError::AlreadySubscribed(
-                    //     "Already subscribed to the folder".to_string(),
-                    // ));
+
+                    match subscription.get_streamer_with_profile() {
+                        Ok(streamer_full_name) => {
+                            self.get_shared_folder(&streamer_full_name).await?;
+                        },
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::MySubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to get streamer full name: {:?}", e),
+                            );
+                        }
+                    };
                 }
                 Err(ShinkaiDBError::DataNotFound) => {
                     // Subscription doesn't exist. Continue with the subscription process
@@ -534,7 +554,7 @@ impl MySubscriptionsManager {
     }
 
     pub async fn update_subscription_status(
-        &self,
+        &mut self,
         streamer_node_name: ShinkaiName,
         streamer_profile: String,
         my_profile: String,
@@ -576,6 +596,9 @@ impl MySubscriptionsManager {
                 // Update the subscription status in the db
                 let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
                 db.update_my_subscription(new_subscription)?;
+
+                // Trigger get_shared_folder so we can indirectly trigger a download sync
+                self.get_shared_folder(&streamer_node_name).await?;
             }
             _ => {
                 // For other actions, do nothing
@@ -590,6 +613,47 @@ impl MySubscriptionsManager {
             )
             .as_str(),
         );
+        Ok(())
+    }
+
+    pub async fn handle_shared_folder_response_update(
+        &mut self,
+        shared_folder_name: ShinkaiName,
+        shared_folder_infos: Vec<SharedFolderInfo>,
+    ) -> Result<(), SubscriberManagerError> {
+        let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
+        let was_none = external_node_shared_folders.get(&shared_folder_name.clone()).is_none();
+        drop(external_node_shared_folders);
+
+        self.insert_shared_folder(shared_folder_name.clone(), shared_folder_infos)
+            .await?;
+
+        if was_none {
+            // Check if we have a subscription for this folder
+            // If we do, trigger a get_shared_folder to indirectly trigger a download sync
+            if let Some(db_lock) = self.db.upgrade() {
+                let subscriptions = db_lock.list_all_my_subscriptions()?;
+                for subscription in subscriptions {
+                    let streamer_full_name = match subscription.get_streamer_with_profile() {
+                        Ok(streamer_full_name) => streamer_full_name,
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::MySubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to get streamer full name: {:?}", e),
+                            );
+                            continue;
+                        }
+                    };
+                    if streamer_full_name == shared_folder_name {
+                        // Trigger a sync so the user doesnt need to wait X minutes for the next sync
+                        self.call_process_subscription_job_message_queued().await?;
+                        break;
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -850,6 +914,141 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    /// Scheduler that sends a message to the network queue to update the shared folder cache
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_subscription_shared_folder_cache_updates(
+        db: Weak<ShinkaiDB>,
+        identity_manager: Weak<Mutex<IdentityManager>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+    ) -> tokio::task::JoinHandle<()> {
+        let interval_minutes = env::var("SUBSCRIPTION_UPDATE_CACHE_INTERVAL_MINUTES")
+            .unwrap_or("5".to_string()) // Default to 5 minutes if not set
+            .parse::<u64>()
+            .unwrap_or(5);
+
+        let is_testing = env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+
+        if is_testing {
+            return tokio::spawn(async {});
+        }
+
+        tokio::spawn(async move {
+            shinkai_log(
+                ShinkaiLogOption::MySubscriptions,
+                ShinkaiLogLevel::Info,
+                "process_subscription_shared_folder_cache_updates> Starting subscribers processing loop",
+            );
+
+            loop {
+                let subscriptions = {
+                    let db = match db.upgrade() {
+                        Some(db) => db,
+                        None => {
+                            shinkai_log(
+                                ShinkaiLogOption::MySubscriptions,
+                                ShinkaiLogLevel::Error,
+                                "Database instance is not available",
+                            );
+                            return;
+                        }
+                    };
+                    match db.list_all_my_subscriptions() {
+                        Ok(subscriptions) => subscriptions,
+                        Err(e) => {
+                            vec![] // Return an empty list of subscriptions
+                        }
+                    }
+                };
+
+                for subscription in subscriptions {
+                    let streamer_full_name = match subscription.get_streamer_with_profile() {
+                        Ok(streamer_full_name) => streamer_full_name,
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::MySubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to get streamer full name: {:?}", e),
+                            );
+                            continue;
+                        }
+                    };
+
+                    if let Some(identity_manager_arc) = identity_manager.upgrade() {
+                        let res = {
+                            let identity_manager = identity_manager_arc.lock().await;
+                            identity_manager
+                                .external_profile_to_global_identity(&streamer_full_name.get_node_name_string())
+                                .await
+                        };
+                        let standard_identity = match res {
+                            Ok(identity) => identity,
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::MySubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to get global identity: {:?}", e),
+                                );
+                                continue;
+                            }
+                        };
+                        let receiver_public_key = standard_identity.node_encryption_public_key;
+                        let proxy_builder_info =
+                            Self::get_proxy_builder_info_static(identity_manager_arc, proxy_connection_info.clone())
+                                .await;
+
+                        let msg_request_shared_folders = match ShinkaiMessageBuilder::vecfs_available_shared_items(
+                            None,
+                            streamer_full_name.get_node_name_string(),
+                            streamer_full_name.get_profile_name_string().unwrap_or("".to_string()),
+                            clone_static_secret_key(&my_encryption_secret_key),
+                            clone_signature_secret_key(&my_signature_secret_key),
+                            receiver_public_key,
+                            node_name.get_node_name_string(),
+                            "".to_string(),
+                            streamer_full_name.get_node_name_string(),
+                            streamer_full_name.get_profile_name_string().unwrap_or("".to_string()),
+                            proxy_builder_info,
+                        ) {
+                            Ok(msg) => msg,
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::MySubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to build message: {:?}", e),
+                                );
+                                continue;
+                            }
+                        };
+
+                        Self::send_message_to_peer(
+                            msg_request_shared_folders,
+                            db.clone(),
+                            standard_identity,
+                            my_encryption_secret_key.clone(),
+                            identity_manager.clone(),
+                            proxy_connection_info.clone(),
+                            None,
+                        )
+                        .await
+                        .map_err(|e| {
+                            shinkai_log(
+                                ShinkaiLogOption::MySubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to send message to peer: {:?}", e),
+                            );
+                            e
+                        })
+                        .ok();
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+            }
+        })
+    }
+
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<ShinkaiDB>,
@@ -902,9 +1101,6 @@ impl MySubscriptionsManager {
         external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
     ) -> Result<(), SubscriberManagerError> {
-        // TODO: this actually should be reading from a queue the saved links and creating download jobs
-        // TODO: or maybe it should be sending messages to the subscriptions node so they can send the updated list of links
-
         // Read all subscriptions from the database
         if let Some(db_lock) = db.upgrade() {
             let all_subscriptions = db_lock.list_all_my_subscriptions()?;
@@ -913,11 +1109,9 @@ impl MySubscriptionsManager {
                 .filter(|sub| sub.http_preferred.unwrap_or(false))
                 .collect();
 
-            // TODO:
-            // 1- for every http subscription, send a message to the node to get the latest list of links
-            // 2- read the current cache and check if the local files are up to date
-            // 3- for the ones that are not up to date, create a download job
-            // 4- also create a download job for the files that dont exist locally
+            // 1- read the current cache and check if the local files are up to date
+            // 2- for the ones that are not up to date, create a download job
+            // 3- also create a download job for the files that dont exist locally
 
             // Check if the local files are up to date
             let vector_fs_arc = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
@@ -955,28 +1149,14 @@ impl MySubscriptionsManager {
                             http_download_manager.clone(),
                         )
                         .await?;
-                    } else {
-                        println!(
-                            "No information found for shared folder: {:?}",
-                            subscription.shared_folder
-                        );
                     }
-
-                    // Check if the local files are up to date
-                    // TODO: Implement logic to check if local files are up to date
                 } else {
-                    println!("No cached information for: {:?}", subscription.streaming_node);
-                    // TODO: Send a message to the node to get the latest list of links
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Debug,
+                        format!("process_subscription_job_message_queued> No cached information for: {:?}", subscription.streaming_node).as_str(),
+                    );
                 }
-
-                // // Previous code. delete?
-                // let mut job_queue_manager = job_queue_manager.lock().await;
-                // job_queue_manager
-                //     .push("http_preferred_subscriptions", subscription)
-                //     .await
-                //     .map_err(|e| {
-                //         SubscriberManagerError::JobEnqueueFailed(format!("Failed to enqueue subscription job: {}", e))
-                //     })?;
             }
         } else {
             return Err(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()));
@@ -1129,11 +1309,8 @@ impl MySubscriptionsManager {
             let merkle_hash = item.merkle_hash.clone();
             if let Some(last_8_bytes) = merkle_hash.get(merkle_hash.len().saturating_sub(8)..) {
                 // Extracted the last 8 bytes of the merkle hash
-                println!("Last 8 bytes of merkle hash: {}", last_8_bytes);
-
                 if let Some(web_link) = &tree.web_link {
                     let last8_in_streamer = &web_link.file.last_8_hash;
-                    println!("Last 8 bytes in streamer: {}", last8_in_streamer);
                     return last_8_bytes == last8_in_streamer;
                 }
             }
@@ -1156,8 +1333,16 @@ impl MySubscriptionsManager {
         &self,
         identity_manager_lock: Arc<Mutex<IdentityManager>>,
     ) -> Option<ShinkaiProxyBuilderInfo> {
+        MySubscriptionsManager::get_proxy_builder_info_static(identity_manager_lock, self.proxy_connection_info.clone())
+            .await
+    }
+
+    async fn get_proxy_builder_info_static(
+        identity_manager_lock: Arc<Mutex<IdentityManager>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    ) -> Option<ShinkaiProxyBuilderInfo> {
         let identity_manager = identity_manager_lock.lock().await;
-        let proxy_connection_info = match self.proxy_connection_info.upgrade() {
+        let proxy_connection_info = match proxy_connection_info.upgrade() {
             Some(proxy_info) => proxy_info,
             None => return None,
         };
@@ -1176,105 +1361,3 @@ impl MySubscriptionsManager {
         }
     }
 }
-
-/*
-{
-  "Key": {
-    "full_name": "@@node1_test.arb-sep-shinkai/main",
-    "node_name": "@@node1_test.arb-sep-shinkai",
-    "profile_name": "main",
-    "subidentity_type": null,
-    "subidentity_name": null
-  },
-  "Value": {
-    "node_name": {
-      "full_name": "@@node1_test.arb-sep-shinkai/main",
-      "node_name": "@@node1_test.arb-sep-shinkai",
-      "profile_name": "main",
-      "subidentity_type": null,
-      "subidentity_name": null
-    },
-    "last_ext_node_response": "2024-07-06T05:40:48.302726Z",
-    "last_request_to_ext_node": "2024-07-06T05:40:48.302726Z",
-    "last_updated": "2024-07-06T05:40:48.302726Z",
-    "state": "ResponseAvailable",
-    "response_last_updated": "2024-07-06T05:40:48.302726Z",
-    "response": {
-      "/shinkai_sharing_http_test": {
-        "path": "/shinkai_sharing_http_test",
-        "permission": "Public",
-        "profile": "main",
-        "tree": {
-          "name": "/",
-          "path": "/shinkai_sharing_http_test",
-          "last_modified": "2024-07-06T05:40:47.861541Z",
-          "web_link": null,
-          "children": {
-            "Zeko_Mina_Rollup": {
-              "name": "Zeko_Mina_Rollup",
-              "path": "/shinkai_sharing_http_test/Zeko_Mina_Rollup",
-              "last_modified": "2024-07-11T05:40:47.850472Z",
-              "web_link": {
-                "file": {
-                  "link": "https://shinkai-streamer.54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com/shinkai_sharing_http_test/Zeko_Mina_Rollup?x-id=GetObject&response-content-type=application%2Foctet-stream&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=462e168d6b11100c5fe01c39410f3c5f%2F20240706%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240706T054047Z&X-Amz-Expires=432000&X-Amz-SignedHeaders=host&X-Amz-Signature=ab57e5eef5bbb2b8e4e699cf1b0f79c94323c268f04b5087d6e5e2901c0cc826",
-                  "path": "/shinkai_sharing_http_test/Zeko_Mina_Rollup",
-                  "last_8_hash": "347ce780",
-                  "expiration": {
-                    "tv_sec": 1720676447,
-                    "tv_nsec": 850472000
-                  }
-                },
-                "checksum": {
-                  "link": "https://shinkai-streamer.54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com/shinkai_sharing_http_test/Zeko_Mina_Rollup.347ce780.checksum?x-id=GetObject&response-content-type=application%2Foctet-stream&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=462e168d6b11100c5fe01c39410f3c5f%2F20240706%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240706T054047Z&X-Amz-Expires=432000&X-Amz-SignedHeaders=host&X-Amz-Signature=afa0b9a2e3f001b8335f707f5f4f385f09cb999cdd05c034e662f1e7033fa108",
-                  "path": "/shinkai_sharing_http_test/Zeko_Mina_Rollup.347ce780.checksum",
-                  "last_8_hash": "",
-                  "expiration": {
-                    "tv_sec": 1720676447,
-                    "tv_nsec": 851897000
-                  }
-                }
-              },
-              "children": {}
-            },
-            "shinkai_intro": {
-              "name": "shinkai_intro",
-              "path": "/shinkai_sharing_http_test/shinkai_intro",
-              "last_modified": "2024-07-11T05:40:47.852571Z",
-              "web_link": {
-                "file": {
-                  "link": "https://shinkai-streamer.54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com/shinkai_sharing_http_test/shinkai_intro?x-id=GetObject&response-content-type=application%2Foctet-stream&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=462e168d6b11100c5fe01c39410f3c5f%2F20240706%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240706T054047Z&X-Amz-Expires=432000&X-Amz-SignedHeaders=host&X-Amz-Signature=ec05db2976ce0d2a91db03f25bf12e2cd5ac26b0d857a928e614c847e4d7d2ff",
-                  "path": "/shinkai_sharing_http_test/shinkai_intro",
-                  "last_8_hash": "486cf406",
-                  "expiration": {
-                    "tv_sec": 1720676447,
-                    "tv_nsec": 852571000
-                  }
-                },
-                "checksum": {
-                  "link": "https://shinkai-streamer.54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com/shinkai_sharing_http_test/shinkai_intro.486cf406.checksum?x-id=GetObject&response-content-type=application%2Foctet-stream&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=462e168d6b11100c5fe01c39410f3c5f%2F20240706%2F",
-                   "path": "/shinkai_sharing_http_test/shinkai_intro.486cf406.checksum",
-                  "last_8_hash": "",
-                  "expiration": {
-                    "tv_sec": 1720676447,
-                    "tv_nsec": 851170000
-                  }
-                }
-              },
-              "children": {}
-            }
-          }
-        },
-        "subscription_requirement": {
-          "minimum_token_delegation": null,
-          "minimum_time_delegated_hours": null,
-          "monthly_payment": null,
-          "is_free": true,
-          "has_web_alternative": true,
-          "folder_description": "This is a test folder"
-        }
-      }
-    }
-  }
-}
-
-*/

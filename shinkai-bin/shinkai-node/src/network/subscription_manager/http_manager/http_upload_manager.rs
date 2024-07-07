@@ -830,17 +830,17 @@ impl HttpSubscriptionUploadManager {
                 }
             }
 
-            {
-                // Print out the content of subscription_file_map
-                for entry in subscription_file_map.iter() {
-                    let key = entry.key();
-                    let value = entry.value();
-                    println!("After everything - Folder Subscription: {:?}", key);
-                    for (file_path, status) in value.iter() {
-                        println!("  {} - {:?}", file_path, status);
-                    }
-                }
-            }
+            // {
+            //     // Print out the content of subscription_file_map
+            //     for entry in subscription_file_map.iter() {
+            //         let key = entry.key();
+            //         let value = entry.value();
+            //         println!("After everything - Folder Subscription: {:?}", key);
+            //         for (file_path, status) in value.iter() {
+            //             println!("  {} - {:?}", file_path, status);
+            //         }
+            //     }
+            // }
 
             // Update subscription status to Syncing
             subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::WaitingForLinks);
