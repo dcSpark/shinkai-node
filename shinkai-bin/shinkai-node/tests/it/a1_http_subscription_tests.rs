@@ -556,19 +556,26 @@ fn http_subscription_manager_test() {
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shinkai_sharing_http_test",
-                                "path": "/shinkai_sharing_http_test",
-                                "child_folders": [],
-                                "child_items": [
+                                "name": "My Subscriptions",
+                                "path": "/My Subscriptions",
+                                "child_folders": [
                                     {
-                                        "name": "Zeko_Mina_Rollup",
-                                        "path": "/shinkai_sharing_http_test/Zeko_Mina_Rollup"
-                                    },
-                                    {
-                                        "name": "shinkai_intro",
-                                        "path": "/shinkai_sharing_http_test/shinkai_intro"
+                                        "name": "shinkai_sharing_http_test",
+                                        "path": "/My Subscriptions/shinkai_sharing_http_test",
+                                        "child_folders": [],
+                                        "child_items": [
+                                            {
+                                                "name": "shinkai_intro",
+                                                "path": "/My Subscriptions/shinkai_sharing_http_test/shinkai_intro"
+                                            },
+                                            {
+                                                "name": "Zeko_Mina_Rollup",
+                                                "path": "/My Subscriptions/shinkai_sharing_http_test/Zeko_Mina_Rollup"
+                                            }
+                                        ]
                                     }
-                                ]
+                                ],
+                                "child_items": []
                             }
                         ],
                         "child_items": []
