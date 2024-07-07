@@ -2650,11 +2650,6 @@ impl Node {
         identity_manager_guard.is_ready
     }
 
-    // Get a list of peers this node knows about.
-    pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
-        self.peers.clone()
-    }
-
     // TODO: Add a new send that schedules messages to be sent at a later time.
     // It may be more complex than what it sounds because there could be a big backlog of messages to send which were already generated
     // and the time associated with the message may be too old to be recognized by the other node.

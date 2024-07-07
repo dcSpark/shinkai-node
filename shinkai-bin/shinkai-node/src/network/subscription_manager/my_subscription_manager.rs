@@ -957,7 +957,7 @@ impl MySubscriptionsManager {
                     };
                     match db.list_all_my_subscriptions() {
                         Ok(subscriptions) => subscriptions,
-                        Err(e) => {
+                        Err(_e) => {
                             vec![] // Return an empty list of subscriptions
                         }
                     }
@@ -1120,15 +1120,6 @@ impl MySubscriptionsManager {
 
             // Process the filtered subscriptions
             for subscription in http_preferred_subscriptions {
-                // Print external_node_shared_folders
-                // {
-                //     let external_node_shared_folders = external_node_shared_folders.lock().await;
-                //     for (key, value) in external_node_shared_folders.iter() {
-                //         println!("Key: {:?}, Value: {:?}\n\n\n", key, value);
-                //     }
-                // }
-
-                // Code
                 let mut external_node_shared_folders = external_node_shared_folders.lock().await;
                 let streamer = match subscription.get_streamer_with_profile() {
                     Ok(name) => name,
@@ -1200,7 +1191,13 @@ impl MySubscriptionsManager {
             }
 
             // Check if the file exists in the vector_fs
-            let vr_path = VRPath::from_string(&tree.path)
+            let my_subscription_path = if !tree.path.contains("/My Subscriptions") {
+                format!("/My Subscriptions/{}", tree.path)
+            } else {
+                tree.path.clone()
+            };
+            
+            let vr_path = VRPath::from_string(&my_subscription_path)
                 .map_err(|_| SubscriberManagerError::InvalidRequest("Invalid VRPath".to_string()))?;
 
             let subscriber_wprofile = match subscription.get_subscriber_with_profile() {

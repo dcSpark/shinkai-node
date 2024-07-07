@@ -307,9 +307,8 @@ impl HttpDownloadManager {
         // Create a mutable copy of the job
         let mut job = job.clone();
 
-        // TODO: enable this when everything is working
         // Prepend "/subscription" to the path in the FileLink of the job copy
-        // job.info.path = format!("/My_Subscriptions{}", job.info.path);
+        job.info.path = format!("/My Subscriptions{}", job.info.path);
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;
         let _ = job_queue_manager

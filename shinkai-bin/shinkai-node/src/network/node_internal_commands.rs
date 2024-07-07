@@ -500,6 +500,7 @@ impl Node {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn internal_remove_agent(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,

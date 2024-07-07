@@ -187,16 +187,16 @@ impl NetworkJobManager {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
-                NetworkJobQueue,                          // job to process
-                Weak<ShinkaiDB>,                          // db
-                Weak<VectorFS>,                           // vector_fs
-                ShinkaiName,                              // my_profile_name
-                EncryptionStaticKey,                      // my_encryption_secret_key
-                SigningKey,                               // my_signature_secret_key
-                Arc<Mutex<IdentityManager>>,              // identity_manager
-                Arc<Mutex<MySubscriptionsManager>>,       // my_subscription_manager
-                Arc<Mutex<ExternalSubscriberManager>>,    // external_subscription_manager
-                Weak<Mutex<Option<ProxyConnectionInfo>>>, // proxy_connection_info
+                NetworkJobQueue,                                // job to process
+                Weak<ShinkaiDB>,                                // db
+                Weak<VectorFS>,                                 // vector_fs
+                ShinkaiName,                                    // my_profile_name
+                EncryptionStaticKey,                            // my_encryption_secret_key
+                SigningKey,                                     // my_signature_secret_key
+                Arc<Mutex<IdentityManager>>,                    // identity_manager
+                Arc<Mutex<MySubscriptionsManager>>,             // my_subscription_manager
+                Arc<Mutex<ExternalSubscriberManager>>,          // external_subscription_manager
+                Weak<Mutex<Option<ProxyConnectionInfo>>>,       // proxy_connection_info
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>, // ws_manager
             ) -> Pin<Box<dyn Future<Output = Result<String, NetworkJobQueueError>> + Send>>
             + Send
@@ -424,7 +424,14 @@ impl NetworkJobManager {
                 // Deserialize job.content into NetworkVRKai using bincode
                 let network_vr_kai: Result<NetworkVRKai, _> = bincode::deserialize(&job.content);
                 let network_vr_kai = network_vr_kai.map_err(|_| NetworkJobQueueError::ContentParseFailed)?;
-                eprintln!("NetworkVRKai subscription_id: {:?}", network_vr_kai.subscription_id);
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!(
+                        "Processing VRKaiPathPair message type {:?}",
+                        network_vr_kai.subscription_id
+                    ),
+                );
 
                 let _ = Self::handle_receiving_vr_pack_from_subscription(
                     network_vr_kai,
@@ -516,12 +523,20 @@ impl NetworkJobManager {
 
         // Find destination path from my_subscripton
         let destination_path = {
-            if subscription.subscriber_destination_path.is_none() {
+            let path = if subscription.subscriber_destination_path.is_none() {
                 subscription.shared_folder.clone()
             } else {
                 subscription.subscriber_destination_path.clone().unwrap()
+            };
+
+            // Prepend "/My Subscriptions" path to the file path if it doesn't already contain it
+            if !path.contains("/My Subscriptions") {
+                format!("/My Subscriptions{}", path)
+            } else {
+                path
             }
         };
+
         let destination_vr_path =
             VRPath::from_string(&destination_path).map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
         let parent_vr_path = destination_vr_path.parent_path();

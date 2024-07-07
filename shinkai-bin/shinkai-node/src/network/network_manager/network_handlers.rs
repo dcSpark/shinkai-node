@@ -1096,14 +1096,6 @@ pub async fn send_ack(
     Ok(())
 }
 
-// Helper struct to encapsulate sender keys
-#[derive(Debug)]
-pub struct PublicKeyInfo {
-    pub address: SocketAddr,
-    pub signature_public_key: VerifyingKey,
-    pub encryption_public_key: x25519_dalek::PublicKey,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub async fn ping_pong(
     peer: (SocketAddr, ShinkaiNameString),

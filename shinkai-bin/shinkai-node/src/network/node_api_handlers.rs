@@ -505,17 +505,6 @@ pub async fn send_msg_handler(
     }
 }
 
-pub async fn get_peers_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
-    let node_commands_sender = node_commands_sender.clone();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::GetPeers(res_sender))
-        .await
-        .map_err(|_| warp::reject::reject())?; // Send the command to Node
-    let peer_addresses = res_receiver.recv().await.unwrap();
-    Ok(warp::reply::json(&peer_addresses))
-}
-
 pub async fn identity_name_to_external_profile_data_handler(
     node_commands_sender: Sender<NodeCommand>,
     body: NameToExternalProfileData,

@@ -36,7 +36,6 @@ use super::node_api_handlers::get_last_messages_from_inbox_with_branches_handler
 use super::node_api_handlers::get_last_unread_messages_from_inbox_handler;
 use super::node_api_handlers::get_local_processing_preference_handler;
 use super::node_api_handlers::get_my_subscribers_handler;
-use super::node_api_handlers::get_peers_handler;
 use super::node_api_handlers::get_public_key_handler;
 use super::node_api_handlers::get_subscription_links_handler;
 use super::node_api_handlers::handle_file_upload;
@@ -182,14 +181,6 @@ pub async fn run_api(
             .and(warp::path("send"))
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| send_msg_handler(node_commands_sender.clone(), message))
-    };
-
-    // GET v1/get_peers
-    let get_peers = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_peers")
-            .and(warp::get())
-            .and_then(move || get_peers_handler(node_commands_sender.clone()))
     };
 
     // POST v1/identity_name_to_external_profile_data
@@ -782,7 +773,6 @@ pub async fn run_api(
 
     let routes = ping_all
         .or(send_msg)
-        .or(get_peers)
         .or(identity_name_to_external_profile_data)
         .or(get_public_key)
         .or(get_all_inboxes_for_profile)
