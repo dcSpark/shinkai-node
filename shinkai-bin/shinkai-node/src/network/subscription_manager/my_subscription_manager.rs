@@ -1121,12 +1121,12 @@ impl MySubscriptionsManager {
             // Process the filtered subscriptions
             for subscription in http_preferred_subscriptions {
                 // Print external_node_shared_folders
-                {
-                    let external_node_shared_folders = external_node_shared_folders.lock().await;
-                    for (key, value) in external_node_shared_folders.iter() {
-                        println!("Key: {:?}, Value: {:?}\n\n\n", key, value);
-                    }
-                }
+                // {
+                //     let external_node_shared_folders = external_node_shared_folders.lock().await;
+                //     for (key, value) in external_node_shared_folders.iter() {
+                //         println!("Key: {:?}, Value: {:?}\n\n\n", key, value);
+                //     }
+                // }
 
                 // Code
                 let mut external_node_shared_folders = external_node_shared_folders.lock().await;
@@ -1138,8 +1138,6 @@ impl MySubscriptionsManager {
                 if let Some(shared_folder_sm) = external_node_shared_folders.get(&streamer) {
                     // Extract the information of subscription.shared_folder
                     if let Some(shared_folder_info) = shared_folder_sm.response.get(&subscription.shared_folder) {
-                        println!("Shared folder info: {:?}", shared_folder_info);
-
                         // Recursively check files in the shared folder tree
                         Self::check_and_enqueue_files(
                             vector_fs_arc.clone(),

@@ -293,11 +293,19 @@ impl ExternalSubscriberManager {
             .into_iter()
             .filter(|subscription_id| {
                 let subscription_id_str = subscription_id.get_unique_id().to_string();
+
                 if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
                     let folder_path = &arc_tuple.0;
                     let last_sync_version = &arc_tuple.1;
-                    if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(folder_path) {
+
+                    let folder_key = format!(
+                        "{}:::{}",
+                        subscription_id.extract_streamer_profile().unwrap_or_default(),
+                        folder_path
+                    );
+                    if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(&folder_key) {
                         let current_version = *current_version_arc.value();
+
                         return current_version != *last_sync_version;
                     }
                 }
@@ -308,9 +316,9 @@ impl ExternalSubscriberManager {
                     Some(db) => db,
                     None => return false,
                 };
-                match db.get_folder_requirements(subscription_id.get_unique_id()) {
+                match db.get_folder_requirements(&subscription_id.clone().extract_shared_folder().unwrap_or_default()) {
                     Ok(req) => !req.has_web_alternative.unwrap_or(false),
-                    Err(_) => false,
+                    Err(_e) => false,
                 }
             })
             .collect::<Vec<SubscriptionId>>();
