@@ -24,6 +24,7 @@ use x25519_dalek::PublicKey;
 
 lazy_static! {
     static ref CACHE_TIME: Duration = Duration::from_secs(60 * 10);
+    static ref CACHE_NO_UPDATE: Duration = Duration::from_secs(60 * 5);
 }
 
 #[derive(Debug)]
@@ -238,7 +239,9 @@ impl ShinkaiRegistry {
         // If the cache is up-to-date, return the cached value
         if let Some(value) = self.cache.get(&identity) {
             let (last_updated, record) = value.value().clone();
-            if now.duration_since(last_updated)? < *CACHE_TIME {
+            if now.duration_since(last_updated)? < *CACHE_NO_UPDATE {
+                return Ok(record);
+            } else if now.duration_since(last_updated)? < *CACHE_TIME {
                 // Spawn a new task to update the cache in the background
                 let identity_clone = identity.clone();
                 let contract_clone = self.contract.clone();
