@@ -11,6 +11,14 @@ pub struct Workflow {
     pub version: String,
     pub steps: Vec<Step>,
     pub raw: String,
+    pub description: Option<String>,
+}
+
+impl Workflow {
+    /// Generates a key for the Workflow using its name and version.
+    pub fn generate_key(&self) -> String {
+        format!("{}:::{}", self.name, self.version)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

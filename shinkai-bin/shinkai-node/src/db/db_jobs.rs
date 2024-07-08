@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::llm_provider::execution::prompts::subprompts::SubPromptType;
 use crate::llm_provider::job::{Job, JobLike, JobStepResult};

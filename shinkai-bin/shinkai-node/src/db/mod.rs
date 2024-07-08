@@ -1,6 +1,6 @@
-pub mod db;
-pub use db::ShinkaiDB;
-pub use db::Topic;
+pub mod db_main;
+pub use db_main::ShinkaiDB;
+pub use db_main::Topic;
 pub mod db_llm_providers;
 pub mod db_cron_task;
 pub mod db_errors;
@@ -21,3 +21,4 @@ pub mod db_my_subscriptions;
 pub mod db_settings;
 pub mod db_network_notifications;
 pub mod db_uploaded_files_links;
+pub mod db_workflows;

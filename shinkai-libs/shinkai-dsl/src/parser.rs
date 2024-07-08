@@ -347,6 +347,7 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
         version,
         steps,
         raw: dsl_input.to_string(),
+        description: None,
     })
 }
 

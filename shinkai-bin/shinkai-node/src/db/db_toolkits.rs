@@ -1,4 +1,4 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::tools::{js_toolkit::JSToolkit, js_tools::JSTool, shinkai_tool::ShinkaiTool};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -11,12 +11,6 @@ pub struct JSToolkitWithToolReferences {
 }
 
 impl ShinkaiDB {
-    /// Returns the first half of the blake3 hash of the folder name value
-    fn user_profile_to_half_hash(profile: ShinkaiName) -> String {
-        let full_hash = blake3::hash(profile.full_name.as_bytes()).to_hex().to_string();
-        full_hash[..full_hash.len() / 2].to_string()
-    }
-
     /// Adds a ShinkaiTool to the database under the Toolkits topic.
     pub fn add_shinkai_tool(&self, tool: ShinkaiTool, profile: ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Verify that the tool is of type JS

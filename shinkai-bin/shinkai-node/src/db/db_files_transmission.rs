@@ -1,4 +1,4 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use rocksdb::{Error, WriteBatch};
 

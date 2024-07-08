@@ -17,7 +17,7 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::schemas::smart_inbox::LLMProviderSubset;
 use crate::schemas::{identity::StandardIdentity, inbox_permission::InboxPermission, smart_inbox::SmartInbox};
 
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
     pub fn create_empty_inbox(&self, inbox_name: String) -> Result<(), Error> {
@@ -518,7 +518,7 @@ impl ShinkaiDB {
                         let job = self.get_job(&unique_id)?;
                         let scope_value = job.scope.to_json_value_minimal()?;
                         job_scope_value = Some(scope_value);
-                        job.is_finished
+                        job.is_finished || job.is_hidden
                     }
                     _ => false,
                 }
