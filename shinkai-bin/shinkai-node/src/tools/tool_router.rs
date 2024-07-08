@@ -6,11 +6,11 @@ use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContext, InferenceChainContextTrait};
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use keyphrases::KeyPhraseExtractor;
 use serde_json;
 use shinkai_dsl::sm_executor::AsyncFunction;
@@ -21,13 +21,15 @@ use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
+use tokio::sync::RwLock;
 
 use super::shinkai_tool::ShinkaiTool;
 
 /// A top level struct which indexes Tools (Rust or JS or Workflows) installed in the Shinkai Node
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolRouter {
     pub routing_resources: HashMap<String, MapVectorResource>,
+    // pub workflows_for_search: RwLock<HashMap<ShinkaiName, ShinkaiTool>>,
     // We use started so we can defer the initialization of the routing_resources using a
     // generator that may not be available at the time of creation
     started: bool,
@@ -44,6 +46,7 @@ impl ToolRouter {
     pub fn new() -> Self {
         ToolRouter {
             routing_resources: HashMap::new(),
+            // workflows: RwLock::new(HashMap::new()),
             started: false,
         }
     }
@@ -536,7 +539,8 @@ impl ToolRouter {
                 let functions: HashMap<String, Box<dyn AsyncFunction>> = HashMap::new();
 
                 // Call the inference chain router to choose which chain to use, and call it
-                let mut dsl_inference = DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
+                let mut dsl_inference =
+                    DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
 
                 // Add the inference function to the functions map
                 dsl_inference.add_inference_function();
@@ -557,10 +561,5 @@ impl ToolRouter {
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))
-    }
-
-    /// Convert to json
-    pub fn to_json(&self) -> Result<String, ToolError> {
-        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
     }
 }
