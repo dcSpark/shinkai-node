@@ -733,7 +733,7 @@ impl VRHeader {
             resource_id: resource_id.to_string(),
             resource_base_type,
             resource_embedding: resource_embedding.clone(),
-            data_tag_names: data_tag_names,
+            data_tag_names,
             resource_source,
             resource_created_datetime,
             resource_last_written_datetime,
@@ -746,6 +746,7 @@ impl VRHeader {
     }
 
     /// Create a new VRHeader using a reference_string instead of the name/id directly
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_reference_string(
         reference_string: String,
         resource_base_type: VRBaseType,
@@ -772,7 +773,7 @@ impl VRHeader {
             resource_id,
             resource_base_type,
             resource_embedding: resource_embedding.clone(),
-            data_tag_names: data_tag_names,
+            data_tag_names,
             resource_source,
             resource_created_datetime,
             resource_last_written_datetime,

@@ -115,8 +115,12 @@ impl GenericInferenceChain {
         /*
         How it (should) work:
 
-        1) Vector search for knowledge if the scope isn't empty
-        2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
+        1) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
+        2) Vector search for knowledge if the scope isn't empty and another tool wasn't found
+           - Depending on the size of the scope:
+                - If the scope is small (it fits in the context length), we just add it in every call
+                - If the scope is medium, we use the workflow to do a "map-reduce"
+                - If the scope is large, we can use the vector search to get the nodes and then summarize them (oldie)
         3) Generate Prompt
         4) Call LLM
         5) Check response if it requires a function call
@@ -128,27 +132,7 @@ impl GenericInferenceChain {
         Note: we need to handle errors and retry
         */
 
-        // 1) Vector search for knowledge if the scope isn't empty
-        let scope_is_empty = full_job.scope().is_empty();
-        let mut ret_nodes: Vec<RetrievedNode> = vec![];
-        let mut summary_node_text = None;
-        if !scope_is_empty {
-            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
-                db.clone(),
-                vector_fs.clone(),
-                full_job.scope(),
-                user_message.clone(),
-                &user_profile,
-                generator.clone(),
-                20,
-                max_tokens_in_prompt,
-            )
-            .await?;
-            ret_nodes = ret;
-            summary_node_text = summary;
-        }
-
-        // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
+        // 1) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
         let mut tools = vec![];
         if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
@@ -170,6 +154,26 @@ impl GenericInferenceChain {
                     tools.push(result);
                 }
             }
+        }
+
+        // 2) Vector search for knowledge if the scope isn't empty
+        let scope_is_empty = full_job.scope().is_empty();
+        let mut ret_nodes: Vec<RetrievedNode> = vec![];
+        let mut summary_node_text = None;
+        if !scope_is_empty {
+            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
+                db.clone(),
+                vector_fs.clone(),
+                full_job.scope(),
+                user_message.clone(),
+                &user_profile,
+                generator.clone(),
+                20,
+                max_tokens_in_prompt,
+            )
+            .await?;
+            ret_nodes = ret;
+            summary_node_text = summary;
         }
 
         // 3) Generate Prompt

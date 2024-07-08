@@ -93,7 +93,7 @@ impl VRPack {
             let base64_encoded = self.encode_as_base64()?;
             return Ok(base64_encoded.into_bytes());
         }
-        return Err(VRError::UnsupportedVRPackVersion(self.version.to_string()));
+        Err(VRError::UnsupportedVRPackVersion(self.version.to_string()))
     }
 
     /// Prepares the VRPack to be saved or transferred across the network as a base64 encoded string.
@@ -103,7 +103,7 @@ impl VRPack {
             let base64_encoded = encode(json_str.as_bytes());
             return Ok(base64_encoded);
         }
-        return Err(VRError::UnsupportedVRPackVersion(self.version.to_string()));
+        Err(VRError::UnsupportedVRPackVersion(self.version.to_string()))
     }
 
     /// Parses a VRPack from an array of bytes, assuming the bytes are a Base64 encoded string.
@@ -115,7 +115,7 @@ impl VRPack {
             return Self::from_base64(&base64_str);
         }
 
-        return Err(VRError::UnsupportedVRPackVersion("".to_string()));
+        Err(VRError::UnsupportedVRPackVersion("".to_string()))
     }
 
     /// Parses a VRPack from a Base64 encoded string without compression.
@@ -128,7 +128,7 @@ impl VRPack {
             eprintln!("VRPack Error: {}", e);
         }
 
-        return Err(VRError::UnsupportedVRPackVersion("".to_string()));
+        Err(VRError::UnsupportedVRPackVersion("".to_string()))
     }
 
     /// Parses a VRPack from a Base64 encoded string using V1 logic without compression.
