@@ -11,7 +11,6 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
-    network::ws_manager,
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -30,7 +29,6 @@ use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::error;
 use reqwest::StatusCode;
-use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,

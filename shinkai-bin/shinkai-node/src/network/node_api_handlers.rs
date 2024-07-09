@@ -899,12 +899,22 @@ pub async fn get_local_processing_preference_handler(
     .await
 }
 
-pub async fn get_subscriptions_notifications_handler(
+pub async fn get_last_notifications_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     handle_node_command(node_commands_sender, message, |_sender, msg, res| {
-        NodeCommand::APIGetSubscriptionsNotifications { msg, res }
+        NodeCommand::APIGetLastNotifications { msg, res }
+    })
+    .await
+}
+
+pub async fn get_notifications_before_timestamp_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
+        NodeCommand::APIGetNotificationsBeforeTimestamp { msg, res }
     })
     .await
 }

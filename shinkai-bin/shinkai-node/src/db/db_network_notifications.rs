@@ -157,7 +157,6 @@ impl ShinkaiDB {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Duration;
     use shinkai_vector_resources::utils::hash_string;
     use std::fs;
     use std::path::Path;

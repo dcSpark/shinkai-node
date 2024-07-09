@@ -64,6 +64,8 @@ pub enum MessageSchemaType {
     APIRemoveToolkit,
     APIAddToolkit,
     APIListToolkits,
+    GetNotificationsBeforeTimestamp,
+    GetLastNotifications,
 }
 
 impl MessageSchemaType {
@@ -123,6 +125,8 @@ impl MessageSchemaType {
             "APIRemoveToolkit" => Some(Self::APIRemoveToolkit),
             "APIAddToolkit" => Some(Self::APIAddToolkit),
             "APIListToolkits" => Some(Self::APIListToolkits),
+            "GetNotificationsBeforeTimestamp" => Some(Self::GetNotificationsBeforeTimestamp),
+            "GetLastNotifications" => Some(Self::GetLastNotifications),
             _ => None,
         }
     }
@@ -182,6 +186,8 @@ impl MessageSchemaType {
             Self::APIRemoveToolkit => "APIRemoveToolkit",
             Self::APIAddToolkit => "APIAddToolkit",
             Self::APIListToolkits => "APIListToolkits",
+            Self::GetNotificationsBeforeTimestamp => "GetNotificationsBeforeTimestamp",
+            Self::GetLastNotifications => "GetLastNotifications",
             Self::Empty => "",
         }
     }
@@ -463,6 +469,18 @@ pub struct APIAddOllamaModels {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMySubscribers {
     pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct APIGetLastNotifications {
+    pub count: usize,
+    pub timestamp: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct APIGetNotificationsBeforeTimestamp {
+    pub timestamp: String,
+    pub count: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
