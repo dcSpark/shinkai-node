@@ -50,6 +50,7 @@ impl JSTool {
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
             })
+            .unwrap()
             .join()
             .expect("Thread panicked")
     }
