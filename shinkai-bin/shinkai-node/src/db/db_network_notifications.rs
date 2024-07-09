@@ -94,8 +94,6 @@ impl ShinkaiDB {
             }
         }
 
-        println!("Retrieved notifications: {:?}", notifications); // Add this line for debugging
-
         Ok(notifications)
     }
 

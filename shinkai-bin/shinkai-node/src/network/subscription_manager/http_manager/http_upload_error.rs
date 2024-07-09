@@ -1,5 +1,5 @@
 use std::fmt;
-
+use crate::db::db_errors::ShinkaiDBError;
 use super::subscription_file_uploader::{FileDestinationError, FileTransferError};
 
 #[derive(Debug)]
@@ -16,6 +16,8 @@ pub enum HttpUploadError {
     TaskJoinError(String),
     InvalidSubscriptionRequirement(String),
     MissingSubscriptionRequirement(String),
+    SerdeJsonError(serde_json::Error),
+    ShinkaiDBError(ShinkaiDBError),
 }
 
 impl std::error::Error for HttpUploadError {}
@@ -32,9 +34,27 @@ impl fmt::Display for HttpUploadError {
             HttpUploadError::DatabaseError(ref err) => write!(f, "Database error: {}", err),
             HttpUploadError::InvalidRequest(ref err) => write!(f, "Invalid request: {}", err),
             HttpUploadError::TaskJoinError(ref err) => write!(f, "Task join error: {}", err),
-            HttpUploadError::InvalidSubscriptionRequirement(ref err) => write!(f, "Invalid subscription requirement: {}", err),
-            HttpUploadError::MissingSubscriptionRequirement(ref err) => write!(f, "Missing subscription requirement: {}", err),
+            HttpUploadError::InvalidSubscriptionRequirement(ref err) => {
+                write!(f, "Invalid subscription requirement: {}", err)
+            }
+            HttpUploadError::MissingSubscriptionRequirement(ref err) => {
+                write!(f, "Missing subscription requirement: {}", err)
+            }
+            HttpUploadError::SerdeJsonError(ref err) => write!(f, "Serde JSON error: {}", err),
+            HttpUploadError::ShinkaiDBError(ref err) => write!(f, "ShinkaiDB error: {}", err),
         }
+    }
+}
+
+impl From<serde_json::Error> for HttpUploadError {
+    fn from(error: serde_json::Error) -> Self {
+        HttpUploadError::SerdeJsonError(error)
+    }
+}
+
+impl From<ShinkaiDBError> for HttpUploadError {
+    fn from(error: ShinkaiDBError) -> Self {
+        HttpUploadError::ShinkaiDBError(error)
     }
 }
 

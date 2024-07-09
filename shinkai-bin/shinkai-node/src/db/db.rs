@@ -64,13 +64,13 @@ impl ShinkaiDB {
             // If the database file does not exist, use the default list of column families
             vec![
                 Topic::Inbox.as_str().to_string(),
-                Topic::ScheduledMessage.as_str().to_string(),
+                Topic::ScheduledMessage.as_str().to_string(), // I will merge this with something else
                 Topic::AllMessages.as_str().to_string(),
                 Topic::Toolkits.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::AnyQueuesPrefixed.as_str().to_string(),
-                Topic::CronQueues.as_str().to_string(),
+                Topic::CronQueues.as_str().to_string(), // I will merge this with something else
                 Topic::NodeAndUsers.as_str().to_string(),
             ]
         };

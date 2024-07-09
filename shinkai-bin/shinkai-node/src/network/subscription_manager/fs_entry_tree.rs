@@ -108,6 +108,18 @@ impl FSEntryTree {
         }
         paths
     }
+
+    // Method to count all files in the tree and its children
+    pub fn count_files(&self) -> usize {
+        let mut file_count = 0;
+        if self.web_link.is_some() {
+            file_count += 1;
+        }
+        for child in self.children.values() {
+            file_count += child.count_files();
+        }
+        file_count
+    }
 }
 
 #[cfg(test)]

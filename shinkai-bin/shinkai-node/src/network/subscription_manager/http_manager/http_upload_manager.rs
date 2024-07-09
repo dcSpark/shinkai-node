@@ -93,7 +93,7 @@ pub enum FileStatus {
     Sync(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderSubscriptionWithPath {
     pub path: String,
     pub folder_subscription: FolderSubscription,
@@ -162,6 +162,28 @@ impl HttpSubscriptionUploadManager {
             .unwrap_or(UPLOAD_CONCURRENCY.to_string())
             .parse::<usize>()
             .unwrap_or(UPLOAD_CONCURRENCY); // Start processing the job queue
+
+        // Restore subscription_file_map from the database
+        if let Some(db_strong) = db.upgrade() {
+            match db_strong.read_all_file_links() {
+                Ok(all_file_links) => {
+                    for (folder_subs_with_path, file_links_map) in all_file_links {
+                        // Update file_links instead of file_status_map
+                        file_links.insert(folder_subs_with_path.clone(), file_links_map);
+
+                        // Update subscription status to Ready
+                        subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::Ready);
+                    }
+                }
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::SubscriptionHTTPUploader,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to read file links from database: {:?}", e),
+                    );
+                }
+            }
+        }
 
         let subscription_processing_task = HttpSubscriptionUploadManager::process_subscription_http_checks(
             db.clone(),
@@ -847,6 +869,7 @@ impl HttpSubscriptionUploadManager {
 
             // Generate temporary shareable links for the files
             match Self::update_file_links(
+                db,
                 file_links,
                 subscription_file_map,
                 subscription_status,
@@ -872,23 +895,37 @@ impl HttpSubscriptionUploadManager {
 
     /// Generates a temporary shareable link for a file.
     pub async fn update_file_links(
+        db: &Weak<ShinkaiDB>,
         file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
         subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
         subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
         destination: &FileDestination,
         folder_subs_with_path: FolderSubscriptionWithPath,
     ) -> Result<(), HttpUploadError> {
-        // Read the expiration duration from an environment variable or default to 5 days (432000 seconds)
+        // Read the expiration duration from an environment variable or default to 7 days (604800 seconds)
         let expiration_secs = std::env::var("LINK_EXPIRATION_SECONDS")
-            .unwrap_or_else(|_| "432000".to_string())
+            .unwrap_or_else(|_| "604800".to_string())
             .parse::<u64>()
-            .unwrap_or(432000);
+            .unwrap_or(604800);
 
         // Define a safe gap duration from an environment variable or default to 5 hours (18000 seconds)
         let safe_gap_secs = std::env::var("LINK_SAFE_GAP_SECONDS")
             .unwrap_or_else(|_| "18000".to_string())
             .parse::<u64>()
             .unwrap_or(18000);
+
+        let mut needs_update_occurred = false;
+
+        //  // Print out all the values and keys of subscription_file_map
+        //  println!("Subscription File Map:");
+        //  for entry in subscription_file_map.iter() {
+        //      let key = entry.key();
+        //      let value = entry.value();
+        //      println!("Folder Subscription: {:?}", key);
+        //      for (file_path, status) in value.iter() {
+        //          println!("  {} - {:?}", file_path, status);
+        //      }
+        //  } 
 
         // Access the specific subscription's files
         if let Some(files_status) = subscription_file_map.get(&folder_subs_with_path) {
@@ -911,6 +948,8 @@ impl HttpSubscriptionUploadManager {
                 };
 
                 if needs_update {
+                    needs_update_occurred = true;
+
                     // Generate a new link
                     let link_result = generate_temporary_shareable_link(file_path, destination, expiration_secs).await;
                     match link_result {
@@ -951,9 +990,36 @@ impl HttpSubscriptionUploadManager {
                 }
             }
         }
+        // Store the updated file links to disk if any update occurred
+        if needs_update_occurred {
+            if let Err(e) = Self::store_file_links_to_disk(db, &folder_subs_with_path, &file_links) {
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to store file links to disk: {:?}", e),
+                );
+            }
+        }
 
         // Update subscription status to Syncing
         subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::Ready);
+
+        Ok(())
+    }
+
+    // Helper method to store file links to disk
+    fn store_file_links_to_disk(
+        db: &Weak<ShinkaiDB>,
+        folder_subs_with_path: &FolderSubscriptionWithPath,
+        file_links: &Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
+    ) -> Result<(), HttpUploadError> {
+        let db_strong = db.upgrade().ok_or_else(|| {
+            HttpUploadError::DatabaseError("Failed to upgrade Weak<ShinkaiDB> to a strong reference".to_string())
+        })?;
+
+        if let Some(links) = file_links.get(folder_subs_with_path) {
+            db_strong.write_file_links(folder_subs_with_path, &links)?;
+        }
 
         Ok(())
     }

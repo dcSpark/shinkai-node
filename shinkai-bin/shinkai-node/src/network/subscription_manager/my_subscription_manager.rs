@@ -660,7 +660,7 @@ impl MySubscriptionsManager {
         let was_none = external_node_shared_folders.get(&shared_folder_name.clone()).is_none();
         drop(external_node_shared_folders);
 
-        self.insert_shared_folder(shared_folder_name.clone(), shared_folder_infos)
+        self.insert_shared_folder(shared_folder_name.clone(), shared_folder_infos.clone())
             .await?;
 
         if was_none {
@@ -681,8 +681,25 @@ impl MySubscriptionsManager {
                         }
                     };
                     if streamer_full_name == shared_folder_name {
+                        // Count the number of files for the specific subscription folder
+                        let file_count = shared_folder_infos.iter()
+                            .filter(|info| info.path == subscription.shared_folder)
+                            .map(|info| info.tree.count_files())
+                            .sum::<usize>();
+
                         // Trigger a sync so the user doesnt need to wait X minutes for the next sync
                         self.call_process_subscription_job_message_queued().await?;
+
+                        // Add notification message
+                        let notification_message = format!(
+                            "Received downloading links for {} files from {} for folder subscription '{}'.",
+                            file_count,
+                            shared_folder_name.get_node_name_string(),
+                            subscription.shared_folder
+                        );
+                        let user_profile = subscription.get_subscriber_with_profile()?;
+                        db_lock.write_notification(user_profile, notification_message)?;
+
                         break;
                     }
                 }
@@ -1171,8 +1188,6 @@ impl MySubscriptionsManager {
                 "VectorFS instance is not available".to_string(),
             ))?;
 
-            let mut total_files_added = 0;
-
             // Process the filtered subscriptions
             for subscription in http_preferred_subscriptions {
                 let mut external_node_shared_folders = external_node_shared_folders.lock().await;
@@ -1193,7 +1208,18 @@ impl MySubscriptionsManager {
                             http_download_manager.clone(),
                         )
                         .await?;
-                        total_files_added += files_added;
+
+                        if files_added > 0 {
+                            let notification_message = format!(
+                                "Added {} file{} to download queue for subscription to folder '{}' from user '{}' (HTTP)",
+                                files_added,
+                                if files_added > 1 { "s" } else { "" },
+                                subscription.shared_folder,
+                                subscription.streaming_node.get_node_name_string(),
+                            );
+                            let user_profile = subscription.get_subscriber_with_profile()?;
+                            db_lock.write_notification(user_profile, notification_message)?;
+                        }
                     }
                 } else {
                     shinkai_log(
@@ -1205,17 +1231,6 @@ impl MySubscriptionsManager {
                         )
                         .as_str(),
                     );
-                }
-                if total_files_added > 0 {
-                    let notification_message = format!(
-                        "Added {} files to download queue for subscription to folder '{}' from user '{}'. HTTP preferred: {}",
-                        total_files_added,
-                        subscription.shared_folder,
-                        subscription.streaming_node.get_node_name_string(),
-                        subscription.http_preferred.unwrap_or(false)
-                    );
-                    let user_profile = subscription.get_subscriber_with_profile()?;
-                    db_lock.write_notification(user_profile, notification_message)?;
                 }
             }
         } else {

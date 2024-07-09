@@ -17,14 +17,13 @@ use std::net::{AddrParseError, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::{Duration, UNIX_EPOCH};
-use std::vec;
 use tokio::net::lookup_host;
 use tokio::task;
 use x25519_dalek::PublicKey;
 
 lazy_static! {
-    static ref CACHE_TIME: Duration = Duration::from_secs(60 * 10);
-    static ref CACHE_NO_UPDATE: Duration = Duration::from_secs(60 * 5);
+    static ref CACHE_TIME: Duration = Duration::from_secs(60 * 30);
+    static ref CACHE_NO_UPDATE: Duration = Duration::from_secs(60 * 15);
 }
 
 #[derive(Debug)]

@@ -2436,6 +2436,7 @@ impl Node {
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
+        eprintln!("handle_proxy_listen_connection");
         // Store the tcp_connection in proxy_connection_info
         {
             let mut proxy_info_lock = proxy_connection_info.lock().await;
@@ -2443,8 +2444,6 @@ impl Node {
                 proxy_info.tcp_connection = Some((reader.clone(), writer.clone()));
             }
         }
-
-        let mut error_count = 0;
 
         // Handle the connection
         loop {
@@ -2477,23 +2476,15 @@ impl Node {
             // Await the task's completion
             match handle.await {
                 Ok(Ok(())) => {
-                    error_count = 0; // Reset error count on success
+                    // Connection handled successfully, continue the loop
                 }
                 Ok(Err(e)) => {
                     eprintln!("Task failed: {:?}", e);
-                    error_count += 1; // Increment error count on failure
-
-                    // Calculate sleep duration with exponential backoff, maxing out at 1 minute
-                    let sleep_duration = std::cmp::min(50 * 2_u64.pow(error_count - 1), 60_000);
-                    tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
+                    return Err(e); // Return error to trigger reconnection
                 }
                 Err(e) => {
                     eprintln!("Task panicked: {:?}", e);
-                    error_count += 1; // Increment error count on failure
-
-                    // Calculate sleep duration with exponential backoff, maxing out at 1 minute
-                    let sleep_duration = std::cmp::min(50 * 2_u64.pow(error_count - 1), 60_000);
-                    tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
+                    return Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e))); // Return error to trigger reconnection
                 }
             }
         }
