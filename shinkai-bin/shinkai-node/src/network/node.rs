@@ -2402,6 +2402,8 @@ impl Node {
             }
         }
 
+        let mut error_count = 0;
+
         // Handle the connection
         loop {
             let reader_clone = Arc::clone(&reader);
@@ -2424,15 +2426,33 @@ impl Node {
                         return Err(io::Error::new(io::ErrorKind::Other, e));
                     }
                 };
-                Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
+                Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone)
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
                 Ok::<(), std::io::Error>(())
             });
 
             // Await the task's completion
-            if let Err(e) = handle.await {
-                eprintln!("Task failed: {:?}", e);
-                // Sleep for 50ms before retrying
-                tokio::time::sleep(Duration::from_millis(50)).await;
+            match handle.await {
+                Ok(Ok(())) => {
+                    error_count = 0; // Reset error count on success
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Task failed: {:?}", e);
+                    error_count += 1; // Increment error count on failure
+
+                    // Calculate sleep duration with exponential backoff, maxing out at 1 minute
+                    let sleep_duration = std::cmp::min(50 * 2_u64.pow(error_count - 1), 60_000);
+                    tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
+                }
+                Err(e) => {
+                    eprintln!("Task panicked: {:?}", e);
+                    error_count += 1; // Increment error count on failure
+
+                    // Calculate sleep duration with exponential backoff, maxing out at 1 minute
+                    let sleep_duration = std::cmp::min(50 * 2_u64.pow(error_count - 1), 60_000);
+                    tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
+                }
             }
         }
     }
@@ -2515,93 +2535,69 @@ impl Node {
         reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         addr: SocketAddr,
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
-    ) {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut length_bytes = [0u8; 4];
         {
             let mut reader = reader.lock().await;
-            if reader.read_exact(&mut length_bytes).await.is_ok() {
-                let total_length = u32::from_be_bytes(length_bytes) as usize;
+            reader.read_exact(&mut length_bytes).await?;
+            let total_length = u32::from_be_bytes(length_bytes) as usize;
 
-                // Read the identity length
-                let mut identity_length_bytes = [0u8; 4];
-                if reader.read_exact(&mut identity_length_bytes).await.is_err() {
-                    return; // Exit if we fail to read identity length
+            // Read the identity length
+            let mut identity_length_bytes = [0u8; 4];
+            reader.read_exact(&mut identity_length_bytes).await?;
+            let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+
+            // Read the identity bytes
+            let mut identity_bytes = vec![0u8; identity_length];
+            reader.read_exact(&mut identity_bytes).await?;
+
+            // Calculate the message length excluding the identity length and the identity itself
+            let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
+
+            // Read the header byte to determine the message type
+            let mut header_byte = [0u8; 1];
+            reader.read_exact(&mut header_byte).await?;
+            let message_type = match header_byte[0] {
+                0x01 => NetworkMessageType::ShinkaiMessage,
+                0x02 => NetworkMessageType::VRKaiPathPair,
+                0x03 => NetworkMessageType::ProxyMessage,
+                _ => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        "Received message with unknown type identifier",
+                    );
+                    return Err("Unknown message type".into());
                 }
-                let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+            };
 
-                // Read the identity bytes
-                let mut identity_bytes = vec![0u8; identity_length];
-                if reader.read_exact(&mut identity_bytes).await.is_err() {
-                    return; // Exit if we fail to read identity
-                }
-
-                // Calculate the message length excluding the identity length and the identity itself
-                let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
-                                                                         // Read the header byte to determine the message type
-
-                let mut header_byte = [0u8; 1];
-                if reader.read_exact(&mut header_byte).await.is_ok() {
-                    let message_type = match header_byte[0] {
-                        0x01 => NetworkMessageType::ShinkaiMessage,
-                        0x02 => NetworkMessageType::VRKaiPathPair,
-                        0x03 => NetworkMessageType::ProxyMessage,
-                        _ => {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                "Received message with unknown type identifier",
-                            );
-                            return; // Exit the task if the message type is unknown
-                        }
-                    };
-
-                    if msg_length == 0 {
-                        return; // Exit, unless there is a message_type without body
-                    }
-
-                    // Initialize buffer to fit the message
-                    let mut buffer = vec![0u8; msg_length];
-
-                    // Read the rest of the message into the buffer
-                    if reader.read_exact(&mut buffer).await.is_ok() {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Info,
-                            &format!("Received message of type {:?} from: {:?}", message_type, addr),
-                        );
-
-                        let network_job = NetworkJobQueue {
-                            receiver_address: addr, // TODO: this should be my socketaddr!
-                            unsafe_sender_address: addr,
-                            message_type,
-                            content: buffer.clone(), // Now buffer does not include the header
-                            date_created: Utc::now(),
-                        };
-
-                        let mut network_job_manager = network_job_manager.lock().await;
-                        if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to add network job to queue: {}", e),
-                            );
-                        }
-                    } else {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to read message from: {:?}", addr),
-                        );
-                    }
-                }
-            } else {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to read message length from: {:?}", addr),
-                );
+            if msg_length == 0 {
+                return Ok(()); // Exit, unless there is a message_type without body
             }
+
+            // Initialize buffer to fit the message
+            let mut buffer = vec![0u8; msg_length];
+
+            // Read the rest of the message into the buffer
+            reader.read_exact(&mut buffer).await?;
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                &format!("Received message of type {:?} from: {:?}", message_type, addr),
+            );
+
+            let network_job = NetworkJobQueue {
+                receiver_address: addr, // TODO: this should be my socketaddr!
+                unsafe_sender_address: addr,
+                message_type,
+                content: buffer.clone(), // Now buffer does not include the header
+                date_created: Utc::now(),
+            };
+
+            let mut network_job_manager = network_job_manager.lock().await;
+            network_job_manager.add_network_job_to_queue(&network_job).await?;
         }
+        Ok(())
     }
 
     async fn retry_messages(
