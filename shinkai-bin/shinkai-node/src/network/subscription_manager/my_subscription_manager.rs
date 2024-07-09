@@ -1173,7 +1173,7 @@ impl MySubscriptionsManager {
         subscription: ShinkaiSubscription,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
     ) -> Pin<Box<dyn Future<Output = Result<(), SubscriberManagerError>> + Send>> {
-        // If we file is a folder, we continue with the children
+        // If the file is a folder, we continue with the children
         // If the file is a file, we check if it exists locally
         // If it doesn't we add it to the job queue
         // If it exists, we check if it's a new version
@@ -1203,7 +1203,7 @@ impl MySubscriptionsManager {
 
             // Check if the file exists in the vector_fs
             let my_subscription_path = if !tree.path.contains("/My Subscriptions") {
-                format!("/My Subscriptions/{}", tree.path)
+                format!("/My Subscriptions{}", tree.path)
             } else {
                 tree.path.clone()
             };

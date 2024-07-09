@@ -893,8 +893,18 @@ pub async fn get_local_processing_preference_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |sender, msg, res| {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
         NodeCommand::APIGetLocalProcessingPreference { msg, res }
+    })
+    .await
+}
+
+pub async fn get_subscriptions_notifications_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
+        NodeCommand::APIGetSubscriptionsNotifications { msg, res }
     })
     .await
 }
@@ -903,7 +913,7 @@ pub async fn update_local_processing_preference_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |sender, msg, res| {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
         NodeCommand::APIUpdateLocalProcessingPreference { preference: msg, res }
     })
     .await

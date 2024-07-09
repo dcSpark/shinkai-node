@@ -38,6 +38,7 @@ use super::node_api_handlers::get_local_processing_preference_handler;
 use super::node_api_handlers::get_my_subscribers_handler;
 use super::node_api_handlers::get_public_key_handler;
 use super::node_api_handlers::get_subscription_links_handler;
+use super::node_api_handlers::get_subscriptions_notifications_handler;
 use super::node_api_handlers::handle_file_upload;
 use super::node_api_handlers::identity_name_to_external_profile_data_handler;
 use super::node_api_handlers::job_message_handler;
@@ -744,6 +745,17 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| change_job_agent_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/get_subscriptions_notifications
+    let get_subscriptions_notifications = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_subscriptions_notifications")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_subscriptions_notifications_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     // POST v1/local_processing_preference
     let get_local_processing_preference = {
         let node_commands_sender = node_commands_sender.clone();
@@ -828,6 +840,7 @@ pub async fn run_api(
         .or(change_job_agent)
         .or(get_local_processing_preference)
         .or(update_local_processing_preference)
+        .or(get_subscriptions_notifications)
         .recover(handle_rejection)
         .with(log)
         .with(cors);

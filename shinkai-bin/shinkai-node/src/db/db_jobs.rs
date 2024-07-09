@@ -453,7 +453,6 @@ impl ShinkaiDB {
 
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
-            // HERE
             let (_key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let message = std::str::from_utf8(&value)?.to_string();
             unprocessed_messages.push(message);
@@ -586,20 +585,6 @@ impl ShinkaiDB {
 
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
-                    {
-                        // Use shared CFs
-                        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
-
-                        // Use a full iterator to go through all keys in the cf_inbox column family
-                        let iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
-
-                        for item in iter {
-                            let (_, _value) = match item {
-                                Ok(kv) => kv,
-                                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-                            };
-                        }
-                    }
                     let message_key = message.calculate_message_hash_for_pagination();
                     let hash_message_key = Self::message_key_to_hash(message_key);
 
