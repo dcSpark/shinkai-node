@@ -33,6 +33,7 @@ impl EmbeddingModelType {
     /// Returns the maximum allowed token count for an input string to be embedded, based on the embedding model
     pub fn max_input_token_count(&self) -> usize {
         static CONTEXT_512: usize = 400;
+        static CONTEXT_1024: usize = 9000;
         static CONTEXT_8200: usize = 7800;
 
         match self {
@@ -58,6 +59,7 @@ impl EmbeddingModelType {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
                 OllamaTextEmbeddingsInference::AllMiniLML6v2 => CONTEXT_512,
                 OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => CONTEXT_512,
+                OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => CONTEXT_1024, // it's really 8200, but we're using 1024 for now
                 OllamaTextEmbeddingsInference::Other(_) => CONTEXT_512,
             },
         }
@@ -204,18 +206,21 @@ pub enum OllamaTextEmbeddingsInference {
     AllMiniLML6v2,
     #[allow(non_camel_case_types)]
     SnowflakeArcticEmbed_M,
+    JinaEmbeddingsV2BaseEs,
     Other(String), // Added variant to handle other cases
 }
 
 impl OllamaTextEmbeddingsInference {
     const ALL_MINI_LML6V2: &'static str = "all-minilm:l6-v2";
     const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:xs";
+    const JINA_EMBEDDINGS_V2_BASE_ES: &'static str = "jina/jina-embeddings-v2-base-es:latest";
 
     /// Parses a string into an OllamaTextEmbeddingsInference
     fn from_string(s: &str) -> Result<Self, VRError> {
         match s {
             Self::ALL_MINI_LML6V2 => Ok(OllamaTextEmbeddingsInference::AllMiniLML6v2),
             Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            Self::JINA_EMBEDDINGS_V2_BASE_ES => Ok(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs),
             _ => Err(VRError::InvalidModelArchitecture),
         }
     }
@@ -226,6 +231,7 @@ impl fmt::Display for OllamaTextEmbeddingsInference {
         match self {
             OllamaTextEmbeddingsInference::AllMiniLML6v2 => write!(f, "{}", Self::ALL_MINI_LML6V2),
             OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => write!(f, "{}", Self::SNOWFLAKE_ARCTIC_EMBED_M),
+            OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => write!(f, "{}", Self::JINA_EMBEDDINGS_V2_BASE_ES),
             OllamaTextEmbeddingsInference::Other(name) => write!(f, "{}", name),
         }
     }
