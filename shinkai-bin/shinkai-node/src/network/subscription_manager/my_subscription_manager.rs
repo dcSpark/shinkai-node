@@ -1397,6 +1397,7 @@ impl MySubscriptionsManager {
                 // Extracted the last 8 bytes of the merkle hash
                 if let Some(web_link) = &tree.web_link {
                     let last8_in_streamer = &web_link.file.last_8_hash;
+                    let last8_in_streamer = last8_in_streamer.get(last8_in_streamer.len().saturating_sub(8)..).unwrap_or("");
                     return last_8_bytes == last8_in_streamer;
                 }
             }
