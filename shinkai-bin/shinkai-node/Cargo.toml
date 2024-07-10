@@ -1,6 +1,6 @@
 [package]
 name = "shinkai_node"
-version = "0.7.17"
+version = "0.7.18"
 edition = "2021"
 authors.workspace = true
 # this causes `cargo run` in the workspace root to run this package
