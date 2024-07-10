@@ -227,6 +227,13 @@ impl HttpDownloadManager {
                         .or_insert(0);
                     *counter += 1;
 
+                    // Dequeue the job after processing
+                    let _ = job_queue_manager
+                        .lock()
+                        .await
+                        .dequeue(job_id.subscription_id.get_unique_id())
+                        .await;
+
                     // Check if all jobs for this subscription ID are completed
                     let remaining_jobs = {
                         let job_queue = job_queue_manager.lock().await;
@@ -249,27 +256,13 @@ impl HttpDownloadManager {
                             let file_word = if *counter == 1 { "file" } else { "files" };
                             let notification_message = format!(
                                 "Downloaded {} {} for subscription '{}' from user '{}'.",
-                                *counter,
-                                file_word,
-                                subscription.shared_folder,
-                                streamer_node
+                                *counter, file_word, subscription.shared_folder, streamer_node
                             );
                             db_lock.write_notification(user_profile, notification_message).unwrap();
                         }
                         // Reset the counter
                         active_jobs.insert(job_id.subscription_id.get_unique_id().to_string(), 0);
                     }
-                }
-                // Dequeue the job after processing
-                if let Ok(Some(_)) = job_queue_manager
-                    .lock()
-                    .await
-                    .dequeue(job_id.subscription_id.get_unique_id())
-                    .await
-                {
-                    println!("Successfully dequeued job: {:?}", job_id);
-                } else {
-                    println!("Failed to dequeue job: {:?}", job_id);
                 }
                 drop(_permit);
             });
