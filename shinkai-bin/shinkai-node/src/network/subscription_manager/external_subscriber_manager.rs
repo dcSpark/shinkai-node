@@ -1422,10 +1422,7 @@ impl ExternalSubscriberManager {
 
         match db.get_subscription_by_id(&subscription_id) {
             Ok(_) => {
-                // If subscription exists, return an error or a specific message indicating already subscribed
-                return Err(SubscriberManagerError::AlreadySubscribed(
-                    "Requester is already subscribed to this folder".to_string(),
-                ));
+                // If subscription exists, let's allow the user to re-subscribe
             }
             Err(ShinkaiDBError::DataNotFound) => {
                 // If subscription does not exist, proceed with adding the subscription
