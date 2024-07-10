@@ -10,9 +10,10 @@ use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_sub
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Weak};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use super::http_upload_manager::FileLink;
 
@@ -103,7 +104,6 @@ impl HttpDownloadManager {
         }
     }
 
-    #[allow(dead_code)]
     pub async fn process_download_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<HttpDownloadJob>>>,
         vector_fs: Weak<VectorFS>,
@@ -114,6 +114,7 @@ impl HttpDownloadManager {
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let semaphore = Arc::new(Semaphore::new(max_parallel_downloads));
         let mut handles = Vec::new();
+        let active_jobs = Arc::new(RwLock::new(HashMap::new()));
 
         let is_testing = env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
 
@@ -132,6 +133,7 @@ impl HttpDownloadManager {
                     db.clone(),
                     max_parallel_downloads,
                     Arc::clone(&semaphore),
+                    Arc::clone(&active_jobs),
                     &mut continue_immediately,
                 )
                 .await;
@@ -164,13 +166,13 @@ impl HttpDownloadManager {
     }
 
     // Extracted function to process job queue
-    #[allow(dead_code)]
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<HttpDownloadJob>>>,
         vector_fs: Weak<VectorFS>,
         db: Weak<ShinkaiDB>,
         max_parallel_downloads: usize,
         semaphore: Arc<Semaphore>,
+        active_jobs: Arc<RwLock<HashMap<String, usize>>>,
         continue_immediately: &mut bool,
     ) -> Vec<tokio::task::JoinHandle<()>> {
         let mut new_handles = Vec::new();
@@ -208,23 +210,59 @@ impl HttpDownloadManager {
             let job_queue_manager = Arc::clone(&job_queue_manager);
             let semaphore_clone = Arc::clone(&semaphore);
             let vector_fs_clone = vector_fs.clone();
+            let active_jobs_clone = Arc::clone(&active_jobs);
+            let db_clone = db.clone();
 
             let handle = tokio::spawn(async move {
                 let _permit = semaphore_clone.acquire().await.unwrap();
                 // Call the new function to download and save the file
                 if let Err(e) = HttpDownloadManager::download_and_save_file(job_id.clone(), vector_fs_clone).await {
                     println!("Error processing job {:?}: {}", job_id, e);
-                }
-                // Dequeue the job after processing
-                if let Ok(Some(_)) = job_queue_manager
-                    .lock()
-                    .await
-                    .dequeue(job_id.subscription_id.get_unique_id())
-                    .await
-                {
-                    println!("Successfully dequeued job: {:?}", job_id);
                 } else {
-                    println!("Failed to dequeue job: {:?}", job_id);
+                    // Logic to send a message to the user that X amount of files has been downloaded for X subscription
+                    // Increment the counter for the job if it completes successfully
+                    let mut active_jobs = active_jobs_clone.write().await;
+                    let counter = active_jobs
+                        .entry(job_id.subscription_id.get_unique_id().to_string())
+                        .or_insert(0);
+                    *counter += 1;
+
+                    // Dequeue the job after processing
+                    let _ = job_queue_manager
+                        .lock()
+                        .await
+                        .dequeue(job_id.subscription_id.get_unique_id())
+                        .await;
+
+                    // Check if all jobs for this subscription ID are completed
+                    let remaining_jobs = {
+                        let job_queue = job_queue_manager.lock().await;
+                        job_queue
+                            .get_all_elements_interleave()
+                            .await
+                            .unwrap_or(Vec::new())
+                            .into_iter()
+                            .any(|job| job.subscription_id == job_id.subscription_id)
+                    };
+
+                    if !remaining_jobs {
+                        // Send notification
+                        if let Some(db_lock) = db_clone.upgrade() {
+                            let subscription = db_lock
+                                .get_my_subscription(job_id.subscription_id.get_unique_id())
+                                .unwrap();
+                            let user_profile = subscription.get_subscriber_with_profile().unwrap();
+                            let streamer_node = subscription.streaming_node.get_node_name_string();
+                            let file_word = if *counter == 1 { "file" } else { "files" };
+                            let notification_message = format!(
+                                "Downloaded {} {} for subscription '{}' from user '{}'.",
+                                *counter, file_word, subscription.shared_folder, streamer_node
+                            );
+                            db_lock.write_notification(user_profile, notification_message).unwrap();
+                        }
+                        // Reset the counter
+                        active_jobs.insert(job_id.subscription_id.get_unique_id().to_string(), 0);
+                    }
                 }
                 drop(_permit);
             });
@@ -234,11 +272,10 @@ impl HttpDownloadManager {
     }
 
     // New static function to handle file download and saving
-    #[allow(dead_code)]
     pub async fn download_and_save_file(
         job: HttpDownloadJob,
         vector_fs: Weak<VectorFS>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Upgrade the Weak pointer to a Strong one to use vector_fs
         if let Some(vector_fs) = vector_fs.upgrade() {
             // TODO: Update this so it's a tuple (VRKai + Checksum) and we validate the vrkai at the end
@@ -302,7 +339,6 @@ impl HttpDownloadManager {
     }
 
     // Function to add a new download job to the job queue
-    #[allow(dead_code)]
     pub async fn add_job_to_download_queue(&self, job: HttpDownloadJob) -> Result<String, Box<dyn std::error::Error>> {
         // Create a mutable copy of the job
         let mut job = job.clone();
@@ -326,6 +362,7 @@ impl HttpDownloadManager {
             .unwrap_or(NUM_THREADS);
 
         let semaphore = Arc::new(Semaphore::new(thread_number));
+        let active_jobs = Arc::new(RwLock::new(HashMap::new()));
         let mut continue_immediately = false;
 
         HttpDownloadManager::process_job_queue(
@@ -334,6 +371,7 @@ impl HttpDownloadManager {
             self.db.clone(),
             thread_number,
             Arc::clone(&semaphore),
+            Arc::clone(&active_jobs),
             &mut continue_immediately,
         )
         .await

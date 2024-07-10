@@ -1159,7 +1159,7 @@ impl ExternalSubscriberManager {
         &mut self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
-        subscription_requirement: FolderSubscription,
+        mut subscription_requirement: FolderSubscription,
         upload_credentials: Option<FileDestinationCredentials>,
     ) -> Result<bool, SubscriberManagerError> {
         shinkai_log(
@@ -1171,6 +1171,27 @@ impl ExternalSubscriberManager {
             )
             .as_str(),
         );
+
+        // Check for web alternative requirement and upload credentials
+        let mut upload_credentials = upload_credentials;
+        if upload_credentials.is_none() {
+            if let (Ok(access_key_id), Ok(secret_access_key), Ok(endpoint_uri), Ok(bucket)) = (
+                std::env::var("R2_UPLOAD_ACCESS_KEY_ID"),
+                std::env::var("R2_UPLOAD_SECRET_ACCESS_KEY"),
+                std::env::var("R2_UPLOAD_ENDPOINT_URI"),
+                std::env::var("R2_UPLOAD_BUCKET"),
+            ) {
+                upload_credentials = Some(FileDestinationCredentials::new(
+                    "R2".to_string(),
+                    access_key_id,
+                    secret_access_key,
+                    endpoint_uri,
+                    bucket,
+                ));
+                subscription_requirement.has_web_alternative = Some(true);
+            }
+        }
+
         // Check for web alternative requirement and upload credentials
         if subscription_requirement.has_web_alternative.unwrap_or(false) && upload_credentials.is_none() {
             return Err(SubscriberManagerError::InvalidRequest(
@@ -1422,10 +1443,7 @@ impl ExternalSubscriberManager {
 
         match db.get_subscription_by_id(&subscription_id) {
             Ok(_) => {
-                // If subscription exists, return an error or a specific message indicating already subscribed
-                return Err(SubscriberManagerError::AlreadySubscribed(
-                    "Requester is already subscribed to this folder".to_string(),
-                ));
+                // If subscription exists, let's allow the user to re-subscribe
             }
             Err(ShinkaiDBError::DataNotFound) => {
                 // If subscription does not exist, proceed with adding the subscription

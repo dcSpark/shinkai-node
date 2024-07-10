@@ -509,7 +509,7 @@ impl MySubscriptionsManager {
             // Update local status
             let mut new_subscription = ShinkaiSubscription::new(
                 folder_name.clone(),
-                streamer_node_name,
+                streamer_node_name.clone(),
                 streamer_profile,
                 self.node_name.clone(),
                 my_profile.clone(),
@@ -522,7 +522,33 @@ impl MySubscriptionsManager {
             new_subscription.update_http_preferred(http_preferred);
 
             if let Some(db_lock) = self.db.upgrade() {
-                db_lock.add_my_subscription(new_subscription)?;
+                db_lock.add_my_subscription(new_subscription.clone())?;
+
+                // Write notification to the DB
+                let notification_message = if let Some(http) = http_preferred {
+                    if http {
+                        format!(
+                            "Requested subscription to folder '{}' from user '{}'. HTTP preferred.",
+                            folder_name,
+                            streamer_node_name.get_node_name_string()
+                        )
+                    } else {
+                        format!(
+                            "Requested subscription to folder '{}' from user '{}'.",
+                            folder_name,
+                            streamer_node_name.get_node_name_string()
+                        )
+                    }
+                } else {
+                    format!(
+                        "Requested subscription to folder '{}' from user '{}'.",
+                        folder_name,
+                        streamer_node_name.get_node_name_string()
+                    )
+                };
+
+                let user_profile = new_subscription.get_subscriber_with_profile()?;
+                db_lock.write_notification(user_profile, notification_message)?;
             } else {
                 return Err(SubscriberManagerError::DatabaseError(
                     "Unable to access DB for updating".to_string(),
@@ -595,10 +621,19 @@ impl MySubscriptionsManager {
                 }
                 // Update the subscription status in the db
                 let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
-                db.update_my_subscription(new_subscription)?;
+                db.update_my_subscription(new_subscription.clone())?;
 
                 // Trigger get_shared_folder so we can indirectly trigger a download sync
                 self.get_shared_folder(&streamer_node_name).await?;
+
+                // Add a nice message after subscription has been confirmed
+                let notification_message = format!(
+                    "Subscription to folder '{}' from user '{}' has been confirmed.",
+                    payload.shared_folder,
+                    streamer_node_name.get_node_name_string()
+                );
+                let user_profile = new_subscription.get_subscriber_with_profile()?;
+                db.write_notification(user_profile, notification_message)?;
             }
             _ => {
                 // For other actions, do nothing
@@ -625,7 +660,7 @@ impl MySubscriptionsManager {
         let was_none = external_node_shared_folders.get(&shared_folder_name.clone()).is_none();
         drop(external_node_shared_folders);
 
-        self.insert_shared_folder(shared_folder_name.clone(), shared_folder_infos)
+        self.insert_shared_folder(shared_folder_name.clone(), shared_folder_infos.clone())
             .await?;
 
         if was_none {
@@ -646,8 +681,25 @@ impl MySubscriptionsManager {
                         }
                     };
                     if streamer_full_name == shared_folder_name {
+                        // Count the number of files for the specific subscription folder
+                        let file_count = shared_folder_infos.iter()
+                            .filter(|info| info.path == subscription.shared_folder)
+                            .map(|info| info.tree.count_files())
+                            .sum::<usize>();
+
                         // Trigger a sync so the user doesnt need to wait X minutes for the next sync
                         self.call_process_subscription_job_message_queued().await?;
+
+                        // Add notification message
+                        let notification_message = format!(
+                            "Received downloading links for {} files from {} for folder subscription '{}'.",
+                            file_count,
+                            shared_folder_name.get_node_name_string(),
+                            subscription.shared_folder
+                        );
+                        let user_profile = subscription.get_subscriber_with_profile()?;
+                        db_lock.write_notification(user_profile, notification_message)?;
+
                         break;
                     }
                 }
@@ -789,7 +841,7 @@ impl MySubscriptionsManager {
                 .upgrade()
                 .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
 
-            match Node::process_symmetric_key(symmetric_sk.clone(), db).await {
+            match Node::process_symmetric_key(symmetric_sk.clone(), db.clone()).await {
                 Ok(_hash_hex) => {
                     // Prepare metadata hashmap
                     let mut metadata = std::collections::HashMap::new();
@@ -800,7 +852,7 @@ impl MySubscriptionsManager {
                     let response = SubscriptionGenericResponse {
                         subscription_details: "Subscriber shared folder tree state shared".to_string(),
                         status: SubscriptionResponseStatus::Success,
-                        shared_folder: subscription_shared_path,
+                        shared_folder: subscription_shared_path.clone(),
                         error: None,
                         metadata: Some(metadata.clone()),
                     };
@@ -837,6 +889,17 @@ impl MySubscriptionsManager {
                         self.ws_manager.clone(),
                     )
                     .await?;
+
+                    let notification_message = format!(
+                        "Shared local status of shared folder '{}' with the streamer user '{}' (necessary to receive the update).",
+                        subscription_shared_path,
+                        subscriber_node.get_node_name_string()
+                    );
+                    let user_profile = ShinkaiName::from_node_and_profile_names(
+                        subscriber_node.get_node_name_string(),
+                        subscriber_profile.clone(),
+                    )?;
+                    db.write_notification(user_profile, notification_message)?;
                 }
                 Err(e) => {
                     return Err(SubscriberManagerError::OperationFailed(format!(
@@ -1137,7 +1200,7 @@ impl MySubscriptionsManager {
                     // Extract the information of subscription.shared_folder
                     if let Some(shared_folder_info) = shared_folder_sm.response.get(&subscription.shared_folder) {
                         // Recursively check files in the shared folder tree
-                        Self::check_and_enqueue_files(
+                        let files_added = Self::check_and_enqueue_files(
                             vector_fs_arc.clone(),
                             Arc::new(shared_folder_info.tree.clone()),
                             job_queue_manager.clone(),
@@ -1145,6 +1208,18 @@ impl MySubscriptionsManager {
                             http_download_manager.clone(),
                         )
                         .await?;
+
+                        if files_added > 0 {
+                            let notification_message = format!(
+                                "Added {} file{} to download queue for subscription to folder '{}' from user '{}' (HTTP)",
+                                files_added,
+                                if files_added > 1 { "s" } else { "" },
+                                subscription.shared_folder,
+                                subscription.streaming_node.get_node_name_string(),
+                            );
+                            let user_profile = subscription.get_subscriber_with_profile()?;
+                            db_lock.write_notification(user_profile, notification_message)?;
+                        }
                     }
                 } else {
                     shinkai_log(
@@ -1172,14 +1247,17 @@ impl MySubscriptionsManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         subscription: ShinkaiSubscription,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SubscriberManagerError>> + Send>> {
-        // If we file is a folder, we continue with the children
+    ) -> Pin<Box<dyn Future<Output = Result<usize, SubscriberManagerError>> + Send>> {
+        // If the file is a folder, we continue with the children
         // If the file is a file, we check if it exists locally
         // If it doesn't we add it to the job queue
         // If it exists, we check if it's a new version
         // If it's a new version, we add it to the job queue
 
         Box::pin(async move {
+            // Used for creating a notification for the user
+            let mut files_added = 0;
+
             // Skip folders and move directly to checking the children
             if tree.is_folder() {
                 // Recursively check children
@@ -1195,15 +1273,15 @@ impl MySubscriptionsManager {
                 }
 
                 for future in futures {
-                    future.await?;
+                    files_added += future.await?;
                 }
 
-                return Ok(());
+                return Ok(files_added);
             }
 
             // Check if the file exists in the vector_fs
             let my_subscription_path = if !tree.path.contains("/My Subscriptions") {
-                format!("/My Subscriptions/{}", tree.path)
+                format!("/My Subscriptions{}", tree.path)
             } else {
                 tree.path.clone()
             };
@@ -1219,7 +1297,7 @@ impl MySubscriptionsManager {
                         ShinkaiLogLevel::Error,
                         format!("Failed to create subscriber_wprofile: {}", e).as_str(),
                     );
-                    return Ok(()); // If it fails, continue to the next subscription
+                    return Ok(files_added); // If it fails, continue to the next subscription
                 }
             };
 
@@ -1237,7 +1315,7 @@ impl MySubscriptionsManager {
                             ShinkaiLogLevel::Error,
                             format!("Failed to create download job: {}", e).as_str(),
                         );
-                        return Ok(());
+                        return Ok(files_added);
                     }
                 };
 
@@ -1249,6 +1327,7 @@ impl MySubscriptionsManager {
                     .map_err(|e| {
                         SubscriberManagerError::JobEnqueueFailed(format!("Failed to enqueue download job: {}", e))
                     })?;
+                files_added += 1;
             } else {
                 // File exists, create a VFSReader and retrieve the fs_entry
                 let reader = vector_fs
@@ -1275,7 +1354,7 @@ impl MySubscriptionsManager {
                                 ShinkaiLogLevel::Error,
                                 format!("Failed to create download job: {}", e).as_str(),
                             );
-                            return Ok(());
+                            return Ok(files_added);
                         }
                     };
 
@@ -1287,6 +1366,7 @@ impl MySubscriptionsManager {
                         .map_err(|e| {
                             SubscriberManagerError::JobEnqueueFailed(format!("Failed to enqueue download job: {}", e))
                         })?;
+                    files_added += 1;
                 }
             }
 
@@ -1303,10 +1383,10 @@ impl MySubscriptionsManager {
             }
 
             for future in futures {
-                future.await?;
+                files_added += future.await?;
             }
 
-            Ok(())
+            Ok(files_added)
         })
     }
 

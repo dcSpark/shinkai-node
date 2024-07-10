@@ -17,7 +17,7 @@ pub struct NetworkMessage {
 impl NetworkMessage {
     pub async fn read_from_socket(
         reader: Arc<Mutex<ReadHalf<TcpStream>>>,
-        log_with_identity: Option<String>,
+        _log_with_identity: Option<String>,
     ) -> Result<Self, NetworkMessageError> {
         let mut reader = reader.lock().await;
 
