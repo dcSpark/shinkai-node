@@ -18,8 +18,9 @@ use shinkai_node::network::subscription_manager::http_manager::subscription_file
     delete_all_in_folder, FileDestination,
 };
 use shinkai_node::network::Node;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{RwLock, Semaphore};
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
@@ -364,6 +365,7 @@ fn subscription_http_upload() {
                     let semaphore = Arc::new(Semaphore::new(1));
                     let mut continue_processing = false;
                     let mut handles = Vec::new();
+                    let active_jobs = Arc::new(RwLock::new(HashMap::new()));
 
                     loop {
                         // Process the job queue using the associated function syntax
@@ -373,6 +375,7 @@ fn subscription_http_upload() {
                             node1_db_weak.clone(),
                             1,
                             semaphore.clone(),
+                            active_jobs.clone(),
                             &mut continue_processing,
                         )
                         .await;
