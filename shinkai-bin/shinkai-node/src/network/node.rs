@@ -440,7 +440,7 @@ pub enum NodeCommand {
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
 pub static NEW_PROFILE_DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
-    EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs);
+    EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
 lazy_static! {
     /// Hard-coded list of supported embedding models that is set when creating a new profile.
