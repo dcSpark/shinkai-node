@@ -1,6 +1,7 @@
 use clap::Parser;
 use derivative::Derivative;
 use ed25519_dalek::{SigningKey, Verifier, VerifyingKey};
+use etcd_client::Client;
 use rand::distributions::Alphanumeric;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -9,7 +10,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key
+    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
@@ -46,6 +47,8 @@ pub struct TCPProxy {
     #[derivative(Debug = "ignore")]
     pub encryption_secret_key: EncryptionStaticKey,
     pub encryption_public_key: EncryptionPublicKey,
+    #[derivative(Debug = "ignore")]
+    pub etcd_client: Option<Arc<Mutex<Client>>>,
 }
 
 impl TCPProxy {
@@ -55,6 +58,7 @@ impl TCPProxy {
         node_name: Option<String>,
         rpc_url: Option<String>,
         contract_address: Option<String>,
+        etcd_url: Option<String>,
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
@@ -62,6 +66,8 @@ impl TCPProxy {
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
+
+        let etcd_url = etcd_url.or_else(|| env::var("ETCD_URL").ok());
 
         let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 
@@ -128,6 +134,14 @@ impl TCPProxy {
             ));
         }
 
+        // Handle etcd_url if provided
+        let etcd_client = if let Some(etcd_url) = etcd_url {
+            println!("Connecting to etcd URL: {}", etcd_url);
+            Some(Arc::new(Mutex::new(Client::connect([etcd_url], None).await.unwrap())))
+        } else {
+            None
+        };
+
         Ok(TCPProxy {
             clients: Arc::new(Mutex::new(HashMap::new())),
             pk_to_clients: Arc::new(Mutex::new(HashMap::new())),
@@ -137,6 +151,7 @@ impl TCPProxy {
             identity_public_key,
             encryption_secret_key,
             encryption_public_key,
+            etcd_client,
         })
     }
 
@@ -179,6 +194,7 @@ impl TCPProxy {
                     self.node_name.clone(),
                     self.identity_secret_key.clone(),
                     self.encryption_secret_key.clone(),
+                    self.etcd_client.clone(),
                 )
                 .await;
             }
@@ -200,6 +216,7 @@ impl TCPProxy {
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        etcd_client: Option<Arc<Mutex<Client>>>,
     ) {
         println!("Received a ShinkaiMessage from {}...", identity);
         let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&network_msg.payload);
@@ -216,6 +233,7 @@ impl TCPProxy {
                     node_name,
                     identity_secret_key,
                     encryption_secret_key,
+                    etcd_client,
                 )
                 .await;
                 match response {
@@ -272,6 +290,7 @@ impl TCPProxy {
         let node_name = self.node_name.clone();
         let identity_sk = self.identity_secret_key.clone();
         let encryption_sk = self.encryption_secret_key.clone();
+        let etcd_client = self.etcd_client.clone();
 
         tokio::spawn(async move {
             loop {
@@ -279,7 +298,7 @@ impl TCPProxy {
                     msg = NetworkMessage::read_from_socket(reader.clone(), Some(identity.clone())) => {
                         match msg {
                             Ok(msg) => {
-                                if let Err(e) = Self::handle_incoming_message(Ok(msg), &clients_clone, &pk_to_clients_clone, reader.clone(), writer.clone(), &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone()).await {
+                                if let Err(e) = Self::handle_incoming_message(Ok(msg), &clients_clone, &pk_to_clients_clone, reader.clone(), writer.clone(), &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone(), etcd_client.clone()).await {
                                     eprintln!("Error handling incoming message: {}", e);
                                     break;
                                 }
@@ -330,6 +349,7 @@ impl TCPProxy {
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        etcd_client: Option<Arc<Mutex<Client>>>,
     ) -> Result<(), NetworkMessageError> {
         match msg {
             Ok(msg) => match msg.message_type {
@@ -349,6 +369,7 @@ impl TCPProxy {
                                 node_name,
                                 identity_secret_key,
                                 encryption_secret_key,
+                                etcd_client,
                             )
                             .await
                         }
@@ -371,6 +392,7 @@ impl TCPProxy {
                         node_name,
                         identity_secret_key,
                         encryption_secret_key,
+                        etcd_client,
                     )
                     .await;
                     Ok(())
@@ -399,6 +421,7 @@ impl TCPProxy {
         tcp_node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        etcd_client: Option<Arc<Mutex<Client>>>,
     ) -> Result<(), NetworkMessageError> {
         /*
          For Proxy Message we have multiple cases
@@ -477,24 +500,43 @@ impl TCPProxy {
                 msg_recipient
             );
 
-            let connection = {
-                let clients_guard = clients.lock().await;
-                match clients_guard.get(&msg_recipient) {
-                    Some(connection) => connection.clone(),
-                    None => {
-                        eprintln!("Error: Connection not found for recipient {}", msg_recipient);
-                        return Ok(());
-                    }
-                }
-            };
-
-            if Self::send_shinkai_message_to_proxied_identity(connection.1, parsed_message)
+            // if etcd is provided, we need to check if the recipient is in the etcd
+            // if not, we just handle locally
+            // if it is, we need to proxy the message to the node that's connected to the recipient
+            // Check if the recipient is in etcd and proxy the message if needed
+            // if the current tcp relayer is the one that holds the connection, we *still* need to proxy the message
+            // this will help with tests and keep the infrastructure consistent
+            if etcd_client.is_some() {
+                if let Err(e) = Self::check_etcd_and_proxy_message(
+                    etcd_client,
+                    msg_recipient.clone(),
+                    parsed_message.clone(),
+                    writer.clone(),
+                )
                 .await
-                .is_err()
-            {
-                eprintln!("Failed to send message to client {}", msg_recipient);
-            }
+                {
+                    eprintln!("Error handling etcd check and proxy: {}", e);
+                }
+            } else {
+                // Find the client that needs to receive the message
+                let connection = {
+                    let clients_guard = clients.lock().await;
+                    match clients_guard.get(&msg_recipient) {
+                        Some(connection) => connection.clone(),
+                        None => {
+                            eprintln!("Error: Connection not found for recipient {}", msg_recipient);
+                            return Ok(());
+                        }
+                    }
+                };
 
+                if Self::send_shinkai_message_to_proxied_identity(connection.1, parsed_message)
+                    .await
+                    .is_err()
+                {
+                    eprintln!("Failed to send message to client {}", msg_recipient);
+                }
+            }
             return Ok(());
         }
 
@@ -522,6 +564,66 @@ impl TCPProxy {
         // We need to proxy the message to the recipient
         println!("Proxying message out. Sender is not localhost but a well defined identity");
         Self::handle_proxy_out_to_ext_node(registry, msg_recipient, parsed_message, writer.clone()).await?;
+        Ok(())
+    }
+
+    async fn check_etcd_and_proxy_message(
+        etcd_client: Option<Arc<Mutex<Client>>>,
+        msg_recipient: String,
+        parsed_message: ShinkaiMessage,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+    ) -> Result<(), NetworkMessageError> {
+        if let Some(etcd_client) = etcd_client {
+            let mut etcd_client = etcd_client.lock().await;
+            let key = format!("/shinkai/nodes/{}", msg_recipient);
+            match etcd_client.get(key.clone(), None).await {
+                Ok(response) => {
+                    if let Some(kv) = response.kvs().first() {
+                        let node_address = String::from_utf8(kv.value().to_vec()).unwrap();
+                        println!(
+                            "Recipient {} found in etcd with address {}",
+                            msg_recipient, node_address
+                        );
+
+                        // Proxy the message to the node that's connected to the recipient
+                        match TcpStream::connect(node_address).await {
+                            Ok(mut stream) => {
+                                println!("Connected to recipient's node. Streaming...");
+                                let payload = parsed_message.encode_message().unwrap();
+
+                                let identity_bytes = msg_recipient.as_bytes();
+                                let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+                                let total_length =
+                                    (payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
+
+                                let mut data_to_send = Vec::new();
+                                data_to_send.extend_from_slice(&total_length);
+                                data_to_send.extend_from_slice(&identity_length);
+                                data_to_send.extend(identity_bytes);
+                                data_to_send.push(0x01); // Message type identifier for ShinkaiMessage
+                                data_to_send.extend_from_slice(&payload);
+
+                                stream.write_all(&data_to_send).await?;
+                                stream.flush().await?;
+                                println!("Sent message to {}", stream.peer_addr().unwrap());
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to connect to recipient's node: {}", e);
+                                let error_message = format!("Failed to connect to recipient's node: {}", e);
+                                send_message_with_length(writer.clone(), error_message).await?;
+                            }
+                        }
+                    } else {
+                        println!("Recipient {} not found in etcd, handling locally", msg_recipient);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to query etcd for recipient {}: {}", msg_recipient, e);
+                    let error_message = format!("Failed to query etcd for recipient {}: {}", msg_recipient, e);
+                    send_message_with_length(writer.clone(), error_message).await?;
+                }
+            }
+        }
         Ok(())
     }
 

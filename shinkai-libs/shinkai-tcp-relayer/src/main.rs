@@ -96,6 +96,10 @@ async fn main() -> Result<(), NetworkMessageError> {
         .map(String::from)
         .or_else(|| env::var("NODE_NAME").ok())
         .expect("NODE_NAME is required");
+    let etcd_url = matches
+        .value_of("etcd_url")
+        .map(String::from)
+        .or_else(|| env::var("ETCD_URL").ok());
     // TODO: implement restrictions
     let open_to_all = matches
         .value_of("open_to_all")
@@ -116,6 +120,7 @@ async fn main() -> Result<(), NetworkMessageError> {
         Some(node_name),
         rpc_url,
         contract_address,
+        etcd_url,
     )
     .await?;
 
