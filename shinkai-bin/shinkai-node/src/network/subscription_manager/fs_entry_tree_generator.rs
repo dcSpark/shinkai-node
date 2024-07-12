@@ -42,7 +42,6 @@ impl FSEntryTreeGenerator {
         let shared_folders = vector_fs
             .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
             .await?;
-        let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
         // Convert HTTP subscription results to a HashMap
         let http_results_map: HashMap<String, FileLink> = http_subscription_results
@@ -63,7 +62,7 @@ impl FSEntryTreeGenerator {
 
         // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
         let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
-        for (path, _permission) in filtered_results {
+        for (path, _permission) in shared_folders {
             // Now use the requester subidentity for actual perm checking. Required for whitelist perms in the future.
             if let Ok(reader) = vector_fs
                 .new_reader(
