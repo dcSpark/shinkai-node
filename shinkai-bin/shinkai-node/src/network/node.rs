@@ -2268,19 +2268,19 @@ impl Node {
                                         },
                                         // NodeCommand::APISearchWorkflows { msg, res } => self.api_search_workflows(msg, res).await,
                                         NodeCommand::APISearchWorkflows { msg, res } => {
-                                            let db_clone = Arc::clone(&self.db);
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let tool_router_clone = self.tool_router.clone();
+                                            let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
                                             tokio::spawn(async move {
                                                 let _ = Node::api_search_workflows(
-                                                    db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
-                                                    tool_router_clone
+                                                    tool_router_clone,
                                                     msg,
+                                                    embedding_generator_clone,
                                                     res,
                                                 ).await;
                                             });

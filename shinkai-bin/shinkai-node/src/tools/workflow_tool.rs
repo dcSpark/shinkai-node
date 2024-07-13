@@ -1,4 +1,4 @@
-use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_dsl::{dsl_schemas::Workflow, parser::parse_workflow};
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::argument::ToolArgument;
@@ -54,5 +54,31 @@ impl WorkflowTool {
         }
 
         embedding_string
+    }
+}
+
+impl WorkflowTool {
+    pub fn static_tools() -> Vec<Self> {
+        let mut tools = Vec::new();
+
+        let raw_workflow = r#"
+            workflow MyProcess v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            }
+        "#;
+
+        let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
+        workflow.description = Some("Reviews in depth all the content to generate a summary.".to_string());
+
+        tools.push(WorkflowTool::new(workflow));
+
+        // Add more workflows as needed
+        tools
     }
 }

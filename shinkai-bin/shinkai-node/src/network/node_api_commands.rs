@@ -54,6 +54,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -2885,12 +2886,12 @@ impl Node {
     }
 
     pub async fn api_search_workflows(
-        db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         potentially_encrypted_msg: ShinkaiMessage,
+        embedding_generator: Arc<RemoteEmbeddingGenerator>,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message
@@ -2911,7 +2912,6 @@ impl Node {
         };
 
         // Extract the content of the message
-        // Extract the content of the message
         let search_query = match msg.get_message_content() {
             Ok(content) => content,
             Err(err) => {
@@ -2925,12 +2925,29 @@ impl Node {
             }
         };
 
+        // Generate the embedding for the search query
+        let embedding = match embedding_generator.generate_embedding_default(&search_query).await {
+            Ok(embedding) => embedding,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate embedding: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Perform the internal search using tool_router
         if let Some(tool_router) = tool_router {
             let tool_router = tool_router.lock().await;
-            match tool_router.search_workflows(&search_query) {
+            match tool_router.workflow_search(&node_name, embedding, &search_query, 5) {
                 Ok(workflows) => {
-                    let _ = res.send(Ok(workflows)).await;
+                    let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
+                        message: format!("Failed to serialize workflows: {}", err),
+                    })?;
+                    let _ = res.send(Ok(workflows_json)).await;
                     Ok(())
                 }
                 Err(err) => {
