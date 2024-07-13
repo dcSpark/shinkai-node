@@ -103,7 +103,7 @@ impl FSEntryTreeGenerator {
                                     .unwrap_or_else(|| FileLink {
                                         link: String::new(), // Provide a default or handle this case as needed
                                         path: checksum_path,
-                                        last_8_hash: file_link.last_8_hash.clone(), // Default or appropriate value
+                                        last_8_hash: String::new(), // Default or appropriate value
                                         expiration: file_link.expiration, // Use the same expiration or handle appropriately
                                     }),
                             });
@@ -170,7 +170,7 @@ impl FSEntryTreeGenerator {
                         .unwrap_or_else(|| FileLink {
                             link: String::new(), // Provide a default or handle this case as needed
                             path: checksum_path,
-                            last_8_hash: file_link.last_8_hash.clone(),       // Default or appropriate value
+                            last_8_hash: String::new(),       // Default or appropriate value
                             expiration: file_link.expiration, // Use the same expiration or handle appropriately
                         }),
                 });
