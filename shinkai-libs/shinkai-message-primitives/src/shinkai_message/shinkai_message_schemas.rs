@@ -216,27 +216,8 @@ pub struct JobMessage {
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
-    pub workflow: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobToolCall {
-    pub tool_id: String,
-    pub inputs: std::collections::HashMap<String, String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum JobRecipient {
-    SelfNode,
-    User,
-    ExternalIdentity(String),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobPreMessage {
-    pub tool_calls: Vec<JobToolCall>,
-    pub content: String,
-    pub recipient: JobRecipient,
+    pub workflow_code: Option<String>,
+    pub workflow_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]

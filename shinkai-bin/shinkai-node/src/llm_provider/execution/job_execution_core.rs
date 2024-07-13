@@ -361,7 +361,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<bool, LLMProviderError> {
-        if job_message.workflow.is_none() {
+        if job_message.workflow_code.is_none() {
             return Ok(false);
         }
 
@@ -384,7 +384,7 @@ impl JobManager {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
-        let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
+        let workflow = parse_workflow(&job_message.workflow_code.clone().unwrap())?;
 
         // eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
 
