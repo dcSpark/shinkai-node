@@ -94,7 +94,7 @@ impl FSEntryTreeGenerator {
 
                         // Check if there is a corresponding HTTP link
                         if let Some(file_link) = http_results_map.get(&path_str) {
-                            let checksum_path = format!("{}.{}.checksum", child_path, file_link.last_8_hash); // Correctly format the checksum path
+                            let checksum_path = format!("{}.{}.checksum", path_str, file_link.last_8_hash); // Correctly format the checksum path
                             item_tree.web_link = Some(WebLink {
                                 file: file_link.clone(),
                                 checksum: http_results_map
