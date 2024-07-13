@@ -64,6 +64,7 @@ pub fn generate_message_with_payload<T: ToString>(
 
 #[test]
 fn vector_fs_api_tests() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -691,7 +692,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -711,7 +712,7 @@ fn vector_fs_api_tests() {
                 }
 
                 let check_first = &resp[0].0
-                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros"
+                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com"
                         .to_string()
                     && (&resp[0].1
                         == &vec![
@@ -722,7 +723,7 @@ fn vector_fs_api_tests() {
                         || &resp[0].1 == &vec!["test_folder2".to_string(), "shinkai_intro".to_string()]);
 
                 let check_second = &resp[1].0
-                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros"
+                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com"
                         .to_string()
                     && (&resp[1].1
                         == &vec![

@@ -1,11 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
-use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
-use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus};
 use shinkai_vector_resources::utils::hash_string;
 use core::panic;
-use std::collections::HashMap;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::SubscriptionPayment;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, FileDestinationSourceType, MessageSchemaType
@@ -31,7 +27,7 @@ use tokio::runtime::Runtime;
 use super::utils::node_test_api::api_registration_device_node_profile_main;
 use super::utils::node_test_local::local_registration_profile_node;
 use crate::it::utils::db_handlers::setup;
-use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_success, create_folder, fetch_last_messages, generate_message_with_payload, make_folder_shareable, make_folder_shareable_http_free, print_tree_simple, remove_folder, remove_item, remove_timestamps_from_shared_folder_cache_response, retrieve_file_info, show_available_shared_items, upload_file};
+use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_success, create_folder, generate_message_with_payload, make_folder_shareable_http_free, print_tree_simple, retrieve_file_info, show_available_shared_items, upload_file};
 
 #[test]
 fn http_subscription_manager_test() {
@@ -289,6 +285,19 @@ fn http_subscription_manager_test() {
                 )
                 .await;
 
+                // Create /shared test folder
+                create_folder(
+                    &node1_commands_sender,
+                    "/shinkai_sharing_http_test",
+                    "internal_folder_1",
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                )
+                .await;
+
                 // Upload File to /shinkai_sharing_http_test
                 let file_path = Path::new("../../files/shinkai_intro.vrkai");
                 upload_file(
@@ -313,7 +322,7 @@ fn http_subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
-                    "/shinkai_sharing_http_test",
+                    "/shinkai_sharing_http_test/internal_folder_1",
                     file_path,
                     0,
                 )
@@ -562,15 +571,23 @@ fn http_subscription_manager_test() {
                                     {
                                         "name": "shinkai_sharing_http_test",
                                         "path": "/My Subscriptions/shinkai_sharing_http_test",
-                                        "child_folders": [],
+                                        "child_folders": [
+                                            {
+                                                "name": "internal_folder_1",
+                                                "path": "/My Subscriptions/shinkai_sharing_http_test/internal_folder_1",
+                                                "child_folders": [],
+                                                "child_items": [
+                                                    {
+                                                        "name": "Zeko_Mina_Rollup",
+                                                        "path": "/My Subscriptions/shinkai_sharing_http_test/internal_folder_1/Zeko_Mina_Rollup"
+                                                    }
+                                                ]
+                                            }
+                                        ],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
                                                 "path": "/My Subscriptions/shinkai_sharing_http_test/shinkai_intro"
-                                            },
-                                            {
-                                                "name": "Zeko_Mina_Rollup",
-                                                "path": "/My Subscriptions/shinkai_sharing_http_test/Zeko_Mina_Rollup"
                                             }
                                         ]
                                     }

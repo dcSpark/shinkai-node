@@ -222,19 +222,19 @@ fn subscription_http_upload() {
                 let expected_files = [
                     (
                         "/shinkai_sharing/shinkai_intro",
-                        "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
+                        "e8f4ee5dda589611c6b5ac06b551031f5e314a7bc130534d12ffc0860d6dac9b",
                     ),
                     (
-                        "/shinkai_sharing/zeko_mini.6c58bb39.checksum",
-                        "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
+                        "/shinkai_sharing/zeko_mini.c57496ff.checksum",
+                        "6e5609f6b82ac769ad2fbf2c6781b7c687438800e0501c03e72c41b2c57496ff",
                     ),
                     (
-                        "/shinkai_sharing/shinkai_intro.3584dc22.checksum",
-                        "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
+                        "/shinkai_sharing/shinkai_intro.0d6dac9b.checksum",
+                        "e8f4ee5dda589611c6b5ac06b551031f5e314a7bc130534d12ffc0860d6dac9b",
                     ),
                     (
                         "/shinkai_sharing/zeko_mini",
-                        "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
+                        "6e5609f6b82ac769ad2fbf2c6781b7c687438800e0501c03e72c41b2c57496ff",
                     ),
                 ];
 
