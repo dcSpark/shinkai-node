@@ -43,6 +43,7 @@ impl FSEntryTreeGenerator {
             .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
             .await?;
 
+        let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
         // Convert HTTP subscription results to a HashMap
         let http_results_map: HashMap<String, FileLink> = http_subscription_results
             .into_iter()
@@ -62,7 +63,7 @@ impl FSEntryTreeGenerator {
 
         // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
         let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
-        for (path, _permission) in shared_folders {
+        for (path, _permission) in filtered_results {
             // Now use the requester subidentity for actual perm checking. Required for whitelist perms in the future.
             if let Ok(reader) = vector_fs
                 .new_reader(
@@ -76,7 +77,7 @@ impl FSEntryTreeGenerator {
 
                 match fs_entry {
                     FSEntry::Folder(fs_folder) => {
-                        let folder_tree = Self::process_folder(&fs_folder, &path.to_string())?;
+                        let folder_tree = Self::process_folder(&fs_folder, &path.to_string(), &http_results_map)?;
                         root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
                     }
                     FSEntry::Item(fs_item) => {
@@ -130,25 +131,53 @@ impl FSEntryTreeGenerator {
     }
 
     // Adjusted to directly build FSEntryTree structure
-    fn process_folder(fs_folder: &FSFolder, parent_path: &str) -> Result<FSEntryTree, SubscriberManagerError> {
+    fn process_folder(
+        fs_folder: &FSFolder,
+        parent_path: &str,
+        http_results_map: &HashMap<String, FileLink>,
+    ) -> Result<FSEntryTree, SubscriberManagerError> {
         let mut children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
 
         // Process child folders and add them to the children map
         for child_folder in &fs_folder.child_folders {
-            let child_tree = Self::process_folder(child_folder, &format!("{}/{}", parent_path, child_folder.name))?;
+            let child_tree = Self::process_folder(
+                child_folder,
+                &format!("{}/{}", parent_path, child_folder.name),
+                http_results_map,
+            )?;
             children.insert(child_folder.name.clone(), Arc::new(child_tree));
         }
 
         // Process child items and add them to the children map
         for child_item in &fs_folder.child_items {
             let child_path = format!("{}/{}", parent_path, child_item.name);
-            let child_tree = FSEntryTree {
+            let mut child_tree = FSEntryTree {
                 name: child_item.name.clone(),
-                path: child_path,
+                path: child_path.clone(),
                 last_modified: child_item.last_written_datetime,
                 web_link: None,
                 children: HashMap::new(), // Items do not have children
             };
+
+            // Check if there is a corresponding HTTP link
+            if let Some(file_link) = http_results_map.get(&child_path) {
+                let checksum_path = format!("{}.checksum", child_path); // Correctly format the checksum path
+                child_tree.web_link = Some(WebLink {
+                    file: file_link.clone(),
+                    checksum: http_results_map
+                        .get(&checksum_path)
+                        .cloned()
+                        .unwrap_or_else(|| FileLink {
+                            link: String::new(), // Provide a default or handle this case as needed
+                            path: checksum_path,
+                            last_8_hash: String::new(),       // Default or appropriate value
+                            expiration: file_link.expiration, // Use the same expiration or handle appropriately
+                        }),
+                });
+                child_tree.last_modified = DateTime::<Utc>::from(file_link.expiration);
+                // Convert SystemTime to DateTime<Utc>
+            }
+
             children.insert(child_item.name.clone(), Arc::new(child_tree));
         }
 
@@ -253,7 +282,12 @@ impl FSEntryTreeGenerator {
         match entry {
             FSEntry::Folder(fs_folder) => {
                 // Use the existing process_folder function to correctly handle folders and their children
-                let folder_tree = Self::process_folder(&fs_folder, &fs_folder.path.clone().format_to_string())?;
+                let empty_http_results_map = HashMap::new();
+                let folder_tree = Self::process_folder(
+                    &fs_folder,
+                    &fs_folder.path.clone().format_to_string(),
+                    &empty_http_results_map,
+                )?;
                 Ok(folder_tree)
             }
             FSEntry::Item(fs_item) => {
