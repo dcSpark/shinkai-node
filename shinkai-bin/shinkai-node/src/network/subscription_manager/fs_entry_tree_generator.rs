@@ -94,7 +94,7 @@ impl FSEntryTreeGenerator {
 
                         // Check if there is a corresponding HTTP link
                         if let Some(file_link) = http_results_map.get(&path_str) {
-                            let checksum_path = format!("{}.checksum", path_str); // Correctly format the checksum path
+                            let checksum_path = format!("{}.{}.checksum", child_path, file_link.last_8_hash); // Correctly format the checksum path
                             item_tree.web_link = Some(WebLink {
                                 file: file_link.clone(),
                                 checksum: http_results_map
@@ -103,7 +103,7 @@ impl FSEntryTreeGenerator {
                                     .unwrap_or_else(|| FileLink {
                                         link: String::new(), // Provide a default or handle this case as needed
                                         path: checksum_path,
-                                        last_8_hash: String::new(), // Default or appropriate value
+                                        last_8_hash: file_link.last_8_hash.clone(), // Default or appropriate value
                                         expiration: file_link.expiration, // Use the same expiration or handle appropriately
                                     }),
                             });
@@ -161,7 +161,7 @@ impl FSEntryTreeGenerator {
 
             // Check if there is a corresponding HTTP link
             if let Some(file_link) = http_results_map.get(&child_path) {
-                let checksum_path = format!("{}.checksum", child_path); // Correctly format the checksum path
+                let checksum_path = format!("{}.{}.checksum", child_path, file_link.last_8_hash); // Correctly format the checksum path
                 child_tree.web_link = Some(WebLink {
                     file: file_link.clone(),
                     checksum: http_results_map
@@ -170,7 +170,7 @@ impl FSEntryTreeGenerator {
                         .unwrap_or_else(|| FileLink {
                             link: String::new(), // Provide a default or handle this case as needed
                             path: checksum_path,
-                            last_8_hash: String::new(),       // Default or appropriate value
+                            last_8_hash: file_link.last_8_hash.clone(),       // Default or appropriate value
                             expiration: file_link.expiration, // Use the same expiration or handle appropriately
                         }),
                 });
@@ -1205,8 +1205,14 @@ mod tests {
         let new_tree = FSEntryTreeGenerator::remove_prefix_from_paths(&tree, "/My Subscriptions");
 
         assert_eq!(new_tree.path, "/shared test folder");
-        assert_eq!(new_tree.children["shinkai_intro"].path, "/shared test folder/shinkai_intro");
+        assert_eq!(
+            new_tree.children["shinkai_intro"].path,
+            "/shared test folder/shinkai_intro"
+        );
         assert_eq!(new_tree.children["crypto"].path, "/shared test folder/crypto");
-        assert_eq!(new_tree.children["crypto"].children["shinkai_intro"].path, "/shared test folder/crypto/shinkai_intro");
+        assert_eq!(
+            new_tree.children["crypto"].children["shinkai_intro"].path,
+            "/shared test folder/crypto/shinkai_intro"
+        );
     }
 }
