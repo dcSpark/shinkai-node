@@ -107,6 +107,6 @@ mod tests {
         println!("{}", serialized);
 
         // Optionally, you can add assertions to check the serialized output
-        assert!(serialized.contains("MyProcess"));
+        assert!(serialized.contains("ExtensiveSummary"));
     }
 }
