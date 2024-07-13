@@ -6,7 +6,6 @@ use crate::dsl_schemas::{
 };
 
 pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
-    println!("Current rule: {:?}", pair.as_rule());
     if pair.as_rule() != Rule::step_body {
         panic!("Expected 'step_body' rule, found {:?}", pair.as_rule());
     }
@@ -15,7 +14,6 @@ pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
     let mut bodies = Vec::new();
 
     while let Some(inner_pair) = inner_pairs.next() {
-        println!("Processing inner rule: {:?}", inner_pair.as_rule());
         bodies.push(parse_step_body_item(inner_pair));
     }
 
@@ -27,14 +25,11 @@ pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
 }
 
 pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
-    println!("Current rule: {:?}", pair.as_rule());
     match pair.as_rule() {
         Rule::action => {
-            println!("Parsing action");
             StepBody::Action(parse_action(pair))
         }
         Rule::condition => {
-            println!("Parsing condition");
             let mut inner_pairs = pair.into_inner();
             let expression = parse_expression(inner_pairs.next().expect("Expected expression in condition"));
             let body = parse_step_body(inner_pairs.next().expect("Expected step body in condition"));
@@ -45,7 +40,6 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
             }
         }
         Rule::for_loop => {
-            println!("Parsing for loop");
             let mut loop_inner_pairs = pair.into_inner();
             let var_pair = loop_inner_pairs.next().expect("Expected variable in for loop");
             let in_expr_pair = loop_inner_pairs.next().expect("Expected expression in for loop");
@@ -55,10 +49,8 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
                 Rule::split_expression => {
                     let mut split_inner_pairs = in_expr_pair.into_inner();
                     let source = parse_param(split_inner_pairs.next().expect("Expected source in split expression"));
-                    println!("Source in split expression: {:?}", source);
                     
                     let delimiter_pair = split_inner_pairs.next().expect("Expected delimiter in split expression");
-                    println!("Delimiter in split expression: {:?}", delimiter_pair.as_str());
                     let delimiter = delimiter_pair.as_str().trim_matches('"').to_string();
                     
                     ForLoopExpression::Split { source, delimiter }
@@ -85,7 +77,6 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
             }
         }
         Rule::register_operation => {
-            println!("Parsing register operation");
             let mut register_inner_pairs = pair.into_inner();
             let register_pair = register_inner_pairs
                 .next()
@@ -111,7 +102,6 @@ pub fn parse_value_or_call(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
 }
 
 pub fn parse_external_fn_call(pair: pest::iterators::Pair<Rule>) -> FunctionCall {
-    println!("Parsing external function call");
     let mut inner_pairs = pair.into_inner();
     let name_pair = inner_pairs
         .next()
@@ -125,10 +115,8 @@ pub fn parse_external_fn_call(pair: pest::iterators::Pair<Rule>) -> FunctionCall
 }
 
 pub fn parse_action(pair: pest::iterators::Pair<Rule>) -> Action {
-    eprintln!("Current rule: {:?}", pair.as_rule());
     let mut inner_pairs = pair.into_inner();
     let first_pair = inner_pairs.next().expect("Expected content in action");
-    eprintln!("First pair: {:?}", first_pair.as_rule());
 
     match first_pair.as_rule() {
         Rule::external_fn_call => {
@@ -145,18 +133,14 @@ pub fn parse_action(pair: pest::iterators::Pair<Rule>) -> Action {
         }
         Rule::command => {
             let command = first_pair.as_str().to_string();
-            eprintln!("Command: {:?}", command);
-            eprintln!("Inner pairs: {:?}", inner_pairs);
             let params = inner_pairs
                 .map(|p| {
-                    eprintln!("Param p: {:?}", p.as_rule());
                     // Assuming each 'param' pair directly contains the parameter as its only inner pair
                     // let actual_param = p.into_inner().next().expect("Expected parameter content");
                     // eprintln!("Actual param: {:?}", actual_param.as_rule());
                     parse_param(p)
                 })
                 .collect::<Vec<_>>();
-            eprintln!("Params: {:?}", params);
 
             Action::Command { command, params }
         }
@@ -165,11 +149,8 @@ pub fn parse_action(pair: pest::iterators::Pair<Rule>) -> Action {
 }
 
 pub fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Expression {
-    println!("Parsing expression with rule: {:?}", pair.as_rule());
-
     match pair.as_rule() {
         Rule::range_expression => {
-            println!("Range expression: {:?}", pair);
             let mut inner_pairs = pair.into_inner();
             let start = parse_param(inner_pairs.next().expect("Expected start of range"));
             let end = parse_param(inner_pairs.next().expect("Expected end of range"));
@@ -179,7 +160,6 @@ pub fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Expression {
             }
         }
         Rule::expression => {
-            eprintln!("Expression: {:?}", pair);
             let mut inner_pairs = pair.into_inner();
             let first_expr = parse_param(
                 inner_pairs
@@ -202,7 +182,6 @@ pub fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Expression {
             } else {
                 // If there's no operator, it means the expression is just a simple expression
                 // Assuming `first_expr` can be directly used as an Expression
-                println!("First expr: {:?}", first_expr);
                 Expression::Simple(Box::new(first_expr))
             }
         }
@@ -211,9 +190,6 @@ pub fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Expression {
 }
 
 pub fn parse_param(pair: pest::iterators::Pair<Rule>) -> Param {
-    println!("Parsing param with rule: {:?}", pair.as_rule());
-    println!("Parsing param with content: {:?}", pair.as_str());
-
     let input = pair.as_str().trim();
 
     match identify_param_type(input) {
@@ -286,7 +262,6 @@ pub fn parse_comparison_operator(pair: pest::iterators::Pair<Rule>) -> Compariso
 }
 
 pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
-    println!("Parsing workflow value with rule: {:?}", pair.as_rule());
     let input = pair.as_str().trim(); // Trim leading and trailing spaces
 
     match pair.as_rule() {

@@ -364,3 +364,51 @@ async fn test_create_toolkit_from_file() {
     // Clean up: remove the toolkit
     shinkai_db.remove_jstoolkit(&tool_definition.name, &profile).unwrap();
 }
+
+#[tokio::test]
+async fn test_workflow_search() {
+    init_default_tracing();
+    setup();
+
+    // Initialize the database and profile
+    let db_path = format!("db_tests/{}", "workflow_search");
+    let shinkai_db = Arc::new(ShinkaiDB::new(&db_path).unwrap());
+    let profile = default_test_profile();
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    // Add built-in toolkits
+    let tools = built_in_tools::get_tools();
+    for (name, definition) in tools {
+        let toolkit = JSToolkit::new(&name, vec![definition]);
+        shinkai_db.add_jstoolkit(toolkit, profile.clone()).unwrap();
+    }
+
+    // Initialize ToolRouter
+    let mut tool_router = ToolRouter::new();
+    tool_router
+        .start(
+            Box::new(generator.clone()),
+            Arc::downgrade(&shinkai_db),
+            profile.clone(),
+        )
+        .await
+        .unwrap();
+
+    // Perform a workflow search
+    let query = generator
+        .generate_embedding_default("summarize this")
+        .await
+        .unwrap();
+    let results = tool_router.workflow_search(&profile, query, "summarize this", 5).unwrap();
+
+    // Assert the results
+    assert!(!results.is_empty(), "Expected to find workflows, but found none");
+    assert!(
+        results.iter().any(|tool| tool.name().contains("ExtensiveSummary")),
+        "Expected to find a workflow with 'example' in the name"
+    );
+    // // Optionally, print out the found workflows
+    // for workflow in &results {
+    //     println!("Found workflow: {}", workflow.name());
+    // }
+}

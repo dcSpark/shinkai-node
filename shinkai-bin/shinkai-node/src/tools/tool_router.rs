@@ -125,11 +125,10 @@ impl ToolRouter {
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
             } else {
-                let new_embedding = generator
+                generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())
                     .await
-                    .unwrap();
-                new_embedding
+                    .unwrap()
             };
 
             let _ = routing_resource.insert_text_node(

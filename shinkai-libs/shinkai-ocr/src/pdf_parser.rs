@@ -1,6 +1,6 @@
 use pdfium_render::prelude::*;
 use regex::Regex;
-use std::{io::Write, time::Instant};
+use std::time::Instant;
 
 use crate::image_parser::ImageParser;
 

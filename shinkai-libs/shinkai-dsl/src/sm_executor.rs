@@ -324,13 +324,6 @@ impl<'a> WorkflowEngine<'a> {
                     Err(WorkflowError::FunctionError(format!("Function '{}' not found", name)))
                 }
             }
-            _ => {
-                eprintln!("Unsupported workflow value type {:?}, defaulting to 0", value);
-                Err(WorkflowError::InvalidArgument(format!(
-                    "Unsupported workflow value type {:?}",
-                    value
-                )))
-            }
         }
     }
 

@@ -28,7 +28,7 @@ pub struct Step {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", content = "value", rename_all = "lowercase")]
 pub enum StepBody {
     Action(Action),
     Condition {

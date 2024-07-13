@@ -22,9 +22,7 @@ impl WorkflowTool {
     }
 
     pub fn get_description(&self) -> String {
-        // TODO: empty for now, but maybe we want to expand the workflow itself
-        // so we can add a description as a comment?
-        "".to_string()
+        self.workflow.description.clone().unwrap_or_default()
     }
 
     pub fn get_input_args(&self) -> Vec<ToolArgument> {
@@ -62,7 +60,7 @@ impl WorkflowTool {
         let mut tools = Vec::new();
 
         let raw_workflow = r#"
-            workflow MyProcess v0.1 {
+            workflow ExtensiveSummary v0.1 {
                 step Initialize {
                     $PROMPT = "Summarize this: "
                     $EMBEDDINGS = call process_embeddings_in_job_scope()
@@ -80,5 +78,35 @@ impl WorkflowTool {
 
         // Add more workflows as needed
         tools
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_serialize_workflow_tool() {
+        let raw_workflow = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            }
+        "#;
+
+        let workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
+        let workflow_tool = WorkflowTool::new(workflow);
+
+        let serialized = serde_json::to_string(&workflow_tool).expect("Failed to serialize WorkflowTool");
+        println!("{}", serialized);
+
+        // Optionally, you can add assertions to check the serialized output
+        assert!(serialized.contains("MyProcess"));
     }
 }

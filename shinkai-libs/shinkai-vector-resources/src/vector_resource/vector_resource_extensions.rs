@@ -1,4 +1,4 @@
-use super::{Node, RetrievedNode, VRPath, VectorResource};
+use super::{Node, VectorResource};
 use crate::{embeddings::Embedding, resource_errors::VRError};
 
 /// Trait extension which specific Vector Resource types implement that have a guaranteed internal ordering
