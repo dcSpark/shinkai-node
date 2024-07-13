@@ -376,7 +376,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     assert_eq!(
-        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
+        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com",
         res[0]
             .resource_retrieved_node
             .node
