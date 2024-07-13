@@ -16,7 +16,7 @@ use crate::{
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::js_toolkit::JSToolkit,
+    tools::{js_toolkit::JSToolkit, tool_router::ToolRouter},
     utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
@@ -29,6 +29,7 @@ use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::error;
 use reqwest::StatusCode;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
@@ -2881,6 +2882,76 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn api_search_workflows(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::SearchWorkflows),
+        )
+        .await;
+        let (msg, _) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract the content of the message
+        // Extract the content of the message
+        let search_query = match msg.get_message_content() {
+            Ok(content) => content,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to extract message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Perform the internal search using tool_router
+        if let Some(tool_router) = tool_router {
+            let tool_router = tool_router.lock().await;
+            match tool_router.search_workflows(&search_query) {
+                Ok(workflows) => {
+                    let _ = res.send(Ok(workflows)).await;
+                    Ok(())
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to search workflows: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Tool router is not available".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            Ok(())
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

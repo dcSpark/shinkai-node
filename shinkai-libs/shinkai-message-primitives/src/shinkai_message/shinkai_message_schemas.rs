@@ -66,6 +66,7 @@ pub enum MessageSchemaType {
     APIListToolkits,
     GetNotificationsBeforeTimestamp,
     GetLastNotifications,
+    SearchWorkflows,
 }
 
 impl MessageSchemaType {
@@ -127,6 +128,7 @@ impl MessageSchemaType {
             "APIListToolkits" => Some(Self::APIListToolkits),
             "GetNotificationsBeforeTimestamp" => Some(Self::GetNotificationsBeforeTimestamp),
             "GetLastNotifications" => Some(Self::GetLastNotifications),
+            "SearchWorkflows" => Some(Self::SearchWorkflows),
             _ => None,
         }
     }
@@ -188,6 +190,7 @@ impl MessageSchemaType {
             Self::APIListToolkits => "APIListToolkits",
             Self::GetNotificationsBeforeTimestamp => "GetNotificationsBeforeTimestamp",
             Self::GetLastNotifications => "GetLastNotifications",
+            Self::SearchWorkflows => "SearchWorkflows",
             Self::Empty => "",
         }
     }

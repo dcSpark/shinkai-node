@@ -50,6 +50,7 @@ use super::node_api_handlers::remove_agent_handler;
 use super::node_api_handlers::retrieve_vrkai_handler;
 use super::node_api_handlers::retrieve_vrpack_handler;
 use super::node_api_handlers::scan_ollama_models_handler;
+use super::node_api_handlers::search_workflows_handler;
 use super::node_api_handlers::send_msg_handler;
 use super::node_api_handlers::shinkai_health_handler;
 use super::node_api_handlers::subscribe_to_shared_folder_handler;
@@ -767,7 +768,7 @@ pub async fn run_api(
                 get_notifications_before_timestamp_handler(node_commands_sender.clone(), message)
             })
     };
-    
+
     // POST v1/local_processing_preference
     let get_local_processing_preference = {
         let node_commands_sender = node_commands_sender.clone();
@@ -788,6 +789,15 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| {
                 update_local_processing_preference_handler(node_commands_sender.clone(), message)
             })
+    };
+
+    // POST v1/search_workflows
+    let search_workflows = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "search_workflows")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| search_workflows_handler(node_commands_sender.clone(), message))
     };
 
     let cors = warp::cors() // build the CORS filter
@@ -854,6 +864,7 @@ pub async fn run_api(
         .or(update_local_processing_preference)
         .or(get_last_notifications)
         .or(get_notifications_before_timestamp)
+        .or(search_workflows)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
