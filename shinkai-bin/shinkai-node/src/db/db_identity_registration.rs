@@ -1,4 +1,4 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 use crate::schemas::identity::{DeviceIdentity, StandardIdentity, StandardIdentityType};
 use ed25519_dalek::VerifyingKey;
 use rand::RngCore;
@@ -10,7 +10,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, string_to_signature_public_key,
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey};
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 #[derive(PartialEq, Debug)]
 pub enum RegistrationCodeStatus {
@@ -126,8 +126,7 @@ impl ShinkaiDB {
 
         let prefixed_new_code = format!("registration_code_{}", new_code);
 
-        self.db
-            .put_cf(cf, prefixed_new_code.as_bytes(), code_info.as_bytes())?;
+        self.db.put_cf(cf, prefixed_new_code.as_bytes(), code_info.as_bytes())?;
 
         Ok(new_code)
     }

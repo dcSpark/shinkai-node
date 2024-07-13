@@ -1,4 +1,4 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_message::shinkai_message::ShinkaiMessage};
 use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use tracing::instrument;

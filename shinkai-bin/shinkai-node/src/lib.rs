@@ -12,5 +12,6 @@ pub mod tools;
 pub mod utils;
 pub mod vector_fs;
 pub mod welcome_files;
+pub mod workflows;
 
 pub use runner::{initialize_node, run_node_tasks};

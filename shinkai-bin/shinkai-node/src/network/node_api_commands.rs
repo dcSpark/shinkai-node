@@ -16,7 +16,7 @@ use crate::{
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::js_toolkit::JSToolkit,
+    tools::{js_toolkit::JSToolkit, tool_router::ToolRouter},
     utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
@@ -29,6 +29,7 @@ use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::error;
 use reqwest::StatusCode;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
@@ -53,6 +54,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -2881,6 +2883,92 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn api_search_workflows(
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        potentially_encrypted_msg: ShinkaiMessage,
+        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::SearchWorkflows),
+        )
+        .await;
+        let (msg, _) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract the content of the message
+        let search_query = match msg.get_message_content() {
+            Ok(content) => content,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to extract message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Generate the embedding for the search query
+        let embedding = match embedding_generator.generate_embedding_default(&search_query).await {
+            Ok(embedding) => embedding,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate embedding: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Perform the internal search using tool_router
+        if let Some(tool_router) = tool_router {
+            let tool_router = tool_router.lock().await;
+            match tool_router.workflow_search(&node_name, embedding, &search_query, 5) {
+                Ok(workflows) => {
+                    let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
+                        message: format!("Failed to serialize workflows: {}", err),
+                    })?;
+                    let _ = res.send(Ok(workflows_json)).await;
+                    Ok(())
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to search workflows: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Tool router is not available".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            Ok(())
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

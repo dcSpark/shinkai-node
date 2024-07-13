@@ -193,7 +193,8 @@ async fn test_process_job_queue_concurrency() {
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow: None,
+                workflow_code: None,
+                workflow_name: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -317,7 +318,8 @@ async fn test_sequential_process_for_same_job_id() {
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow: None,
+                workflow_code: None,
+                workflow_name: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );

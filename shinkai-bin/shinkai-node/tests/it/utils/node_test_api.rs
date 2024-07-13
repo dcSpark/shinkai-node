@@ -463,6 +463,7 @@ pub async fn api_message_job(
             files_inbox.to_string(),
             parent.to_string(),
             workflow,
+            None,
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,

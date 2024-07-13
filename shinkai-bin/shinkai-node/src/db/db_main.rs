@@ -185,6 +185,12 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)
     }
 
+    /// Returns the first half of the blake3 hash of the folder name value
+    pub fn user_profile_to_half_hash(profile: ShinkaiName) -> String {
+        let full_hash = blake3::hash(profile.full_name.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
+
     // We are using a composite_key to avoid the problem that two messages could had
     // been generated at the same time adding the hash of the message to the
     // key, we can ensure that the key is unique the key is composed by the time

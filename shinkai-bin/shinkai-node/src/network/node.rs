@@ -436,6 +436,10 @@ pub enum NodeCommand {
         preference: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APISearchWorkflows {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -2262,6 +2266,25 @@ impl Node {
                                                 ).await;
                                             });
                                         },
+                                        // NodeCommand::APISearchWorkflows { msg, res } => self.api_search_workflows(msg, res).await,
+                                        NodeCommand::APISearchWorkflows { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let tool_router_clone = self.tool_router.clone();
+                                            let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_search_workflows(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    tool_router_clone,
+                                                    msg,
+                                                    embedding_generator_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
                                         _ => (),
                                     }
                             },
@@ -2484,7 +2507,8 @@ impl Node {
                 }
                 Err(e) => {
                     eprintln!("Task panicked: {:?}", e);
-                    return Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e))); // Return error to trigger reconnection
+                    return Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e)));
+                    // Return error to trigger reconnection
                 }
             }
         }

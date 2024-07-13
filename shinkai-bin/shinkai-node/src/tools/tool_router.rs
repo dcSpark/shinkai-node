@@ -6,11 +6,11 @@ use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContext, InferenceChainContextTrait};
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use keyphrases::KeyPhraseExtractor;
 use serde_json;
 use shinkai_dsl::sm_executor::AsyncFunction;
@@ -23,11 +23,13 @@ use shinkai_vector_resources::vector_resource::{
 };
 
 use super::shinkai_tool::ShinkaiTool;
+use super::workflow_tool::WorkflowTool;
 
 /// A top level struct which indexes Tools (Rust or JS or Workflows) installed in the Shinkai Node
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolRouter {
     pub routing_resources: HashMap<String, MapVectorResource>,
+    // pub workflows_for_search: RwLock<HashMap<ShinkaiName, ShinkaiTool>>,
     // We use started so we can defer the initialization of the routing_resources using a
     // generator that may not be available at the time of creation
     started: bool,
@@ -44,6 +46,7 @@ impl ToolRouter {
     pub fn new() -> Self {
         ToolRouter {
             routing_resources: HashMap::new(),
+            // workflows: RwLock::new(HashMap::new()),
             started: false,
         }
     }
@@ -79,6 +82,9 @@ impl ToolRouter {
         // Add Rust tools
         Self::add_rust_tools(&mut routing_resource, generator.box_clone()).await;
 
+        // Add static workflows
+        Self::add_static_workflows(&mut routing_resource, generator.box_clone()).await;
+
         // Add JS tools
         if let Some(db) = db.upgrade() {
             Self::add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
@@ -103,6 +109,33 @@ impl ToolRouter {
                 shinkai_tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
                 None,
                 tool.tool_embedding.clone(),
+                &vec![],
+            );
+        }
+    }
+
+    async fn add_static_workflows(routing_resource: &mut MapVectorResource, generator: Box<dyn EmbeddingGenerator>) {
+        // Generate the static workflows
+        let workflows = WorkflowTool::static_tools();
+
+        // Insert each workflow into the routing resource
+        for workflow_tool in workflows {
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+
+            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
+                embedding
+            } else {
+                generator
+                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                    .await
+                    .unwrap()
+            };
+
+            let _ = routing_resource.insert_text_node(
+                shinkai_tool.tool_router_key(),
+                shinkai_tool.to_json().unwrap(),
+                None,
+                embedding,
                 &vec![],
             );
         }
@@ -354,6 +387,77 @@ impl ToolRouter {
         Ok(self.ret_nodes_to_tools(&nodes))
     }
 
+    /// Searches for workflows using both embeddings and text similarity by name matching.
+    pub fn workflow_search(
+        &self,
+        profile: &ShinkaiName,
+        query: Embedding,
+        name_query: &str,
+        num_of_results: u64,
+    ) -> Result<Vec<ShinkaiTool>, ToolError> {
+        if !self.started {
+            return Err(ToolError::NotStarted);
+        }
+
+        let profile = profile
+            .extract_profile()
+            .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
+        let routing_resource = self
+            .routing_resources
+            .get(&profile.to_string())
+            .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
+
+        // Perform vector search
+        let vector_nodes = routing_resource.vector_search(query, num_of_results);
+
+        // Perform name similarity search
+        let mut name_similarity_results = vec![];
+        for node in routing_resource.get_root_nodes() {
+            if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.get_text_content()?) {
+                if let ShinkaiTool::Workflow(_) = shinkai_tool {
+                    let name = shinkai_tool.name().to_lowercase();
+                    let query = name_query.to_lowercase();
+                    if name.contains(&query) {
+                        let similarity_score = (query.len() as f64 / name.len() as f64) as f32;
+                        name_similarity_results.push((shinkai_tool, similarity_score));
+                    }
+                }
+            }
+        }
+
+        // Combine results from vector search and name similarity search, avoiding duplicates
+        let mut combined_results = vec![];
+        let mut seen_keys = std::collections::HashSet::new();
+
+        for node in vector_nodes {
+            if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
+                if let ShinkaiTool::Workflow(_) = shinkai_tool {
+                    let key = shinkai_tool.tool_router_key();
+                    if seen_keys.insert(key.clone()) {
+                        combined_results.push((shinkai_tool, node.score));
+                    }
+                }
+            }
+        }
+
+        for (shinkai_tool, similarity_score) in name_similarity_results {
+            let key = shinkai_tool.tool_router_key();
+            if seen_keys.insert(key.clone()) {
+                combined_results.push((shinkai_tool, similarity_score));
+            }
+        }
+
+        // Sort by combined score (vector score + name similarity score)
+        combined_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Return the top results
+        Ok(combined_results
+            .into_iter()
+            .map(|(tool, _)| tool)
+            .take(num_of_results as usize)
+            .collect())
+    }
+
     /// Returns a list of default ShinkaiTools that should always be included.
     pub fn get_default_tools(&self, profile: &ShinkaiName) -> Result<Vec<ShinkaiTool>, ToolError> {
         if !self.started {
@@ -536,7 +640,8 @@ impl ToolRouter {
                 let functions: HashMap<String, Box<dyn AsyncFunction>> = HashMap::new();
 
                 // Call the inference chain router to choose which chain to use, and call it
-                let mut dsl_inference = DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
+                let mut dsl_inference =
+                    DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
 
                 // Add the inference function to the functions map
                 dsl_inference.add_inference_function();
@@ -557,10 +662,5 @@ impl ToolRouter {
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))
-    }
-
-    /// Convert to json
-    pub fn to_json(&self) -> Result<String, ToolError> {
-        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
     }
 }

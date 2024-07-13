@@ -411,6 +411,21 @@ pub async fn subscribe_to_shared_folder_handler(
     .await
 }
 
+pub async fn search_workflows_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISearchWorkflows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn unsubscribe_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
