@@ -67,6 +67,11 @@ pub enum MessageSchemaType {
     GetNotificationsBeforeTimestamp,
     GetLastNotifications,
     SearchWorkflows,
+    AddWorkflow,
+    UpdateWorkflow,
+    RemoveWorkflow,
+    GetWorkflow,
+    ListWorkflows,
 }
 
 impl MessageSchemaType {
@@ -129,6 +134,11 @@ impl MessageSchemaType {
             "GetNotificationsBeforeTimestamp" => Some(Self::GetNotificationsBeforeTimestamp),
             "GetLastNotifications" => Some(Self::GetLastNotifications),
             "SearchWorkflows" => Some(Self::SearchWorkflows),
+            "AddWorkflow" => Some(Self::AddWorkflow),
+            "UpdateWorkflow" => Some(Self::UpdateWorkflow),
+            "RemoveWorkflow" => Some(Self::RemoveWorkflow),
+            "GetWorkflow" => Some(Self::GetWorkflow),
+            "ListWorkflows" => Some(Self::ListWorkflows),
             _ => None,
         }
     }
@@ -191,6 +201,11 @@ impl MessageSchemaType {
             Self::GetNotificationsBeforeTimestamp => "GetNotificationsBeforeTimestamp",
             Self::GetLastNotifications => "GetLastNotifications",
             Self::SearchWorkflows => "SearchWorkflows",
+            Self::AddWorkflow => "AddWorkflow",
+            Self::UpdateWorkflow => "UpdateWorkflow",
+            Self::RemoveWorkflow => "RemoveWorkflow",
+            Self::GetWorkflow => "GetWorkflow",
+            Self::ListWorkflows => "ListWorkflows",
             Self::Empty => "",
         }
     }
@@ -477,6 +492,25 @@ pub struct APIChangeJobAgentRequest {
 pub struct TopicSubscription {
     pub topic: WSTopic,
     pub subtopic: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct APIAddWorkflow {
+    pub workflow_raw: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct APIWorkflowKeyname {
+    pub name: String,
+    pub version: String,
+}
+
+impl APIWorkflowKeyname {
+    /// Generates a key for the Workflow using its name and version.
+    pub fn generate_key(&self) -> String {
+        format!("{}:::{}", self.name, self.version)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

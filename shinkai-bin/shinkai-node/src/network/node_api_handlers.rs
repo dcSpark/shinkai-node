@@ -426,6 +426,81 @@ pub async fn search_workflows_handler(
     .await
 }
 
+pub async fn add_workflow_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAddWorkflow {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn update_workflow_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateWorkflow {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn delete_workflow_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveWorkflow {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn get_workflow_info_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIGetWorkflowInfo {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn list_all_workflows_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIListAllWorkflows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn unsubscribe_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
