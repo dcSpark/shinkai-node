@@ -1,6 +1,8 @@
 use pest_derive::Parser;
 use serde::{Deserialize, Serialize};
 
+use crate::parser::parse_workflow;
+
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
 pub struct WorkflowParser;
@@ -18,6 +20,15 @@ impl Workflow {
     /// Generates a key for the Workflow using its name and version.
     pub fn generate_key(&self) -> String {
         format!("{}:::{}", self.name, self.version)
+    }
+
+    /// Creates a Workflow from a JSON string and a description.
+    pub fn new(dsl_input: String, description: String) -> Result<Self, String> {
+        let workflow = parse_workflow(&dsl_input)?;
+        Ok(Workflow {
+            description: Some(description),
+            ..workflow
+        })
     }
 }
 

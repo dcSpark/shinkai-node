@@ -2,6 +2,7 @@ use super::node::NodeCommand;
 use super::node_api_handlers::add_agent_handler;
 use super::node_api_handlers::add_ollama_models_handler;
 use super::node_api_handlers::add_toolkit_handler;
+use super::node_api_handlers::add_workflow_handler;
 use super::node_api_handlers::api_convert_files_and_save_to_folder_handler;
 use super::node_api_handlers::api_my_subscriptions_handler;
 use super::node_api_handlers::api_subscription_available_shared_items_handler;
@@ -27,6 +28,7 @@ use super::node_api_handlers::change_nodes_name_handler;
 use super::node_api_handlers::create_files_inbox_with_symmetric_key_handler;
 use super::node_api_handlers::create_job_handler;
 use super::node_api_handlers::create_registration_code_handler;
+use super::node_api_handlers::delete_workflow_handler;
 use super::node_api_handlers::get_all_inboxes_for_profile_handler;
 use super::node_api_handlers::get_all_smart_inboxes_for_profile_handler;
 use super::node_api_handlers::get_all_subidentities_handler;
@@ -40,9 +42,11 @@ use super::node_api_handlers::get_my_subscribers_handler;
 use super::node_api_handlers::get_notifications_before_timestamp_handler;
 use super::node_api_handlers::get_public_key_handler;
 use super::node_api_handlers::get_subscription_links_handler;
+use super::node_api_handlers::get_workflow_info_handler;
 use super::node_api_handlers::handle_file_upload;
 use super::node_api_handlers::identity_name_to_external_profile_data_handler;
 use super::node_api_handlers::job_message_handler;
+use super::node_api_handlers::list_all_workflows_handler;
 use super::node_api_handlers::mark_as_read_up_to_handler;
 use super::node_api_handlers::modify_agent_handler;
 use super::node_api_handlers::ping_all_handler;
@@ -58,6 +62,7 @@ use super::node_api_handlers::unsubscribe_handler;
 use super::node_api_handlers::update_job_to_finished_handler;
 use super::node_api_handlers::update_local_processing_preference_handler;
 use super::node_api_handlers::update_smart_inbox_name_handler;
+use super::node_api_handlers::update_workflow_handler;
 use super::node_api_handlers::use_registration_code_handler;
 use super::node_api_handlers::NameToExternalProfileData;
 use async_channel::Sender;
@@ -800,6 +805,51 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| search_workflows_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/add_workflow
+    let add_workflow = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_workflow")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| add_workflow_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/update_workflow
+    let update_workflow = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_workflow")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| update_workflow_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/delete_workflow
+    let delete_workflow = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "delete_workflow")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| delete_workflow_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/get_workflow_info
+    let get_workflow_info = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_workflow_info")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| get_workflow_info_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/list_all_workflows
+    let list_all_workflows = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "list_all_workflows")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| list_all_workflows_handler(node_commands_sender.clone(), message))
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -865,6 +915,11 @@ pub async fn run_api(
         .or(get_last_notifications)
         .or(get_notifications_before_timestamp)
         .or(search_workflows)
+        .or(add_workflow)
+        .or(update_workflow)
+        .or(delete_workflow)
+        .or(get_workflow_info)
+        .or(list_all_workflows)
         .recover(handle_rejection)
         .with(log)
         .with(cors);

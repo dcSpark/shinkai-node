@@ -1,4 +1,4 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 pub mod llm_provider;
 pub mod cron_tasks;
 pub mod db;
