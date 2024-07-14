@@ -415,11 +415,10 @@ impl AsyncFunction for MultiInferenceFunction {
             .collect::<Vec<String>>();
 
         let mut responses = Vec::new();
-        let max_iterations = self.context.max_iterations().try_into().unwrap(); // Convert u64 to usize
         let agent = self.context.agent();
         let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
 
-        for text in split_texts.iter().take(max_iterations) {
+        for text in split_texts.iter() {
             let inference_args = vec![Box::new(text.clone()) as Box<dyn Any + Send>];
             let response = self.inference_function_no_ws.call(inference_args).await?;
             let response_text = response

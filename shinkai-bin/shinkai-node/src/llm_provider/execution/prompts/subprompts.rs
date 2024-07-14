@@ -188,6 +188,66 @@ impl SubPrompt {
             }
         }
 
+        temp_prompt.sub_prompts
+    }
+
+    pub fn convert_resource_into_subprompts_with_extra_info(
+        resource: &BaseVectorResource,
+        subprompt_priority: u8,
+    ) -> Vec<SubPrompt> {
+        let mut temp_prompt = Prompt::new();
+        let resource_trait = resource.as_trait_object();
+        let nodes = resource_trait.get_all_nodes_flattened();
+        let mut last_content = String::new();
+        let mut last_reference = String::new();
+        let mut buffer_content = String::new();
+
+        for (i, node) in nodes.iter().enumerate() {
+            let mut current_content = String::new();
+
+            if let Ok(content) = node.get_text_content() {
+                current_content = content.to_string();
+            } else if let Ok(resource) = node.get_vector_resource_content() {
+                current_content = resource.as_trait_object().name().to_string();
+            }
+
+            // Some text is repeated between nodes, so we skip it
+            if current_content.is_empty() || current_content == last_content {
+                continue;
+            }
+
+            let mut extra_info = String::new();
+            let file_name = resource_trait.source().format_source_string();
+
+            if let Some(metadata) = &node.metadata {
+                if let Some(pg_nums) = metadata.get("pg_nums") {
+                    extra_info = format!("\nRef. page: {} from {}.", pg_nums, file_name);
+                } else {
+                    extra_info = format!("\nRef. from {}.", file_name);
+                }
+            } else {
+                extra_info = format!("\nRef. from {}.", file_name);
+            }
+
+            if extra_info != last_reference {
+                if !buffer_content.is_empty() {
+                    temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
+                }
+                buffer_content.clone_from(&current_content);
+                last_reference.clone_from(&extra_info);
+            } else {
+                buffer_content.push_str(&format!(" {}", current_content));
+            }
+
+            if i == nodes.len() - 1 || extra_info != last_reference {
+                buffer_content.push_str(&extra_info);
+                temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
+                buffer_content.clear();
+            }
+
+            last_content = current_content;
+        }
+
         temp_prompt.remove_all_subprompts()
     }
 }

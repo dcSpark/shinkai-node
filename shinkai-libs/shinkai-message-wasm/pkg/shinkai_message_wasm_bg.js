@@ -215,6 +215,29 @@ function addBorrowedObject(obj) {
     return stack_pointer;
 }
 /**
+* @param {string} input
+* @returns {string}
+*/
+export function calculate_blake3_hash(input) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.calculate_blake3_hash(retptr, ptr0, len0);
+        var r0 = getInt32Memory0()[retptr / 4 + 0];
+        var r1 = getInt32Memory0()[retptr / 4 + 1];
+        deferred2_0 = r0;
+        deferred2_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
 * @param {string} encryption_sk
 * @returns {string}
 */
@@ -242,29 +265,6 @@ export function convert_encryption_sk_string_to_encryption_pk_string(encryption_
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-}
-
-/**
-* @param {string} input
-* @returns {string}
-*/
-export function calculate_blake3_hash(input) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.calculate_blake3_hash(retptr, ptr0, len0);
-        var r0 = getInt32Memory0()[retptr / 4 + 0];
-        var r1 = getInt32Memory0()[retptr / 4 + 1];
-        deferred2_0 = r0;
-        deferred2_1 = r1;
-        return getStringFromWasm0(r0, r1);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
 }
 
@@ -687,12 +687,13 @@ export class JobMessageWrapper {
     * @param {any} content_js
     * @param {any} files_inbox
     * @param {any} parent
-    * @param {any} workflow
+    * @param {any} workflow_code
+    * @param {any} workflow_name
     */
-    constructor(job_id_js, content_js, files_inbox, parent, workflow) {
+    constructor(job_id_js, content_js, files_inbox, parent, workflow_code, workflow_name) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.jobmessagewrapper_new(retptr, addBorrowedObject(job_id_js), addBorrowedObject(content_js), addBorrowedObject(files_inbox), addBorrowedObject(parent), addBorrowedObject(workflow));
+            wasm.jobmessagewrapper_new(retptr, addBorrowedObject(job_id_js), addBorrowedObject(content_js), addBorrowedObject(files_inbox), addBorrowedObject(parent), addBorrowedObject(workflow_code), addBorrowedObject(workflow_name));
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -703,6 +704,7 @@ export class JobMessageWrapper {
             return this;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
@@ -801,10 +803,11 @@ export class JobMessageWrapper {
     * @param {string} content
     * @param {string} files_inbox
     * @param {string} parent
-    * @param {string | undefined} [workflow]
+    * @param {string | undefined} [workflow_code]
+    * @param {string | undefined} [workflow_name]
     * @returns {JobMessageWrapper}
     */
-    static fromStrings(job_id, content, files_inbox, parent, workflow) {
+    static fromStrings(job_id, content, files_inbox, parent, workflow_code, workflow_name) {
         const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -813,9 +816,11 @@ export class JobMessageWrapper {
         const len2 = WASM_VECTOR_LEN;
         const ptr3 = passStringToWasm0(parent, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len3 = WASM_VECTOR_LEN;
-        var ptr4 = isLikeNone(workflow) ? 0 : passStringToWasm0(workflow, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var ptr4 = isLikeNone(workflow_code) ? 0 : passStringToWasm0(workflow_code, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len4 = WASM_VECTOR_LEN;
-        const ret = wasm.jobmessagewrapper_fromStrings(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4);
+        var ptr5 = isLikeNone(workflow_name) ? 0 : passStringToWasm0(workflow_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len5 = WASM_VECTOR_LEN;
+        const ret = wasm.jobmessagewrapper_fromStrings(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5);
         return JobMessageWrapper.__wrap(ret);
     }
 }
@@ -3105,7 +3110,8 @@ export class ShinkaiMessageBuilderWrapper {
     * @param {string} content
     * @param {string} files_inbox
     * @param {string} parent
-    * @param {string | undefined} workflow
+    * @param {string | undefined} workflow_code
+    * @param {string | undefined} workflow_name
     * @param {string} my_encryption_secret_key
     * @param {string} my_signature_secret_key
     * @param {string} receiver_public_key
@@ -3115,9 +3121,9 @@ export class ShinkaiMessageBuilderWrapper {
     * @param {string} receiver_subidentity
     * @returns {string}
     */
-    static job_message(job_id, content, files_inbox, parent, workflow, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, receiver, receiver_subidentity) {
-        let deferred14_0;
-        let deferred14_1;
+    static job_message(job_id, content, files_inbox, parent, workflow_code, workflow_name, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, receiver, receiver_subidentity) {
+        let deferred15_0;
+        let deferred15_1;
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -3128,39 +3134,41 @@ export class ShinkaiMessageBuilderWrapper {
             const len2 = WASM_VECTOR_LEN;
             const ptr3 = passStringToWasm0(parent, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len3 = WASM_VECTOR_LEN;
-            var ptr4 = isLikeNone(workflow) ? 0 : passStringToWasm0(workflow, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var ptr4 = isLikeNone(workflow_code) ? 0 : passStringToWasm0(workflow_code, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             var len4 = WASM_VECTOR_LEN;
-            const ptr5 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len5 = WASM_VECTOR_LEN;
-            const ptr6 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var ptr5 = isLikeNone(workflow_name) ? 0 : passStringToWasm0(workflow_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len6 = WASM_VECTOR_LEN;
-            const ptr7 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr7 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len7 = WASM_VECTOR_LEN;
-            const ptr8 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr8 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len8 = WASM_VECTOR_LEN;
-            const ptr9 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr9 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len9 = WASM_VECTOR_LEN;
-            const ptr10 = passStringToWasm0(receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr10 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len10 = WASM_VECTOR_LEN;
-            const ptr11 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr11 = passStringToWasm0(receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len11 = WASM_VECTOR_LEN;
-            wasm.shinkaimessagebuilderwrapper_job_message(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9, ptr10, len10, ptr11, len11);
+            const ptr12 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len12 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_job_message(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9, ptr10, len10, ptr11, len11, ptr12, len12);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
             var r3 = getInt32Memory0()[retptr / 4 + 3];
-            var ptr13 = r0;
-            var len13 = r1;
+            var ptr14 = r0;
+            var len14 = r1;
             if (r3) {
-                ptr13 = 0; len13 = 0;
+                ptr14 = 0; len14 = 0;
                 throw takeObject(r2);
             }
-            deferred14_0 = ptr13;
-            deferred14_1 = len13;
-            return getStringFromWasm0(ptr13, len13);
+            deferred15_0 = ptr14;
+            deferred15_1 = len14;
+            return getStringFromWasm0(ptr14, len14);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_free(deferred14_0, deferred14_1, 1);
+            wasm.__wbindgen_free(deferred15_0, deferred15_1, 1);
         }
     }
     /**
