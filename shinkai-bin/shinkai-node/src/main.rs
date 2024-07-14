@@ -1,5 +1,5 @@
 // main.rs
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 mod llm_provider;
 mod cron_tasks;
 mod db;
