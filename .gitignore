@@ -72,6 +72,3 @@ shinkai-libs/shinkai-dsl/tmp
 tmp
 storage_debug_my_local_ai
 storage_debug_proxied_my_local_ai
-libpdfium.dylib
-libpdfium.so
-pdfium.dll
