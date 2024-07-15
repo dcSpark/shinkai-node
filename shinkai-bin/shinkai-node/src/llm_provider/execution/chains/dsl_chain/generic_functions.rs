@@ -375,7 +375,7 @@ pub fn process_embeddings_in_job_scope(
                 let mut processed_embeddings = Vec::new();
                 while let Some(resources) = chunks.next().await {
                     let futures = resources.into_iter().map(|resource| async move {
-                        let subprompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
+                        let subprompts = SubPrompt::convert_resource_into_subprompts_with_extra_info(&resource, 97);
                         let embedding = subprompts
                             .iter()
                             .map(|subprompt| map_fn(&subprompt.get_content()))
