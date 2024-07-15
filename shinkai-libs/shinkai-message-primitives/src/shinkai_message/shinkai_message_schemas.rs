@@ -64,6 +64,14 @@ pub enum MessageSchemaType {
     APIRemoveToolkit,
     APIAddToolkit,
     APIListToolkits,
+    GetNotificationsBeforeTimestamp,
+    GetLastNotifications,
+    SearchWorkflows,
+    AddWorkflow,
+    UpdateWorkflow,
+    RemoveWorkflow,
+    GetWorkflow,
+    ListWorkflows,
 }
 
 impl MessageSchemaType {
@@ -123,6 +131,14 @@ impl MessageSchemaType {
             "APIRemoveToolkit" => Some(Self::APIRemoveToolkit),
             "APIAddToolkit" => Some(Self::APIAddToolkit),
             "APIListToolkits" => Some(Self::APIListToolkits),
+            "GetNotificationsBeforeTimestamp" => Some(Self::GetNotificationsBeforeTimestamp),
+            "GetLastNotifications" => Some(Self::GetLastNotifications),
+            "SearchWorkflows" => Some(Self::SearchWorkflows),
+            "AddWorkflow" => Some(Self::AddWorkflow),
+            "UpdateWorkflow" => Some(Self::UpdateWorkflow),
+            "RemoveWorkflow" => Some(Self::RemoveWorkflow),
+            "GetWorkflow" => Some(Self::GetWorkflow),
+            "ListWorkflows" => Some(Self::ListWorkflows),
             _ => None,
         }
     }
@@ -182,6 +198,14 @@ impl MessageSchemaType {
             Self::APIRemoveToolkit => "APIRemoveToolkit",
             Self::APIAddToolkit => "APIAddToolkit",
             Self::APIListToolkits => "APIListToolkits",
+            Self::GetNotificationsBeforeTimestamp => "GetNotificationsBeforeTimestamp",
+            Self::GetLastNotifications => "GetLastNotifications",
+            Self::SearchWorkflows => "SearchWorkflows",
+            Self::AddWorkflow => "AddWorkflow",
+            Self::UpdateWorkflow => "UpdateWorkflow",
+            Self::RemoveWorkflow => "RemoveWorkflow",
+            Self::GetWorkflow => "GetWorkflow",
+            Self::ListWorkflows => "ListWorkflows",
             Self::Empty => "",
         }
     }
@@ -210,27 +234,8 @@ pub struct JobMessage {
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
-    pub workflow: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobToolCall {
-    pub tool_id: String,
-    pub inputs: std::collections::HashMap<String, String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum JobRecipient {
-    SelfNode,
-    User,
-    ExternalIdentity(String),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobPreMessage {
-    pub tool_calls: Vec<JobToolCall>,
-    pub content: String,
-    pub recipient: JobRecipient,
+    pub workflow_code: Option<String>,
+    pub workflow_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -465,6 +470,18 @@ pub struct APIGetMySubscribers {
     pub path: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct APIGetLastNotifications {
+    pub count: usize,
+    pub timestamp: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct APIGetNotificationsBeforeTimestamp {
+    pub timestamp: String,
+    pub count: usize,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIChangeJobAgentRequest {
     pub job_id: String,
@@ -475,6 +492,25 @@ pub struct APIChangeJobAgentRequest {
 pub struct TopicSubscription {
     pub topic: WSTopic,
     pub subtopic: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct APIAddWorkflow {
+    pub workflow_raw: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct APIWorkflowKeyname {
+    pub name: String,
+    pub version: String,
+}
+
+impl APIWorkflowKeyname {
+    /// Generates a key for the Workflow using its name and version.
+    pub fn generate_key(&self) -> String {
+        format!("{}:::{}", self.name, self.version)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

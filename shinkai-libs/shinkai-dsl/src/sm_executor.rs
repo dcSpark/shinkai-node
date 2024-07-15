@@ -288,7 +288,7 @@ impl<'a> WorkflowEngine<'a> {
                     let mut arg_values = Vec::new();
                     for arg in args {
                         let evaluated_arg = self.evaluate_param(arg, registers).await;
-                        eprintln!("Evaluated arg: {:?}", evaluated_arg);
+                        // eprintln!("Evaluated arg: {:?}", evaluated_arg);
                         match evaluated_arg {
                             Ok(value) => arg_values.push(Box::new(value) as Box<dyn Any + Send>),
                             Err(e) => {
@@ -323,13 +323,6 @@ impl<'a> WorkflowEngine<'a> {
                     eprintln!("Function '{}' not found.", name);
                     Err(WorkflowError::FunctionError(format!("Function '{}' not found", name)))
                 }
-            }
-            _ => {
-                eprintln!("Unsupported workflow value type {:?}, defaulting to 0", value);
-                Err(WorkflowError::InvalidArgument(format!(
-                    "Unsupported workflow value type {:?}",
-                    value
-                )))
             }
         }
     }

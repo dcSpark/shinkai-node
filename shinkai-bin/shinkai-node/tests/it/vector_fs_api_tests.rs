@@ -4,7 +4,9 @@ use aes_gcm::KeyInit;
 use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, Ollama, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -23,11 +25,12 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_node::network::node::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
+use std::sync::Arc;
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
-use super::utils::node_test_api::{api_llm_provider_registration, api_initial_registration_with_no_code_for_device};
+use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
 
 #[allow(clippy::too_many_arguments)]
@@ -61,6 +64,7 @@ pub fn generate_message_with_payload<T: ToString>(
 
 #[test]
 fn vector_fs_api_tests() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -75,6 +79,8 @@ fn vector_fs_api_tests() {
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
             let node1_abort_handler = env.node1_abort_handler;
+
+            let node1_db_weak = Arc::downgrade(&env.node1_db);
 
             // For this test
             let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
@@ -183,6 +189,10 @@ fn vector_fs_api_tests() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
+                // Use Unstructrued for PDF parsing until the local one is integrated
+                let db_strong = node1_db_weak.upgrade().unwrap();
+                db_strong.update_local_processing_preference(false).unwrap();
+
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
                     path: "/".to_string(),
@@ -682,7 +692,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -702,7 +712,7 @@ fn vector_fs_api_tests() {
                 }
 
                 let check_first = &resp[0].0
-                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros"
+                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com"
                         .to_string()
                     && (&resp[0].1
                         == &vec![
@@ -713,7 +723,7 @@ fn vector_fs_api_tests() {
                         || &resp[0].1 == &vec!["test_folder2".to_string(), "shinkai_intro".to_string()]);
 
                 let check_second = &resp[1].0
-                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros"
+                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com"
                         .to_string()
                     && (&resp[1].1
                         == &vec![

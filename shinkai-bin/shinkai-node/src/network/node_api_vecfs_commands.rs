@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{env, fs, path::Path, sync::Arc};
 
 use super::{
     node_api::APIError, node_error::NodeError,
     subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
 };
 use crate::{
-    llm_provider::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
+    db::ShinkaiDB, llm_provider::parsing_helper::ParsingHelper, managers::IdentityManager,
     network::subscription_manager::external_subscriber_manager::SharedFolderInfo, schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };
@@ -27,7 +27,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
-    file_parser::unstructured_api::UnstructuredAPI,
+    file_parser::{file_parser::FileParser, unstructured_api::UnstructuredAPI},
     source::DistributionInfo,
     vector_resource::{VRPack, VRPath},
 };
@@ -1078,7 +1078,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_convert_files_and_save_to_folder(
-        _db: Arc<ShinkaiDB>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1147,14 +1147,14 @@ impl Node {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
+        let file_parser = match db.get_local_processing_preference()? {
+            true => FileParser::Local,
+            false => FileParser::Unstructured((*unstructured_api).clone()),
+        };
+
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais = ParsingHelper::process_files_into_vrkai(
-            dist_files,
-            &*embedding_generator,
-            None,
-            (*unstructured_api).clone(),
-        )
-        .await?;
+        let processed_vrkais =
+            ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None, file_parser).await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();
@@ -1319,6 +1319,16 @@ impl Node {
                 return Ok(());
             }
         };
+
+        if env::var("DEBUG_VRKAI").is_ok() {
+            let debug_content = result.resource.resource_contents_by_hierarchy_to_string();
+            let file_name = format!("tmp/{}.txt", input_payload.path.replace("/", "_"));
+            let path = Path::new(&file_name);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, debug_content).unwrap();
+        }
 
         let json_resp = match result.encode_as_base64() {
             Ok(result) => result,

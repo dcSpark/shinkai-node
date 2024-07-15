@@ -411,6 +411,96 @@ pub async fn subscribe_to_shared_folder_handler(
     .await
 }
 
+pub async fn search_workflows_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISearchWorkflows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn add_workflow_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAddWorkflow {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn update_workflow_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateWorkflow {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn delete_workflow_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveWorkflow {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn get_workflow_info_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIGetWorkflowInfo {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn list_all_workflows_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIListAllWorkflows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn unsubscribe_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -503,17 +593,6 @@ pub async fn send_msg_handler(
         }
         Err(api_error) => Err(warp::reject::custom(api_error)),
     }
-}
-
-pub async fn get_peers_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
-    let node_commands_sender = node_commands_sender.clone();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::GetPeers(res_sender))
-        .await
-        .map_err(|_| warp::reject::reject())?; // Send the command to Node
-    let peer_addresses = res_receiver.recv().await.unwrap();
-    Ok(warp::reply::json(&peer_addresses))
 }
 
 pub async fn identity_name_to_external_profile_data_handler(
@@ -904,8 +983,28 @@ pub async fn get_local_processing_preference_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |sender, msg, res| {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
         NodeCommand::APIGetLocalProcessingPreference { msg, res }
+    })
+    .await
+}
+
+pub async fn get_last_notifications_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
+        NodeCommand::APIGetLastNotifications { msg, res }
+    })
+    .await
+}
+
+pub async fn get_notifications_before_timestamp_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
+        NodeCommand::APIGetNotificationsBeforeTimestamp { msg, res }
     })
     .await
 }
@@ -914,7 +1013,7 @@ pub async fn update_local_processing_preference_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |sender, msg, res| {
+    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
         NodeCommand::APIUpdateLocalProcessingPreference { preference: msg, res }
     })
     .await

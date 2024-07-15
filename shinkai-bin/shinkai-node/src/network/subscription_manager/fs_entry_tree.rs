@@ -58,6 +58,11 @@ impl FSEntryTree {
         self.name == "/" && self.path == "/" && self.children.is_empty()
     }
 
+    /// A folder may be empty if it has not children, so this method could be wrong on that case
+    pub fn is_folder(&self) -> bool {
+        !self.children.is_empty()
+    }
+
     // Method to transform the tree into a visually pleasant JSON string
     #[allow(dead_code)]
     pub fn to_pretty_json(&self) -> serde_json::Value {
@@ -102,6 +107,18 @@ impl FSEntryTree {
             paths.extend(child.collect_all_paths());
         }
         paths
+    }
+
+    // Method to count all files in the tree and its children
+    pub fn count_files(&self) -> usize {
+        let mut file_count = 0;
+        if self.web_link.is_some() {
+            file_count += 1;
+        }
+        for child in self.children.values() {
+            file_count += child.count_files();
+        }
+        file_count
     }
 }
 

@@ -1,5 +1,4 @@
 use crate::shinkai_pyo3_utils::pyo3_job_scope::PyJobScope;
-use crate::shinkai_pyo3_utils::pyo3_subscription::PyPaymentOption;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
 
@@ -1235,7 +1234,8 @@ impl PyShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
-        workflow: Option<String>
+        workflow_code: Option<String>,
+        workflow_name: Option<String>
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let job_id_clone = job_id.clone();
@@ -1244,7 +1244,8 @@ impl PyShinkaiMessageBuilder {
                 content,
                 files_inbox,
                 parent: Some(parent),
-                workflow
+                workflow_code,
+                workflow_name,
             };
 
             let body = match serde_json::to_string(&job_message) {

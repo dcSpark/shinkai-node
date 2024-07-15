@@ -855,7 +855,8 @@ impl ShinkaiMessageBuilderWrapper {
         content: String,
         files_inbox: String,
         parent: String,
-        workflow: Option<String>,
+        workflow_code: Option<String>,
+        workflow_name: Option<String>,
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
@@ -870,7 +871,8 @@ impl ShinkaiMessageBuilderWrapper {
             content,
             files_inbox,
             parent: Some(parent),
-            workflow,
+            workflow_code,
+            workflow_name,
         };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;

@@ -1,5 +1,5 @@
 // main.rs
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 mod llm_provider;
 mod cron_tasks;
 mod db;
@@ -13,6 +13,7 @@ mod tools;
 mod utils;
 mod vector_fs;
 mod welcome_files;
+mod workflows;
 
 use runner::{initialize_node, run_node_tasks};
 

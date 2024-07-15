@@ -62,7 +62,7 @@ impl SubscriptionManager {
         subscription_req: SubscriptionPayment,
         http_preferred: Option<bool>,
         base_folder: Option<String>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         self.shinkai_manager_for_subs
             .subscribe_to_folder(
                 &path,
@@ -167,12 +167,3 @@ impl SubscriptionManager {
         result
     }
 }
-
-// TODO:
-// - create a folder DONE
-// - share a folder with free req DONE
-// - unshare a folder PENDING - missing stuff in the node
-// - subscribe to a folder (free) DONE
-// - show my subscriptions DONE
-// - available shared folders for node DONE
-// - retrieve my stuff (tree . style though) PENDING

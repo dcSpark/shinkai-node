@@ -11,13 +11,12 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
-    network::ws_manager,
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::js_toolkit::JSToolkit,
+    tools::{js_toolkit::JSToolkit, tool_router::ToolRouter},
     utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
@@ -30,7 +29,8 @@ use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::error;
 use reqwest::StatusCode;
-use serde_json::Value as JsonValue;
+use serde_json::{json, Value as JsonValue};
+use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
@@ -40,9 +40,9 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
-            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
-            RegistrationCodeType,
+            APIAddAgentRequest, APIAddOllamaModels, APIAddWorkflow, APIChangeJobAgentRequest,
+            APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, APIWorkflowKeyname, IdentityPermissions,
+            MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -54,6 +54,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
@@ -2883,6 +2884,328 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn api_search_workflows(
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        potentially_encrypted_msg: ShinkaiMessage,
+        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::SearchWorkflows),
+        )
+        .await;
+        let (msg, _) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract the content of the message
+        let search_query = match msg.get_message_content() {
+            Ok(content) => content,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to extract message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Generate the embedding for the search query
+        let embedding = match embedding_generator.generate_embedding_default(&search_query).await {
+            Ok(embedding) => embedding,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate embedding: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Perform the internal search using tool_router
+        if let Some(tool_router) = tool_router {
+            let tool_router = tool_router.lock().await;
+            match tool_router.workflow_search(&node_name, embedding, &search_query, 5) {
+                Ok(workflows) => {
+                    let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
+                        message: format!("Failed to serialize workflows: {}", err),
+                    })?;
+                    let _ = res.send(Ok(workflows_json)).await;
+                    Ok(())
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to search workflows: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Tool router is not available".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            Ok(())
+        }
+    }
+
+    pub async fn api_add_workflow(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (api_add_workflow, requester_name) = match Self::validate_and_extract_payload::<APIAddWorkflow>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::AddWorkflow,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Create the workflow using the new method
+        let workflow = match Workflow::new(api_add_workflow.workflow_raw, api_add_workflow.description) {
+            Ok(workflow) => workflow,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to create workflow: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Save the workflow to the database
+        match db.save_workflow(workflow, requester_name) {
+            Ok(_) => {
+                let response = json!({ "status": "success" });
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to save workflow: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_remove_workflow(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (workflow_key, requester_name) = match Self::validate_and_extract_payload::<APIWorkflowKeyname>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::RemoveWorkflow,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Generate the workflow key
+        let workflow_key_str = workflow_key.generate_key();
+
+        // Remove the workflow from the database
+        match db.remove_workflow(&workflow_key_str, &requester_name) {
+            Ok(_) => {
+                let response = json!({ "status": "success" });
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove workflow: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_get_workflow_info(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (workflow_key, requester_name) = match Self::validate_and_extract_payload::<APIWorkflowKeyname>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::GetWorkflow,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Generate the workflow key
+        let workflow_key_str = workflow_key.generate_key();
+
+        // Get the workflow from the database
+        match db.get_workflow(&workflow_key_str, &requester_name) {
+            Ok(workflow) => {
+                let response = json!(workflow);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get workflow: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_list_all_workflows(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let requester_name = match Self::validate_and_extract_payload::<String>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::ListWorkflows,
+        )
+        .await
+        {
+            Ok((_, requester_name)) => requester_name,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // List all workflows for the user
+        match db.list_all_workflows_for_user(&requester_name) {
+            Ok(workflows) => {
+                let response = json!(workflows);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list workflows: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

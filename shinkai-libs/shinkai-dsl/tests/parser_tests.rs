@@ -2,7 +2,10 @@
 mod tests {
     use pest::Parser;
     use shinkai_dsl::{
-        dsl_schemas::{Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, WorkflowParser, WorkflowValue},
+        dsl_schemas::{
+            Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, WorkflowParser,
+            WorkflowValue,
+        },
         parser::{parse_action, parse_expression, parse_step, parse_step_body, parse_step_body_item, parse_workflow},
     };
 
@@ -56,7 +59,10 @@ mod tests {
                     _ => panic!("Expected Range expression in ForLoop"),
                 }
                 match **body {
-                    StepBody::Action(Action::Command { ref command, ref params }) => {
+                    StepBody::Action(Action::Command {
+                        ref command,
+                        ref params,
+                    }) => {
                         assert_eq!(command, "command");
                         assert_eq!(params.len(), 1);
                         match &params[0] {
@@ -69,7 +75,7 @@ mod tests {
             }
             _ => panic!("Expected ForLoop in step body"),
         }
-    } 
+    }
 
     #[test]
     fn test_parse_action_command() {
@@ -153,7 +159,10 @@ mod tests {
         let step_body = parse_step_body(pair);
         println!("{:?}", step_body);
         match step_body {
-            StepBody::Condition { condition, body: action } => {
+            StepBody::Condition {
+                condition,
+                body: action,
+            } => {
                 match condition {
                     Expression::Binary { left, operator, right } => {
                         assert_eq!(operator, ComparisonOperator::Greater);
@@ -211,22 +220,18 @@ mod tests {
         assert_eq!(workflow.name, "complexWorkflow");
         assert_eq!(workflow.version, "v2.0");
         assert_eq!(workflow.steps.len(), 3);
-    
+
         // Check first step
         let step_one = &workflow.steps[0];
         assert_eq!(step_one.name, "stepOne");
         assert_eq!(step_one.body.len(), 1);
-    
+
         // Check second step
         let step_two = &workflow.steps[1];
         assert_eq!(step_two.name, "stepTwo");
         assert_eq!(step_two.body.len(), 1);
         match step_two.body.first().unwrap() {
-            StepBody::ForLoop {
-                var,
-                in_expr,
-                body,
-            } => {
+            StepBody::ForLoop { var, in_expr, body } => {
                 assert_eq!(var, "i");
                 match in_expr {
                     ForLoopExpression::Range { start, end } => {
@@ -248,13 +253,16 @@ mod tests {
             }
             _ => panic!("Expected ForLoop"),
         }
-    
+
         // Check third step
         let step_three = &workflow.steps[2];
         assert_eq!(step_three.name, "stepThree");
         assert_eq!(step_three.body.len(), 1);
         match step_three.body.first().unwrap() {
-            StepBody::Condition { condition, body: action } => {
+            StepBody::Condition {
+                condition,
+                body: action,
+            } => {
                 match condition {
                     Expression::Binary { left, operator, right } => {
                         assert_eq!(*operator, ComparisonOperator::Greater);

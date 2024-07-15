@@ -24,6 +24,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::file_parser::file_parser::FileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
@@ -360,7 +361,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
     ) -> Result<bool, LLMProviderError> {
-        if job_message.workflow.is_none() {
+        if job_message.workflow_code.is_none() {
             return Ok(false);
         }
 
@@ -383,7 +384,7 @@ impl JobManager {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
-        let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
+        let workflow = parse_workflow(&job_message.workflow_code.clone().unwrap())?;
 
         // eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
 
@@ -428,6 +429,8 @@ impl JobManager {
 
         // Add the inference function to the functions map
         dsl_inference.add_inference_function();
+        dsl_inference.add_inference_no_ws_function();
+        dsl_inference.add_multi_inference_function();
         dsl_inference.add_all_generic_functions();
         dsl_inference.add_tools_from_router().await?;
 
@@ -714,7 +717,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        _db: Arc<ShinkaiDB>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         agent: Option<SerializedLLMProvider>,
         files_inbox: String,
@@ -762,9 +765,13 @@ impl JobManager {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
+        let file_parser = match db.get_local_processing_preference()? {
+            true => FileParser::Local,
+            false => FileParser::Unstructured(unstructured_api),
+        };
+
         let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), unstructured_api.clone())
-                .await?;
+            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), file_parser).await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

@@ -13,13 +13,15 @@ use super::{
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
+use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAvailableSharedItems, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder,
-            APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, MessageSchemaType,
+            APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
+            APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder,
+            APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, MessageSchemaType,
         },
     },
 };
@@ -185,7 +187,6 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
-        eprintln!("potentially_encrypted_msg: {:?}", potentially_encrypted_msg);
         let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAvailableSharedItems>(
             node_name.clone(),
             identity_manager.clone(),
@@ -203,7 +204,6 @@ impl Node {
         };
 
         if input_payload.streamer_node_name == node_name.clone().get_node_name_string() {
-            eprintln!("input_payload.streamer_node_name == node_name");
             if !requester_name.has_profile() {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -269,8 +269,6 @@ impl Node {
                 }
             }
         } else {
-            eprintln!("input_payload.streamer_node_name NOT THE SAME as node_name");
-            eprintln!("potentially_encrypted_msg: {:?}", input_payload);
             let mut my_subscription_manager = my_subscription_manager.lock().await;
 
             match ShinkaiName::from_node_and_profile_names(
@@ -404,7 +402,7 @@ impl Node {
             }
         };
 
-        let subscription_manager = my_subscription_manager.lock().await;
+        let mut subscription_manager = my_subscription_manager.lock().await;
         let result = subscription_manager
             .subscribe_to_shared_folder(
                 streamer_full_name.extract_node(),
@@ -621,7 +619,6 @@ impl Node {
         {
             Ok(data) => data,
             Err(api_error) => {
-                eprintln!("Error: {}", api_error.message);
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
@@ -703,6 +700,115 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to serialize response: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn api_get_last_notifications(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIGetLastNotifications>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::GetLastNotifications,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        match db
+            .get_last_notifications(requester_name.clone(), input_payload.count, input_payload.timestamp)
+        {
+            Ok(notifications) => {
+                let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get last notifications: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn api_get_notifications_before_timestamp(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) =
+            match Self::validate_and_extract_payload::<APIGetNotificationsBeforeTimestamp>(
+                node_name.clone(),
+                identity_manager.clone(),
+                encryption_secret_key,
+                potentially_encrypted_msg,
+                MessageSchemaType::GetNotificationsBeforeTimestamp,
+            )
+            .await
+            {
+                Ok(data) => data,
+                Err(api_error) => {
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        match db.get_notifications_before_timestamp(
+            requester_name.clone(),
+            input_payload.timestamp,
+            input_payload.count,
+        ) {
+            Ok(notifications) => {
+                let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get notifications before timestamp: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
             }

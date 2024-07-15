@@ -1,8 +1,8 @@
 use super::node::ProxyConnectionInfo;
-use super::ws_manager::{self, WSUpdateHandler};
+use super::ws_manager::WSUpdateHandler;
 use super::{node_error::NodeError, Node};
-use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
@@ -23,8 +23,8 @@ use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFol
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
-        llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider},
         inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -401,7 +401,10 @@ impl Node {
         match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
-                match subidentity_manager.add_llm_provider_subidentity(llm_provider.clone()).await {
+                match subidentity_manager
+                    .add_llm_provider_subidentity(llm_provider.clone())
+                    .await
+                {
                     Ok(_) => {
                         drop(subidentity_manager);
 
@@ -416,7 +419,8 @@ impl Node {
                             .await;
 
                             let has_job_inbox = inboxes.iter().any(|inbox| inbox.starts_with("job_inbox"));
-                            let welcome_message = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
+                            let welcome_message =
+                                std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
                             (has_job_inbox, welcome_message)
                         };
 
@@ -500,6 +504,7 @@ impl Node {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn internal_remove_agent(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -523,6 +528,7 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn ping_all(
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,

@@ -651,7 +651,7 @@ impl TCPProxy {
                                 println!("Sent message to {}", stream.peer_addr().unwrap());
                             }
                             Err(e) => {
-                                eprintln!("Failed to connect to first address: {}", e);
+                                eprintln!("Failed to connect to first address for {}: {}", msg_recipient, e);
                                 let error_message = format!("Failed to connect to first address for {}", msg_recipient);
                                 send_message_with_length(writer.clone(), error_message).await?;
                             }

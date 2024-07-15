@@ -46,7 +46,10 @@ impl JobCreationWrapper {
     #[wasm_bindgen(constructor)]
     pub fn new(scope_js: &JsValue, is_hidden: bool) -> Result<JobCreationWrapper, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope_js.clone())?;
-        let job_creation = JobCreationInfo { scope, is_hidden: Some(is_hidden) };
+        let job_creation = JobCreationInfo {
+            scope,
+            is_hidden: Some(is_hidden),
+        };
         Ok(JobCreationWrapper { inner: job_creation })
     }
 
@@ -82,7 +85,10 @@ impl JobCreationWrapper {
     pub fn empty() -> Result<JobCreationWrapper, JsValue> {
         let job_scope = JobScope::new_default();
         Ok(JobCreationWrapper {
-            inner: JobCreationInfo { scope: job_scope, is_hidden: Some(false)},
+            inner: JobCreationInfo {
+                scope: job_scope,
+                is_hidden: Some(false),
+            },
         })
     }
 }
@@ -96,7 +102,14 @@ pub struct JobMessageWrapper {
 #[wasm_bindgen]
 impl JobMessageWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(job_id_js: &JsValue, content_js: &JsValue, files_inbox: &JsValue, parent: &JsValue, workflow: &JsValue) -> Result<JobMessageWrapper, JsValue> {
+    pub fn new(
+        job_id_js: &JsValue,
+        content_js: &JsValue,
+        files_inbox: &JsValue,
+        parent: &JsValue,
+        workflow_code: &JsValue,
+        workflow_name: &JsValue,
+    ) -> Result<JobMessageWrapper, JsValue> {
         let job_id: String = serde_wasm_bindgen::from_value(job_id_js.clone())?;
         let content: String = serde_wasm_bindgen::from_value(content_js.clone())?;
         let files_inbox: String = serde_wasm_bindgen::from_value(files_inbox.clone())?;
@@ -105,12 +118,24 @@ impl JobMessageWrapper {
         } else {
             Some(serde_wasm_bindgen::from_value(parent.clone())?)
         };
-        let workflow: Option<String> = if workflow.is_null() || workflow.is_undefined() {
+        let workflow_code: Option<String> = if workflow_code.is_null() || workflow_code.is_undefined() {
             None
         } else {
-            Some(serde_wasm_bindgen::from_value(workflow.clone())?)
+            Some(serde_wasm_bindgen::from_value(workflow_code.clone())?)
         };
-        let job_message = JobMessage { job_id, content, files_inbox, parent, workflow};
+        let workflow_name: Option<String> = if workflow_name.is_null() || workflow_name.is_undefined() {
+            None
+        } else {
+            Some(serde_wasm_bindgen::from_value(workflow_name.clone())?)
+        };
+        let job_message = JobMessage {
+            job_id,
+            content,
+            files_inbox,
+            parent,
+            workflow_code,
+            workflow_name,
+        };
         Ok(JobMessageWrapper { inner: job_message })
     }
 
@@ -138,13 +163,21 @@ impl JobMessageWrapper {
     }
 
     #[wasm_bindgen(js_name = fromStrings)]
-    pub fn from_strings(job_id: &str, content: &str, files_inbox: &str, parent: &str, workflow: Option<String>) -> JobMessageWrapper {
+    pub fn from_strings(
+        job_id: &str,
+        content: &str,
+        files_inbox: &str,
+        parent: &str,
+        workflow_code: Option<String>,
+        workflow_name: Option<String>,
+    ) -> JobMessageWrapper {
         let job_message = JobMessage {
             job_id: job_id.to_string(),
             content: content.to_string(),
             files_inbox: files_inbox.to_string(),
             parent: Some(parent.to_string()),
-            workflow,
+            workflow_code,
+            workflow_name,
         };
         JobMessageWrapper { inner: job_message }
     }

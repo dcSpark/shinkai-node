@@ -1,11 +1,13 @@
 use serde_wasm_bindgen::{from_value, to_value};
-use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, PaymentOption, SubscriptionPayment};
+use shinkai_message_primitives::schemas::shinkai_subscription_req::{
+    FolderSubscription, PaymentOption, SubscriptionPayment,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMessagesFromInboxRequest,
     APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
     APIVecFsCreateItem, APIVecFsDeleteFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-    APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, JobPreMessage, JobRecipient, JobToolCall,
-    RegistrationCodeRequest, TopicSubscription, WSMessage, WSMessageResponse,
+    APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, RegistrationCodeRequest, TopicSubscription, WSMessage,
+    WSMessageResponse,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use wasm_bindgen::JsValue;
@@ -73,66 +75,6 @@ impl SerdeWasmMethods for APIReadUpToTimeRequest {
 }
 
 impl SerdeWasmMethods for APIGetMessagesFromInboxRequest {
-    fn to_jsvalue(&self) -> Result<JsValue, ShinkaiWasmError> {
-        Ok(serde_wasm_bindgen::to_value(&self)?)
-    }
-
-    fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiWasmError> {
-        Ok(serde_wasm_bindgen::from_value(j.clone())?)
-    }
-
-    fn to_json_str(&self) -> Result<String, ShinkaiWasmError> {
-        let json_str = serde_json::to_string(self).map_err(ShinkaiWasmError::from)?;
-        Ok(json_str)
-    }
-
-    fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
-        let obj = serde_json::from_str(j).map_err(ShinkaiWasmError::from)?;
-        Ok(obj)
-    }
-}
-
-impl SerdeWasmMethods for JobRecipient {
-    fn to_jsvalue(&self) -> Result<JsValue, ShinkaiWasmError> {
-        Ok(serde_wasm_bindgen::to_value(&self)?)
-    }
-
-    fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiWasmError> {
-        Ok(serde_wasm_bindgen::from_value(j.clone())?)
-    }
-
-    fn to_json_str(&self) -> Result<String, ShinkaiWasmError> {
-        let json_str = serde_json::to_string(self).map_err(ShinkaiWasmError::from)?;
-        Ok(json_str)
-    }
-
-    fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
-        let obj = serde_json::from_str(j).map_err(ShinkaiWasmError::from)?;
-        Ok(obj)
-    }
-}
-
-impl SerdeWasmMethods for JobPreMessage {
-    fn to_jsvalue(&self) -> Result<JsValue, ShinkaiWasmError> {
-        Ok(serde_wasm_bindgen::to_value(&self)?)
-    }
-
-    fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiWasmError> {
-        Ok(serde_wasm_bindgen::from_value(j.clone())?)
-    }
-
-    fn to_json_str(&self) -> Result<String, ShinkaiWasmError> {
-        let json_str = serde_json::to_string(self).map_err(ShinkaiWasmError::from)?;
-        Ok(json_str)
-    }
-
-    fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
-        let obj = serde_json::from_str(j).map_err(ShinkaiWasmError::from)?;
-        Ok(obj)
-    }
-}
-
-impl SerdeWasmMethods for JobToolCall {
     fn to_jsvalue(&self) -> Result<JsValue, ShinkaiWasmError> {
         Ok(serde_wasm_bindgen::to_value(&self)?)
     }

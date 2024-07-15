@@ -30,16 +30,16 @@ impl JobPromptGenerator {
         }
 
         // If there is a document summary from the vector search add it with higher priority that the chunks
-        if let Some(summary) = summary_text {
-            prompt.add_content(
-                format!(
-                    "Here is the current summary of content another assistant found to answer the question: `{}`",
-                    summary
-                ),
-                SubPromptType::User,
-                99,
-            );
-        }
+        // if let Some(summary) = summary_text {
+        //     prompt.add_content(
+        //         format!(
+        //             "Here is the current summary of content another assistant found to answer the question: `{}`",
+        //             summary
+        //         ),
+        //         SubPromptType::User,
+        //         99,
+        //     );
+        // }
 
         let has_ret_nodes = !ret_nodes.is_empty();
 

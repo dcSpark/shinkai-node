@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::llm_provider::execution::prompts::subprompts::SubPromptType;
 use crate::llm_provider::job::{Job, JobLike, JobStepResult};
@@ -241,6 +241,7 @@ impl ShinkaiDB {
     }
 
     /// Fetches data for a specific Job from the DB
+    #[allow(clippy::type_complexity)]
     fn get_job_data(
         &self,
         job_id: &str,
@@ -452,7 +453,6 @@ impl ShinkaiDB {
 
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
-            // HERE
             let (_key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let message = std::str::from_utf8(&value)?.to_string();
             unprocessed_messages.push(message);
@@ -585,20 +585,6 @@ impl ShinkaiDB {
 
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
-                    {
-                        // Use shared CFs
-                        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
-
-                        // Use a full iterator to go through all keys in the cf_inbox column family
-                        let iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
-
-                        for item in iter {
-                            let (_, _value) = match item {
-                                Ok(kv) => kv,
-                                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-                            };
-                        }
-                    }
                     let message_key = message.calculate_message_hash_for_pagination();
                     let hash_message_key = Self::message_key_to_hash(message_key);
 

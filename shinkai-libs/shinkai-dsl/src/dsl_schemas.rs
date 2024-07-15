@@ -1,6 +1,8 @@
 use pest_derive::Parser;
 use serde::{Deserialize, Serialize};
 
+use crate::parser::parse_workflow;
+
 #[derive(Parser)]
 #[grammar = "workflow.pest"]
 pub struct WorkflowParser;
@@ -11,6 +13,23 @@ pub struct Workflow {
     pub version: String,
     pub steps: Vec<Step>,
     pub raw: String,
+    pub description: Option<String>,
+}
+
+impl Workflow {
+    /// Generates a key for the Workflow using its name and version.
+    pub fn generate_key(&self) -> String {
+        format!("{}:::{}", self.name, self.version)
+    }
+
+    /// Creates a Workflow from a JSON string and a description.
+    pub fn new(dsl_input: String, description: String) -> Result<Self, String> {
+        let workflow = parse_workflow(&dsl_input)?;
+        Ok(Workflow {
+            description: Some(description),
+            ..workflow
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,7 +39,7 @@ pub struct Step {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", content = "value", rename_all = "lowercase")]
 pub enum StepBody {
     Action(Action),
     Condition {

@@ -83,7 +83,6 @@ impl LLMService for OpenAI {
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
-                    "temperature": 0.7,
                     "max_tokens": result.remaining_tokens,
                 });
 
@@ -91,6 +90,15 @@ impl LLMService for OpenAI {
                 if !tools_json.is_empty() {
                     payload["functions"] = serde_json::Value::Array(tools_json);
                 }
+
+                // Add options to payload
+                add_options_to_payload(&mut payload);
+
+                // Print payload as a pretty JSON string
+                match serde_json::to_string_pretty(&payload) {
+                    Ok(pretty_json) => eprintln!("Payload: {}", pretty_json),
+                    Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
+                };
 
                 let mut payload_log = payload.clone();
                 truncate_image_url_in_payload(&mut payload_log);
@@ -171,6 +179,8 @@ impl LLMService for OpenAI {
                                 None
                             }
                         });
+                        eprintln!("Function Call: {:?}", function_call);
+                        eprintln!("Response String: {:?}", response_string);
                         Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
                     }
                     Err(e) => {
@@ -189,4 +199,20 @@ impl LLMService for OpenAI {
             Err(LLMProviderError::UrlNotSet)
         }
     }
+}
+
+fn add_options_to_payload(payload: &mut serde_json::Value) {
+    // Helper function to read and parse environment variables
+    fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
+        std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
+    }
+
+    // Read and add options from environment variables
+    if let Some(seed) = read_env_var::<u64>("LLM_SEED") {
+        payload["seed"] = serde_json::json!(seed);
+    }
+    if let Some(temp) = read_env_var::<f64>("LLM_TEMPERATURE") {
+        payload["temperature"] = serde_json::json!(temp);
+    }
+    // Add more options as needed...
 }

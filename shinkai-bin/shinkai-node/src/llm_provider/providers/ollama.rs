@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::env;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -72,13 +73,16 @@ impl LLMService for Ollama {
             //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
             // };
 
-            let payload = json!({
+            let mut payload = json!({
                 "model": self.model_type,
                 "messages": messages_json,
                 "stream": true, // Yeah let's go wild and stream the response
                 // Include any other optional parameters as needed
                 // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
             });
+
+            // Modify payload to add options if needed
+            add_options_to_payload(&mut payload);
 
             let mut payload_log = payload.clone();
             truncate_image_content_in_payload(&mut payload_log);
@@ -141,7 +145,7 @@ impl LLMService for Ollama {
                                                 inbox_name_string,
                                                 data.message.content,
                                                 Some(metadata),
-                                                true
+                                                true,
                                             )
                                             .await;
                                     }
@@ -175,5 +179,108 @@ impl LLMService for Ollama {
         } else {
             Err(LLMProviderError::UrlNotSet)
         }
+    }
+}
+
+fn add_options_to_payload(payload: &mut serde_json::Value) {
+    let mut options = serde_json::Map::new();
+
+    // Helper function to read and parse environment variables
+    fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
+        env::var(key).ok().and_then(|val| val.parse::<T>().ok())
+    }
+
+    // Read and add options from environment variables
+    if let Some(seed) = read_env_var::<u64>("LLM_SEED") {
+        options.insert("seed".to_string(), serde_json::json!(seed));
+    }
+    if let Some(temp) = read_env_var::<f64>("LLM_TEMPERATURE") {
+        options.insert("temperature".to_string(), serde_json::json!(temp));
+    }
+    if let Some(num_keep) = read_env_var::<u64>("LLM_NUM_KEEP") {
+        options.insert("num_keep".to_string(), serde_json::json!(num_keep));
+    }
+    if let Some(num_predict) = read_env_var::<u64>("LLM_NUM_PREDICT") {
+        options.insert("num_predict".to_string(), serde_json::json!(num_predict));
+    }
+    if let Some(top_k) = read_env_var::<u64>("LLM_TOP_K") {
+        options.insert("top_k".to_string(), serde_json::json!(top_k));
+    }
+    if let Some(top_p) = read_env_var::<f64>("LLM_TOP_P") {
+        options.insert("top_p".to_string(), serde_json::json!(top_p));
+    }
+    if let Some(tfs_z) = read_env_var::<f64>("LLM_TFS_Z") {
+        options.insert("tfs_z".to_string(), serde_json::json!(tfs_z));
+    }
+    if let Some(typical_p) = read_env_var::<f64>("LLM_TYPICAL_P") {
+        options.insert("typical_p".to_string(), serde_json::json!(typical_p));
+    }
+    if let Some(repeat_last_n) = read_env_var::<u64>("LLM_REPEAT_LAST_N") {
+        options.insert("repeat_last_n".to_string(), serde_json::json!(repeat_last_n));
+    }
+    if let Some(repeat_penalty) = read_env_var::<f64>("LLM_REPEAT_PENALTY") {
+        options.insert("repeat_penalty".to_string(), serde_json::json!(repeat_penalty));
+    }
+    if let Some(presence_penalty) = read_env_var::<f64>("LLM_PRESENCE_PENALTY") {
+        options.insert("presence_penalty".to_string(), serde_json::json!(presence_penalty));
+    }
+    if let Some(frequency_penalty) = read_env_var::<f64>("LLM_FREQUENCY_PENALTY") {
+        options.insert("frequency_penalty".to_string(), serde_json::json!(frequency_penalty));
+    }
+    if let Some(mirostat) = read_env_var::<u64>("LLM_MIROSTAT") {
+        options.insert("mirostat".to_string(), serde_json::json!(mirostat));
+    }
+    if let Some(mirostat_tau) = read_env_var::<f64>("LLM_MIROSTAT_TAU") {
+        options.insert("mirostat_tau".to_string(), serde_json::json!(mirostat_tau));
+    }
+    if let Some(mirostat_eta) = read_env_var::<f64>("LLM_MIROSTAT_ETA") {
+        options.insert("mirostat_eta".to_string(), serde_json::json!(mirostat_eta));
+    }
+    if let Some(penalize_newline) = read_env_var::<bool>("LLM_PENALIZE_NEWLINE") {
+        options.insert("penalize_newline".to_string(), serde_json::json!(penalize_newline));
+    }
+    if let Some(stop) = read_env_var::<String>("LLM_STOP") {
+        options.insert(
+            "stop".to_string(),
+            serde_json::json!(stop.split(',').collect::<Vec<&str>>()),
+        );
+    }
+    if let Some(numa) = read_env_var::<bool>("LLM_NUMA") {
+        options.insert("numa".to_string(), serde_json::json!(numa));
+    }
+    if let Some(num_ctx) = read_env_var::<u64>("LLM_NUM_CTX") {
+        options.insert("num_ctx".to_string(), serde_json::json!(num_ctx));
+    }
+    if let Some(num_batch) = read_env_var::<u64>("LLM_NUM_BATCH") {
+        options.insert("num_batch".to_string(), serde_json::json!(num_batch));
+    }
+    if let Some(num_gpu) = read_env_var::<u64>("LLM_NUM_GPU") {
+        options.insert("num_gpu".to_string(), serde_json::json!(num_gpu));
+    }
+    if let Some(main_gpu) = read_env_var::<u64>("LLM_MAIN_GPU") {
+        options.insert("main_gpu".to_string(), serde_json::json!(main_gpu));
+    }
+    if let Some(low_vram) = read_env_var::<bool>("LLM_LOW_VRAM") {
+        options.insert("low_vram".to_string(), serde_json::json!(low_vram));
+    }
+    if let Some(f16_kv) = read_env_var::<bool>("LLM_F16_KV") {
+        options.insert("f16_kv".to_string(), serde_json::json!(f16_kv));
+    }
+    if let Some(vocab_only) = read_env_var::<bool>("LLM_VOCAB_ONLY") {
+        options.insert("vocab_only".to_string(), serde_json::json!(vocab_only));
+    }
+    if let Some(use_mmap) = read_env_var::<bool>("LLM_USE_MMAP") {
+        options.insert("use_mmap".to_string(), serde_json::json!(use_mmap));
+    }
+    if let Some(use_mlock) = read_env_var::<bool>("LLM_USE_MLOCK") {
+        options.insert("use_mlock".to_string(), serde_json::json!(use_mlock));
+    }
+    if let Some(num_thread) = read_env_var::<u64>("LLM_NUM_THREAD") {
+        options.insert("num_thread".to_string(), serde_json::json!(num_thread));
+    }
+
+    // Add options to payload if not empty
+    if !options.is_empty() {
+        payload["options"] = serde_json::Value::Object(options);
     }
 }

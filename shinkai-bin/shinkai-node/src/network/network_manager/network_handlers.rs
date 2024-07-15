@@ -434,7 +434,6 @@ pub async fn handle_network_message_cases(
         .await?;
     }
 
-    eprintln!("before get_message_content_schema");
     // Check the schema of the message and decide what to do
     match message.get_message_content_schema() {
         Ok(schema) => {
@@ -443,7 +442,7 @@ pub async fn handle_network_message_cases(
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
+                        ShinkaiLogLevel::Info,
                         &format!("{} > AvailableSharedItems from {:?}", receiver_address, requester),
                     );
 
@@ -510,7 +509,7 @@ pub async fn handle_network_message_cases(
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
+                        ShinkaiLogLevel::Info,
                         &format!(
                             "{} AvailableSharedItemsResponse from: {:?}",
                             receiver_address, requester
@@ -537,8 +536,8 @@ pub async fn handle_network_message_cases(
                                     // Successfully converted, you can now use shared_folder_infos
                                     let mut my_subscription_manager = my_subscription_manager.lock().await;
                                     let _ = my_subscription_manager
-                                        .insert_shared_folder(requester, shared_folder_infos)
-                                        .await;
+                                        .handle_shared_folder_response_update(requester, shared_folder_infos)
+                                    .await;
                                 }
                                 Err(e) => {
                                     shinkai_log(
@@ -571,7 +570,7 @@ pub async fn handle_network_message_cases(
                     let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
+                        ShinkaiLogLevel::Info,
                         &format!(
                             "{} > SubscribeToSharedFolder from: {:?} to: {:?}",
                             receiver_address, requester, receiver
@@ -594,6 +593,7 @@ pub async fn handle_network_message_cases(
                                     streamer,
                                     subscription_request.path.clone(),
                                     subscription_request.payment,
+                                    subscription_request.http_preferred,
                                 )
                                 .await;
                             match result {
@@ -677,7 +677,7 @@ pub async fn handle_network_message_cases(
                     match serde_json::from_str::<SubscriptionGenericResponse>(&content) {
                         Ok(response) => {
                             // Successfully converted, you can now use shared_folder_infos
-                            let my_subscription_manager = my_subscription_manager.lock().await;
+                            let mut my_subscription_manager = my_subscription_manager.lock().await;
                             let result = my_subscription_manager
                                 .update_subscription_status(
                                     requester.extract_node(),
@@ -1094,14 +1094,6 @@ pub async fn send_ack(
         None,
     );
     Ok(())
-}
-
-// Helper struct to encapsulate sender keys
-#[derive(Debug)]
-pub struct PublicKeyInfo {
-    pub address: SocketAddr,
-    pub signature_public_key: VerifyingKey,
-    pub encryption_public_key: x25519_dalek::PublicKey,
 }
 
 #[allow(clippy::too_many_arguments)]
