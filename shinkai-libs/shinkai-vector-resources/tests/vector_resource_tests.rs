@@ -1317,7 +1317,7 @@ async fn local_json_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1331,10 +1331,10 @@ async fn local_json_parsing_test() {
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
     let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    assert!(results[0].score > 0.5);
-    assert!(results[0]
+    assert!(results.iter().all(|node| node.score > 0.6));
+    assert!(results.iter().any(|node| node
         .node
         .get_text_content()
         .unwrap()
-        .contains("Echoes the input message"));
+        .contains("Echoes the input message")));
 }
