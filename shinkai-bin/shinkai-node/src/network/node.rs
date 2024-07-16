@@ -2293,8 +2293,10 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let tool_router_clone = self.tool_router.clone();
                                             let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
+                                            let db_clone = Arc::clone(&self.db);
                                             tokio::spawn(async move {
                                                 let _ = Node::api_search_workflows(
+                                                    db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,

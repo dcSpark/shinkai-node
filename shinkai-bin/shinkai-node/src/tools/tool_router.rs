@@ -15,7 +15,7 @@ use keyphrases::KeyPhraseExtractor;
 use serde_json;
 use shinkai_dsl::sm_executor::AsyncFunction;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{self, EmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
@@ -388,15 +388,17 @@ impl ToolRouter {
     }
 
     /// Searches for workflows using both embeddings and text similarity by name matching.
-    pub fn workflow_search(
-        &self,
-        profile: &ShinkaiName,
+    pub async fn workflow_search(
+        &mut self,
+        profile: ShinkaiName,
+        embedding_generator: Box<dyn EmbeddingGenerator>,
+        db: Arc<ShinkaiDB>,
         query: Embedding,
         name_query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiTool>, ToolError> {
         if !self.started {
-            return Err(ToolError::NotStarted);
+            self.start(embedding_generator, Arc::downgrade(&db), profile.clone()).await;
         }
 
         let profile = profile

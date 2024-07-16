@@ -2886,7 +2886,9 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_search_workflows(
+        db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2896,35 +2898,32 @@ impl Node {
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message
-        let validation_result = Self::validate_message(
-            encryption_secret_key,
+        let (search_query, requester_name) = match Self::validate_and_extract_payload::<String>(
+            node_name.clone(),
             identity_manager.clone(),
-            &node_name,
+            encryption_secret_key,
             potentially_encrypted_msg,
-            Some(MessageSchemaType::SearchWorkflows),
+            MessageSchemaType::SearchWorkflows,
         )
-        .await;
-        let (msg, _) = match validation_result {
-            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+        .await
+        {
+            Ok(data) => data,
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
 
-        // Extract the content of the message
-        let search_query = match msg.get_message_content() {
-            Ok(content) => content,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to extract message content: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
         // Generate the embedding for the search query
         let embedding = match embedding_generator.generate_embedding_default(&search_query).await {
@@ -2942,8 +2941,18 @@ impl Node {
 
         // Perform the internal search using tool_router
         if let Some(tool_router) = tool_router {
-            let tool_router = tool_router.lock().await;
-            match tool_router.workflow_search(&node_name, embedding, &search_query, 5) {
+            let mut tool_router = tool_router.lock().await;
+            match tool_router
+                .workflow_search(
+                    requester_name,
+                    Box::new((*embedding_generator).clone()) as Box<dyn EmbeddingGenerator>,
+                    db,
+                    embedding,
+                    &search_query,
+                    5,
+                )
+                .await
+            {
                 Ok(workflows) => {
                     let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
                         message: format!("Failed to serialize workflows: {}", err),
