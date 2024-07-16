@@ -39,6 +39,7 @@ mod tests {
             "".to_string(),
             "".to_string(),
             None,
+            None,
             my_encryption_sk.clone(),
             my_signature_sk.clone(),
             receiver_public_key,

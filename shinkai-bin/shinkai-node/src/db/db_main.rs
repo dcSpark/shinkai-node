@@ -64,13 +64,13 @@ impl ShinkaiDB {
             // If the database file does not exist, use the default list of column families
             vec![
                 Topic::Inbox.as_str().to_string(),
-                Topic::ScheduledMessage.as_str().to_string(),
+                Topic::ScheduledMessage.as_str().to_string(), // I will merge this with something else
                 Topic::AllMessages.as_str().to_string(),
                 Topic::Toolkits.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::AnyQueuesPrefixed.as_str().to_string(),
-                Topic::CronQueues.as_str().to_string(),
+                Topic::CronQueues.as_str().to_string(), // I will merge this with something else
                 Topic::NodeAndUsers.as_str().to_string(),
             ]
         };
@@ -183,6 +183,12 @@ impl ShinkaiDB {
         profile
             .get_profile_name_string()
             .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)
+    }
+
+    /// Returns the first half of the blake3 hash of the folder name value
+    pub fn user_profile_to_half_hash(profile: ShinkaiName) -> String {
+        let full_hash = blake3::hash(profile.full_name.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
     }
 
     // We are using a composite_key to avoid the problem that two messages could had

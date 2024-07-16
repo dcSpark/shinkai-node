@@ -42,8 +42,8 @@ impl FSEntryTreeGenerator {
         let shared_folders = vector_fs
             .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
             .await?;
-        let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
+        let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
         // Convert HTTP subscription results to a HashMap
         let http_results_map: HashMap<String, FileLink> = http_subscription_results
             .into_iter()
@@ -77,7 +77,7 @@ impl FSEntryTreeGenerator {
 
                 match fs_entry {
                     FSEntry::Folder(fs_folder) => {
-                        let folder_tree = Self::process_folder(&fs_folder, &path.to_string())?;
+                        let folder_tree = Self::process_folder(&fs_folder, &path.to_string(), &http_results_map)?;
                         root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
                     }
                     FSEntry::Item(fs_item) => {
@@ -94,7 +94,7 @@ impl FSEntryTreeGenerator {
 
                         // Check if there is a corresponding HTTP link
                         if let Some(file_link) = http_results_map.get(&path_str) {
-                            let checksum_path = format!("{}.checksum", path_str); // Correctly format the checksum path
+                            let checksum_path = format!("{}.{}.checksum", path_str, file_link.last_8_hash); // Correctly format the checksum path
                             item_tree.web_link = Some(WebLink {
                                 file: file_link.clone(),
                                 checksum: http_results_map
@@ -131,25 +131,53 @@ impl FSEntryTreeGenerator {
     }
 
     // Adjusted to directly build FSEntryTree structure
-    fn process_folder(fs_folder: &FSFolder, parent_path: &str) -> Result<FSEntryTree, SubscriberManagerError> {
+    fn process_folder(
+        fs_folder: &FSFolder,
+        parent_path: &str,
+        http_results_map: &HashMap<String, FileLink>,
+    ) -> Result<FSEntryTree, SubscriberManagerError> {
         let mut children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
 
         // Process child folders and add them to the children map
         for child_folder in &fs_folder.child_folders {
-            let child_tree = Self::process_folder(child_folder, &format!("{}/{}", parent_path, child_folder.name))?;
+            let child_tree = Self::process_folder(
+                child_folder,
+                &format!("{}/{}", parent_path, child_folder.name),
+                http_results_map,
+            )?;
             children.insert(child_folder.name.clone(), Arc::new(child_tree));
         }
 
         // Process child items and add them to the children map
         for child_item in &fs_folder.child_items {
             let child_path = format!("{}/{}", parent_path, child_item.name);
-            let child_tree = FSEntryTree {
+            let mut child_tree = FSEntryTree {
                 name: child_item.name.clone(),
-                path: child_path,
+                path: child_path.clone(),
                 last_modified: child_item.last_written_datetime,
                 web_link: None,
                 children: HashMap::new(), // Items do not have children
             };
+
+            // Check if there is a corresponding HTTP link
+            if let Some(file_link) = http_results_map.get(&child_path) {
+                let checksum_path = format!("{}.{}.checksum", child_path, file_link.last_8_hash); // Correctly format the checksum path
+                child_tree.web_link = Some(WebLink {
+                    file: file_link.clone(),
+                    checksum: http_results_map
+                        .get(&checksum_path)
+                        .cloned()
+                        .unwrap_or_else(|| FileLink {
+                            link: String::new(), // Provide a default or handle this case as needed
+                            path: checksum_path,
+                            last_8_hash: String::new(),       // Default or appropriate value
+                            expiration: file_link.expiration, // Use the same expiration or handle appropriately
+                        }),
+                });
+                child_tree.last_modified = DateTime::<Utc>::from(file_link.expiration);
+                // Convert SystemTime to DateTime<Utc>
+            }
+
             children.insert(child_item.name.clone(), Arc::new(child_tree));
         }
 
@@ -254,7 +282,12 @@ impl FSEntryTreeGenerator {
         match entry {
             FSEntry::Folder(fs_folder) => {
                 // Use the existing process_folder function to correctly handle folders and their children
-                let folder_tree = Self::process_folder(&fs_folder, &fs_folder.path.clone().format_to_string())?;
+                let empty_http_results_map = HashMap::new();
+                let folder_tree = Self::process_folder(
+                    &fs_folder,
+                    &fs_folder.path.clone().format_to_string(),
+                    &empty_http_results_map,
+                )?;
                 Ok(folder_tree)
             }
             FSEntry::Item(fs_item) => {
@@ -271,6 +304,32 @@ impl FSEntryTreeGenerator {
             _ => Err(SubscriberManagerError::InvalidRequest(
                 "Unsupported FSEntry type".to_string(),
             )),
+        }
+    }
+
+    /// Returns a new FSEntryTree with the specified prefix removed from all paths.
+    pub fn remove_prefix_from_paths(tree: &FSEntryTree, prefix: &str) -> FSEntryTree {
+        let new_path = if tree.path.starts_with(prefix) {
+            tree.path.replacen(prefix, "", 1)
+        } else {
+            tree.path.clone()
+        };
+
+        let new_children = tree
+            .children
+            .iter()
+            .map(|(name, child)| {
+                let new_child = Self::remove_prefix_from_paths(child, prefix);
+                (name.clone(), Arc::new(new_child))
+            })
+            .collect();
+
+        FSEntryTree {
+            name: tree.name.clone(),
+            path: new_path,
+            last_modified: tree.last_modified,
+            web_link: tree.web_link.clone(),
+            children: new_children,
         }
     }
 
@@ -1094,6 +1153,66 @@ mod tests {
         assert!(
             deletions.contains(&"/shared_test_folder/zeko/paper/zeko_intro".to_string()),
             "Expected deletion path to include '/shared_test_folder/zeko/paper/zeko_intro'"
+        );
+    }
+
+    #[test]
+    fn test_remove_prefix_from_paths() {
+        let tree = FSEntryTree {
+            name: "shared test folder".to_string(),
+            path: "/My Subscriptions/shared test folder".to_string(),
+            last_modified: Utc::now(),
+            web_link: None,
+            children: {
+                let mut children = HashMap::new();
+                children.insert(
+                    "shinkai_intro".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "shinkai_intro".to_string(),
+                        path: "/My Subscriptions/shared test folder/shinkai_intro".to_string(),
+                        last_modified: Utc::now(),
+                        web_link: None,
+                        children: HashMap::new(),
+                    }),
+                );
+                children.insert(
+                    "crypto".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "crypto".to_string(),
+                        path: "/My Subscriptions/shared test folder/crypto".to_string(),
+                        last_modified: Utc::now(),
+                        web_link: None,
+                        children: {
+                            let mut crypto_children = HashMap::new();
+                            crypto_children.insert(
+                                "shinkai_intro".to_string(),
+                                Arc::new(FSEntryTree {
+                                    name: "shinkai_intro".to_string(),
+                                    path: "/My Subscriptions/shared test folder/crypto/shinkai_intro".to_string(),
+                                    last_modified: Utc::now(),
+                                    web_link: None,
+                                    children: HashMap::new(),
+                                }),
+                            );
+                            crypto_children
+                        },
+                    }),
+                );
+                children
+            },
+        };
+
+        let new_tree = FSEntryTreeGenerator::remove_prefix_from_paths(&tree, "/My Subscriptions");
+
+        assert_eq!(new_tree.path, "/shared test folder");
+        assert_eq!(
+            new_tree.children["shinkai_intro"].path,
+            "/shared test folder/shinkai_intro"
+        );
+        assert_eq!(new_tree.children["crypto"].path, "/shared test folder/crypto");
+        assert_eq!(
+            new_tree.children["crypto"].children["shinkai_intro"].path,
+            "/shared test folder/crypto/shinkai_intro"
         );
     }
 }

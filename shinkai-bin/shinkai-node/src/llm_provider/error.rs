@@ -23,7 +23,6 @@ pub enum LLMProviderError {
     JobNotFound,
     JobCreationDeserializationFailed,
     JobMessageDeserializationFailed,
-    JobPreMessageDeserializationFailed,
     MessageTypeParseFailed,
     IO(String),
     ShinkaiDB(ShinkaiDBError),
@@ -101,7 +100,6 @@ impl fmt::Display for LLMProviderError {
                 write!(f, "Failed to deserialize JobCreationInfo message")
             }
             LLMProviderError::JobMessageDeserializationFailed => write!(f, "Failed to deserialize JobMessage"),
-            LLMProviderError::JobPreMessageDeserializationFailed => write!(f, "Failed to deserialize JobPreMessage"),
             LLMProviderError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
             LLMProviderError::IO(err) => write!(f, "IO error: {}", err),
             LLMProviderError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
@@ -173,7 +171,6 @@ impl LLMProviderError {
             LLMProviderError::JobNotFound => "JobNotFound",
             LLMProviderError::JobCreationDeserializationFailed => "JobCreationDeserializationFailed",
             LLMProviderError::JobMessageDeserializationFailed => "JobMessageDeserializationFailed",
-            LLMProviderError::JobPreMessageDeserializationFailed => "JobPreMessageDeserializationFailed",
             LLMProviderError::MessageTypeParseFailed => "MessageTypeParseFailed",
             LLMProviderError::IO(_) => "IO",
             LLMProviderError::ShinkaiDB(_) => "ShinkaiDB",

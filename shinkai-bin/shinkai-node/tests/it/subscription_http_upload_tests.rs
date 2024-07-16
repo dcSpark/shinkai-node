@@ -18,8 +18,9 @@ use shinkai_node::network::subscription_manager::http_manager::subscription_file
     delete_all_in_folder, FileDestination,
 };
 use shinkai_node::network::Node;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{RwLock, Semaphore};
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
@@ -91,6 +92,10 @@ fn subscription_http_upload() {
                 .await;
             }
             {
+                // Use Unstructrued for PDF parsing until the local one is integrated
+                let db_strong = node1_db_weak.upgrade().unwrap();
+                db_strong.update_local_processing_preference(false).unwrap();
+
                 // Create folder /shared_test_folder
                 testing_framework.create_folder("/", "shinkai_sharing").await;
                 testing_framework
@@ -217,19 +222,19 @@ fn subscription_http_upload() {
                 let expected_files = [
                     (
                         "/shinkai_sharing/shinkai_intro",
-                        "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
+                        "e8f4ee5dda589611c6b5ac06b551031f5e314a7bc130534d12ffc0860d6dac9b",
                     ),
                     (
-                        "/shinkai_sharing/zeko_mini.6c58bb39.checksum",
-                        "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
+                        "/shinkai_sharing/zeko_mini.c57496ff.checksum",
+                        "6e5609f6b82ac769ad2fbf2c6781b7c687438800e0501c03e72c41b2c57496ff",
                     ),
                     (
-                        "/shinkai_sharing/shinkai_intro.3584dc22.checksum",
-                        "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
+                        "/shinkai_sharing/shinkai_intro.0d6dac9b.checksum",
+                        "e8f4ee5dda589611c6b5ac06b551031f5e314a7bc130534d12ffc0860d6dac9b",
                     ),
                     (
                         "/shinkai_sharing/zeko_mini",
-                        "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
+                        "6e5609f6b82ac769ad2fbf2c6781b7c687438800e0501c03e72c41b2c57496ff",
                     ),
                 ];
 
@@ -360,6 +365,7 @@ fn subscription_http_upload() {
                     let semaphore = Arc::new(Semaphore::new(1));
                     let mut continue_processing = false;
                     let mut handles = Vec::new();
+                    let active_jobs = Arc::new(RwLock::new(HashMap::new()));
 
                     loop {
                         // Process the job queue using the associated function syntax
@@ -369,6 +375,7 @@ fn subscription_http_upload() {
                             node1_db_weak.clone(),
                             1,
                             semaphore.clone(),
+                            active_jobs.clone(),
                             &mut continue_processing,
                         )
                         .await;
@@ -391,7 +398,7 @@ fn subscription_http_upload() {
 
                     // After processing the download queue, retrieve file information for specific files
                     let file_info_shinkai_intro = testing_framework
-                        .retrieve_file_info("/My_Subscriptions/shinkai_sharing/shinkai_intro", true)
+                        .retrieve_file_info("/My Subscriptions/shinkai_sharing/shinkai_intro", true)
                         .await;
                     eprintln!(
                         "File info for /shinkai_sharing/shinkai_intro: {:?}",
@@ -399,7 +406,7 @@ fn subscription_http_upload() {
                     );
 
                     let file_info_zeko_mini = testing_framework
-                        .retrieve_file_info("/My_Subscriptions/shinkai_sharing/zeko_mini", true)
+                        .retrieve_file_info("/My Subscriptions/shinkai_sharing/zeko_mini", true)
                         .await;
                     eprintln!("File info for /shinkai_sharing/zeko_mini: {:?}", file_info_zeko_mini);
                 }

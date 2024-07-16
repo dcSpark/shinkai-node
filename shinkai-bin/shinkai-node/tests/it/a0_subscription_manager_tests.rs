@@ -794,31 +794,38 @@ fn subscription_manager_test() {
                     let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                     print_tree_simple(actual_resp_json.clone());
 
-                   let expected_structure = serde_json::json!({
+                    let expected_structure = serde_json::json!({
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shared test folder",
-                                "path": "/shared test folder",
+                                "name": "My Subscriptions",
+                                "path": "/My Subscriptions",
                                 "child_folders": [
                                     {
-                                        "name": "crypto",
-                                        "path": "/shared test folder/crypto",
-                                        "child_folders": [],
+                                        "name": "shared test folder",
+                                        "path": "/My Subscriptions/shared test folder",
+                                        "child_folders": [
+                                            {
+                                                "name": "crypto",
+                                                "path": "/My Subscriptions/shared test folder/crypto",
+                                                "child_folders": [],
+                                                "child_items": [
+                                                    {
+                                                        "name": "shinkai_intro",
+                                                        "path": "/My Subscriptions/shared test folder/crypto/shinkai_intro"
+                                                    }
+                                                ]
+                                            }
+                                        ],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared test folder/crypto/shinkai_intro"
+                                                "path": "/My Subscriptions/shared test folder/shinkai_intro"
                                             }
                                         ]
                                     }
                                 ],
-                                "child_items": [
-                                    {
-                                        "name": "shinkai_intro",
-                                        "path": "/shared test folder/shinkai_intro"
-                                    }
-                                ]
+                                "child_items": []
                             }
                         ],
                         "child_items": []
@@ -837,6 +844,9 @@ fn subscription_manager_test() {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }
                 assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
+                if !structure_matched {
+                    panic!("The actual folder structure does not match the expected structure after all attempts.");
+                }
             }
             {
                 eprintln!("Add a new file to the streamer");
@@ -933,49 +943,56 @@ fn subscription_manager_test() {
                     let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                     print_tree_simple(actual_resp_json.clone());
 
-                   let expected_structure = serde_json::json!({
+                    let expected_structure = serde_json::json!({
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shared test folder",
-                                "path": "/shared test folder",
-                                "child_folders": [ 
+                                "name": "My Subscriptions",
+                                "path": "/My Subscriptions",
+                                "child_folders": [
                                     {
-                                        "name": "zeko",
-                                        "path": "/shared test folder/zeko",
+                                        "name": "shared test folder",
+                                        "path": "/My Subscriptions/shared test folder",
                                         "child_folders": [
                                             {
-                                                "name": "paper",
-                                                "path": "/shared test folder/zeko/paper",
+                                                "name": "crypto",
+                                                "path": "/My Subscriptions/shared test folder/crypto",
                                                 "child_folders": [],
                                                 "child_items": [
                                                     {
-                                                        "name": "Zeko_Mina_Rollup",
-                                                        "path": "/shared test folder/zeko/paper/Zeko_Mina_Rollup"
-                                                    },
+                                                        "name": "shinkai_intro",
+                                                        "path": "/My Subscriptions/shared test folder/crypto/shinkai_intro"
+                                                    }
                                                 ]
+                                            },
+                                            {
+                                                "name": "zeko",
+                                                "path": "/My Subscriptions/shared test folder/zeko",
+                                                "child_folders": [
+                                                    {
+                                                        "name": "paper",
+                                                        "path": "/My Subscriptions/shared test folder/zeko/paper",
+                                                        "child_folders": [],
+                                                        "child_items": [
+                                                            {
+                                                                "name": "Zeko_Mina_Rollup",
+                                                                "path": "/My Subscriptions/shared test folder/zeko/paper/Zeko_Mina_Rollup"
+                                                            }
+                                                        ]
+                                                    }
+                                                ],
+                                                "child_items": []
                                             }
                                         ],
-                                        "child_items": []
-                                    },
-                                    {
-                                        "name": "crypto",
-                                        "path": "/shared test folder/crypto",
-                                        "child_folders": [],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared test folder/crypto/shinkai_intro"
-                                            },
+                                                "path": "/My Subscriptions/shared test folder/shinkai_intro"
+                                            }
                                         ]
                                     }
                                 ],
-                                "child_items": [
-                                    {
-                                        "name": "shinkai_intro",
-                                        "path": "/shared test folder/shinkai_intro"
-                                    }
-                                ]
+                                "child_items": []
                             }
                         ],
                         "child_items": []
@@ -994,6 +1011,9 @@ fn subscription_manager_test() {
                     tokio::time::sleep(Duration::from_secs(4)).await;
                 }
                 assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
+                if !structure_matched {
+                    panic!("The actual folder structure does not match the expected structure after all attempts.");
+                }
             }
             {
                 eprintln!("Removing a file from the streamer");
@@ -1099,31 +1119,38 @@ fn subscription_manager_test() {
                     let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                     print_tree_simple(actual_resp_json.clone());
 
-                   let expected_structure = serde_json::json!({
+                    let expected_structure = serde_json::json!({
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shared test folder",
-                                "path": "/shared test folder",
+                                "name": "My Subscriptions",
+                                "path": "/My Subscriptions",
                                 "child_folders": [
                                     {
-                                        "name": "crypto",
-                                        "path": "/shared test folder/crypto",
-                                        "child_folders": [],
+                                        "name": "shared test folder",
+                                        "path": "/My Subscriptions/shared test folder",
+                                        "child_folders": [
+                                            {
+                                                "name": "crypto",
+                                                "path": "/My Subscriptions/shared test folder/crypto",
+                                                "child_folders": [],
+                                                "child_items": [
+                                                    {
+                                                        "name": "shinkai_intro",
+                                                        "path": "/My Subscriptions/shared test folder/crypto/shinkai_intro"
+                                                    }
+                                                ]
+                                            }
+                                        ],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared test folder/crypto/shinkai_intro"
-                                            },
+                                                "path": "/My Subscriptions/shared test folder/shinkai_intro"
+                                            }
                                         ]
                                     }
                                 ],
-                                "child_items": [
-                                    {
-                                        "name": "shinkai_intro",
-                                        "path": "/shared test folder/shinkai_intro"
-                                    }
-                                ]
+                                "child_items": []
                             }
                         ],
                         "child_items": []
@@ -1142,6 +1169,9 @@ fn subscription_manager_test() {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }
                 assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
+                if !structure_matched {
+                    panic!("The actual folder structure does not match the expected structure after all attempts.");
+                }
             }
             {
                  // check that the unsubscription was processed in the other node

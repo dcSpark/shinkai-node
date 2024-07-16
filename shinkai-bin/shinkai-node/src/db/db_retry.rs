@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 use chrono::{DateTime, Utc};
-use rocksdb::{IteratorMode};
+use rocksdb::IteratorMode;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 

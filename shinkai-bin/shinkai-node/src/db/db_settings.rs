@@ -12,7 +12,7 @@ impl ShinkaiDB {
                 let preference: bool = serde_json::from_slice(&value)?;
                 Ok(preference)
             }
-            None => Ok(true), // Default to true if the setting does not exist
+            None => Ok(false), // Note(change): Default to true if the setting does not exist
         }
     }
 

@@ -190,18 +190,18 @@ impl RustTool {
                 .unwrap(),
         ));
 
-        let print_arg_desc = "Prints a single argument.".to_string();
-        tools.push(RustTool::new(
-            "print_arg".to_string(),
-            print_arg_desc.clone(),
-            vec![ToolArgument::new(
-                "argument".to_string(),
-                "string".to_string(),
-                "The argument to print".to_string(),
-                true,
-            )],
-            generator.generate_embedding_default(&print_arg_desc).await.unwrap(),
-        ));
+        // let print_arg_desc = "Prints a single argument.".to_string();
+        // tools.push(RustTool::new(
+        //     "print_arg".to_string(),
+        //     print_arg_desc.clone(),
+        //     vec![ToolArgument::new(
+        //         "argument".to_string(),
+        //         "string".to_string(),
+        //         "The argument to print".to_string(),
+        //         true,
+        //     )],
+        //     generator.generate_embedding_default(&print_arg_desc).await.unwrap(),
+        // ));
 
         let return_error_message_desc = "The error message to return. Useful for debugging in workflows.".to_string();
         tools.push(RustTool::new(

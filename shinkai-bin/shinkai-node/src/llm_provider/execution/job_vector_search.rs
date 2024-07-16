@@ -247,6 +247,7 @@ impl JobManager {
     //
     /// Perform a proximity vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
     /// Returns the proximity groups of retrieved nodes.
+    #[allow(clippy::too_many_arguments)]
     async fn internal_job_scope_vector_search_groups(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,

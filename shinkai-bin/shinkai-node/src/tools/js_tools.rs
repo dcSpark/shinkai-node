@@ -36,20 +36,23 @@ impl JSTool {
         let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
         // Create a new thread with its own Tokio runtime
-        thread::spawn(move || {
-            let rt = Runtime::new().expect("Failed to create Tokio runtime");
-            rt.block_on(async {
-                let mut tool = Tool::new();
-                tool.load_from_code(&code, &config)
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
-                tool.run(&input)
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.to_string()))
+        let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
+        js_tool_thread
+            .spawn(move || {
+                let rt = Runtime::new().expect("Failed to create Tokio runtime");
+                rt.block_on(async {
+                    let mut tool = Tool::new();
+                    tool.load_from_code(&code, &config)
+                        .await
+                        .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+                    tool.run(&input)
+                        .await
+                        .map_err(|e| ToolError::ExecutionError(e.to_string()))
+                })
             })
-        })
-        .join()
-        .expect("Thread panicked")
+            .unwrap()
+            .join()
+            .expect("Thread panicked")
     }
 
     /// Convert to JSON string
@@ -87,19 +90,17 @@ impl Serialize for JSToolResult {
     where
         S: Serializer,
     {
-        let properties_str = serde_json::to_string(&self.properties)
-            .map_err(serde::ser::Error::custom)?;
-        
+        let properties_str = serde_json::to_string(&self.properties).map_err(serde::ser::Error::custom)?;
+
         let helper = Helper {
             result_type: self.result_type.clone(),
             properties: properties_str,
             required: self.required.clone(),
         };
-        
+
         helper.serialize(serializer)
     }
 }
-
 
 impl<'de> Deserialize<'de> for JSToolResult {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -107,8 +108,7 @@ impl<'de> Deserialize<'de> for JSToolResult {
         D: Deserializer<'de>,
     {
         let helper = Helper::deserialize(deserializer)?;
-        let properties: JsonValue = serde_json::from_str(&helper.properties)
-            .map_err(serde::de::Error::custom)?;
+        let properties: JsonValue = serde_json::from_str(&helper.properties).map_err(serde::de::Error::custom)?;
 
         Ok(JSToolResult {
             result_type: helper.result_type,
@@ -117,7 +117,6 @@ impl<'de> Deserialize<'de> for JSToolResult {
         })
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 struct Helper {

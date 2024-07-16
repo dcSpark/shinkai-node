@@ -83,11 +83,11 @@ impl VectorResourceCore for MapVectorResource {
 
     /// RFC3339 Datetime when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc> {
-        self.created_datetime.clone()
+        self.created_datetime
     }
     /// RFC3339 Datetime when then Vector Resource was last written
     fn last_written_datetime(&self) -> DateTime<Utc> {
-        self.last_written_datetime.clone()
+        self.last_written_datetime
     }
     /// Set a RFC Datetime of when then Vector Resource was last written
     fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>) {
@@ -404,7 +404,7 @@ impl MapVectorResource {
         let mut resource = MapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
-            source: source,
+            source,
             resource_id: String::from("default"),
             resource_embedding,
             embeddings,
@@ -413,7 +413,7 @@ impl MapVectorResource {
             nodes,
             embedding_model_used_string: embedding_model_used.to_string(),
             data_tag_index: DataTagIndex::new(),
-            created_datetime: current_time.clone(),
+            created_datetime: current_time,
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
             merkle_root,
@@ -580,7 +580,7 @@ impl MapVectorResource {
         tag_names: &Vec<String>,
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
-        self.insert_root_node(key.to_string(), node, embedding.clone());
+        let _ = self.insert_root_node(key.to_string(), node, embedding.clone());
     }
 
     /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified key at root depth.

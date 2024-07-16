@@ -1,7 +1,8 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 mod it {
     mod a0_subscription_manager_tests;
+    mod a1_http_subscription_tests;
     mod llm_provider_integration_tests;
     mod workflow_integration_tests;
     mod cron_job_tests;

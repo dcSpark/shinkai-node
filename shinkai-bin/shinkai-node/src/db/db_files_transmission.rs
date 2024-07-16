@@ -1,8 +1,6 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use rocksdb::{Error, WriteBatch};
-
-
 
 impl ShinkaiDB {
     pub fn write_symmetric_key(&self, hex_blake3_hash: &str, private_key: &[u8]) -> Result<(), ShinkaiDBError> {
