@@ -399,7 +399,7 @@ async fn test_workflow_search() {
         .generate_embedding_default("summarize this")
         .await
         .unwrap();
-    let results = tool_router.workflow_search(&profile, query, "summarize this", 5).unwrap();
+    let results = tool_router.workflow_search(profile, Box::new(generator), shinkai_db, query, "summarize this", 5).await.unwrap();
 
     // Assert the results
     assert!(!results.is_empty(), "Expected to find workflows, but found none");

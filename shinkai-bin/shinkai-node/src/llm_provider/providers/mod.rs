@@ -7,7 +7,6 @@ use super::{
     execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt},
 };
 use async_trait::async_trait;
-use quickxml_to_serde::{xml_string_to_json, Config};
 use reqwest::Client;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::LLMProviderInterface};
