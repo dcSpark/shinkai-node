@@ -961,6 +961,33 @@ impl VectorFS {
         source_file_map: Option<SourceFileMap>,
     ) -> Result<FSItem, VectorFSError> {
         let mut resource = resource;
+
+        // Print the type of resource
+        match &resource {
+            BaseVectorResource::Document(_) => println!("Resource is a DocumentVectorResource"),
+            BaseVectorResource::Map(_) => println!("Resource is a MapVectorResource"),
+        }
+
+     // Print the content type of the first two nodes
+     let nodes = resource.as_trait_object().get_root_nodes();
+     for (i, node) in nodes.iter().take(2).enumerate() {
+         match &node.content {
+            NodeContent::Text(text) => {
+                println!("Node {} content is Text", i + 1);
+                println!("Node {} text: {}", i + 1, text);
+            }
+             NodeContent::Resource(res) => {
+                 println!("Node {} content is Resource", i + 1);
+                 match res {
+                     BaseVectorResource::Document(_) => println!("Node {} resource type is DocumentVectorResource", i + 1),
+                     BaseVectorResource::Map(_) => println!("Node {} resource type is MapVectorResource", i + 1),
+                 }
+             }
+             NodeContent::ExternalContent(_) => println!("Node {} content is ExternalContent", i + 1),
+             NodeContent::VRHeader(_) => println!("Node {} content is VRHeader", i + 1),
+         }
+     }
+
         let vr_header = resource.as_trait_object().generate_resource_header();
         let source_db_key = vr_header.reference_string();
         let resource_name = SourceFileType::clean_string_of_extension(resource.as_trait_object().name());

@@ -12,6 +12,11 @@ impl ShinkaiDB {
             workflow.generate_key()
         );
 
+        // Debug code
+        // Generate the key for the workflow using the profile and workflow's generated key
+        let generated_key = workflow.generate_key();
+        println!("Generated key: {}", generated_key);
+
         // Serialize the workflow to bytes
         let workflow_bytes = bincode::serialize(&workflow).expect("Failed to serialize workflow");
 
@@ -72,6 +77,17 @@ impl ShinkaiDB {
 
     /// Gets a specific Workflow for a user profile.
     pub fn get_workflow(&self, workflow_key: &str, profile: &ShinkaiName) -> Result<Workflow, ShinkaiDBError> {
+         // Debug code: List all workflows for the user
+         match self.list_all_workflows_for_user(profile) {
+            Ok(workflows) => {
+                println!("Current workflows for user {}: {:?}", profile, workflows);
+            }
+            Err(e) => {
+                println!("Failed to list workflows for user {}: {:?}", profile, e);
+            }
+        }
+        eprintln!("Getting workflow for key: {}", workflow_key);
+
         // Generate the key for the workflow using the profile and workflow key
         let key = format!(
             "userworkflows_{}_{}",

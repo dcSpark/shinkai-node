@@ -24,7 +24,7 @@ impl ShinkaiTool {
                 ShinkaiTool::Rust(r) => r.toolkit_type_name(),
                 ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
                 ShinkaiTool::JSLite(j) => j.toolkit_name.to_string(),
-                ShinkaiTool::Workflow(w) => w.get_name(),
+                ShinkaiTool::Workflow(w) => w.workflow.version.clone(),
             },
         );
 

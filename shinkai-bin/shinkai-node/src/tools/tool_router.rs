@@ -82,11 +82,10 @@ impl ToolRouter {
         // Add Rust tools
         Self::add_rust_tools(&mut routing_resource, generator.box_clone()).await;
 
-        // Add static workflows
-        Self::add_static_workflows(&mut routing_resource, generator.box_clone()).await;
-
         // Add JS tools
         if let Some(db) = db.upgrade() {
+            // Add static workflows
+            Self::add_static_workflows(&mut routing_resource, generator.box_clone(), db.clone(), profile.clone()).await;
             Self::add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
         }
 
@@ -114,11 +113,16 @@ impl ToolRouter {
         }
     }
 
-    async fn add_static_workflows(routing_resource: &mut MapVectorResource, generator: Box<dyn EmbeddingGenerator>) {
+    async fn add_static_workflows(
+        routing_resource: &mut MapVectorResource,
+        generator: Box<dyn EmbeddingGenerator>,
+        db: Arc<ShinkaiDB>,
+        profile: ShinkaiName,
+    ) {
         // Generate the static workflows
         let workflows = WorkflowTool::static_tools();
 
-        // Insert each workflow into the routing resource
+        // Insert each workflow into the routing resource and save to the database
         for workflow_tool in workflows {
             let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
 
@@ -131,6 +135,10 @@ impl ToolRouter {
                     .unwrap()
             };
 
+            eprintln!("Adding workflow: {}", shinkai_tool.name());
+            let key = shinkai_tool.tool_router_key();
+            eprintln!("Workflow Key: {}", key);
+
             let _ = routing_resource.insert_text_node(
                 shinkai_tool.tool_router_key(),
                 shinkai_tool.to_json().unwrap(),
@@ -138,6 +146,11 @@ impl ToolRouter {
                 embedding,
                 &vec![],
             );
+
+            // Save the workflow to the database
+            if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
+                eprintln!("Error saving workflow to DB: {:?}", e);
+            }
         }
     }
 
@@ -398,7 +411,9 @@ impl ToolRouter {
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiTool>, ToolError> {
         if !self.started {
-            self.start(embedding_generator, Arc::downgrade(&db), profile.clone()).await;
+            let _ = self
+                .start(embedding_generator, Arc::downgrade(&db), profile.clone())
+                .await;
         }
 
         let profile = profile
