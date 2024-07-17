@@ -1,6 +1,7 @@
 pub mod csv_parsing;
 pub mod docx_parsing;
 pub mod html_parsing;
+pub mod image_parsing;
 pub mod json_parsing;
 pub mod local_parsing;
 pub mod md_parsing;
