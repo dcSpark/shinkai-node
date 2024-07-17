@@ -8,6 +8,7 @@ use shinkai_node::llm_provider::providers::shared::openai::FunctionCall;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::shinkai_tool::ShinkaiTool;
 use shinkai_node::tools::tool_router::ToolRouter;
+use shinkai_node::tools::workflow_tool::WorkflowTool;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -338,13 +339,19 @@ async fn test_create_toolkit_from_file() {
     assert_eq!(read_tool.js_code, tool_definition.code.unwrap());
 
     // Verify the result field
-    assert_eq!(read_tool.result.result_type, tool_definition.result["type"].as_str().unwrap_or("object"));
+    assert_eq!(
+        read_tool.result.result_type,
+        tool_definition.result["type"].as_str().unwrap_or("object")
+    );
     assert_eq!(read_tool.result.properties, tool_definition.result["properties"]);
     assert_eq!(
         read_tool.result.required,
         tool_definition.result["required"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>())
+            .map(|arr| arr
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect::<Vec<String>>())
             .unwrap_or_default()
     );
 
@@ -376,13 +383,6 @@ async fn test_workflow_search() {
     let profile = default_test_profile();
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    // Add built-in toolkits
-    let tools = built_in_tools::get_tools();
-    for (name, definition) in tools {
-        let toolkit = JSToolkit::new(&name, vec![definition]);
-        shinkai_db.add_jstoolkit(toolkit, profile.clone()).unwrap();
-    }
-
     // Initialize ToolRouter
     let mut tool_router = ToolRouter::new();
     tool_router
@@ -395,11 +395,11 @@ async fn test_workflow_search() {
         .unwrap();
 
     // Perform a workflow search
-    let query = generator
-        .generate_embedding_default("summarize this")
+    let query = generator.generate_embedding_default("summarize this").await.unwrap();
+    let results = tool_router
+        .workflow_search(profile, Box::new(generator), shinkai_db, query, "summarize this", 5)
         .await
         .unwrap();
-    let results = tool_router.workflow_search(profile, Box::new(generator), shinkai_db, query, "summarize this", 5).await.unwrap();
 
     // Assert the results
     assert!(!results.is_empty(), "Expected to find workflows, but found none");
@@ -411,4 +411,41 @@ async fn test_workflow_search() {
     // for workflow in &results {
     //     println!("Found workflow: {}", workflow.name());
     // }
+}
+
+#[tokio::test]
+async fn test_get_static_workflow() {
+    init_default_tracing();
+    setup();
+
+    // Initialize the database and profile
+    let db_path = format!("db_tests/{}", "workflow_search");
+    let shinkai_db = Arc::new(ShinkaiDB::new(&db_path).unwrap());
+    let profile = default_test_profile();
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    // Initialize ToolRouter
+    let mut tool_router = ToolRouter::new();
+    tool_router
+        .start(
+            Box::new(generator.clone()),
+            Arc::downgrade(&shinkai_db),
+            profile.clone(),
+        )
+        .await
+        .unwrap();
+
+    let workflows = WorkflowTool::static_tools();
+    let workflow = workflows.first().unwrap();
+
+    let result = shinkai_db.get_workflow(&workflow.get_db_key(), &profile);
+
+    // Assert the results
+    assert!(result.is_ok(), "Expected to find the workflow, but it was not found");
+    let found_workflow = result.unwrap();
+    assert_eq!(
+        found_workflow.name,
+        "ExtensiveSummary",
+        "Expected to find a workflow with 'ExtensiveSummary' in the name"
+    );
 }

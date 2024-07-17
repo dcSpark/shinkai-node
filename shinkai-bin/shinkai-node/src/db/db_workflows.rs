@@ -12,13 +12,8 @@ impl ShinkaiDB {
             workflow.generate_key()
         );
 
-        // Debug code
-        // Generate the key for the workflow using the profile and workflow's generated key
-        let generated_key = workflow.generate_key();
-        println!("Generated key: {}", generated_key);
-
-        // Serialize the workflow to bytes
-        let workflow_bytes = bincode::serialize(&workflow).expect("Failed to serialize workflow");
+        // Serialize the workflow to bytes using serde_json
+        let workflow_bytes = serde_json::to_vec(&workflow).expect("Failed to serialize workflow");
 
         // Use shared CFs
         let cf_toolkits = self.get_cf_handle(Topic::Toolkits).unwrap();
@@ -67,7 +62,7 @@ impl ShinkaiDB {
 
         for item in iterator {
             let (_, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
-            let workflow: Workflow = bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
+            let workflow: Workflow = serde_json::from_slice(&value).map_err(ShinkaiDBError::JsonSerializationError)?;
 
             workflows.push(workflow);
         }
@@ -77,17 +72,6 @@ impl ShinkaiDB {
 
     /// Gets a specific Workflow for a user profile.
     pub fn get_workflow(&self, workflow_key: &str, profile: &ShinkaiName) -> Result<Workflow, ShinkaiDBError> {
-         // Debug code: List all workflows for the user
-         match self.list_all_workflows_for_user(profile) {
-            Ok(workflows) => {
-                println!("Current workflows for user {}: {:?}", profile, workflows);
-            }
-            Err(e) => {
-                println!("Failed to list workflows for user {}: {:?}", profile, e);
-            }
-        }
-        eprintln!("Getting workflow for key: {}", workflow_key);
-
         // Generate the key for the workflow using the profile and workflow key
         let key = format!(
             "userworkflows_{}_{}",
@@ -104,8 +88,8 @@ impl ShinkaiDB {
             .get_cf(cf_toolkits, key.as_bytes())?
             .ok_or_else(|| ShinkaiDBError::WorkflowNotFound(format!("Workflow not found for key: {}", workflow_key)))?;
 
-        // Deserialize the workflow from bytes
-        let workflow: Workflow = bincode::deserialize(&workflow_bytes)
+        // Deserialize the workflow from bytes using serde_json
+        let workflow: Workflow = serde_json::from_slice(&workflow_bytes)
             .map_err(|_| ShinkaiDBError::DeserializationFailed("Failed to deserialize workflow".to_string()))?;
 
         Ok(workflow)

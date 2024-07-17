@@ -18,17 +18,22 @@ pub enum ShinkaiTool {
 impl ShinkaiTool {
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
-        let (name, toolkit_name) = (
-            self.name(),
-            match self {
-                ShinkaiTool::Rust(r) => r.toolkit_type_name(),
-                ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
-                ShinkaiTool::JSLite(j) => j.toolkit_name.to_string(),
-                ShinkaiTool::Workflow(w) => w.workflow.version.clone(),
-            },
-        );
-
-        Self::gen_router_key(name, toolkit_name)
+        match self {
+            // so it generates name:::version
+            ShinkaiTool::Workflow(w) => Self::gen_router_key(w.workflow.version.clone(), self.name()),
+            _ => {
+                let (name, toolkit_name) = (
+                    self.name(),
+                    match self {
+                        ShinkaiTool::Rust(r) => r.toolkit_type_name(),
+                        ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
+                        ShinkaiTool::JSLite(j) => j.toolkit_name.to_string(),
+                        _ => unreachable!(), // This case is already handled above
+                    },
+                );
+                Self::gen_router_key(name, toolkit_name)
+            }
+        }
     }
 
     /// Generate the key that this tool will be stored under in the tool router

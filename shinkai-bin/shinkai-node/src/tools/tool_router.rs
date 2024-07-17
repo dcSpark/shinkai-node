@@ -15,13 +15,15 @@ use keyphrases::KeyPhraseExtractor;
 use serde_json;
 use shinkai_dsl::sm_executor::AsyncFunction;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embedding_generator::{self, EmbeddingGenerator};
+use shinkai_tools_runner::built_in_tools;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
 
+use super::js_toolkit::JSToolkit;
 use super::shinkai_tool::ShinkaiTool;
 use super::workflow_tool::WorkflowTool;
 
@@ -82,10 +84,16 @@ impl ToolRouter {
         // Add Rust tools
         Self::add_rust_tools(&mut routing_resource, generator.box_clone()).await;
 
-        // Add JS tools
+        // Add JS tools and workflows
         if let Some(db) = db.upgrade() {
             // Add static workflows
-            Self::add_static_workflows(&mut routing_resource, generator.box_clone(), db.clone(), profile.clone()).await;
+            Self::add_static_workflows(
+                &mut routing_resource,
+                generator.box_clone(),
+                db.clone(),
+                profile.clone(),
+            )
+            .await;
             Self::add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
         }
 
@@ -160,6 +168,14 @@ impl ToolRouter {
         db: Arc<ShinkaiDB>,
         profile: ShinkaiName,
     ) {
+        // Add static JS tools
+        let tools = built_in_tools::get_tools();
+        for (name, definition) in tools {
+            let toolkit = JSToolkit::new(&name, vec![definition]);
+            db.add_jstoolkit(toolkit.clone(), profile.clone()).unwrap();
+        }
+
+        // Add user-specific JS tools and static tools
         match db.all_tools_for_user(&profile) {
             Ok(tools) => {
                 for tool in tools {

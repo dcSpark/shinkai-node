@@ -107,16 +107,6 @@ impl JobManager {
             if !tool_router.is_started() {
                 let start_time = Instant::now(); // Start time measurement
 
-                // Remove all toolkits for the user
-                db.remove_all_toolkits_for_user(&user_profile).unwrap();
-
-                // Add the tools again
-                let tools = built_in_tools::get_tools();
-                for (name, definition) in tools {
-                    let toolkit = JSToolkit::new(&name, vec![definition]);
-                    db.add_jstoolkit(toolkit, user_profile.clone()).unwrap();
-                }
-
                 if let Err(e) = tool_router
                     .start(Box::new(generator.clone()), Arc::downgrade(&db), user_profile.clone())
                     .await
