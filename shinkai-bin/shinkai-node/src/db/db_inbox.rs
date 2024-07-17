@@ -510,6 +510,7 @@ impl ShinkaiDB {
             };
 
             let mut job_scope_value: Option<Value> = None;
+            let mut datetime_created = String::new();
 
             // Determine if the inbox is finished
             let is_finished = if inbox_id.starts_with("job_inbox::") {
@@ -518,6 +519,7 @@ impl ShinkaiDB {
                         let job = self.get_job(&unique_id)?;
                         let scope_value = job.scope.to_json_value_minimal()?;
                         job_scope_value = Some(scope_value);
+                        datetime_created.clone_from(&job.datetime_created);
                         job.is_finished || job.is_hidden
                     }
                     _ => false,
@@ -554,6 +556,7 @@ impl ShinkaiDB {
                 inbox_id: inbox_id.clone(),
                 custom_name,
                 last_message,
+                datetime_created,
                 is_finished,
                 job_scope: job_scope_value,
                 agent: agent_subset,

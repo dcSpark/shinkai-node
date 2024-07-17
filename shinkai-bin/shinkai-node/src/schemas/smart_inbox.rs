@@ -23,6 +23,7 @@ impl LLMProviderSubset {
 pub struct SmartInbox {
     pub inbox_id: String,
     pub custom_name: String,
+    pub datetime_created: String,
     pub last_message: Option<ShinkaiMessage>,
     pub is_finished: bool,
     pub job_scope: Option<Value>,
