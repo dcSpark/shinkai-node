@@ -1,6 +1,6 @@
-use crate::llm_provider::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_manager::JobManager;
 use crate::vector_fs::vector_fs::VectorFS;
 use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -15,7 +15,6 @@ use shinkai_vector_resources::vector_resource::{
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-
 
 impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
@@ -89,7 +88,6 @@ impl JobManager {
 
             // Start looping through the vector search results for this keyword
             let mut keyword_node_inserted = false;
-            let mut from_unique_vr = false;
             for group in keyword_ret_nodes_groups.iter() {
                 if let Some(first_group_node) = group.first() {
                     if !ret_groups.iter().any(|ret_group| group == ret_group) {
@@ -104,7 +102,7 @@ impl JobManager {
                             keyword_node_inserted = true;
 
                             // Check if this keyword node is from a unique VR
-                            from_unique_vr =
+                            let from_unique_vr =
                                 !included_vrs.contains(&first_group_node.resource_header.reference_string());
                             // Update the included_vrs
                             included_vrs.push(first_group_node.resource_header.reference_string());
@@ -249,7 +247,7 @@ impl JobManager {
     /// Returns the proximity groups of retrieved nodes.
     #[allow(clippy::too_many_arguments)]
     async fn internal_job_scope_vector_search_groups(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query: Embedding,
@@ -376,11 +374,7 @@ impl JobManager {
                     ret_node.score = deep_search_scores_average_out(
                         None,
                         resource_score,
-                        resource
-                            .as_trait_object()
-                            .description()
-                            .unwrap_or("")
-                            .to_string(),
+                        resource.as_trait_object().description().unwrap_or("").to_string(),
                         ret_node.score,
                         ret_node.node.get_text_content().unwrap_or("").to_string(),
                     );

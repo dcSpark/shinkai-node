@@ -387,10 +387,6 @@ async fn test_vector_fs_saving_reading() {
     // Animal facts search
     let query_string = "What do you know about camels?".to_string();
     println!("Query String: {}", query_string);
-    let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string.clone(), &reader)
-        .await
-        .unwrap();
     let res = vector_fs
         .deep_vector_search(&reader, query_string.clone(), 100, 100)
         .await
@@ -607,7 +603,7 @@ async fn test_vector_fs_operations() {
 
     // Create a Vector Resource and source file to be added into the VectorFS
     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
-    let mut resource = BaseVectorResource::Document(doc_resource);
+    let resource = BaseVectorResource::Document(doc_resource);
     let resource_name = resource.as_trait_object().name();
     let resource_ref_string = resource.as_trait_object().reference_string();
     let resource_merkle_root = resource.as_trait_object().get_merkle_root();
@@ -746,7 +742,7 @@ async fn test_vector_fs_operations() {
     assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
     assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     let node = vector_fs
         ._retrieve_core_resource_node_at_path(dest_reader.path.clone(), &dest_reader.profile)
@@ -841,7 +837,7 @@ async fn test_vector_fs_operations() {
         .await
         .unwrap();
 
-    let mut retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
+    let retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
     let old_description = retrieved_vr.as_trait_object().description();
 
     let new_description = "New description".to_string();
@@ -850,7 +846,7 @@ async fn test_vector_fs_operations() {
         .await
         .unwrap();
 
-    let mut updated_retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
+    let updated_retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
 
     assert_ne!(old_description, updated_retrieved_vr.as_trait_object().description());
     assert_eq!(
@@ -865,7 +861,7 @@ async fn test_vector_fs_operations() {
     // VRPack creation & unpacking into VecFS tests
     //
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     let reader = orig_writer
         .new_reader_copied_data(VRPath::root(), &mut vector_fs)
@@ -892,7 +888,7 @@ async fn test_vector_fs_operations() {
         .unwrap();
 
     println!("\n\n\nVectorFS:");
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     let vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
 
@@ -912,10 +908,6 @@ async fn test_vector_fs_operations() {
         .is_err());
 
     // Prepare a writer for the 'unpacked' folder
-    let root_writer = vector_fs
-        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
-        .await
-        .unwrap();
     let unpack_writer = vector_fs
         .new_writer(default_test_profile(), unpack_path.clone(), default_test_profile())
         .await
@@ -947,12 +939,12 @@ async fn test_vector_fs_operations() {
     assert_eq!(simplified_folder.clone().as_folder().unwrap().child_items.len(), 1);
     assert_eq!(simplified_folder.as_folder().unwrap().child_folders.len(), 1);
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     // Compare original vrpack with new re-created vrpack
 
     let old_vrpack = vrpack.clone();
-    let mut old_vrpack_contents = old_vrpack.unpack_all_vrkais().unwrap();
+    let old_vrpack_contents = old_vrpack.unpack_all_vrkais().unwrap();
 
     let reader = orig_writer
         .new_reader_copied_data(
@@ -961,8 +953,8 @@ async fn test_vector_fs_operations() {
         )
         .await
         .unwrap();
-    let mut new_vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
-    let mut new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
+    let new_vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
+    let new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
 
     println!("\n\nOld VRPack:");
     old_vrpack.print_internal_structure(None);
@@ -998,7 +990,7 @@ async fn test_vector_fs_operations() {
         .new_writer_copied_data(VRPath::root().push_cloned("unpacked".to_string()), &mut vector_fs)
         .await
         .unwrap();
-    vector_fs.delete_folder(&unpack_writer).await.unwrap();
+    vector_fs.delete_folder(&deletion_writer).await.unwrap();
 
     //
     // Move/Deletion Tests for Folders

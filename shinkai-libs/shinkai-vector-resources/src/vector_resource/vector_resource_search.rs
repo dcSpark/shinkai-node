@@ -260,7 +260,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             &embedding_generator.api_url,
                             embedding_generator.api_key.clone(),
                         );
-                        query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
+                        query_embedding = new_generator.generate_embedding_default(&input_query).await?;
                         input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
                     }
 
