@@ -15,13 +15,15 @@ use keyphrases::KeyPhraseExtractor;
 use serde_json;
 use shinkai_dsl::sm_executor::AsyncFunction;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embedding_generator::{self, EmbeddingGenerator};
+use shinkai_tools_runner::built_in_tools;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
 
+use super::js_toolkit::JSToolkit;
 use super::shinkai_tool::ShinkaiTool;
 use super::workflow_tool::WorkflowTool;
 
@@ -82,11 +84,16 @@ impl ToolRouter {
         // Add Rust tools
         Self::add_rust_tools(&mut routing_resource, generator.box_clone()).await;
 
-        // Add static workflows
-        Self::add_static_workflows(&mut routing_resource, generator.box_clone()).await;
-
-        // Add JS tools
+        // Add JS tools and workflows
         if let Some(db) = db.upgrade() {
+            // Add static workflows
+            Self::add_static_workflows(
+                &mut routing_resource,
+                generator.box_clone(),
+                db.clone(),
+                profile.clone(),
+            )
+            .await;
             Self::add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
         }
 
@@ -114,11 +121,16 @@ impl ToolRouter {
         }
     }
 
-    async fn add_static_workflows(routing_resource: &mut MapVectorResource, generator: Box<dyn EmbeddingGenerator>) {
+    async fn add_static_workflows(
+        routing_resource: &mut MapVectorResource,
+        generator: Box<dyn EmbeddingGenerator>,
+        db: Arc<ShinkaiDB>,
+        profile: ShinkaiName,
+    ) {
         // Generate the static workflows
         let workflows = WorkflowTool::static_tools();
 
-        // Insert each workflow into the routing resource
+        // Insert each workflow into the routing resource and save to the database
         for workflow_tool in workflows {
             let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
 
@@ -138,6 +150,11 @@ impl ToolRouter {
                 embedding,
                 &vec![],
             );
+
+            // Save the workflow to the database
+            if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
+                eprintln!("Error saving workflow to DB: {:?}", e);
+            }
         }
     }
 
@@ -147,6 +164,14 @@ impl ToolRouter {
         db: Arc<ShinkaiDB>,
         profile: ShinkaiName,
     ) {
+        // Add static JS tools
+        let tools = built_in_tools::get_tools();
+        for (name, definition) in tools {
+            let toolkit = JSToolkit::new(&name, vec![definition]);
+            db.add_jstoolkit(toolkit.clone(), profile.clone()).unwrap();
+        }
+
+        // Add user-specific JS tools and static tools
         match db.all_tools_for_user(&profile) {
             Ok(tools) => {
                 for tool in tools {
@@ -398,7 +423,9 @@ impl ToolRouter {
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiTool>, ToolError> {
         if !self.started {
-            self.start(embedding_generator, Arc::downgrade(&db), profile.clone()).await;
+            let _ = self
+                .start(embedding_generator, Arc::downgrade(&db), profile.clone())
+                .await;
         }
 
         let profile = profile
