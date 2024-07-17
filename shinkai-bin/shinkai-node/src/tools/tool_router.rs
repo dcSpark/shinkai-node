@@ -143,10 +143,6 @@ impl ToolRouter {
                     .unwrap()
             };
 
-            eprintln!("Adding workflow: {}", shinkai_tool.name());
-            let key = shinkai_tool.tool_router_key();
-            eprintln!("Workflow Key: {}", key);
-
             let _ = routing_resource.insert_text_node(
                 shinkai_tool.tool_router_key(),
                 shinkai_tool.to_json().unwrap(),
