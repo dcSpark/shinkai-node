@@ -1,6 +1,7 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
@@ -1302,4 +1303,61 @@ async fn local_docx_parsing_test() {
         .get_text_content()
         .unwrap()
         .contains("open and finalized decisions"));
+}
+
+#[tokio::test]
+async fn metadata_parsing_with_unstructured_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "parsed_channels.md";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        FileParser::Unstructured(UnstructuredAPI::new_default()),
+    )
+    .await
+    .unwrap();
+
+    resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, false, false);
+
+    // Perform vector search
+    let query_string = "Trading Party on OpenSea".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    let node = &results
+        .iter()
+        .find(|node| {
+            node.node
+                .get_text_content()
+                .unwrap()
+                .contains("KoL Token has successfully launched")
+        })
+        .unwrap()
+        .node;
+
+    // Verify templates in text are replaced
+    assert!(node
+        .get_text_content()
+        .unwrap()
+        .contains("Timestamp: 2024-04-15T18:32:45+00:00"));
+    assert!(node.get_text_content().unwrap().contains("Recasts: 0"));
+
+    // Verify metadata is added
+    assert_eq!(
+        node.metadata.as_ref().unwrap().get("datetime").unwrap(),
+        "2024-04-15T18:32:45+00:00"
+    );
+    assert_eq!(node.metadata.as_ref().unwrap().get("recasts").unwrap(), "0");
+    assert_eq!(
+        node.metadata.as_ref().unwrap().get("hash").unwrap(),
+        "0x43b9a4bc24246855e3d5f4459a7a3d79e50505e6"
+    );
 }
