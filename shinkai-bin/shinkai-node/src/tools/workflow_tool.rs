@@ -61,11 +61,10 @@ impl WorkflowTool {
 
 impl WorkflowTool {
     pub fn static_tools() -> Vec<Self> {
-        let mut tools = Vec::new();
-        tools.push(Self::get_extensive_summary_workflow());
-        tools.push(Self::get_hyde_inference_workflow());
-        // Add more workflows as needed
-        tools
+        vec![
+            Self::get_extensive_summary_workflow(),
+            Self::get_hyde_inference_workflow(),
+        ]
     }
 
     fn get_extensive_summary_workflow() -> Self {
