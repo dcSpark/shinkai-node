@@ -30,7 +30,7 @@ use crate::llm_provider::{
 };
 
 use super::{
-    generic_functions,
+    generic_functions::{self},
     split_text_for_llm::{split_text_at_token_limit, split_text_for_llm},
 };
 
@@ -131,6 +131,26 @@ impl<'a> DslChain<'a> {
         self.functions.insert(
             "inference_no_ws".to_string(),
             Box::new(InferenceFunction {
+                context: self.context.clone_box(),
+                use_ws_manager: false,
+            }),
+        );
+    }
+
+    pub fn add_opinionated_inference_function(&mut self) {
+        self.functions.insert(
+            "opinionated_inference".to_string(),
+            Box::new(OpinionatedInferenceFunction {
+                context: self.context.clone_box(),
+                use_ws_manager: true,
+            }),
+        );
+    }
+
+    pub fn add_opinionated_inference_no_ws_function(&mut self) {
+        self.functions.insert(
+            "opinionated_inference_no_ws".to_string(),
+            Box::new(OpinionatedInferenceFunction {
                 context: self.context.clone_box(),
                 use_ws_manager: false,
             }),
@@ -238,7 +258,9 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("process_embeddings_in_job_scope", |context, args| {
             generic_functions::process_embeddings_in_job_scope(&*context, args)
         });
-        // TODO: add for local search of nodes (embeddings)
+        self.add_generic_function("search_embeddings_in_job_scope", |context, args| {
+            generic_functions::search_embeddings_in_job_scope(&*context, args)
+        });
         // TODO: add for parse into chunks a text (so it fits in the context length of the model)
     }
 }

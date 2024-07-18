@@ -62,7 +62,13 @@ impl WorkflowTool {
 impl WorkflowTool {
     pub fn static_tools() -> Vec<Self> {
         let mut tools = Vec::new();
+        tools.push(Self::get_extensive_summary_workflow());
+        tools.push(Self::get_hyde_inference_workflow());
+        // Add more workflows as needed
+        tools
+    }
 
+    fn get_extensive_summary_workflow() -> Self {
         let raw_workflow = r#"
             workflow ExtensiveSummary v0.1 {
                 step Initialize {
@@ -78,10 +84,32 @@ impl WorkflowTool {
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Reviews in depth all the content to generate a summary.".to_string());
 
-        tools.push(WorkflowTool::new(workflow));
+        WorkflowTool::new(workflow)
+    }
 
-        // Add more workflows as needed
-        tools
+    fn get_hyde_inference_workflow() -> Self {
+        let raw_workflow = r#"
+            workflow HydeInference v0.1 {
+                step Initialize {
+                    $PROMPT = "write a passage to answer the question: "
+                    $HYDE_PROMPT = call concat($PROMPT, $INPUT)
+                    $HYDE_PASSAGE = call inference_no_ws($HYDE_PROMPT)
+                    $HYDE_INPUT = call concat($INPUT, ". ", $HYDE_PASSAGE )
+                    $EMBEDDINGS = call search_embeddings_in_job_scope($HYDE_INPUT)
+                }
+                step Summarize {
+                    $CONNECTOR = "\nLeverage the following information to answer the previous query: --- start ---"
+                    $NEW_INPUT = call concat($INPUT, $CONNECTOR, $EMBEDDINGS) 
+                    $RESULT = call inference($NEW_INPUT)
+                }
+            }
+        "#;
+
+        let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
+        workflow.description =
+            Some("Generates a passage to answer a question and uses embeddings to refine the answer.".to_string());
+
+        WorkflowTool::new(workflow)
     }
 }
 
