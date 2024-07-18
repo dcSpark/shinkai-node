@@ -30,7 +30,7 @@ use crate::llm_provider::{
 };
 
 use super::{
-    generic_functions,
+    generic_functions::{self},
     split_text_for_llm::{split_text_at_token_limit, split_text_for_llm},
 };
 
@@ -131,6 +131,26 @@ impl<'a> DslChain<'a> {
         self.functions.insert(
             "inference_no_ws".to_string(),
             Box::new(InferenceFunction {
+                context: self.context.clone_box(),
+                use_ws_manager: false,
+            }),
+        );
+    }
+
+    pub fn add_opinionated_inference_function(&mut self) {
+        self.functions.insert(
+            "opinionated_inference".to_string(),
+            Box::new(OpinionatedInferenceFunction {
+                context: self.context.clone_box(),
+                use_ws_manager: true,
+            }),
+        );
+    }
+
+    pub fn add_opinionated_inference_no_ws_function(&mut self) {
+        self.functions.insert(
+            "opinionated_inference_no_ws".to_string(),
+            Box::new(OpinionatedInferenceFunction {
                 context: self.context.clone_box(),
                 use_ws_manager: false,
             }),
@@ -238,7 +258,9 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("process_embeddings_in_job_scope", |context, args| {
             generic_functions::process_embeddings_in_job_scope(&*context, args)
         });
-        // TODO: add for local search of nodes (embeddings)
+        self.add_generic_function("search_embeddings_in_job_scope", |context, args| {
+            generic_functions::search_embeddings_in_job_scope(&*context, args)
+        });
         // TODO: add for parse into chunks a text (so it fits in the context length of the model)
     }
 }
@@ -422,6 +444,21 @@ impl AsyncFunction for MultiInferenceFunction {
             .split(":::")
             .map(|s| s.replace(":::", ""))
             .collect::<Vec<String>>();
+
+        // If everything fits in one message
+        if split_texts.len() == 1 {
+            let inference_args = vec![
+                Box::new(split_texts[0].clone()) as Box<dyn Any + Send>,
+                Box::new(custom_system_prompt.clone()) as Box<dyn Any + Send>,
+                Box::new(custom_user_prompt.clone()) as Box<dyn Any + Send>,
+            ];
+            let response = self.inference_function_ws.call(inference_args).await?;
+            let response_text = response
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::ExecutionError("Invalid response from inference".to_string()))?
+                .replace(":::", "");
+            return Ok(Box::new(response_text));
+        }
 
         let mut responses = Vec::new();
         let agent = self.context.agent();

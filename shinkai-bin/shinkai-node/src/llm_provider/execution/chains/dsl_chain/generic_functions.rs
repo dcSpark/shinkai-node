@@ -409,13 +409,13 @@ pub fn process_embeddings_in_job_scope(
     Ok(Box::new(result))
 }
 
-pub async fn search_embeddings_in_job_scope(
+pub fn search_embeddings_in_job_scope(
     context: &dyn InferenceChainContextTrait,
     args: Vec<Box<dyn Any + Send>>,
 ) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 3 {
+    if args.len() < 1 || args.len() > 3 {
         return Err(WorkflowError::InvalidArgument(
-            "Expected 3 arguments: query_text, num_of_top_results, max_tokens_in_prompt".to_string(),
+            "Expected 1 to 3 arguments: query_text, [num_of_top_results, max_tokens_in_prompt]".to_string(),
         ));
     }
 
@@ -423,49 +423,65 @@ pub async fn search_embeddings_in_job_scope(
         .downcast_ref::<String>()
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for query_text".to_string()))?
         .clone();
-    let num_of_top_results = *args[1]
-        .downcast_ref::<u64>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for num_of_top_results".to_string()))?;
-    let max_tokens_in_prompt = *args[2]
-        .downcast_ref::<usize>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for max_tokens_in_prompt".to_string()))?;
+    let num_of_top_results = if args.len() > 1 {
+        *args[1]
+            .downcast_ref::<u64>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for num_of_top_results".to_string()))?
+    } else {
+        10
+    };
+    let max_tokens_in_prompt = if args.len() > 2 {
+        *args[2]
+            .downcast_ref::<usize>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for max_tokens_in_prompt".to_string()))?
+    } else {
+        4000
+    };
 
-    let db = context.db();
-    let vector_fs = context.vector_fs();
-    let user_profile = context.user_profile();
-    let job_scope = context.full_job().scope.clone();
-    let generator = context.generator();
+    let result = tokio::task::block_in_place(|| {
+        tokio::runtime::Runtime::new()
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?
+            .block_on(async {
+                let db = context.db();
+                let vector_fs = context.vector_fs();
+                let user_profile = context.user_profile();
+                let job_scope = context.full_job().scope.clone();
+                let generator = context.generator();
 
-    let result = JobManager::keyword_chained_job_scope_vector_search(
-        db,
-        vector_fs,
-        &job_scope,
-        query_text,
-        user_profile,
-        generator.clone(),
-        num_of_top_results,
-        max_tokens_in_prompt,
-    )
-    .await;
+                let result = JobManager::keyword_chained_job_scope_vector_search(
+                    db,
+                    vector_fs,
+                    &job_scope,
+                    query_text,
+                    user_profile,
+                    generator.clone(),
+                    num_of_top_results,
+                    max_tokens_in_prompt,
+                )
+                .await;
 
-    match result {
-        Ok((retrieved_nodes, _intro_text)) => {
-            let formatted_results = retrieved_nodes
-                .iter()
-                .map(|node| node.node.get_text_content().unwrap_or_default().to_string())
-                .collect::<Vec<String>>()
-                .join(":::");
-            Ok(Box::new(formatted_results))
-        }
-        Err(e) => {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Error,
-                &format!("Error during vector search: {}", e),
-            );
-            Err(WorkflowError::ExecutionError(e.to_string()))
-        }
-    }
+                match result {
+                    Ok((retrieved_nodes, _intro_text)) => {
+                        let formatted_results = retrieved_nodes
+                            .iter()
+                            .map(|node| node.node.get_text_content().unwrap_or_default().to_string())
+                            .collect::<Vec<String>>()
+                            .join(":::");
+                        Ok::<_, WorkflowError>(formatted_results)
+                    }
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            &format!("Error during vector search: {}", e),
+                        );
+                        Err(WorkflowError::ExecutionError(e.to_string()))
+                    }
+                }
+            })
+    })?;
+
+    Ok(Box::new(result))
 }
 
 #[cfg(test)]
@@ -1010,7 +1026,10 @@ mod tests {
             Box::new(num_of_top_results),
             Box::new(max_tokens_in_prompt),
         ];
-        let result = search_embeddings_in_job_scope(&context, args).await.unwrap();
+        let result = tokio::task::spawn_blocking(move || search_embeddings_in_job_scope(&context, args))
+            .await
+            .unwrap()
+            .unwrap();
 
         // Validate the search results
         let search_results = result.downcast_ref::<String>().unwrap();
