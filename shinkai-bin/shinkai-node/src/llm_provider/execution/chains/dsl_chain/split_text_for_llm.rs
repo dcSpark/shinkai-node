@@ -6,10 +6,6 @@ pub fn split_text_for_llm(
     context: &dyn InferenceChainContextTrait,
     args: Vec<Box<dyn Any + Send>>,
 ) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 2 {
-        return Err(WorkflowError::InvalidArgument("Expected 3 arguments".to_string()));
-    }
-
     let input1 = args[0]
         .downcast_ref::<String>()
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for input1".to_string()))?
