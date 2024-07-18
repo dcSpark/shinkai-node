@@ -17,6 +17,10 @@ impl WorkflowTool {
         }
     }
 
+    pub fn get_db_key(&self) -> String {
+        format!("{}:::{}", self.workflow.name, self.workflow.version)
+    }
+
     pub fn get_name(&self) -> String {
         self.workflow.name.clone()
     }
@@ -108,5 +112,25 @@ mod tests {
 
         // Optionally, you can add assertions to check the serialized output
         assert!(serialized.contains("ExtensiveSummary"));
+    }
+
+    #[test]
+    fn test_get_db_key() {
+        let raw_workflow = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            }
+        "#;
+
+        let workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
+        let workflow_tool = WorkflowTool::new(workflow);
+
+        assert_eq!(workflow_tool.get_db_key(), "ExtensiveSummary:::v0.1");
     }
 }

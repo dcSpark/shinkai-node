@@ -3,8 +3,7 @@ mod tests {
     use pest::Parser;
     use shinkai_dsl::{
         dsl_schemas::{
-            Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, WorkflowParser,
-            WorkflowValue,
+            Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, Workflow, WorkflowParser, WorkflowValue
         },
         parser::{parse_action, parse_expression, parse_step, parse_step_body, parse_step_body_item, parse_workflow},
     };
@@ -284,5 +283,33 @@ mod tests {
             }
             _ => panic!("Expected Condition"),
         }
+    }
+
+
+    #[test]
+    fn test_parse_serialize_deserialize_workflow() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            }
+        "#;
+        let result = parse_workflow(input);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        // Serialize the workflow
+        let serialized_workflow = serde_json::to_string(&workflow).expect("Failed to serialize workflow");
+
+        // Deserialize the workflow
+        let deserialized_workflow: Workflow = serde_json::from_str(&serialized_workflow).expect("Failed to deserialize workflow");
+
+        // Deep comparison
+        assert_eq!(workflow, deserialized_workflow);
     }
 }

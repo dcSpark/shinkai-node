@@ -1,129 +1,79 @@
+use std::collections::HashMap;
+
 use super::LocalFileParser;
+use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::file_parser::file_parser_types::TextGroup;
 use crate::resource_errors::VRError;
-
 use serde_json::Value as JsonValue;
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
-    pub fn process_json_file(file_buffer: Vec<u8>, _max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
+    pub fn process_json_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
         let json_string = String::from_utf8(file_buffer.clone()).map_err(|_| VRError::FailedJSONParsing)?;
-        let _json: JsonValue = serde_json::from_str(&json_string)?;
+        let json: JsonValue = serde_json::from_str(&json_string)?;
 
-        Ok(vec![])
+        let text_groups = Self::process_container_json_value(&json, max_node_text_size);
+
+        Ok(text_groups)
     }
 
     /// Recursively processes a JSON value to build a hierarchy of TextGroups.
     pub fn process_container_json_value(json: &JsonValue, max_node_text_size: u64) -> Vec<TextGroup> {
-        let mut accumulated_string: String = String::new();
+        let fn_merge_groups = |mut acc: Vec<TextGroup>, current_group: TextGroup| {
+            if let Some(prev_group) = acc.last_mut() {
+                if prev_group.sub_groups.is_empty()
+                    && current_group.sub_groups.is_empty()
+                    && prev_group.text.len() + current_group.text.len() < max_node_text_size as usize
+                {
+                    prev_group.text.push_str(format!("\n{}", current_group.text).as_str());
+                    return acc;
+                }
+            }
+
+            acc.push(current_group);
+            acc
+        };
+
         match json {
             JsonValue::Object(map) => map
                 .iter()
-                .map(|(key, value)| {
-                    let mut text_group = TextGroup::new_empty();
-                    text_group.text = key.clone();
-                    match value {
-                        JsonValue::Object(_) | JsonValue::Array(_) => {
-                            text_group.sub_groups = Self::process_container_json_value(value, max_node_text_size);
-                        }
-                        _ => {
-                            // Check if the content is not too large, then try to append it to accumulated_string
-                            if let Some(updated) =
-                                Self::process_content_json_value(key, json, &mut accumulated_string, max_node_text_size)
-                            {
-                                accumulated_string = updated;
-                            } else {
-                            }
-                        }
+                .flat_map(|(key, value)| match value {
+                    JsonValue::Object(_) | JsonValue::Array(_) => {
+                        let mut text_group = TextGroup::new_empty();
+                        text_group.text = key.clone();
+                        text_group.sub_groups = Self::process_container_json_value(value, max_node_text_size);
+
+                        vec![text_group]
                     }
-                    text_group
+                    _ => Self::process_content_json_value(Some(key), value, max_node_text_size),
                 })
-                .collect(),
+                .fold(Vec::new(), fn_merge_groups),
             JsonValue::Array(arr) => arr
                 .iter()
                 .flat_map(|value| Self::process_container_json_value(value, max_node_text_size))
-                .collect(),
-            _ => vec![],
+                .fold(Vec::new(), fn_merge_groups),
+            _ => Self::process_content_json_value(None, json, max_node_text_size),
         }
     }
 
-    fn process_content_json_value(
-        key: &str,
-        json: &JsonValue,
-        _accumulated_string: &String,
-        max_node_text_size: u64,
-    ) -> Option<String> {
-        let formatted_string = format!("{}: {}", key, json.to_string());
+    fn process_content_json_value(key: Option<&str>, value: &JsonValue, max_node_text_size: u64) -> Vec<TextGroup> {
+        let mut text_groups = Vec::new();
 
-        if formatted_string.len() > max_node_text_size as usize {
-            None
+        let text = match key {
+            Some(key) => format!("{}: {}", key, value.to_string()),
+            None => value.to_string(),
+        };
+
+        if text.len() as u64 > max_node_text_size {
+            let chunks = ShinkaiFileParser::split_into_chunks(&text, max_node_text_size as usize);
+
+            for chunk in chunks {
+                text_groups.push(TextGroup::new(chunk, HashMap::new(), vec![], None));
+            }
         } else {
-            Some(formatted_string)
+            text_groups.push(TextGroup::new(text, HashMap::new(), vec![], None));
         }
+
+        text_groups
     }
 }
-
-// /// Recursively processes a JSON value to build a hierarchy of TextGroups.
-// pub fn process_container_json_value(json: &JsonValue, max_node_text_size: u64) -> Vec<TextGroup> {
-//     let mut text_groups: Vec<TextGroup> = Vec::new();
-//     let mut accumulated_string: String = String::new();
-
-//     match json {
-//         JsonValue::Object(map) => {
-//             for (key, value) in map {
-//                 match value {
-//                     JsonValue::Object(_) | JsonValue::Array(_) => {
-//                         if !accumulated_string.is_empty() {
-//                             let mut text_group = TextGroup::new_empty();
-//                             text_group.text = std::mem::take(&mut accumulated_string);
-//                             text_groups.push(text_group);
-//                         }
-//                         let mut text_group = TextGroup::new_empty();
-//                         text_group.text = key.clone();
-//                         text_group.sub_groups = Self::process_container_json_value(value, max_node_text_size);
-//                         text_groups.push(text_group);
-//                     } else {
-//                         let content = format!("{}: {}", key, value.to_string());
-//                         if accumulated_string.len() + content.len() > max_node_text_size as usize {
-//                             if !accumulated_string.is_empty() {
-//                                 let mut text_group = TextGroup::new_empty();
-//                                 text_group.text = std::mem::take(&mut accumulated_string);
-//                                 text_groups.push(text_group);
-//                             }
-//                             if content.len() > max_node_text_size as usize {
-//                                 let mut part = content.chars().take(max_node_text_size as usize).collect::<String>();
-//                                 // Ensure we don't split in the middle of a character
-//                                 while !part.is_char_boundary(part.len()) {
-//                                     part.pop();
-//                                 }
-//                                 accumulated_string.push_str(&part);
-//                                 // If the part was too large and had to be split, add the first part as a TextGroup
-//                                 let mut text_group = TextGroup::new_empty();
-//                                 text_group.text = std::mem::take(&mut accumulated_string);
-//                                 text_groups.push(text_group);
-//                             } else {
-//                                 accumulated_string = content;
-//                             }
-//                         } else {
-//                             accumulated_string.push_str(&content);
-//                         }
-//                     }
-//                 }
-//             }
-//         },
-//         JsonValue::Array(arr) => {
-//             for value in arr {
-//                 text_groups.extend(Self::process_container_json_value(value, max_node_text_size));
-//             }
-//         },
-//         _ => {}
-//     }
-
-//     if !accumulated_string.is_empty() {
-//         let mut text_group = TextGroup::new_empty();
-//         text_group.text = accumulated_string;
-//         text_groups.push(text_group);
-//     }
-
-//     text_groups
-// }

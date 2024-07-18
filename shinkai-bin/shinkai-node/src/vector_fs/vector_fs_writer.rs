@@ -961,6 +961,7 @@ impl VectorFS {
         source_file_map: Option<SourceFileMap>,
     ) -> Result<FSItem, VectorFSError> {
         let mut resource = resource;
+
         let vr_header = resource.as_trait_object().generate_resource_header();
         let source_db_key = vr_header.reference_string();
         let resource_name = SourceFileType::clean_string_of_extension(resource.as_trait_object().name());
