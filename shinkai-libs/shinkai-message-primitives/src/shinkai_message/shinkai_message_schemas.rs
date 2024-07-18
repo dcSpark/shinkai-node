@@ -235,8 +235,23 @@ pub struct JobMessage {
     pub files_inbox: String,
     pub parent: Option<String>,
     pub workflow_code: Option<String>,
+    #[serde(deserialize_with = "deserialize_workflow_name")]
     pub workflow_name: Option<String>,
 }
+
+fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    if let Some(ref s) = s {
+        if s == "undefined:::undefined" {
+            return Ok(None);
+        }
+    }
+    Ok(s)
+}
+
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FileDestinationSourceType {

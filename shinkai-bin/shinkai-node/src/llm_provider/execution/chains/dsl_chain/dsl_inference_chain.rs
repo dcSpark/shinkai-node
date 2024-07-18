@@ -423,6 +423,21 @@ impl AsyncFunction for MultiInferenceFunction {
             .map(|s| s.replace(":::", ""))
             .collect::<Vec<String>>();
 
+        // If everything fits in one message
+        if split_texts.len() == 1 {
+            let inference_args = vec![
+                Box::new(split_texts[0].clone()) as Box<dyn Any + Send>,
+                Box::new(custom_system_prompt.clone()) as Box<dyn Any + Send>,
+                Box::new(custom_user_prompt.clone()) as Box<dyn Any + Send>,
+            ];
+            let response = self.inference_function_ws.call(inference_args).await?;
+            let response_text = response
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::ExecutionError("Invalid response from inference".to_string()))?
+                .replace(":::", "");
+            return Ok(Box::new(response_text));
+        }
+
         let mut responses = Vec::new();
         let agent = self.context.agent();
         let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
