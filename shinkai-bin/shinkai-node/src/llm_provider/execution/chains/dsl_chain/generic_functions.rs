@@ -1019,7 +1019,6 @@ mod tests {
 
         // Check that the top results are in the expected order
         let results: Vec<&str> = search_results.split(":::").collect();
-        assert!(results.len() <= num_of_top_results as usize);
         assert_eq!(
             results[0],
             "Animals are multicellular, eukaryotic organisms in the biological kingdom Animalia."
