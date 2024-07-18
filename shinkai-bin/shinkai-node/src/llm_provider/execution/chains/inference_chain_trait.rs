@@ -1,18 +1,19 @@
+use crate::db::ShinkaiDB;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
-use crate::db::ShinkaiDB;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
+use crate::vector_fs;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use tokio::sync::Mutex;
 use std::fmt;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 /// Trait that abstracts top level functionality between the inference chains. This allows
 /// the inference chain router to work with them all easily.
@@ -28,7 +29,10 @@ pub trait InferenceChain: Send + Sync {
 
     /// Attempts to recursively call the chain, increasing the iteration count. If the maximum number of iterations is reached,
     /// it will return `backup_result` instead of iterating again. Returns error if something errors inside of the chain.
-    async fn recurse_chain(&mut self, backup_result: InferenceChainResult) -> Result<InferenceChainResult, LLMProviderError> {
+    async fn recurse_chain(
+        &mut self,
+        backup_result: InferenceChainResult,
+    ) -> Result<InferenceChainResult, LLMProviderError> {
         let context = self.chain_context();
         if context.iteration_count() >= context.max_iterations() {
             return Ok(backup_result);
@@ -291,7 +295,7 @@ impl LLMInferenceResponse {
         Self {
             response_string: original_response_string,
             json,
-            function_call
+            function_call,
         }
     }
 }
@@ -384,6 +388,8 @@ pub struct MockInferenceChainContext {
     pub max_tokens_in_prompt: usize,
     pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
+    pub db: Option<Arc<ShinkaiDB>>,
+    pub vector_fs: Option<Arc<VectorFS>>,
 }
 
 impl MockInferenceChainContext {
@@ -398,6 +404,8 @@ impl MockInferenceChainContext {
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
+        db: Option<Arc<ShinkaiDB>>,
+        vector_fs: Option<Arc<VectorFS>>,
     ) -> Self {
         Self {
             user_message,
@@ -408,6 +416,8 @@ impl MockInferenceChainContext {
             max_tokens_in_prompt,
             score_results,
             raw_files,
+            db,
+            vector_fs,
         }
     }
 }
@@ -428,6 +438,8 @@ impl Default for MockInferenceChainContext {
             max_tokens_in_prompt: 1000,
             score_results: HashMap::new(),
             raw_files: None,
+            db: None,
+            vector_fs: None,
         }
     }
 }
@@ -446,11 +458,11 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
     }
 
     fn db(&self) -> Arc<ShinkaiDB> {
-        unimplemented!()
+        self.db.clone().expect("DB is not set")
     }
 
     fn vector_fs(&self) -> Arc<VectorFS> {
-        unimplemented!()
+        self.vector_fs.clone().expect("VectorFS is not set")
     }
 
     fn full_job(&self) -> &Job {
@@ -498,7 +510,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
     }
 
     fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> {
-        unimplemented!()
+        None
     }
 
     fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
@@ -521,6 +533,8 @@ impl Clone for MockInferenceChainContext {
             max_tokens_in_prompt: self.max_tokens_in_prompt,
             score_results: self.score_results.clone(),
             raw_files: self.raw_files.clone(),
+            db: self.db.clone(),
+            vector_fs: self.vector_fs.clone(),
         }
     }
 }

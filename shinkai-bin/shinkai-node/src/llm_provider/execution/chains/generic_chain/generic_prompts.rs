@@ -13,7 +13,7 @@ impl JobPromptGenerator {
         custom_user_prompt: Option<String>,
         user_message: String,
         ret_nodes: Vec<RetrievedNode>,
-        summary_text: Option<String>,
+        _summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<FunctionCallResponse>,
@@ -29,6 +29,7 @@ impl JobPromptGenerator {
             prompt.add_step_history(step_history, 97);
         }
 
+        // Commented because it was confusing the LLM in some cases
         // If there is a document summary from the vector search add it with higher priority that the chunks
         // if let Some(summary) = summary_text {
         //     prompt.add_content(

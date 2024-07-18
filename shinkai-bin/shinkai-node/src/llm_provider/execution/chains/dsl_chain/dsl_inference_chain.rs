@@ -257,13 +257,16 @@ impl AsyncFunction for InferenceFunction {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
 
+        let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
+
         let full_job = self.context.full_job();
         let llm_provider = self.context.agent();
 
         // TODO: add more debugging to (ie add to logs) the diff operations
         let filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            None, // TODO: connect later on
-            None, // TODO: connect later on
+            custom_system_prompt,
+            custom_user_prompt,
             user_message.clone(),
             vec![],
             None,
@@ -316,6 +319,9 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
 
+        let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
+
         let db = self.context.db();
         let vector_fs = self.context.vector_fs();
         let full_job = self.context.full_job();
@@ -351,8 +357,8 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         }
 
         let filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            None, // TODO: connect later on
-            None, // TODO: connect later on
+            custom_system_prompt,
+            custom_user_prompt,
             user_message.clone(),
             ret_nodes,
             summary_node_text,
@@ -406,6 +412,9 @@ impl AsyncFunction for MultiInferenceFunction {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for first argument".to_string()))?
             .clone();
 
+        let custom_system_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let custom_user_prompt: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
+
         let split_result = split_text_for_llm(self.context.as_ref(), args)?;
         let split_texts = split_result
             .downcast_ref::<String>()
@@ -419,7 +428,11 @@ impl AsyncFunction for MultiInferenceFunction {
         let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
 
         for text in split_texts.iter() {
-            let inference_args = vec![Box::new(text.clone()) as Box<dyn Any + Send>];
+            let inference_args = vec![
+                Box::new(text.clone()) as Box<dyn Any + Send>,
+                Box::new(custom_system_prompt.clone()) as Box<dyn Any + Send>,
+                Box::new(custom_user_prompt.clone()) as Box<dyn Any + Send>,
+            ];
             let response = self.inference_function_no_ws.call(inference_args).await?;
             let response_text = response
                 .downcast_ref::<String>()
