@@ -37,6 +37,8 @@ use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
+
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(path);
@@ -212,6 +214,8 @@ fn mirror_sync_tests() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         )
         .await;
 

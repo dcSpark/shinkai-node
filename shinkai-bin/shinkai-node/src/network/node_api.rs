@@ -10,6 +10,8 @@ use super::node_api_handlers::api_subscription_available_shared_items_open_handl
 use super::node_api_handlers::api_subscription_create_shareable_folder_handler;
 use super::node_api_handlers::api_subscription_unshare_folder_handler;
 use super::node_api_handlers::api_subscription_update_shareable_folder_handler;
+use super::node_api_handlers::api_update_default_embedding_model_handler;
+use super::node_api_handlers::api_update_supported_embedding_models_handler;
 use super::node_api_handlers::api_vec_fs_copy_folder_handler;
 use super::node_api_handlers::api_vec_fs_copy_item_handler;
 use super::node_api_handlers::api_vec_fs_create_folder_handler;
@@ -850,6 +852,28 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| list_all_workflows_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/update_default_embedding_model
+    let api_update_default_embedding_model = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_default_embedding_model")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_update_default_embedding_model_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/update_supported_embedding_models
+    let api_update_supported_embedding_models = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_supported_embedding_models")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_update_supported_embedding_models_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -920,6 +944,8 @@ pub async fn run_api(
         .or(delete_workflow)
         .or(get_workflow_info)
         .or(list_all_workflows)
+        .or(api_update_default_embedding_model)
+        .or(api_update_supported_embedding_models)
         .recover(handle_rejection)
         .with(log)
         .with(cors);

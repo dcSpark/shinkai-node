@@ -23,6 +23,7 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::{api_create_job, api_message_job, api_registration_device_node_profile_main};
+use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use mockito::Server;
 
@@ -134,6 +135,8 @@ fn workflow_integration_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         );
 
         let node1_handler = tokio::spawn(async move {
@@ -393,6 +396,8 @@ fn workflow_complex_integration_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         );
 
         let node1_handler = tokio::spawn(async move {

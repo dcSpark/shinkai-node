@@ -6,6 +6,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
     LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 
 #[derive(Debug, Clone)]
 pub struct NodeEnvironment {
@@ -25,6 +26,8 @@ pub struct NodeEnvironment {
     pub embeddings_server_api_key: Option<String>,
     pub auto_detect_local_llms: bool,
     pub proxy_identity: Option<String>,
+    pub default_embedding_model: EmbeddingModelType,
+    pub supported_embedding_models: Vec<EmbeddingModelType>,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +174,26 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         panic!("NODE_API_IP:NODE_API_PORT cannot be the same as NODE_IP:NODE_PORT");
     }
 
+    // Fetch the default embedding model
+    let default_embedding_model: EmbeddingModelType = env::var("DEFAULT_EMBEDDING_MODEL")
+        .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
+        .unwrap_or_else(|_| {
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M)
+        });
+
+    // Fetch the supported embedding models
+    let supported_embedding_models: Vec<EmbeddingModelType> = env::var("SUPPORTED_EMBEDDING_MODELS")
+        .map(|s| {
+            s.split(',')
+                .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
+                .collect()
+        })
+        .unwrap_or_else(|_| {
+            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+            )]
+        });
+        
     NodeEnvironment {
         global_identity_name,
         listen_address,
@@ -188,6 +211,8 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         embeddings_server_api_key,
         auto_detect_local_llms,
         proxy_identity,
+        default_embedding_model,
+        supported_embedding_models,
     }
 }
 

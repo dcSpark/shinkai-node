@@ -72,6 +72,8 @@ pub enum MessageSchemaType {
     RemoveWorkflow,
     GetWorkflow,
     ListWorkflows,
+    UpdateSupportedEmbeddingModels,
+    UpdateDefaultEmbeddingModel,
 }
 
 impl MessageSchemaType {
@@ -139,6 +141,8 @@ impl MessageSchemaType {
             "RemoveWorkflow" => Some(Self::RemoveWorkflow),
             "GetWorkflow" => Some(Self::GetWorkflow),
             "ListWorkflows" => Some(Self::ListWorkflows),
+            "UpdateSupportedEmbeddingModels" => Some(Self::UpdateSupportedEmbeddingModels),
+            "UpdateDefaultEmbeddingModel" => Some(Self::UpdateDefaultEmbeddingModel),
             _ => None,
         }
     }
@@ -206,6 +210,8 @@ impl MessageSchemaType {
             Self::RemoveWorkflow => "RemoveWorkflow",
             Self::GetWorkflow => "GetWorkflow",
             Self::ListWorkflows => "ListWorkflows",
+            Self::UpdateSupportedEmbeddingModels => "UpdateSupportedEmbeddingModels",
+            Self::UpdateDefaultEmbeddingModel => "UpdateDefaultEmbeddingModel",
             Self::Empty => "",
         }
     }

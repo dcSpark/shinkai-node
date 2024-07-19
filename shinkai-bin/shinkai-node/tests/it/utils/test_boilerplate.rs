@@ -4,6 +4,7 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use shinkai_node::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tokio::sync::Mutex;
 
 use core::panic;
@@ -49,6 +50,28 @@ pub struct TestEnvironment {
     pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_abort_handler: AbortHandle,
+}
+
+pub fn default_embedding_model() -> EmbeddingModelType {
+    env::var("DEFAULT_EMBEDDING_MODEL")
+        .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
+        .unwrap_or_else(|_| {
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M)
+        })
+}
+
+pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
+    env::var("SUPPORTED_EMBEDDING_MODELS")
+        .map(|s| {
+            s.split(',')
+                .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
+                .collect()
+        })
+        .unwrap_or_else(|_| {
+            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+            )]
+        })
 }
 
 pub fn run_test_one_node_network<F>(interactions_handler_logic: F)
@@ -100,6 +123,8 @@ where
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         )
         .await;
 

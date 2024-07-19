@@ -236,3 +236,46 @@ impl fmt::Display for OllamaTextEmbeddingsInference {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_snowflake_arctic_embed_xs() {
+        let model_str = "snowflake-arctic-embed:xs";
+        let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M));
+    }
+
+    #[test]
+    fn test_parse_jina_embeddings_v2_base_es() {
+        let model_str = "jina/jina-embeddings-v2-base-es:latest";
+        let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs));
+    }
+
+    #[test]
+    fn test_parse_snowflake_arctic_embed_xs_as_embedding_model_type() {
+        let model_str = "snowflake-arctic-embed:xs";
+        let parsed_model = EmbeddingModelType::from_string(model_str);
+        assert_eq!(
+            parsed_model,
+            Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_jina_embeddings_v2_base_es_as_embedding_model_type() {
+        let model_str = "jina/jina-embeddings-v2-base-es:latest";
+        let parsed_model = EmbeddingModelType::from_string(model_str);
+        assert_eq!(
+            parsed_model,
+            Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs
+            ))
+        );
+    }
+}
