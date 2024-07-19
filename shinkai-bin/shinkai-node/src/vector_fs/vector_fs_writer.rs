@@ -1247,7 +1247,11 @@ impl VectorFS {
             let internals = internals_map
                 .get_mut(&writer.profile)
                 .ok_or_else(|| VectorFSError::ProfileNameNonExistent(writer.profile.to_string()))?;
-            if vr_header.resource_embedding_model_used == internals.default_embedding_model() {
+
+            // Check for same variant and allow different embeddings
+            if std::mem::discriminant(&vr_header.resource_embedding_model_used)
+                == std::mem::discriminant(&internals.default_embedding_model())
+            {
                 internals
                     .fs_core_resource
                     .mutate_node_at_path(writer.path.clone(), &mut mutator, true)?;
