@@ -1,4 +1,3 @@
-use super::network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
 use super::utils::static_server::start_static_server;
@@ -178,6 +177,8 @@ pub async fn initialize_node() -> Result<
         Some(embedding_generator),
         Some(unstructured_api),
         node_env.ws_address,
+        node_env.default_embedding_model.clone(),
+        node_env.supported_embedding_models.clone(),
     )
     .await;
 
@@ -367,9 +368,7 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
         .clone()
         .expect("EMBEDDINGS_SERVER_URL not found in node_env");
     let api_key = node_env.embeddings_server_api_key.clone();
-    // TODO: Replace this hard-coded model to having the default being saved/read from the DB
-    let model = NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone();
-    RemoteEmbeddingGenerator::new(model, &api_url, api_key)
+    RemoteEmbeddingGenerator::new(node_env.default_embedding_model.clone(), &api_url, api_key)
 }
 
 /// Prints Useful Node information at startup

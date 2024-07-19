@@ -1,5 +1,5 @@
 use super::{
-    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
+    node::ProxyConnectionInfo,
     node_api::{APIError, SendResponseBodyData},
     node_api_handlers::APIUseRegistrationCodeSuccessResponse,
     node_error::NodeError,
@@ -54,7 +54,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
@@ -632,6 +632,7 @@ impl Node {
         initial_llm_providers: Vec<SerializedLLMProvider>,
         msg: ShinkaiMessage,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        supported_embedding_models: Vec<EmbeddingModelType>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("api_handle_registration_code_usage");
@@ -802,7 +803,7 @@ impl Node {
                 &node_name,
                 profile_list,
                 embedding_generator.model_type.clone(),
-                NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
+                supported_embedding_models,
                 create_default_folders,
             )
             .await?;

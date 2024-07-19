@@ -52,7 +52,7 @@ impl VectorFSInternals {
     pub async fn new_empty() -> Self {
         let node_name = ShinkaiName::from_node_name("@@node1_test.shinkai".to_string()).unwrap();
         let default_embedding_model =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS);
         let supported_embedding_models = vec![default_embedding_model.clone()];
         Self::new(node_name, default_embedding_model, supported_embedding_models).await
     }

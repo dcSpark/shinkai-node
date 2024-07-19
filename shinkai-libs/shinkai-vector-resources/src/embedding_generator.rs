@@ -227,7 +227,7 @@ impl RemoteEmbeddingGenerator {
     /// Create a RemoteEmbeddingGenerator that uses the default model and server
     pub fn new_default() -> RemoteEmbeddingGenerator {
         let model_architecture =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS);
         RemoteEmbeddingGenerator {
             model_type: model_architecture,
             api_url: DEFAULT_EMBEDDINGS_SERVER_URL.to_string(),

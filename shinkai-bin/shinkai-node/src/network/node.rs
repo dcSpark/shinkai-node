@@ -30,7 +30,6 @@ use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
-use lazy_static::lazy_static;
 use rand::Rng;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
@@ -49,7 +48,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -462,16 +461,6 @@ pub enum NodeCommand {
     },
 }
 
-/// Hard-coded embedding model that is set as the default when creating a new profile.
-pub static NEW_PROFILE_DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
-    EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
-
-lazy_static! {
-    /// Hard-coded list of supported embedding models that is set when creating a new profile.
-    /// These need to match the list that our Embedding server orchestration service supports.
-    pub static ref NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS: Vec<EmbeddingModelType> = vec![NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone()];
-}
-
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
 type TcpReadHalf = Arc<Mutex<ReadHalf<TcpStream>>>;
@@ -547,6 +536,10 @@ pub struct Node {
     pub ws_server: Option<tokio::task::JoinHandle<()>>,
     // Tool Router. Option so it is less painful to test
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    // Default embedding model for new profiles
+    pub default_embedding_model: EmbeddingModelType,
+    // Supported embedding models for profiles
+    pub supported_embedding_models: Vec<EmbeddingModelType>,
 }
 
 impl Node {
@@ -569,6 +562,8 @@ impl Node {
         embedding_generator: Option<RemoteEmbeddingGenerator>,
         unstructured_api: Option<UnstructuredAPI>,
         ws_address: Option<SocketAddr>,
+        default_embedding_model: EmbeddingModelType,
+        supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Arc<Mutex<Node>> {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_name.to_string().clone()) {
@@ -762,6 +757,8 @@ impl Node {
             ws_manager_trait,
             ws_server: None,
             tool_router: Some(Arc::new(Mutex::new(tool_router))),
+            default_embedding_model,
+            supported_embedding_models,
         }))
     }
 
@@ -1193,6 +1190,7 @@ impl Node {
                                             let initial_llm_providers_clone = self.initial_llm_providers.clone();
                                             let job_manager = self.job_manager.clone().unwrap();
                                             let ws_manager_trait = self.ws_manager_trait.clone();
+                                            let support_embedding_models = self.supported_embedding_models.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_registration_code_usage(
                                                     db_clone,
@@ -1209,6 +1207,7 @@ impl Node {
                                                     initial_llm_providers_clone,
                                                     msg,
                                                     ws_manager_trait,
+                                                    support_embedding_models,
                                                     res,
                                                 ).await;
                                             });
