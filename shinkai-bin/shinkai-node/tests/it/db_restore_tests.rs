@@ -10,6 +10,8 @@ use std::net::{IpAddr, Ipv4Addr};
 
 #[cfg(test)]
 mod tests {
+    use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
+
     use super::*;
 
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -57,6 +59,8 @@ mod tests {
                 None,
                 None,
                 None,
+                default_embedding_model(),
+            supported_embedding_models(),
             );
 
             let node1_handler = tokio::spawn(async move {

@@ -17,6 +17,8 @@ use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
+use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
+
 use super::utils;
 use super::utils::node_test_api::api_registration_device_node_profile_main;
 
@@ -99,6 +101,8 @@ fn node_retrying_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         )
         .await;
 
@@ -119,6 +123,8 @@ fn node_retrying_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         )
         .await;
 

@@ -31,6 +31,7 @@ use tokio::runtime::Runtime;
 use super::utils::node_test_api::api_registration_device_node_profile_main;
 use super::utils::node_test_local::local_registration_profile_node;
 use crate::it::utils::db_handlers::setup;
+use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_success, create_folder, fetch_last_messages, generate_message_with_payload, make_folder_shareable, print_tree_simple, remove_folder, remove_item, remove_timestamps_from_shared_folder_cache_response, retrieve_file_info, show_available_shared_items, upload_file};
 
 #[test]
@@ -102,6 +103,8 @@ fn subscription_manager_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         )
         .await;
 
@@ -122,6 +125,8 @@ fn subscription_manager_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
         )
         .await;
 
