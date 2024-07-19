@@ -58,7 +58,7 @@ impl EmbeddingModelType {
             },
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
                 OllamaTextEmbeddingsInference::AllMiniLML6v2 => CONTEXT_512,
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS => CONTEXT_512,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => CONTEXT_512,
                 OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => CONTEXT_1024, // it's really 8200, but we're using 1024 for now
                 OllamaTextEmbeddingsInference::Other(_) => CONTEXT_512,
             },
@@ -205,21 +205,21 @@ impl fmt::Display for OpenAIModelType {
 pub enum OllamaTextEmbeddingsInference {
     AllMiniLML6v2,
     #[allow(non_camel_case_types)]
-    SnowflakeArcticEmbed_XS,
+    SnowflakeArcticEmbed_M,
     JinaEmbeddingsV2BaseEs,
     Other(String), // Added variant to handle other cases
 }
 
 impl OllamaTextEmbeddingsInference {
     const ALL_MINI_LML6V2: &'static str = "all-minilm:l6-v2";
-    const SNOWFLAKE_ARCTIC_EMBED_XS: &'static str = "snowflake-arctic-embed:xs";
+    const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:xs";
     const JINA_EMBEDDINGS_V2_BASE_ES: &'static str = "jina/jina-embeddings-v2-base-es:latest";
 
     /// Parses a string into an OllamaTextEmbeddingsInference
     fn from_string(s: &str) -> Result<Self, VRError> {
         match s {
             Self::ALL_MINI_LML6V2 => Ok(OllamaTextEmbeddingsInference::AllMiniLML6v2),
-            Self::SNOWFLAKE_ARCTIC_EMBED_XS => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS),
+            Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
             Self::JINA_EMBEDDINGS_V2_BASE_ES => Ok(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs),
             _ => Err(VRError::InvalidModelArchitecture),
         }
@@ -230,7 +230,7 @@ impl fmt::Display for OllamaTextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             OllamaTextEmbeddingsInference::AllMiniLML6v2 => write!(f, "{}", Self::ALL_MINI_LML6V2),
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS => write!(f, "{}", Self::SNOWFLAKE_ARCTIC_EMBED_XS),
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => write!(f, "{}", Self::SNOWFLAKE_ARCTIC_EMBED_M),
             OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => write!(f, "{}", Self::JINA_EMBEDDINGS_V2_BASE_ES),
             OllamaTextEmbeddingsInference::Other(name) => write!(f, "{}", name),
         }
@@ -245,7 +245,7 @@ mod tests {
     fn test_parse_snowflake_arctic_embed_xs() {
         let model_str = "snowflake-arctic-embed:xs";
         let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
-        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS));
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M));
     }
 
     #[test]
@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(
             parsed_model,
             Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M
             ))
         );
     }

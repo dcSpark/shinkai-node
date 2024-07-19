@@ -582,7 +582,7 @@ impl DocumentVectorResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
             is_merkelized,
             DistributionInfo::new_empty(),
         )

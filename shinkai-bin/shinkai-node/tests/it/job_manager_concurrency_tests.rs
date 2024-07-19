@@ -87,7 +87,7 @@ async fn setup_default_vector_fs() -> VectorFS {
     let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS,
+        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
     )];
 
     VectorFS::new(

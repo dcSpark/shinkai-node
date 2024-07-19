@@ -435,7 +435,7 @@ impl MapVectorResource {
             Embedding::new(&String::new(), vec![]),
             HashMap::new(),
             HashMap::new(),
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_XS),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
             is_merkelized,
             DistributionInfo::new_empty(),
         )
