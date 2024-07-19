@@ -172,6 +172,7 @@ impl JobManager {
             }
         }
 
+        // TODO: add this back under a flag
         // println!(
         //     "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
         //     query_text
