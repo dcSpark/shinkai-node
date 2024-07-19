@@ -60,12 +60,19 @@ impl TextGroup {
         format!("{} Keywords: {}", base_string, keyword_string.trim_start_matches(", "))
     }
 
-    /// Pushes data into this TextGroup
+    /// Pushes data into this TextGroup and extracts metadata
     pub fn push_data(&mut self, text: &str, page_number: Option<u32>) {
         if !self.text.is_empty() {
             self.text.push(' ');
         }
-        self.text.push_str(text);
+
+        let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(text);
+        if parsed_any_metadata {
+            self.text.push_str(&parsed_text);
+            self.metadata.extend(metadata);
+        } else {
+            self.text.push_str(text);
+        }
 
         if let Some(page_number) = page_number {
             let mut unique_page_numbers: HashSet<u32> = HashSet::new();
