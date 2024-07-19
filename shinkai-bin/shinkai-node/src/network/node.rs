@@ -8,6 +8,7 @@ use super::subscription_manager::external_subscriber_manager::ExternalSubscriber
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
+use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
@@ -459,6 +460,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APIUpdateDefaultEmbeddingModel {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIUpdateSupportedEmbeddingModels {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 // A type alias for a string that represents a profile name.
@@ -537,9 +546,9 @@ pub struct Node {
     // Tool Router. Option so it is less painful to test
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
     // Default embedding model for new profiles
-    pub default_embedding_model: EmbeddingModelType,
+    pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
-    pub supported_embedding_models: Vec<EmbeddingModelType>,
+    pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
 }
 
 impl Node {
@@ -726,6 +735,9 @@ impl Node {
         // Initialize ToolRouter
         let tool_router = ToolRouter::new();
 
+        let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
+        let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -801,7 +813,7 @@ impl Node {
             ))),
             None => None,
         };
-
+        self.initialize_embedding_models().await?;
         {
             // Starting the WebSocket server
             if let (Some(ws_manager), Some(ws_address)) = (&self.ws_manager, self.ws_address) {
@@ -2391,6 +2403,42 @@ impl Node {
                                                 ).await;
                                             });
                                         },
+                                        // NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => self.api_update_default_embedding_model(msg, res).await,
+                                        NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => {
+                                            let default_embedding_model = self.default_embedding_model.clone();
+                                            let db = self.db.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_update_default_embedding_model(
+                                                    db,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => self.api_update_supported_embedding_models(msg, res).await,
+                                        NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => {
+                                            let supported_embedding_models = self.supported_embedding_models.clone();
+                                            let db = self.db.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_update_supported_embedding_models(
+                                                    db,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
                                         _ => (),
                                     }
                             },
@@ -2401,6 +2449,40 @@ impl Node {
                     }
             };
         }
+    }
+
+    // A function that initializes the embedding models from the database
+    async fn initialize_embedding_models(&self) -> Result<(), NodeError> {
+        // Read the default embedding model from the database
+        match self.db.get_default_embedding_model() {
+            Ok(model) => {
+                let mut default_model_guard = self.default_embedding_model.lock().await;
+                *default_model_guard = model;
+            }
+            Err(ShinkaiDBError::DataNotFound) => {
+                // If not found, update the database with the current value
+                let default_model_guard = self.default_embedding_model.lock().await;
+                self.db.update_default_embedding_model(default_model_guard.clone())?;
+            }
+            Err(e) => return Err(NodeError::from(e)),
+        }
+
+        // Read the supported embedding models from the database
+        match self.db.get_supported_embedding_models() {
+            Ok(models) => {
+                let mut supported_models_guard = self.supported_embedding_models.lock().await;
+                *supported_models_guard = models;
+            }
+            Err(ShinkaiDBError::DataNotFound) => {
+                // If not found, update the database with the current value
+                let supported_models_guard = self.supported_embedding_models.lock().await;
+                self.db
+                    .update_supported_embedding_models(supported_models_guard.clone())?;
+            }
+            Err(e) => return Err(NodeError::from(e)),
+        }
+
+        Ok(())
     }
 
     // A function that listens for incoming connections and tries to reconnect if a connection is lost.
@@ -2667,7 +2749,7 @@ impl Node {
             tokio::spawn(async move {
                 let (reader, _writer) = tokio::io::split(socket);
                 let reader = Arc::new(Mutex::new(reader));
-                Self::handle_connection(reader, addr, network_job_manager).await;
+                let _ = Self::handle_connection(reader, addr, network_job_manager).await;
                 conn_limiter_clone.decrement_connection(&ip).await;
             });
         }

@@ -501,6 +501,36 @@ pub async fn list_all_workflows_handler(
     .await
 }
 
+pub async fn api_update_default_embedding_model_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateDefaultEmbeddingModel {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn api_update_supported_embedding_models_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateSupportedEmbeddingModels {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn unsubscribe_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

@@ -54,8 +54,8 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
-use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, model_type::EmbeddingModelType};
 use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -632,7 +632,7 @@ impl Node {
         initial_llm_providers: Vec<SerializedLLMProvider>,
         msg: ShinkaiMessage,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        supported_embedding_models: Vec<EmbeddingModelType>,
+        supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("api_handle_registration_code_usage");
@@ -798,12 +798,16 @@ impl Node {
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
         let create_default_folders = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
+        let supported_models = {
+            let models = supported_embedding_models.lock().await;
+            models.clone()
+        };
         vector_fs
             .initialize_new_profiles(
                 &node_name,
                 profile_list,
                 embedding_generator.model_type.clone(),
-                supported_embedding_models,
+                supported_models,
                 create_default_folders,
             )
             .await?;
@@ -3211,6 +3215,136 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to list workflows: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_update_default_embedding_model(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (new_default_model_str, requester_name) = match Self::validate_and_extract_payload::<String>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::UpdateDefaultEmbeddingModel,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Convert the string to EmbeddingModelType
+        let new_default_model = match EmbeddingModelType::from_string(&new_default_model_str) {
+            Ok(model) => model,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid embedding model provided".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Update the default embedding model in the database
+        match db.update_default_embedding_model(new_default_model) {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Default embedding model updated successfully".to_string()))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update default embedding model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_update_supported_embedding_models(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (new_supported_models_str, requester_name) = match Self::validate_and_extract_payload::<Vec<String>>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::UpdateSupportedEmbeddingModels,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Convert the strings to EmbeddingModelType
+        let new_supported_models: Vec<EmbeddingModelType> = new_supported_models_str
+            .into_iter()
+            .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse embedding model"))
+            .collect();
+
+        // Update the supported embedding models in the database
+        match db.update_supported_embedding_models(new_supported_models) {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Supported embedding models updated successfully".to_string()))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update supported embedding models: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
