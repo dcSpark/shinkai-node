@@ -1447,9 +1447,8 @@ fn vector_search_multiple_embedding_models_test() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
-                // Use Unstructrued for PDF parsing until the local one is integrated
                 let db_strong = node1_db_weak.upgrade().unwrap();
-                db_strong.update_local_processing_preference(false).unwrap();
+                db_strong.update_local_processing_preference(true).unwrap();
 
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
@@ -1546,7 +1545,7 @@ fn vector_search_multiple_embedding_models_test() {
             {
                 // Recover file from path using APIVecFSRetrievePathSimplifiedJson
                 let payload = APIVecFsRetrievePathSimplifiedJson {
-                    path: "/test_folder/hispania_jina_es".to_string(),
+                    path: "/test_folder/hispania".to_string(),
                 };
 
                 let msg = generate_message_with_payload(
@@ -1576,7 +1575,7 @@ fn vector_search_multiple_embedding_models_test() {
                 // eprintln!("resp for current file system files: {}", resp_json);
 
                 // TODO: convert to json and then compare
-                let expected_path = "/test_folder/hispania_jina_es";
+                let expected_path = "/test_folder/hispania";
                 assert!(
                     resp_json.contains(expected_path),
                     "Response does not contain the expected file path: {}",
@@ -1586,7 +1585,7 @@ fn vector_search_multiple_embedding_models_test() {
             {
                 // Upload .vrkai file to inbox
                 // Prepare the file to be read
-                let filename = "../../files/shinkai_intro.vrkai";
+                let filename = "../../files/short_story.md";
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
@@ -1647,11 +1646,10 @@ fn vector_search_multiple_embedding_models_test() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("resp: {:?}", resp);
             }
-            let mut retrieved_fs_json = String::new();
             {
                 // Recover file from path using APIVecFSRetrievePathSimplifiedJson
                 let payload = APIVecFsRetrievePathSimplifiedJson {
-                    path: "/test_folder/shinkai_intro".to_string(),
+                    path: "/test_folder/short_story".to_string(),
                 };
 
                 let msg = generate_message_with_payload(
@@ -1681,13 +1679,12 @@ fn vector_search_multiple_embedding_models_test() {
                 // eprintln!("resp for current file system files: {}", resp_json);
 
                 // TODO: convert to json and then compare
-                let expected_path = "/test_folder/shinkai_intro";
+                let expected_path = "/test_folder/short_story";
                 assert!(
                     resp_json.contains(expected_path),
                     "Response does not contain the expected file path: {}",
                     expected_path
                 );
-                retrieved_fs_json = resp_json;
             }
             {
                 // Do deep search
@@ -1722,8 +1719,10 @@ fn vector_search_multiple_embedding_models_test() {
                     eprintln!("\n\nSearch result: {:?}", r);
                 }
 
-                // assert!(!resp.is_empty(), "Response is empty.");
-                // assert!(&resp[0].0.contains("principal capital estaba situada en Qart Hadasht"));
+                assert!(!resp.is_empty(), "Response is empty.");
+                assert!(&resp
+                    .iter()
+                    .any(|r| r.0.contains("principal capital estaba situada en Qart Hadasht")));
             }
             node1_abort_handler.abort();
         })

@@ -231,9 +231,22 @@ pub trait VectorResourceSearch: VectorResourceCore {
         // Create a hash_map to save the embedding queries generated based on model type
         let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
 
-        // First manually embedding generate & search the self Vector Resource
-        let mut query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
-        input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
+        // If the embedding model is different then initialize a new generator & generate the embedding
+        let mut query_embedding = if self.embedding_model_used() != embedding_generator.model_type() {
+            let new_generator = self.initialize_compatible_embeddings_generator(
+                &embedding_generator.api_url,
+                embedding_generator.api_key.clone(),
+            );
+            let query_embedding = new_generator.generate_embedding_default(&input_query).await?;
+            input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
+            query_embedding
+        } else {
+            let query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
+            input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
+            query_embedding
+        };
+
+        // Search the self Vector Resource
         let mut latest_returned_results = self.vector_search_customized(
             query_embedding,
             num_of_results,
