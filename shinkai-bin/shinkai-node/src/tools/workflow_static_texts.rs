@@ -7299,7 +7299,7 @@ The task is to write an essay in the style of Paul Graham, focusing on the essen
 ## write_nuclei_template_rule
 The purpose of this prompt is to guide the creation of Nuclei templates for cybersecurity applications, focusing on generating precise and efficient scanning templates for various protocols like HTTP, DNS, TCP, and more. It emphasizes the importance of incorporating elements such as matchers, extractors, and conditions to tailor the templates for detecting specific vulnerabilities or configurations. The expected output is a well-structured YAML Nuclei template that adheres to best practices in template creation, including handling dynamic data extraction, utilizing complex matchers, and ensuring accurate vulnerability detection with minimal false positives.
 
-## write_pull-request
+## write_pull_request
 The prompt instructs on drafting a detailed pull request (PR) description based on the output of a `git diff` command, focusing on identifying and explaining code changes. It emphasizes analyzing changes, understanding their purpose, and detailing their impact on the project. The expected output is a structured PR description in markdown, covering a summary of changes, reasons, impacts, and testing plans in clear language.
 
 ## write_semgrep_rule

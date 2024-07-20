@@ -69,7 +69,6 @@ impl WorkflowTool {
         vec![
             Self::get_extensive_summary_workflow(),
             Self::get_hyde_inference_workflow(),
-            Self::get_generate_quiz_workflow(),
             Self::get_agility_story_workflow(),
             Self::get_ai_workflow(),
             Self::get_analyze_answers_workflow(),
@@ -255,7 +254,7 @@ impl WorkflowTool {
                     }}
                 }}
             "#,
-            GENERATE_QUIZ_SYSTEM
+            GENERATE_QUIZ_SYSTEM.replace('"', "\\\"")
         );
 
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
@@ -274,14 +273,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            AGILITY_STORY_SYSTEM
+            AGILITY_STORY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_ai_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -292,14 +292,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            AI_SYSTEM
+            AI_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_answers_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -310,14 +311,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_ANSWERS_SYSTEM
+            ANALYZE_ANSWERS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_claims_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -328,14 +330,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_CLAIMS_SYSTEM
+            ANALYZE_CLAIMS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_debate_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -346,14 +349,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_DEBATE_SYSTEM
+            ANALYZE_DEBATE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_incident_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -364,14 +368,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_INCIDENT_SYSTEM
+            ANALYZE_INCIDENT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_logs_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -382,14 +387,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_LOGS_SYSTEM
+            ANALYZE_LOGS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_malware_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -400,14 +406,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_MALWARE_SYSTEM
+            ANALYZE_MALWARE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_paper_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -418,14 +425,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PAPER_SYSTEM
+            ANALYZE_PAPER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_patent_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -436,14 +444,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PATENT_SYSTEM
+            ANALYZE_PATENT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_personality_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -454,14 +463,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PERSONALITY_SYSTEM
+            ANALYZE_PERSONALITY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_presentation_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -472,14 +482,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PRESENTATION_SYSTEM
+            ANALYZE_PRESENTATION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_prose_json_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -490,14 +501,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PROSE_JSON_SYSTEM
+            ANALYZE_PROSE_JSON_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_prose_pinker_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -508,14 +520,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PROSE_PINKER_SYSTEM
+            ANALYZE_PROSE_PINKER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_prose_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -526,14 +539,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_PROSE_SYSTEM
+            ANALYZE_PROSE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_spiritual_text_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -544,14 +558,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_SPIRITUAL_TEXT_SYSTEM
+            ANALYZE_SPIRITUAL_TEXT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_tech_impact_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -562,14 +577,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_TECH_IMPACT_SYSTEM
+            ANALYZE_TECH_IMPACT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_threat_report_trends_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -581,14 +597,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_THREAT_REPORT_TRENDS_SYSTEM, ANALYZE_THREAT_REPORT_TRENDS_USER
+            ANALYZE_THREAT_REPORT_TRENDS_SYSTEM,
+            ANALYZE_THREAT_REPORT_TRENDS_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_analyze_threat_report_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -600,14 +618,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANALYZE_THREAT_REPORT_SYSTEM, ANALYZE_THREAT_REPORT_USER
+            ANALYZE_THREAT_REPORT_SYSTEM,
+            ANALYZE_THREAT_REPORT_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_answer_interview_question_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -618,14 +638,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ANSWER_INTERVIEW_QUESTION_SYSTEM
+            ANSWER_INTERVIEW_QUESTION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_ask_secure_by_design_questions_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -636,14 +657,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            ASK_SECURE_BY_DESIGN_QUESTIONS_SYSTEM
+            ASK_SECURE_BY_DESIGN_QUESTIONS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_capture_thinkers_work_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -654,14 +676,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CAPTURE_THINKERS_WORK_SYSTEM
+            CAPTURE_THINKERS_WORK_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_check_agreement_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -672,14 +695,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CHECK_AGREEMENT_SYSTEM
+            CHECK_AGREEMENT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_clean_text_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -690,14 +714,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CLEAN_TEXT_SYSTEM
+            CLEAN_TEXT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_coding_master_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -708,14 +733,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CODING_MASTER_SYSTEM
+            CODING_MASTER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_compare_and_contrast_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -726,14 +752,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            COMPARE_AND_CONTRAST_SYSTEM
+            COMPARE_AND_CONTRAST_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_5_sentence_summary_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -744,14 +771,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_5_SENTENCE_SUMMARY_SYSTEM
+            CREATE_5_SENTENCE_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_academic_paper_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -762,14 +790,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_ACADEMIC_PAPER_SYSTEM
+            CREATE_ACADEMIC_PAPER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_ai_jobs_analysis_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -780,14 +809,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_AI_JOBS_ANALYSIS_SYSTEM
+            CREATE_AI_JOBS_ANALYSIS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_aphorisms_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -798,14 +828,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_APHORISMS_SYSTEM
+            CREATE_APHORISMS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_art_prompt_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -816,14 +847,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_ART_PROMPT_SYSTEM
+            CREATE_ART_PROMPT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_better_frame_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -834,14 +866,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_BETTER_FRAME_SYSTEM
+            CREATE_BETTER_FRAME_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_coding_project_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -852,14 +885,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_CODING_PROJECT_SYSTEM
+            CREATE_CODING_PROJECT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_command_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -870,14 +904,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_COMMAND_SYSTEM
+            CREATE_COMMAND_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_cyber_summary_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -888,14 +923,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_CYBER_SUMMARY_SYSTEM
+            CREATE_CYBER_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_git_diff_commit_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -906,14 +942,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_GIT_DIFF_COMMIT_SYSTEM
+            CREATE_GIT_DIFF_COMMIT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_graph_from_input_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -924,14 +961,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_GRAPH_FROM_INPUT_SYSTEM
+            CREATE_GRAPH_FROM_INPUT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_hormozi_offer_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -942,14 +980,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_HORMOZI_OFFER_SYSTEM
+            CREATE_HORMOZI_OFFER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_idea_compass_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -960,14 +999,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_IDEA_COMPASS_SYSTEM
+            CREATE_IDEA_COMPASS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_investigation_visualization_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -978,14 +1018,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_INVESTIGATION_VISUALIZATION_SYSTEM
+            CREATE_INVESTIGATION_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_keynote_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -996,14 +1037,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_KEYNOTE_SYSTEM
+            CREATE_KEYNOTE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_logo_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1014,14 +1056,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_LOGO_SYSTEM
+            CREATE_LOGO_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_markmap_visualization_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1032,14 +1075,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_MARKMAP_VISUALIZATION_SYSTEM
+            CREATE_MARKMAP_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_mermaid_visualization_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1050,14 +1094,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_MERMAID_VISUALIZATION_SYSTEM
+            CREATE_MERMAID_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_micro_summary_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1068,14 +1113,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_MICRO_SUMMARY_SYSTEM
+            CREATE_MICRO_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_network_threat_landscape_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1087,14 +1133,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_NETWORK_THREAT_LANDSCAPE_SYSTEM, CREATE_NETWORK_THREAT_LANDSCAPE_USER
+            CREATE_NETWORK_THREAT_LANDSCAPE_SYSTEM,
+            CREATE_NETWORK_THREAT_LANDSCAPE_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_npc_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1105,14 +1153,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_NPC_SYSTEM
+            CREATE_NPC_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_pattern_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1123,14 +1172,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_PATTERN_SYSTEM
+            CREATE_PATTERN_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_quiz_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1141,14 +1191,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_QUIZ_SYSTEM
+            CREATE_QUIZ_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_reading_plan_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1159,14 +1210,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_READING_PLAN_SYSTEM
+            CREATE_READING_PLAN_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_report_finding_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1178,14 +1230,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_REPORT_FINDING_SYSTEM, CREATE_REPORT_FINDING_USER
+            CREATE_REPORT_FINDING_SYSTEM,
+            CREATE_REPORT_FINDING_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_security_update_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1196,14 +1250,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_SECURITY_UPDATE_SYSTEM
+            CREATE_SECURITY_UPDATE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_show_intro_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1214,14 +1269,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_SHOW_INTRO_SYSTEM
+            CREATE_SHOW_INTRO_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_sigma_rules_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1232,14 +1288,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_SIGMA_RULES_SYSTEM
+            CREATE_SIGMA_RULES_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_stride_threat_model_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1250,14 +1307,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_STRIDE_THREAT_MODEL_SYSTEM
+            CREATE_STRIDE_THREAT_MODEL_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_summary_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1268,14 +1326,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_SUMMARY_SYSTEM
+            CREATE_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_tags_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1286,14 +1345,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_TAGS_SYSTEM
+            CREATE_TAGS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_threat_scenarios_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1304,14 +1364,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_THREAT_SCENARIOS_SYSTEM
+            CREATE_THREAT_SCENARIOS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_upgrade_pack_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1322,14 +1383,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_UPGRADE_PACK_SYSTEM
+            CREATE_UPGRADE_PACK_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_video_chapters_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1340,14 +1402,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_VIDEO_CHAPTERS_SYSTEM
+            CREATE_VIDEO_CHAPTERS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_create_visualization_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1358,14 +1421,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            CREATE_VISUALIZATION_SYSTEM
+            CREATE_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_explain_code_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1377,14 +1441,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXPLAIN_CODE_SYSTEM, EXPLAIN_CODE_USER
+            EXPLAIN_CODE_SYSTEM,
+            EXPLAIN_CODE_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_explain_docs_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1395,14 +1461,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXPLAIN_DOCS_SYSTEM
+            EXPLAIN_DOCS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_explain_project_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1413,14 +1480,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXPLAIN_PROJECT_SYSTEM
+            EXPLAIN_PROJECT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_explain_terms_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1431,14 +1499,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXPLAIN_TERMS_SYSTEM
+            EXPLAIN_TERMS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_export_data_as_csv_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1449,14 +1518,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXPORT_DATA_AS_CSV_SYSTEM
+            EXPORT_DATA_AS_CSV_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_algorithm_update_recommendations_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1467,14 +1537,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_ALGORITHM_UPDATE_RECOMMENDATIONS_SYSTEM
+            EXTRACT_ALGORITHM_UPDATE_RECOMMENDATIONS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_article_wisdom_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1486,14 +1557,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_ARTICLE_WISDOM_SYSTEM, EXTRACT_ARTICLE_WISDOM_USER
+            EXTRACT_ARTICLE_WISDOM_SYSTEM,
+            EXTRACT_ARTICLE_WISDOM_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_book_ideas_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1504,14 +1577,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_BOOK_IDEAS_SYSTEM
+            EXTRACT_BOOK_IDEAS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_book_recommendations_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1522,14 +1596,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_BOOK_RECOMMENDATIONS_SYSTEM
+            EXTRACT_BOOK_RECOMMENDATIONS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_business_ideas_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1540,14 +1615,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_BUSINESS_IDEAS_SYSTEM
+            EXTRACT_BUSINESS_IDEAS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_controversial_ideas_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1558,14 +1634,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_CONTROVERSIAL_IDEAS_SYSTEM
+            EXTRACT_CONTROVERSIAL_IDEAS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_extraordinary_claims_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1576,14 +1653,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_EXTRAORDINARY_CLAIMS_SYSTEM
+            EXTRACT_EXTRAORDINARY_CLAIMS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_ideas_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1594,14 +1672,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_IDEAS_SYSTEM
+            EXTRACT_IDEAS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_insights_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1612,14 +1691,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_INSIGHTS_SYSTEM
+            EXTRACT_INSIGHTS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_main_idea_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1630,14 +1710,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_MAIN_IDEA_SYSTEM
+            EXTRACT_MAIN_IDEA_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_patterns_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1648,14 +1729,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_PATTERNS_SYSTEM
+            EXTRACT_PATTERNS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_poc_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1666,14 +1748,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_POC_SYSTEM
+            EXTRACT_POC_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_predictions_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1684,14 +1767,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_PREDICTIONS_SYSTEM
+            EXTRACT_PREDICTIONS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_questions_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1702,14 +1786,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_QUESTIONS_SYSTEM
+            EXTRACT_QUESTIONS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_recommendations_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1720,14 +1805,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_RECOMMENDATIONS_SYSTEM
+            EXTRACT_RECOMMENDATIONS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_references_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1738,14 +1824,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_REFERENCES_SYSTEM
+            EXTRACT_REFERENCES_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_song_meaning_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1756,14 +1843,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_SONG_MEANING_SYSTEM
+            EXTRACT_SONG_MEANING_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_sponsors_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1774,14 +1862,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_SPONSORS_SYSTEM
+            EXTRACT_SPONSORS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_videoid_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1792,14 +1881,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_VIDEOID_SYSTEM
+            EXTRACT_VIDEOID_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_wisdom_agents_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1810,14 +1900,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_WISDOM_AGENTS_SYSTEM
+            EXTRACT_WISDOM_AGENTS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_wisdom_dm_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1828,14 +1919,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_WISDOM_DM_SYSTEM
+            EXTRACT_WISDOM_DM_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_wisdom_nometa_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1846,14 +1938,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_WISDOM_NOMETA_SYSTEM
+            EXTRACT_WISDOM_NOMETA_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_extract_wisdom_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1864,14 +1957,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            EXTRACT_WISDOM_SYSTEM
+            EXTRACT_WISDOM_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_find_hidden_message_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1882,14 +1976,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            FIND_HIDDEN_MESSAGE_SYSTEM
+            FIND_HIDDEN_MESSAGE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_find_logical_fallacies_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1900,14 +1995,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            FIND_LOGICAL_FALLACIES_SYSTEM
+            FIND_LOGICAL_FALLACIES_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_get_wow_per_minute_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1918,14 +2014,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            GET_WOW_PER_MINUTE_SYSTEM
+            GET_WOW_PER_MINUTE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_get_youtube_rss_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1936,14 +2033,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            GET_YOUTUBE_RSS_SYSTEM
+            GET_YOUTUBE_RSS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_improve_academic_writing_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1954,14 +2052,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            IMPROVE_ACADEMIC_WRITING_SYSTEM
+            IMPROVE_ACADEMIC_WRITING_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_improve_prompt_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1972,14 +2071,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            IMPROVE_PROMPT_SYSTEM
+            IMPROVE_PROMPT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_improve_report_finding_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -1991,14 +2091,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            IMPROVE_REPORT_FINDING_SYSTEM, IMPROVE_REPORT_FINDING_USER
+            IMPROVE_REPORT_FINDING_SYSTEM,
+            IMPROVE_REPORT_FINDING_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_improve_writing_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2009,14 +2111,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            IMPROVE_WRITING_SYSTEM
+            IMPROVE_WRITING_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_label_and_rate_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2027,14 +2130,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            LABEL_AND_RATE_SYSTEM
+            LABEL_AND_RATE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_official_pattern_template_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2045,14 +2149,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            OFFICIAL_PATTERN_TEMPLATE_SYSTEM
+            OFFICIAL_PATTERN_TEMPLATE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_provide_guidance_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2063,14 +2168,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            PROVIDE_GUIDANCE_SYSTEM
+            PROVIDE_GUIDANCE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_rate_ai_response_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2081,14 +2187,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            RATE_AI_RESPONSE_SYSTEM
+            RATE_AI_RESPONSE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_rate_ai_result_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2099,14 +2206,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            RATE_AI_RESULT_SYSTEM
+            RATE_AI_RESULT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_rate_content_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2118,14 +2226,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            RATE_CONTENT_SYSTEM, RATE_CONTENT_USER
+            RATE_CONTENT_SYSTEM,
+            RATE_CONTENT_USER
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_rate_value_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2136,14 +2246,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            RATE_VALUE_SYSTEM
+            RATE_VALUE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_raw_query_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2154,14 +2265,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            RAW_QUERY_SYSTEM
+            RAW_QUERY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_recommend_artists_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2172,14 +2284,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            RECOMMEND_ARTISTS_SYSTEM
+            RECOMMEND_ARTISTS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_show_fabric_options_markmap_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2190,14 +2303,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SHOW_FABRIC_OPTIONS_MARKMAP_SYSTEM
+            SHOW_FABRIC_OPTIONS_MARKMAP_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_suggest_pattern_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2209,14 +2323,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUGGEST_PATTERN_SYSTEM, SUGGEST_PATTERN_USER
+            SUGGEST_PATTERN_SYSTEM.replace('"', "\\\""),
+            SUGGEST_PATTERN_USER.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_debate_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2227,14 +2343,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_DEBATE_SYSTEM
+            SUMMARIZE_DEBATE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_git_changes_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2245,14 +2362,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_GIT_CHANGES_SYSTEM
+            SUMMARIZE_GIT_CHANGES_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_git_diff_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2263,14 +2381,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_GIT_DIFF_SYSTEM
+            SUMMARIZE_GIT_DIFF_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_lecture_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2281,14 +2400,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_LECTURE_SYSTEM
+            SUMMARIZE_LECTURE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_legislation_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2299,14 +2419,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_LEGISLATION_SYSTEM
+            SUMMARIZE_LEGISLATION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_micro_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2317,14 +2438,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_MICRO_SYSTEM
+            SUMMARIZE_MICRO_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_newsletter_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2335,14 +2457,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_NEWSLETTER_SYSTEM
+            SUMMARIZE_NEWSLETTER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_paper_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2353,14 +2476,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_PAPER_SYSTEM
+            SUMMARIZE_PAPER_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_prompt_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2371,32 +2495,34 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_PROMPT_SYSTEM
+            SUMMARIZE_PROMPT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_pull_requests_workflow() -> Self {
         let raw_workflow = format!(
             r#"
-                workflow Summarize_pull-requests v0.1 {{
+                workflow Summarize_pull_requests v0.1 {{
                     step Main {{
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
                 }}"
             "#,
-            SUMMARIZE_PULL_REQUESTS_SYSTEM
+            SUMMARIZE_PULL_REQUESTS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_rpg_session_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2407,14 +2533,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_RPG_SESSION_SYSTEM
+            SUMMARIZE_RPG_SESSION_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_summarize_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2425,14 +2552,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUMMARIZE_SYSTEM
+            SUMMARIZE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_to_flashcards_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2443,14 +2571,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            TO_FLASHCARDS_SYSTEM
+            TO_FLASHCARDS_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_tweet_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2461,14 +2590,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            TWEET_SYSTEM
+            TWEET_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_write_essay_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2479,14 +2609,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            WRITE_ESSAY_SYSTEM
+            WRITE_ESSAY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_write_hackerone_report_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2497,14 +2628,15 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            WRITE_HACKERONE_REPORT_SYSTEM
+            WRITE_HACKERONE_REPORT_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_write_micro_essay_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2515,32 +2647,36 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            WRITE_MICRO_ESSAY_SYSTEM
+            WRITE_MICRO_ESSAY_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
+    
+    
     fn get_write_pull_request_workflow() -> Self {
         let raw_workflow = format!(
             r#"
-                workflow Write_pull-request v0.1 {{
+                workflow Write_pull_request v0.1 {{
                     step Main {{
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
                 }}"
             "#,
-            WRITE_PULL_REQUEST_SYSTEM
+            WRITE_PULL_REQUEST_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
-
+    
+    
     fn get_write_semgrep_rule_workflow() -> Self {
         let raw_workflow = format!(
             r#"
@@ -2551,13 +2687,16 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            WRITE_SEMGREP_RULE_SYSTEM
+            WRITE_SEMGREP_RULE_SYSTEM.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
-
+    
         WorkflowTool::new(workflow)
     }
+    
+    
+    
 }
 
 #[cfg(test)]
