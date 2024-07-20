@@ -2324,12 +2324,16 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let tool_router_clone = self.tool_router.clone();
+                                            let generator = Arc::new(self.embedding_generator.clone());
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_workflow(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
+                                                    tool_router_clone,
+                                                    generator,
                                                     msg,
                                                     res,
                                                 ).await;
@@ -2341,12 +2345,17 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let tool_router_clone = self.tool_router.clone();
+                                            let generator = Arc::new(self.embedding_generator.clone());
                                             tokio::spawn(async move {
+                                                // Note: yes it's the same as above
                                                 let _ = Node::api_add_workflow(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
+                                                    tool_router_clone,
+                                                    generator,
                                                     msg,
                                                     res,
                                                 ).await;
@@ -2358,12 +2367,14 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let tool_router_clone = self.tool_router.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_remove_workflow(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
+                                                    tool_router_clone,
                                                     msg,
                                                     res,
                                                 ).await;
