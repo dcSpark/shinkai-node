@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, fmt, marker::PhantomData};
+use std::{any::Any, collections::HashMap, fmt, marker::PhantomData, time::Instant};
 
 use crate::{
     llm_provider::{
@@ -196,6 +196,7 @@ impl<'a> DslChain<'a> {
     }
 
     pub async fn add_tools_from_router(&mut self) -> Result<(), WorkflowError> {
+        let start_time = Instant::now();
         let tool_router = self
             .context
             .tool_router()
@@ -220,6 +221,9 @@ impl<'a> DslChain<'a> {
                 }),
             );
         }
+
+        let elapsed_time = start_time.elapsed(); // Measure elapsed time
+        eprintln!("Time taken to add tools: {:?}", elapsed_time);
 
         Ok(())
     }
