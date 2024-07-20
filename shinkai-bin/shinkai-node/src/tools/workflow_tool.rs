@@ -2324,8 +2324,8 @@ impl WorkflowTool {
                     }}
                 }}"
             "#,
-            SUGGEST_PATTERN_SYSTEM,
-            SUGGEST_PATTERN_USER
+            SUGGEST_PATTERN_SYSTEM.replace('"', "\\\""),
+            SUGGEST_PATTERN_USER.replace('"', "\\\"")
         );
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
@@ -2508,7 +2508,7 @@ impl WorkflowTool {
     fn get_summarize_pull_requests_workflow() -> Self {
         let raw_workflow = format!(
             r#"
-                workflow Summarize_pull-requests v0.1 {{
+                workflow Summarize_pull_requests v0.1 {{
                     step Main {{
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
@@ -2662,7 +2662,7 @@ impl WorkflowTool {
     fn get_write_pull_request_workflow() -> Self {
         let raw_workflow = format!(
             r#"
-                workflow Write_pull-request v0.1 {{
+                workflow Write_pull_request v0.1 {{
                     step Main {{
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)

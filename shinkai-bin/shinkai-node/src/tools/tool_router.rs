@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
+use std::time::Instant;
 
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
@@ -127,8 +128,15 @@ impl ToolRouter {
         db: Arc<ShinkaiDB>,
         profile: ShinkaiName,
     ) {
+        // Measure the time it takes to generate static workflows
+        let start_time = Instant::now();
+
         // Generate the static workflows
         let workflows = WorkflowTool::static_tools();
+        println!("Number of static workflows: {}", workflows.len());
+
+        let duration = start_time.elapsed();
+        println!("Time taken to generate static workflows: {:?}", duration);
 
         // Insert each workflow into the routing resource and save to the database
         for workflow_tool in workflows {
