@@ -156,14 +156,13 @@ impl UnstructuredParser {
         }
 
         // Push the last group to title group or groups
-        if !current_group.text.len() < 2 {
+        if current_group.text.len() >= 2 {
             ShinkaiFileParser::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
         }
         // Push the last title group to groups
         if let Some(title_group) = current_title_group.take() {
             groups.push(title_group);
         }
-
         groups
     }
 
