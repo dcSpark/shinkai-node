@@ -356,7 +356,14 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         let user_profile = self.context.user_profile();
         let max_tokens_in_prompt = self.context.max_tokens_in_prompt();
 
-        let query_text = user_message.clone();
+         // If both the scope and custom_system_prompt are not empty, we use an empty string
+        // for the user_message and the custom_system_prompt as the query_text.
+        // This allows for more focused searches based on the system prompt when a scope is provided.
+        let (effective_user_message, query_text) = if !full_job.scope().is_empty() && custom_system_prompt.is_some() {
+            ("".to_string(), custom_system_prompt.clone().unwrap_or_default())
+        } else {
+            (user_message.clone(), user_message.clone())
+        };
 
         // TODO: add more debugging to (ie add to logs) the diff operations
 
@@ -385,7 +392,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         let filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_system_prompt,
             custom_user_prompt,
-            user_message.clone(),
+            effective_user_message.clone(),
             ret_nodes,
             summary_node_text,
             Some(full_job.step_history.clone()),
