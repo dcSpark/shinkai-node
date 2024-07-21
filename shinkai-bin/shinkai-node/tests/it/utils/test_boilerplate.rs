@@ -4,6 +4,7 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use shinkai_node::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tokio::sync::Mutex;
 
@@ -120,7 +121,7 @@ where
             false,
             vec![],
             node1_fs_db_path,
-            None,
+            Some(RemoteEmbeddingGenerator::new_default()),
             None,
             None,
             default_embedding_model(),
