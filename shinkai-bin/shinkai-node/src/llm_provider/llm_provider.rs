@@ -151,6 +151,18 @@ impl LLMProvider {
                 )
                 .await
             }
+            LLMProviderInterface::Gemini(gemini) => {
+                gemini.call_api(
+                    &self.client,
+                    self.external_url.as_ref(),
+                    self.api_key.as_ref(),
+                    prompt.clone(),
+                    self.model.clone(),
+                    inbox_name,
+                    ws_manager_trait,
+                )
+                .await
+            } 
             LLMProviderInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }

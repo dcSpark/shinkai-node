@@ -175,7 +175,8 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Groq(groq) => {
                 vec![ModelCapability::TextInference]
-            }
+            },
+            LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
         }
     }
 
@@ -207,6 +208,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
+            LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
         }
     }
 
@@ -224,6 +226,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
             LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
         }
     }
 
@@ -335,6 +338,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, groq.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::Gemini(gemini) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, gemini.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -386,6 +394,9 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
+            }
+            LLMProviderInterface::Gemini(_) => {
+                1_000_000
             }
             LLMProviderInterface::Ollama(ollama) => {
                 return match ollama.model_type.as_str() {
@@ -460,6 +471,10 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for Ollama
                 4096
             }
+            LLMProviderInterface::Gemini(_) => {
+                // Fill in the appropriate logic for Ollama
+                4096
+            }
         }
     }
 
@@ -506,6 +521,10 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Ollama(_) => {
+                // Fill in the appropriate logic for Ollama
+                "".to_string()
+            }
+            LLMProviderInterface::Gemini(_) => {
                 // Fill in the appropriate logic for Ollama
                 "".to_string()
             }

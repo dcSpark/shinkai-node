@@ -26,6 +26,7 @@ pub enum LLMProviderInterface {
     ShinkaiBackend(ShinkaiBackend),
     LocalLLM(LocalLLM),
     Groq(Groq),
+    Gemini(Gemini),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -48,6 +49,17 @@ pub struct Groq {
 }
 
 impl Groq {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct Gemini {
+    pub model_type: String,
+}
+
+impl Gemini {
     pub fn model_type(&self) -> String {
         self.model_type.to_string()
     }
@@ -104,6 +116,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("groq:") {
             let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Groq(Groq { model_type }))
+        } else if s.starts_with("gemini:") {
+            let model_type = s.strip_prefix("gemini:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::Gemini(Gemini { model_type }))
         } else {
             Err(())
         }
@@ -134,6 +149,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::Groq(groq) => {
                 let model_type = format!("groq:{}", groq.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::Gemini(gemini) => {
+                let model_type = format!("gemini:{}", gemini.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -169,6 +188,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "groq" => Ok(LLMProviderInterface::Groq(Groq {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
+            "gemini" => Ok(LLMProviderInterface::Gemini(Gemini {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),

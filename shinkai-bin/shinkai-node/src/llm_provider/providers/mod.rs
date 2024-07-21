@@ -18,6 +18,7 @@ pub mod ollama;
 pub mod openai;
 pub mod shared;
 pub mod shinkai_backend;
+pub mod gemini;
 
 #[async_trait]
 pub trait LLMService {
