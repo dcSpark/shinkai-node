@@ -7736,6 +7736,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_sheet"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dashmap",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid 1.8.0",
+]
+
+[[package]]
 name = "shinkai_subscription_management_cli"
 version = "0.1.0"
 dependencies = [
@@ -9182,6 +9195,9 @@ name = "uuid"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
+dependencies = [
+ "getrandom 0.2.10",
+]
 
 [[package]]
 name = "v_frame"

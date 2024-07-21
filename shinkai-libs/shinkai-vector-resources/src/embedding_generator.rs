@@ -13,7 +13,7 @@ use reqwest::ClientBuilder;
 use std::time::Duration;
 
 lazy_static! {
-    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
+    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "http://localhost:11434";
 }
 
 /// A trait for types that can generate embeddings from text.
