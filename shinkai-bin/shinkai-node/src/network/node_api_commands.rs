@@ -16,7 +16,7 @@ use crate::{
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::{js_toolkit::JSToolkit, tool_router::ToolRouter},
+    tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool, tool_router::ToolRouter, workflow_tool::WorkflowTool},
     utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
@@ -2986,11 +2986,14 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_workflow(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        generator: Arc<RemoteEmbeddingGenerator>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
@@ -3036,10 +3039,58 @@ impl Node {
         };
 
         // Save the workflow to the database
-        match db.save_workflow(workflow, requester_name) {
+        match db.save_workflow(workflow.clone(), requester_name.clone()) {
             Ok(_) => {
-                let response = json!({ "status": "success" });
-                let _ = res.send(Ok(response)).await;
+                // Add the workflow to the tool_router
+                if let Some(tool_router) = tool_router {
+                    let mut tool_router = tool_router.lock().await;
+
+                    // Create a WorkflowTool from the workflow
+                    let mut workflow_tool = WorkflowTool::new(workflow.clone());
+
+                    // Generate an embedding for the workflow
+                    let embedding_text = workflow_tool.format_embedding_string();
+                    let embedding = match generator.generate_embedding_default(&embedding_text).await {
+                        Ok(emb) => emb,
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to generate embedding: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    };
+
+                    // Set the embedding in the WorkflowTool
+                    workflow_tool.embedding = Some(embedding.clone());
+
+                    // Create a ShinkaiTool::Workflow
+                    let shinkai_tool = ShinkaiTool::Workflow(workflow_tool);
+
+                    // Add the tool to the ToolRouter
+                    match tool_router.add_shinkai_tool(&requester_name, &shinkai_tool, embedding) {
+                        Ok(_) => {
+                            let response =
+                                json!({ "status": "success", "message": "Workflow added to database and tool router" });
+                            let _ = res.send(Ok(response)).await;
+                        }
+                        Err(err) => {
+                            // If adding to tool_router fails, we should probably remove the workflow from the database
+                            db.remove_workflow(&workflow.generate_key(), &requester_name)?;
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to add workflow to tool router: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                        }
+                    }
+                } else {
+                    let response = json!({ "status": "partial_success", "message": "Workflow added to database, but tool router is not available" });
+                    let _ = res.send(Ok(response)).await;
+                }
                 Ok(())
             }
             Err(err) => {
@@ -3059,6 +3110,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
@@ -3095,8 +3147,27 @@ impl Node {
         // Remove the workflow from the database
         match db.remove_workflow(&workflow_key_str, &requester_name) {
             Ok(_) => {
-                let response = json!({ "status": "success" });
-                let _ = res.send(Ok(response)).await;
+                // Remove the workflow from the tool_router
+                if let Some(tool_router) = tool_router {
+                    let mut tool_router = tool_router.lock().await;
+                    match tool_router.delete_shinkai_tool(&requester_name, &workflow_key.name, "workflow") {
+                        Ok(_) => {
+                            let response = json!({ "status": "success", "message": "Workflow removed from database and tool router" });
+                            let _ = res.send(Ok(response)).await;
+                        }
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to remove workflow from tool router: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                        }
+                    }
+                } else {
+                    let response = json!({ "status": "partial_success", "message": "Workflow removed from database, but tool router is not available" });
+                    let _ = res.send(Ok(response)).await;
+                }
                 Ok(())
             }
             Err(err) => {

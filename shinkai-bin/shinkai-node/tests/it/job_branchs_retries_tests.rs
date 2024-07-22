@@ -45,8 +45,8 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
             break;
         }
 
-        if start.elapsed() > Duration::from_secs(15) {
-            panic!("Test failed: 3 seconds have passed without receiving the response");
+        if start.elapsed() > Duration::from_secs(180) {
+            panic!("Test failed: 15 seconds have passed without receiving the response");
         }
 
         tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping

@@ -46,16 +46,20 @@ impl JobPromptGenerator {
 
         // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
         // and also grouping i.e. instead of having 100 tiny messages, we have a message with the chunks grouped
-        if has_ret_nodes {
-            prompt.add_content(
-                "Here is some extra context to answer any future user questions: --- start --- \n".to_string(),
-                SubPromptType::ExtraContext,
-                97,
-            );
+        {
+            if has_ret_nodes && !user_message.is_empty() {
+                prompt.add_content(
+                    "Here is some extra context to answer any future user questions: --- start --- \n".to_string(),
+                    SubPromptType::ExtraContext,
+                    97,
+                );
+            }
             for node in ret_nodes {
                 prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
             }
-            prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
+            if has_ret_nodes && !user_message.is_empty() {
+                prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
+            }
         }
 
         // Add tools if any. Decrease priority every 2 tools
@@ -72,14 +76,16 @@ impl JobPromptGenerator {
         }
 
         // Add the user question and the preference prompt for the answer
-        let user_prompt = custom_user_prompt.unwrap_or_else(|| {
-            if has_ret_nodes {
-                "Answer the question using the extra context provided.".to_string()
-            } else {
-                "Answer the question.".to_string()
-            }
-        });
-        prompt.add_content(format!("{}\n {}", user_message, user_prompt), SubPromptType::User, 100);
+        if !user_message.is_empty() || custom_user_prompt.is_some() {
+            let user_prompt = custom_user_prompt.unwrap_or_else(|| {
+                if has_ret_nodes {
+                    "Answer the question using the extra context provided.".to_string()
+                } else {
+                    "Answer the question.".to_string()
+                }
+            });
+            prompt.add_content(format!("{}\n {}", user_message, user_prompt), SubPromptType::User, 100);
+        }
 
         // If function_call exists, it means that the LLM requested a function call and we need to send the response back
         if let Some(function_call) = function_call {
