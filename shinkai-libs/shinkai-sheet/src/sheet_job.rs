@@ -1,9 +1,7 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use std::fmt::Debug;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct CellId(pub String);
+use crate::sheet::CellId;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum JobStatus {
@@ -13,7 +11,7 @@ pub enum JobStatus {
     Failed,
 }
 
-pub trait SheetJob: Send + Sync + Clone + Debug {
+pub trait SheetJob: Send + Sync {
     fn id(&self) -> &str;
     fn cell_id(&self) -> &CellId;
     fn prompt(&self) -> &str;
@@ -27,7 +25,7 @@ pub trait SheetJob: Send + Sync + Clone + Debug {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MockupJob {
+pub struct MockupSheetJob {
     id: String,
     cell_id: CellId,
     prompt: String,
@@ -39,7 +37,7 @@ pub struct MockupJob {
 }
 
 
-impl SheetJob for MockupJob {
+impl SheetJob for MockupSheetJob {
     fn id(&self) -> &str { &self.id }
     fn cell_id(&self) -> &CellId { &self.cell_id }
     fn prompt(&self) -> &str { &self.prompt }
@@ -58,7 +56,7 @@ impl SheetJob for MockupJob {
     }
 }
 
-impl MockupJob {
+impl MockupSheetJob {
     pub fn new(id: String, cell_id: CellId, prompt: String, dependencies: Vec<CellId>) -> Self {
         let now = Utc::now();
         Self {

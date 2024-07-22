@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{collections::{HashMap, HashSet}, fmt, sync::Arc};
-use uuid::Uuid;
+use std::collections::{HashMap, HashSet};
 
 use crate::sheet_job::SheetJob;
 
@@ -28,33 +27,17 @@ pub struct Cell {
     last_updated: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct CellId(pub String);
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Sheet {
     columns: Vec<ColumnDefinition>,
     rows: HashMap<usize, Vec<Cell>>,
-    jobs: Vec<Box<dyn SheetJob>>,
     // Adjacency List: cell -> cells it depends on
     dependencies: HashMap<CellId, HashSet<CellId>>,
     // Reverse Adjacency List: cell -> cells that depend on it
     reverse_dependencies: HashMap<CellId, HashSet<CellId>>,
-    #[serde(skip)]
-    workflow_job_creator: Arc<dyn WorkflowJobCreator>,
-}
-
-impl fmt::Debug for Sheet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Sheet")
-            .field("columns", &self.columns)
-            .field("rows", &self.rows)
-            .field("jobs", &self.jobs)
-            .field("dependencies", &self.dependencies)
-            .field("reverse_dependencies", &self.reverse_dependencies)
-            .field("workflow_job_creator", &"<dyn WorkflowJobCreator>")
-            .finish()
-    }
 }
 
 pub trait WorkflowJobCreator {
@@ -68,15 +51,19 @@ pub trait WorkflowJobCreator {
     ) -> Box<dyn SheetJob>;
 }
 
+impl Default for Sheet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sheet {
-    pub fn new(workflow_job_creator: Box<dyn WorkflowJobCreator>) -> Self {
+    pub fn new() -> Self {
         Self {
             columns: Vec::new(),
             rows: HashMap::new(),
-            jobs: Vec::new(),
             dependencies: HashMap::new(),
             reverse_dependencies: HashMap::new(),
-            workflow_job_creator: Arc::clone(&self.workflow_job_creator),
         }
     }
 
@@ -84,12 +71,18 @@ impl Sheet {
         self.columns.push(definition);
     }
 
-    pub fn set_cell_value(&mut self, row: usize, col: usize, value: String) -> Result<(), String> {
+    fn set_cell_value(
+        &mut self,
+        row: usize,
+        col: usize,
+        value: String,
+        workflow_job_creator: &dyn WorkflowJobCreator,
+    ) -> Result<(), String> {
         if col >= self.columns.len() {
             return Err("Column index out of bounds".to_string());
         }
 
-        let row_cells = self.rows.entry(row).or_insert_with(Vec::new);
+        let row_cells = self.rows.entry(row).or_default();
         while row_cells.len() <= col {
             row_cells.push(Cell {
                 value: None,
@@ -103,61 +96,86 @@ impl Sheet {
         };
 
         let changed_cell_id = CellId(format!("{}:{}", row, col));
-        self.update_dependent_cells(&changed_cell_id);
+        self.update_dependent_cells(&changed_cell_id, workflow_job_creator);
         Ok(())
     }
 
-    fn update_dependent_cells(&mut self, changed_cell_id: &CellId) {
+    fn update_dependent_cells(&mut self, changed_cell_id: &CellId, workflow_job_creator: &dyn WorkflowJobCreator) {
         let mut cells_to_update = vec![changed_cell_id.clone()];
-    
+
         while let Some(cell_id) = cells_to_update.pop() {
-            let dependents = self.reverse_dependencies.get(&cell_id)
-                .cloned()
-                .unwrap_or_default();
-            
+            let dependents = self.reverse_dependencies.get(&cell_id).cloned().unwrap_or_default();
+
             for dependent in dependents {
                 let (row, col) = self.cell_id_to_indices(&dependent);
-                self.update_cell(row, col);
+                let jobs = self.update_cell(row, col, workflow_job_creator);
                 cells_to_update.push(dependent);
+                // Handle jobs if necessary
             }
         }
     }
 
-    fn update_cell(&mut self, row: usize, col: usize) {
+    fn update_cell(
+        &mut self,
+        row: usize,
+        col: usize,
+        workflow_job_creator: &dyn WorkflowJobCreator,
+    ) -> Vec<Box<dyn SheetJob>> {
+        let mut jobs = Vec::new();
         let column_behavior = self.columns[col].behavior.clone();
         match column_behavior {
             ColumnBehavior::Formula(formula) => {
                 // Process formula
                 // This is a placeholder. You'll need to implement formula processing logic.
                 println!("Processing formula: {} for cell {}:{}", formula, row, col);
-            },
-            ColumnBehavior::LLMCall { prompt_template, input_columns } => {
-                self.create_workflow_job(row, col, &prompt_template, &input_columns);
-            },
+            }
+            ColumnBehavior::LLMCall {
+                prompt_template,
+                input_columns,
+            } => {
+                let job = self.create_workflow_job(row, col, &prompt_template, &input_columns, workflow_job_creator);
+                jobs.push(job);
+            }
             _ => {}
         }
+        jobs
     }
 
-    fn create_workflow_job(&mut self, row: usize, col: usize, prompt_template: &str, input_columns: &[String]) {
+    fn create_workflow_job(
+        &mut self,
+        row: usize,
+        col: usize,
+        prompt_template: &str,
+        input_columns: &[String],
+        workflow_job_creator: &dyn WorkflowJobCreator,
+    ) -> Box<dyn SheetJob> {
         let cell_id = CellId(format!("{}:{}", row, col));
         let input_values: Vec<String> = input_columns
             .iter()
             .filter_map(|col_id| self.get_cell_value(row, self.get_column_index(col_id)))
             .collect();
-    
-        let dependencies: Vec<CellId> = input_columns.iter().map(|col_id| {
-            let col_index = self.get_column_index(col_id);
-            CellId(format!("{}:{}", row, col_index))
-        }).collect();
-    
+
+        let dependencies: Vec<CellId> = input_columns
+            .iter()
+            .map(|col_id| {
+                let col_index = self.get_column_index(col_id);
+                CellId(format!("{}:{}", row, col_index))
+            })
+            .collect();
+
         // Update dependency graph
-        self.dependencies.entry(cell_id.clone()).or_default().extend(dependencies.iter().cloned());
+        self.dependencies
+            .entry(cell_id.clone())
+            .or_default()
+            .extend(dependencies.iter().cloned());
         for dep in &dependencies {
-            self.reverse_dependencies.entry(dep.clone()).or_default().insert(cell_id.clone());
+            self.reverse_dependencies
+                .entry(dep.clone())
+                .or_default()
+                .insert(cell_id.clone());
         }
-    
-        let job = self.workflow_job_creator.create_workflow_job(row, col, prompt_template, input_columns, &input_values);
-        self.jobs.push(job);
+
+        workflow_job_creator.create_workflow_job(row, col, prompt_template, input_columns, &input_values)
     }
 
     fn get_column_index(&self, column_id: &str) -> usize {
@@ -203,15 +221,71 @@ impl Sheet {
 
     // Additional helper methods
 
-    pub fn get_jobs(&self) -> &[Box<dyn SheetJob>] {
-        &self.jobs
-    }
-
     pub fn get_cell(&self, row: usize, col: usize) -> Option<&Cell> {
         self.rows.get(&row).and_then(|row_cells| row_cells.get(col))
     }
 
     pub fn get_column_definitions(&self) -> &[ColumnDefinition] {
         &self.columns
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sheet_job::MockupSheetJob;
+
+    use super::*;
+    use chrono::Utc;
+
+    struct MockWorkflowJobCreator;
+
+    impl WorkflowJobCreator for MockWorkflowJobCreator {
+        fn create_workflow_job(
+            &self,
+            row: usize,
+            col: usize,
+            prompt_template: &str,
+            input_columns: &[String],
+            cell_values: &[String],
+        ) -> Box<dyn SheetJob> {
+            Box::new(MockupSheetJob::new(
+                "mock_job_id".to_string(),
+                CellId(format!("{}:{}", row, col)),
+                prompt_template.to_string(),
+                input_columns.iter().map(|col| CellId(col.clone())).collect(),
+            ))
+        }
+    }
+
+    #[test]
+    fn test_add_column() {
+        let mut sheet = Sheet::new();
+        let column = ColumnDefinition {
+            id: "col1".to_string(),
+            name: "Column 1".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        sheet.add_column(column.clone());
+        assert_eq!(sheet.columns.len(), 1);
+        assert_eq!(sheet.columns[0], column);
+    }
+
+    #[test]
+    fn test_set_cell_value() {
+        let mut sheet = Sheet::new();
+        let column = ColumnDefinition {
+            id: "col1".to_string(),
+            name: "Column 1".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        sheet.add_column(column);
+
+        let workflow_job_creator = MockWorkflowJobCreator;
+        let result = sheet.set_cell_value(0, 0, "Test Value".to_string(), &workflow_job_creator);
+        assert!(result.is_ok());
+
+        let cell = sheet.get_cell(0, 0).unwrap();
+        assert_eq!(cell.value, Some("Test Value".to_string()));
+        assert!(cell.last_updated <= Utc::now());
     }
 }
