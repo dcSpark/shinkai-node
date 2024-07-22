@@ -2434,14 +2434,15 @@ impl Node {
                                         },
                                         // NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => self.api_update_supported_embedding_models(msg, res).await,
                                         NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => {
-                                            let supported_embedding_models = self.supported_embedding_models.clone();
                                             let db = self.db.clone();
+                                            let vector_fs = self.vector_fs.clone();
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_update_supported_embedding_models(
                                                     db,
+                                                    vector_fs,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,

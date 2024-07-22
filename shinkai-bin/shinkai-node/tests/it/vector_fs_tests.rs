@@ -1447,6 +1447,36 @@ fn vector_search_multiple_embedding_models_test() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
+                // Update supported embedding models
+                let payload = [
+                    OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M.to_string(),
+                    OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs.to_string(),
+                ];
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::UpdateSupportedEmbeddingModels,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res: res_sender })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+            }
+            {
                 let db_strong = node1_db_weak.upgrade().unwrap();
                 db_strong.update_local_processing_preference(true).unwrap();
 

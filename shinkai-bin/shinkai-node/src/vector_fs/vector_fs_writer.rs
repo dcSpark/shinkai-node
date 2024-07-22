@@ -1248,9 +1248,10 @@ impl VectorFS {
                 .get_mut(&writer.profile)
                 .ok_or_else(|| VectorFSError::ProfileNameNonExistent(writer.profile.to_string()))?;
 
-            // Check for same variant and allow different embeddings
-            if std::mem::discriminant(&vr_header.resource_embedding_model_used)
-                == std::mem::discriminant(&internals.default_embedding_model())
+            if vr_header.resource_embedding_model_used == internals.default_embedding_model()
+                || internals
+                    .supported_embedding_models
+                    .contains(&vr_header.resource_embedding_model_used)
             {
                 internals
                     .fs_core_resource
