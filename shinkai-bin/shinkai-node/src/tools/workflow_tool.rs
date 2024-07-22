@@ -105,7 +105,11 @@ impl WorkflowTool {
 
 impl WorkflowTool {
     pub fn static_tools() -> Vec<Self> {
-        if env::var("IS_TESTING").unwrap_or_default() == "true" {
+        let is_testing = env::var("IS_TESTING")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false);
+
+        if is_testing {
             vec![
                 Self::get_extensive_summary_workflow(),
                 Self::get_hyde_inference_workflow(),
