@@ -79,6 +79,7 @@ impl PyLLMProviderInterface {
             LLMProviderInterface::GenericAPI(generic_ai) => Ok(format!("genericapi:{}", generic_ai.model_type)),
             LLMProviderInterface::Ollama(ollama) => Ok(format!("ollama:{}", ollama.model_type)),
             LLMProviderInterface::Groq(groq) => Ok(format!("groq:{}", groq.model_type)),
+            LLMProviderInterface::Gemini(gemini) => Ok(format!("gemini:{}", gemini.model_type)),
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 Ok(format!("shinkai-backend:{}", shinkai_backend.model_type()))
             }

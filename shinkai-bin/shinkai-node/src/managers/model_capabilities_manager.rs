@@ -131,6 +131,7 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
                 "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -151,7 +152,7 @@ impl ModelCapabilitiesManager {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                     vec![ModelCapability::TextInference]
                 }
-                "gpt-vision" | "gpt-4-vision-preview" | "gp4o" | "PREMIUM_VISION_INFERENCE" => {
+                "gpt-vision" | "gpt-4-vision-preview" | "gp4o" | "gpt-4o" | "PREMIUM_VISION_INFERENCE" | "gpt-4o-mini" => {
                     vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
                 }
                 "dall-e" => vec![ModelCapability::ImageGeneration],
@@ -175,7 +176,8 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Groq(groq) => {
                 vec![ModelCapability::TextInference]
-            }
+            },
+            LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
         }
     }
 
@@ -185,8 +187,10 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => ModelCost::Cheap,
                 "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
+                "gpt-4o-mini" => ModelCost::VeryCheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
+                "gpt-4o" => ModelCost::GoodValue,
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -207,6 +211,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
+            LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
         }
     }
 
@@ -224,6 +229,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
             LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
         }
     }
 
@@ -335,6 +341,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, groq.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::Gemini(gemini) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, gemini.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -344,6 +355,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type == "gpt-4o"
                     || openai.model_type == "gpt-4-1106-preview"
+                    || openai.model_type == "gpt-4o-mini"
                     || openai.model_type == "gpt-4-vision-preview"
                 {
                     128_000
@@ -386,6 +398,9 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
+            }
+            LLMProviderInterface::Gemini(_) => {
+                1_000_000
             }
             LLMProviderInterface::Ollama(ollama) => {
                 return match ollama.model_type.as_str() {
@@ -460,6 +475,10 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for Ollama
                 4096
             }
+            LLMProviderInterface::Gemini(_) => {
+                // Fill in the appropriate logic for Ollama
+                4096
+            }
         }
     }
 
@@ -506,6 +525,10 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Ollama(_) => {
+                // Fill in the appropriate logic for Ollama
+                "".to_string()
+            }
+            LLMProviderInterface::Gemini(_) => {
                 // Fill in the appropriate logic for Ollama
                 "".to_string()
             }
