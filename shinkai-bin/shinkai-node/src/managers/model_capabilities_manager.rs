@@ -131,6 +131,7 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
                 "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -151,7 +152,7 @@ impl ModelCapabilitiesManager {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                     vec![ModelCapability::TextInference]
                 }
-                "gpt-vision" | "gpt-4-vision-preview" | "gp4o" | "PREMIUM_VISION_INFERENCE" => {
+                "gpt-vision" | "gpt-4-vision-preview" | "gp4o" | "gpt-4o" | "PREMIUM_VISION_INFERENCE" | "gpt-4o-mini" => {
                     vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
                 }
                 "dall-e" => vec![ModelCapability::ImageGeneration],
@@ -186,8 +187,10 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => ModelCost::Cheap,
                 "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
+                "gpt-4o-mini" => ModelCost::VeryCheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
+                "gpt-4o" => ModelCost::GoodValue,
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -352,6 +355,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type == "gpt-4o"
                     || openai.model_type == "gpt-4-1106-preview"
+                    || openai.model_type == "gpt-4o-mini"
                     || openai.model_type == "gpt-4-vision-preview"
                 {
                     128_000
