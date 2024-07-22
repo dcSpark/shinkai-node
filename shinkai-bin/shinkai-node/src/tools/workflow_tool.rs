@@ -106,7 +106,7 @@ impl WorkflowTool {
 impl WorkflowTool {
     pub fn static_tools() -> Vec<Self> {
         let is_testing = env::var("IS_TESTING")
-            .map(|v| v.to_lowercase() == "true")
+            .map(|v| v.to_lowercase() == "true" || v == "1")
             .unwrap_or(false);
 
         if is_testing {
