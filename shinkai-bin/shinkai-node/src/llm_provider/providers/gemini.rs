@@ -150,8 +150,7 @@ impl LLMService for Gemini {
                         "temperature": 0.9,
                         "topK": 1,
                         "topP": 1,
-                        "maxOutputTokens": 2048,
-                        "stopSequences": []
+                        "maxOutputTokens": 2048
                     }
                 });
 
@@ -264,6 +263,34 @@ async fn process_chunk(
         }
         Err(e) => {
             eprintln!("Failed to parse JSON array: {:?}", e);
+        }
+    }
+
+    // Check if is_done is true and send a final message if necessary
+    if *is_done {
+        if let Some(ref manager) = ws_manager_trait {
+            if let Some(ref inbox_name) = inbox_name {
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+
+                let metadata = WSMetadata {
+                    id: Some(session_id.to_string()),
+                    is_done: *is_done,
+                    done_reason: None,
+                    total_duration: None,
+                    eval_count: None,
+                };
+
+                let _ = m
+                    .queue_message(
+                        WSTopic::Inbox,
+                        inbox_name_string.clone(),
+                        response_text.to_string(),
+                        Some(metadata),
+                        true,
+                    )
+                    .await;
+            }
         }
     }
 
