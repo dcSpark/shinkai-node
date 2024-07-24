@@ -56,7 +56,7 @@ use shinkai_message_primitives::{
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, model_type::EmbeddingModelType};
-use std::{convert::TryInto, sync::Arc};
+use std::{convert::TryInto, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -2930,6 +2930,9 @@ impl Node {
             return Ok(());
         }
 
+        // Start the timer
+        let start_time = Instant::now();
+
         // Generate the embedding for the search query
         let embedding = match embedding_generator.generate_embedding_default(&search_query).await {
             Ok(embedding) => embedding,
@@ -2962,6 +2965,11 @@ impl Node {
                     let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
                         message: format!("Failed to serialize workflows: {}", err),
                     })?;
+                    // Log the elapsed time if LOG_ALL is set to 1
+                    if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
+                        let elapsed_time = start_time.elapsed();
+                        println!("Time taken for workflow search: {:?}", elapsed_time);
+                    }
                     let _ = res.send(Ok(workflows_json)).await;
                     Ok(())
                 }
