@@ -6,7 +6,7 @@ use crate::sheet_job::SheetJob;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ColumnDefinition {
-    id: String,
+    id: usize,
     name: String,
     behavior: ColumnBehavior,
 }
@@ -18,9 +18,10 @@ pub enum ColumnBehavior {
     Formula(String),
     LLMCall {
         prompt_template: String,
-        input_columns: Vec<String>,
+        input_columns: Vec<usize>,
     },
 }
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Cell {
     value: Option<String>,
@@ -32,7 +33,7 @@ pub struct CellId(pub String);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Sheet {
-    columns: Vec<ColumnDefinition>,
+    columns: HashMap<usize, ColumnDefinition>,
     rows: HashMap<usize, Vec<Cell>>,
     // Adjacency List: cell -> cells it depends on
     dependencies: HashMap<CellId, HashSet<CellId>>,
@@ -46,7 +47,7 @@ pub trait WorkflowJobCreator {
         row: usize,
         col: usize,
         prompt_template: &str,
-        input_columns: &[String],
+        input_columns: &[usize],
         cell_values: &[String],
     ) -> Box<dyn SheetJob>;
 }
@@ -60,7 +61,7 @@ impl Default for Sheet {
 impl Sheet {
     pub fn new() -> Self {
         Self {
-            columns: Vec::new(),
+            columns: HashMap::new(),
             rows: HashMap::new(),
             dependencies: HashMap::new(),
             reverse_dependencies: HashMap::new(),
@@ -68,7 +69,7 @@ impl Sheet {
     }
 
     pub fn add_column(&mut self, definition: ColumnDefinition) {
-        self.columns.push(definition);
+        self.columns.insert(definition.id, definition);
     }
 
     fn set_cell_value(
@@ -78,7 +79,7 @@ impl Sheet {
         value: String,
         workflow_job_creator: &dyn WorkflowJobCreator,
     ) -> Result<(), String> {
-        if col >= self.columns.len() {
+        if !self.columns.contains_key(&col) {
             return Err("Column index out of bounds".to_string());
         }
 
@@ -122,7 +123,7 @@ impl Sheet {
         workflow_job_creator: &dyn WorkflowJobCreator,
     ) -> Vec<Box<dyn SheetJob>> {
         let mut jobs = Vec::new();
-        let column_behavior = self.columns[col].behavior.clone();
+        let column_behavior = self.columns.get(&col).unwrap().behavior.clone();
         match column_behavior {
             ColumnBehavior::Formula(formula) => {
                 // Process formula
@@ -146,21 +147,18 @@ impl Sheet {
         row: usize,
         col: usize,
         prompt_template: &str,
-        input_columns: &[String],
+        input_columns: &[usize],
         workflow_job_creator: &dyn WorkflowJobCreator,
     ) -> Box<dyn SheetJob> {
         let cell_id = CellId(format!("{}:{}", row, col));
         let input_values: Vec<String> = input_columns
             .iter()
-            .filter_map(|col_id| self.get_cell_value(row, self.get_column_index(col_id)))
+            .filter_map(|&col_id| self.get_cell_value(row, col_id))
             .collect();
 
         let dependencies: Vec<CellId> = input_columns
             .iter()
-            .map(|col_id| {
-                let col_index = self.get_column_index(col_id);
-                CellId(format!("{}:{}", row, col_index))
-            })
+            .map(|&col_id| CellId(format!("{}:{}", row, col_id)))
             .collect();
 
         // Update dependency graph
@@ -178,8 +176,8 @@ impl Sheet {
         workflow_job_creator.create_workflow_job(row, col, prompt_template, input_columns, &input_values)
     }
 
-    fn get_column_index(&self, column_id: &str) -> usize {
-        self.columns.iter().position(|col| col.id == column_id).unwrap_or(0)
+    fn get_column_index(&self, column_id: usize) -> usize {
+        *self.columns.get(&column_id).map(|col| &col.id).unwrap_or(&0)
     }
 
     fn get_cell_value(&self, row: usize, col: usize) -> Option<String> {
@@ -225,8 +223,8 @@ impl Sheet {
         self.rows.get(&row).and_then(|row_cells| row_cells.get(col))
     }
 
-    pub fn get_column_definitions(&self) -> &[ColumnDefinition] {
-        &self.columns
+    pub fn get_column_definitions(&self) -> Vec<(usize, &ColumnDefinition)> {
+        self.columns.iter().map(|(&index, def)| (index, def)).collect()
     }
 }
 
@@ -245,14 +243,14 @@ mod tests {
             row: usize,
             col: usize,
             prompt_template: &str,
-            input_columns: &[String],
+            input_columns: &[usize],
             cell_values: &[String],
         ) -> Box<dyn SheetJob> {
             Box::new(MockupSheetJob::new(
                 "mock_job_id".to_string(),
                 CellId(format!("{}:{}", row, col)),
                 prompt_template.to_string(),
-                input_columns.iter().map(|col| CellId(col.clone())).collect(),
+                input_columns.iter().map(|&col| CellId(col.to_string())).collect(),
             ))
         }
     }
@@ -261,20 +259,20 @@ mod tests {
     fn test_add_column() {
         let mut sheet = Sheet::new();
         let column = ColumnDefinition {
-            id: "col1".to_string(),
+            id: 0,
             name: "Column 1".to_string(),
             behavior: ColumnBehavior::Text,
         };
         sheet.add_column(column.clone());
         assert_eq!(sheet.columns.len(), 1);
-        assert_eq!(sheet.columns[0], column);
+        assert_eq!(sheet.columns[&0], column);
     }
 
     #[test]
     fn test_set_cell_value() {
         let mut sheet = Sheet::new();
         let column = ColumnDefinition {
-            id: "col1".to_string(),
+            id: 0,
             name: "Column 1".to_string(),
             behavior: ColumnBehavior::Text,
         };
@@ -287,5 +285,26 @@ mod tests {
         let cell = sheet.get_cell(0, 0).unwrap();
         assert_eq!(cell.value, Some("Test Value".to_string()));
         assert!(cell.last_updated <= Utc::now());
+    }
+
+    #[test]
+    fn test_add_non_consecutive_columns() {
+        let mut sheet = Sheet::new();
+        let column_a = ColumnDefinition {
+            id: 0,
+            name: "Column A".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let column_c = ColumnDefinition {
+            id: 2,
+            name: "Column C".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        sheet.add_column(column_a.clone());
+        sheet.add_column(column_c.clone());
+
+        assert_eq!(sheet.columns.len(), 2);
+        assert_eq!(sheet.columns[&0], column_a);
+        assert_eq!(sheet.columns[&2], column_c);
     }
 }
