@@ -7774,6 +7774,7 @@ dependencies = [
  "shinkai_message_primitives",
  "tokio",
  "tokio-util 0.6.10",
+ "uuid 0.8.2",
  "x25519-dalek",
 ]
 
