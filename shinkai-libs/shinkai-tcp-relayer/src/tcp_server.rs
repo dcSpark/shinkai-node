@@ -605,6 +605,20 @@ impl TCPProxy {
         }
 
         // Case D
+        // Sending a message using the relayer public IP
+        // This could proce a loop in the relayer so we discard the message
+        let relayer_addresses = if !recipient_matches {
+            // Fetch the public keys from the registry
+            let registry_identity = registry.get_identity_record(tcp_node_name_string.clone()).await.unwrap();
+            registry_identity.address_or_proxy_nodes
+        } else {
+            vec![]
+        };
+        if relayer_addresses.iter().any(|addr| recipient_addresses.iter().any(|recipient_addr| addr == recipient_addr)) {
+            return Err(NetworkMessageError::RecipientLoopError(recipient_addresses.join(",")));
+        }
+
+        // Case E
         // Proxying message out. Sender is not localhost but a well defined identity
         // We need to proxy the message to the recipient
         println!(
