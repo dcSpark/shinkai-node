@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, fmt, marker::PhantomData, time::Instant};
+use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
 
 use crate::{
     llm_provider::{
@@ -223,7 +223,9 @@ impl<'a> DslChain<'a> {
         }
 
         let elapsed_time = start_time.elapsed(); // Measure elapsed time
-        eprintln!("Time taken to add tools: {:?}", elapsed_time);
+        if env::var("LOG_ALL").unwrap_or_default() == "1" {
+            eprintln!("Time taken to add tools: {:?}", elapsed_time);
+        }
 
         Ok(())
     }
@@ -356,7 +358,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         let user_profile = self.context.user_profile();
         let max_tokens_in_prompt = self.context.max_tokens_in_prompt();
 
-         // If both the scope and custom_system_prompt are not empty, we use an empty string
+        // If both the scope and custom_system_prompt are not empty, we use an empty string
         // for the user_message and the custom_system_prompt as the query_text.
         // This allows for more focused searches based on the system prompt when a scope is provided.
         let (effective_user_message, query_text) = if !full_job.scope().is_empty() && custom_system_prompt.is_some() {

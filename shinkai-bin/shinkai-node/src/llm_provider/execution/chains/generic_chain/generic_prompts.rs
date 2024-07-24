@@ -22,12 +22,7 @@ impl JobPromptGenerator {
 
         // Add system prompt
         let system_prompt = custom_system_prompt.unwrap_or_else(|| "You are a very helpful assistant.".to_string());
-        prompt.add_content(system_prompt, SubPromptType::System, 98);
-
-        // Add previous messages
-        if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 97);
-        }
+        prompt.add_content(system_prompt, SubPromptType::ExtraContext, 98);
 
         // Commented because it was confusing the LLM in some cases
         // If there is a document summary from the vector search add it with higher priority that the chunks
@@ -60,6 +55,11 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }
+        }
+
+        // Add previous messages
+        if let Some(step_history) = job_step_history {
+            prompt.add_step_history(step_history, 97);
         }
 
         // Add tools if any. Decrease priority every 2 tools

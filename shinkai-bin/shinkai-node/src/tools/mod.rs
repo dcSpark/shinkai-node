@@ -9,3 +9,4 @@ pub mod rust_tools;
 pub mod shinkai_tool;
 pub mod workflow_tool;
 pub mod workflow_static_texts;
+pub mod workflows_data;

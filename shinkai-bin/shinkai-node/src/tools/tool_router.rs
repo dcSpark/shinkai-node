@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::env;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
 
@@ -12,13 +13,16 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
+use crate::tools::workflow_tool::WorkflowTool;
+use crate::tools::workflows_data;
 use keyphrases::KeyPhraseExtractor;
-use serde_json;
+use serde_json::{self, Value};
 use shinkai_dsl::sm_executor::AsyncFunction;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
@@ -26,7 +30,6 @@ use shinkai_vector_resources::vector_resource::{
 
 use super::js_toolkit::JSToolkit;
 use super::shinkai_tool::ShinkaiTool;
-use super::workflow_tool::WorkflowTool;
 
 /// A top level struct which indexes Tools (Rust or JS or Workflows) installed in the Shinkai Node
 #[derive(Debug, Clone, PartialEq)]
@@ -128,41 +131,84 @@ impl ToolRouter {
         db: Arc<ShinkaiDB>,
         profile: ShinkaiName,
     ) {
+        let model_type = generator.model_type();
+
         // Measure the time it takes to generate static workflows
         let start_time = Instant::now();
 
-        // Generate the static workflows
-        let workflows = WorkflowTool::static_tools();
-        println!("Number of static workflows: {}", workflows.len());
+        // If the generator's model matches the previous computed workflows, then we use the new approach
+        if let EmbeddingModelType::OllamaTextEmbeddingsInference(
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+        ) = model_type
+        {
+            // Parse the JSON data into a generic JSON value
+            let data = workflows_data::WORKFLOWS_JSON;
+            let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
+            let json_array = json_value.as_array().expect("Expected JSON data to be an array");
+
+            // Insert each workflow into the routing resource and save to the database
+            for item in json_array {
+                // Parse the shinkai_tool field
+                let shinkai_tool_value = &item["shinkai_tool"];
+                let shinkai_tool: ShinkaiTool =
+                    serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
+
+                // Parse the embedding field
+                let embedding_value = &item["embedding"];
+                let embedding: Embedding =
+                    serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
+
+                let _ = routing_resource.insert_text_node(
+                    shinkai_tool.tool_router_key(),
+                    shinkai_tool.to_json().unwrap(),
+                    None,
+                    embedding,
+                    &vec![],
+                );
+
+                // Save the workflow to the database
+                if let ShinkaiTool::Workflow(workflow_tool) = &shinkai_tool {
+                    if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
+                        eprintln!("Error saving workflow to DB: {:?}", e);
+                    }
+                }
+            }
+        } else {
+            // Generate the static workflows
+            let workflows = WorkflowTool::static_tools();
+            println!("Number of static workflows: {}", workflows.len());
+
+            // Insert each workflow into the routing resource and save to the database
+            for workflow_tool in workflows {
+                let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+
+                let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
+                    embedding
+                } else {
+                    generator
+                        .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                        .await
+                        .unwrap()
+                };
+
+                let _ = routing_resource.insert_text_node(
+                    shinkai_tool.tool_router_key(),
+                    shinkai_tool.to_json().unwrap(),
+                    None,
+                    embedding,
+                    &vec![],
+                );
+
+                // Save the workflow to the database
+                if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
+                    eprintln!("Error saving workflow to DB: {:?}", e);
+                }
+            }
+        }
 
         let duration = start_time.elapsed();
-        println!("Time taken to generate static workflows: {:?}", duration);
-
-        // Insert each workflow into the routing resource and save to the database
-        for workflow_tool in workflows {
-            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
-
-            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
-                embedding
-            } else {
-                generator
-                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
-                    .await
-                    .unwrap()
-            };
-
-            let _ = routing_resource.insert_text_node(
-                shinkai_tool.tool_router_key(),
-                shinkai_tool.to_json().unwrap(),
-                None,
-                embedding,
-                &vec![],
-            );
-
-            // Save the workflow to the database
-            if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
-                eprintln!("Error saving workflow to DB: {:?}", e);
-            }
+        if env::var("LOG_ALL").unwrap_or_default() == "1" {
+            println!("Time taken to generate static workflows: {:?}", duration);
         }
     }
 
@@ -701,5 +747,53 @@ impl ToolRouter {
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    use crate::tools::workflows_data;
+
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn test_parse_workflows_json() {
+        let data = workflows_data::WORKFLOWS_JSON;
+
+        // Start the timer
+        let start_time = Instant::now();
+
+        // Parse the JSON data into a generic JSON value
+        let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
+
+        // Ensure the JSON value is an array
+        let json_array = json_value.as_array().expect("Expected JSON data to be an array");
+
+        // Iterate over the JSON array and manually parse each element
+        for item in json_array {
+            // Parse the shinkai_tool field
+            let shinkai_tool_value = &item["shinkai_tool"];
+            let shinkai_tool: ShinkaiTool =
+                serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
+
+            // Parse the embedding field
+            let embedding_value = &item["embedding"];
+            let embedding: Embedding =
+                serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
+
+            // Check if embedding vector is not empty
+            assert!(!embedding.vector.is_empty(), "Embedding vector is empty");
+
+            // Check if tool name and description are not empty
+            assert!(!shinkai_tool.name().is_empty(), "Tool name is empty");
+            assert!(!shinkai_tool.description().is_empty(), "Tool description is empty");
+        }
+
+        // Stop the timer and calculate the duration
+        let duration = start_time.elapsed();
+        println!("Time taken to parse workflows JSON: {:?}", duration);
     }
 }
