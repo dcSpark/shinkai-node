@@ -46,6 +46,7 @@ async fn test_handle_client_localhost() {
         Some(RELAYER_IDENTITY.to_string()),
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -112,6 +113,7 @@ async fn test_handle_client_identity() {
         Some(signature_key),
         Some(encryption_key),
         Some(RELAYER_IDENTITY.to_string()),
+        None,
         None,
         None,
     )
@@ -183,6 +185,7 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
         Some(signature_key),
         Some(encryption_key),
         Some(RELAYER_IDENTITY.to_string()),
+        None,
         None,
         None,
     )
@@ -322,6 +325,7 @@ async fn test_message_from_node1_to_external_identity_testing_tcp_relay() {
         Some(signature_key),
         Some(encryption_key),
         Some(RELAYER_IDENTITY.to_string()),
+        None,
         None,
         None,
     )

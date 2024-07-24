@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key
+    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ use std::thread::sleep;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{NetworkMessage, NetworkMessageError};
@@ -46,6 +46,7 @@ pub struct TCPProxy {
     #[derivative(Debug = "ignore")]
     pub encryption_secret_key: EncryptionStaticKey,
     pub encryption_public_key: EncryptionPublicKey,
+    pub connection_semaphore: Arc<Semaphore>,
 }
 
 impl TCPProxy {
@@ -55,6 +56,7 @@ impl TCPProxy {
         node_name: Option<String>,
         rpc_url: Option<String>,
         contract_address: Option<String>,
+        max_connections: Option<usize>,
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
@@ -62,6 +64,9 @@ impl TCPProxy {
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
+        let max_connections = max_connections
+            .or_else(|| env::var("MAX_CONNECTIONS").ok().and_then(|s| s.parse().ok()))
+            .unwrap_or(20);
 
         let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 
@@ -137,6 +142,7 @@ impl TCPProxy {
             identity_public_key,
             encryption_secret_key,
             encryption_public_key,
+            connection_semaphore: Arc::new(Semaphore::new(max_connections)),
         })
     }
 
@@ -148,6 +154,9 @@ impl TCPProxy {
         let (reader, writer) = tokio::io::split(socket);
         let reader = Arc::new(Mutex::new(reader));
         let writer = Arc::new(Mutex::new(writer));
+
+        // Acquire a permit from the semaphore
+        let permit = self.connection_semaphore.clone().acquire_owned().await.unwrap();
 
         // Read identity
         let network_msg = match NetworkMessage::read_from_socket(reader.clone(), None).await {
@@ -166,24 +175,38 @@ impl TCPProxy {
         match network_msg.message_type {
             NetworkMessageType::ProxyMessage => {
                 self.handle_proxy_message_type(reader, writer, identity).await;
+                drop(permit);
             }
             NetworkMessageType::ShinkaiMessage => {
-                Self::handle_shinkai_message(
-                    reader,
-                    writer,
-                    network_msg,
-                    &self.clients,
-                    &self.pk_to_clients,
-                    &self.registry,
-                    &identity,
-                    self.node_name.clone(),
-                    self.identity_secret_key.clone(),
-                    self.encryption_secret_key.clone(),
-                )
-                .await;
+                let clients = self.clients.clone();
+                let pk_to_clients = self.pk_to_clients.clone();
+                let registry = self.registry.clone();
+                let node_name = self.node_name.clone();
+                let identity_secret_key = self.identity_secret_key.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+
+                tokio::spawn(async move {
+                    // The permit will be dropped when the task completes, releasing the semaphore
+                    let _permit = permit;
+
+                    TCPProxy::handle_shinkai_message(
+                        reader,
+                        writer,
+                        network_msg,
+                        &clients,
+                        &pk_to_clients,
+                        &registry,
+                        &identity,
+                        node_name,
+                        identity_secret_key,
+                        encryption_secret_key,
+                    )
+                    .await;
+                });
             }
             NetworkMessageType::VRKaiPathPair => {
                 eprintln!("VRKaiPathPair message not supported yet");
+                drop(permit);
             }
         };
     }
@@ -201,7 +224,6 @@ impl TCPProxy {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
     ) {
-        println!("Received a ShinkaiMessage from {}...", identity);
         let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&network_msg.payload);
         match shinkai_message {
             Ok(parsed_message) => {
@@ -411,7 +433,8 @@ impl TCPProxy {
             2.a) If the recipient is the same as the node_name, then we handle the message locally (means that the node is localhost)
             2.b) If the recipient is not the same as the node_name, then we need to proxy the message to the recipient
         */
-        println!("handle_proxy_message> ShinkaiMessage: {:?}", parsed_message);
+        println!("Received a ShinkaiMessage from {}...", parsed_message.external_metadata.sender);
+        println!("handle_proxy_message> ShinkaiMessage External Metadata: {:?}", parsed_message.external_metadata);
 
         // Check if the message needs to be proxied or if it's meant for one of the connected nodes behind NAT
         let msg_recipient = parsed_message
@@ -628,10 +651,10 @@ impl TCPProxy {
             Ok(onchain_identity) => {
                 match onchain_identity.first_address().await {
                     Ok(first_address) => {
-                        println!("Connecting to first address: {}", first_address);
+                        println!("Connecting to first address: {} for identity: {}", first_address, onchain_identity.shinkai_identity);
                         match TcpStream::connect(first_address).await {
                             Ok(mut stream) => {
-                                println!("Connected successfully. Streaming...");
+                                println!("Stablish connection to {} successful. Streaming...", onchain_identity.shinkai_identity);
                                 let payload = modified_message.encode_message().unwrap();
 
                                 let identity_bytes = msg_recipient.as_bytes();
