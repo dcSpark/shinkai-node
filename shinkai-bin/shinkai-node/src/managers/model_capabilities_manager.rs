@@ -355,7 +355,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type == "gpt-4o"
                     || openai.model_type == "gpt-4-1106-preview"
-                    || openai.model_type == "gpt-4o-mini"
+                    || openai.model_type == "gpt-4-1106-preview"
                     || openai.model_type == "gpt-4-vision-preview"
                 {
                     128_000
@@ -424,6 +424,7 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("wizardlm2") => 8_000,
                     model_type if model_type.starts_with("phi2") => 4_000,
                     model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
+                    model_type if model_type.starts_with("llama3.1") => 128_000,
                     model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
                     _ => 4096, // Default token count if no specific model type matches
                 };
