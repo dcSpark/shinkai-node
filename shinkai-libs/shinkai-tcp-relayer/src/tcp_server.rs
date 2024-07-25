@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key
+    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
@@ -20,7 +20,8 @@ use std::thread::sleep;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
+use uuid::Uuid;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{NetworkMessage, NetworkMessageError};
@@ -46,6 +47,8 @@ pub struct TCPProxy {
     #[derivative(Debug = "ignore")]
     pub encryption_secret_key: EncryptionStaticKey,
     pub encryption_public_key: EncryptionPublicKey,
+    pub connection_semaphore: Arc<Semaphore>,
+    pub max_connections: usize,
 }
 
 impl TCPProxy {
@@ -55,6 +58,7 @@ impl TCPProxy {
         node_name: Option<String>,
         rpc_url: Option<String>,
         contract_address: Option<String>,
+        max_connections: Option<usize>,
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
@@ -62,6 +66,9 @@ impl TCPProxy {
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
+        let max_connections = max_connections
+            .or_else(|| env::var("MAX_CONNECTIONS").ok().and_then(|s| s.parse().ok()))
+            .unwrap_or(20);
 
         let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 
@@ -137,6 +144,8 @@ impl TCPProxy {
             identity_public_key,
             encryption_secret_key,
             encryption_public_key,
+            connection_semaphore: Arc::new(Semaphore::new(max_connections)),
+            max_connections,
         })
     }
 
@@ -144,10 +153,20 @@ impl TCPProxy {
     /// - a Node that needs punch hole
     /// - a Node answering to a request that needs to get redirected to a Node using a punch hole
     pub async fn handle_client(&self, socket: TcpStream) {
-        println!("New incoming connection");
+        let session_id = Uuid::new_v4();
+        println!("[{}] New incoming connection", session_id);
+
         let (reader, writer) = tokio::io::split(socket);
         let reader = Arc::new(Mutex::new(reader));
         let writer = Arc::new(Mutex::new(writer));
+
+        let permit = self.connection_semaphore.clone().acquire_owned().await.unwrap();
+        let max_connections = self.max_connections;
+        println!(
+            "Semaphore acquired. Available permits: {} out of {}",
+            self.connection_semaphore.available_permits(),
+            max_connections
+        );
 
         // Read identity
         let network_msg = match NetworkMessage::read_from_socket(reader.clone(), None).await {
@@ -159,31 +178,74 @@ impl TCPProxy {
         };
         let identity = network_msg.identity.clone();
         println!(
-            "connecting: {} with message_type: {:?}",
-            identity, network_msg.message_type
+            "[{}] connecting: {} with message_type: {:?}",
+            session_id, identity, network_msg.message_type
         );
 
         match network_msg.message_type {
             NetworkMessageType::ProxyMessage => {
-                self.handle_proxy_message_type(reader, writer, identity).await;
+                self.handle_proxy_message_type(reader, writer, identity, session_id)
+                    .await;
+                drop(permit);
+                println!(
+                    "[{}] Semaphore permit dropped. Available permits: {} out of {}",
+                    session_id,
+                    self.connection_semaphore.available_permits(),
+                    max_connections
+                );
             }
             NetworkMessageType::ShinkaiMessage => {
-                Self::handle_shinkai_message(
-                    reader,
-                    writer,
-                    network_msg,
-                    &self.clients,
-                    &self.pk_to_clients,
-                    &self.registry,
-                    &identity,
-                    self.node_name.clone(),
-                    self.identity_secret_key.clone(),
-                    self.encryption_secret_key.clone(),
-                )
-                .await;
+                let clients = self.clients.clone();
+                let pk_to_clients = self.pk_to_clients.clone();
+                let registry = self.registry.clone();
+                let node_name = self.node_name.clone();
+                let identity_secret_key = self.identity_secret_key.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+                let connection_semaphore = self.connection_semaphore.clone();
+
+                tokio::spawn(async move {
+                    // The permit will be dropped when the task completes, releasing the semaphore
+                    let _permit = permit;
+                    println!(
+                        "[{}] Semaphore acquired in spawned task. Available permits: {} out of {}",
+                        session_id,
+                        connection_semaphore.available_permits(),
+                        max_connections
+                    );
+
+                    TCPProxy::handle_shinkai_message(
+                        reader,
+                        writer,
+                        network_msg,
+                        &clients,
+                        &pk_to_clients,
+                        &registry,
+                        &identity,
+                        node_name,
+                        identity_secret_key,
+                        encryption_secret_key,
+                        session_id,
+                    )
+                    .await;
+
+                    drop(_permit);
+                    println!(
+                        "[{}] Semaphore permit dropped in spawned task. Available permits: {} out of {}",
+                        session_id,
+                        connection_semaphore.available_permits(),
+                        max_connections
+                    );
+                });
             }
             NetworkMessageType::VRKaiPathPair => {
-                eprintln!("VRKaiPathPair message not supported yet");
+                eprintln!("[{}] VRKaiPathPair message not supported yet", session_id);
+                drop(permit);
+                println!(
+                    "[{}] Semaphore permit dropped. Available permits: {} out of {}",
+                    session_id,
+                    self.connection_semaphore.available_permits(),
+                    max_connections
+                );
             }
         };
     }
@@ -200,8 +262,8 @@ impl TCPProxy {
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        session_id: Uuid,
     ) {
-        println!("Received a ShinkaiMessage from {}...", identity);
         let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&network_msg.payload);
         match shinkai_message {
             Ok(parsed_message) => {
@@ -216,19 +278,20 @@ impl TCPProxy {
                     node_name,
                     identity_secret_key,
                     encryption_secret_key,
+                    session_id
                 )
                 .await;
                 match response {
                     Ok(_) => {
-                        println!("Successfully handled ShinkaiMessage for: {}", identity);
+                        println!("[{}] Successfully handled ShinkaiMessage for: {}", session_id, identity);
                     }
                     Err(e) => {
-                        eprintln!("Failed to handle ShinkaiMessage: {}", e);
+                        eprintln!("[{}] Failed to handle ShinkaiMessage: {}", session_id, e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                eprintln!("[{}] Failed to parse ShinkaiMessage: {}", session_id, e);
             }
         }
     }
@@ -238,17 +301,18 @@ impl TCPProxy {
         reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         identity: String,
+        session_id: Uuid,
     ) {
-        println!("Received a ProxyMessage from {}...", identity);
+        println!("[{}] Received a ProxyMessage from {}...", session_id, identity);
         let public_key_hex = match self.validate_identity(reader.clone(), writer.clone(), &identity).await {
             Ok(pk) => pk,
             Err(e) => {
-                eprintln!("Identity validation failed: {}", e);
+                eprintln!("[{}] Identity validation failed: {}", session_id, e);
                 return;
             }
         };
 
-        println!("Identity validated: {}", identity);
+        println!("[{}] Identity validated: {}", session_id, identity);
         // Transform identity for localhost clients
         let mut identity = identity.trim_start_matches("@@").to_string();
         if identity.starts_with("localhost") {
@@ -279,8 +343,8 @@ impl TCPProxy {
                     msg = NetworkMessage::read_from_socket(reader.clone(), Some(identity.clone())) => {
                         match msg {
                             Ok(msg) => {
-                                if let Err(e) = Self::handle_incoming_message(Ok(msg), &clients_clone, &pk_to_clients_clone, reader.clone(), writer.clone(), &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone()).await {
-                                    eprintln!("Error handling incoming message: {}", e);
+                                if let Err(e) = Self::handle_incoming_message(Ok(msg), &clients_clone, &pk_to_clients_clone, reader.clone(), writer.clone(), &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone(), session_id).await {
+                                    eprintln!("[{}] Error handling incoming message: {}", session_id, e);
                                     break;
                                 }
                             }
@@ -288,13 +352,13 @@ impl TCPProxy {
                                 sleep(std::time::Duration::from_secs(1));
                             }
                             Err(e) => {
-                                eprintln!("Connection lost for {} with error: {}", identity, e);
+                                eprintln!("[{}] Connection lost for {} with error: {}", session_id, identity, e);
                                 break;
                             }
                         }
                     }
                     else => {
-                        eprintln!("Connection lost for {}", identity);
+                        eprintln!("[{}] Connection lost for {}", session_id, identity);
                         break;
                     }
                 }
@@ -314,7 +378,7 @@ impl TCPProxy {
                 let mut clients_lock = clients_clone.lock().await;
                 clients_lock.remove(&identity);
             }
-            eprintln!("disconnected: {}", identity);
+            eprintln!("[{}] disconnected: {}", session_id, identity);
         });
     }
 
@@ -330,11 +394,12 @@ impl TCPProxy {
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        session_id: Uuid,
     ) -> Result<(), NetworkMessageError> {
         match msg {
             Ok(msg) => match msg.message_type {
                 NetworkMessageType::ProxyMessage => {
-                    println!("Received a ProxyMessage ...");
+                    println!("[{}] Received a ProxyMessage ...", session_id);
                     let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&msg.payload);
                     match shinkai_message {
                         Ok(parsed_message) => {
@@ -349,11 +414,12 @@ impl TCPProxy {
                                 node_name,
                                 identity_secret_key,
                                 encryption_secret_key,
+                                session_id,
                             )
                             .await
                         }
                         Err(e) => {
-                            eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                            eprintln!("[{}] Failed to parse ShinkaiMessage: {}", session_id, e);
                             let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
                             send_message_with_length(writer.clone(), error_message).await
                         }
@@ -371,17 +437,18 @@ impl TCPProxy {
                         node_name,
                         identity_secret_key,
                         encryption_secret_key,
+                        session_id,
                     )
                     .await;
                     Ok(())
                 }
                 NetworkMessageType::VRKaiPathPair => {
-                    eprintln!("VRKaiPathPair not supported yet");
+                    eprintln!("[{}] VRKaiPathPair not supported yet", session_id);
                     Ok(())
                 }
             },
             Err(e) => {
-                eprintln!("Failed to read message: {}", e);
+                eprintln!("[{}] Failed to read message: {}", session_id, e);
                 Err(e)
             }
         }
@@ -399,6 +466,7 @@ impl TCPProxy {
         tcp_node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        session_id: Uuid,
     ) -> Result<(), NetworkMessageError> {
         /*
          For Proxy Message we have multiple cases
@@ -411,7 +479,14 @@ impl TCPProxy {
             2.a) If the recipient is the same as the node_name, then we handle the message locally (means that the node is localhost)
             2.b) If the recipient is not the same as the node_name, then we need to proxy the message to the recipient
         */
-        println!("handle_proxy_message> ShinkaiMessage: {:?}", parsed_message);
+        println!(
+            "[{}] Received a ShinkaiMessage from {}...",
+            session_id, parsed_message.external_metadata.sender
+        );
+        println!(
+            "[{}] handle_proxy_message> ShinkaiMessage External Metadata: {:?}",
+            session_id, parsed_message.external_metadata
+        );
 
         // Check if the message needs to be proxied or if it's meant for one of the connected nodes behind NAT
         let msg_recipient = parsed_message
@@ -440,7 +515,10 @@ impl TCPProxy {
         // If Message Recipient is TCP Node Name
         // We proxied a message from a localhost identity and we are getting the response
         if msg_recipient == tcp_node_name_string {
-            println!("Recipient is the same as the node name, handling message locally");
+            println!(
+                "[{}] Recipient is the same as the node name, handling message locally",
+                session_id
+            );
             Self::handle_ext_node_to_proxy_msg(
                 parsed_message,
                 clients,
@@ -450,6 +528,7 @@ impl TCPProxy {
                 registry,
                 tcp_node_name,
                 msg_sender,
+                session_id,
             )
             .await?;
             return Ok(());
@@ -473,8 +552,8 @@ impl TCPProxy {
         // if the node is using the proxy as a relay then it will be in the recipient_addresses
         if recipient_addresses.iter().any(|addr| addr == &tcp_node_name_string) {
             println!(
-                "Recipient is {} and uses this node as proxy, handling message locally",
-                msg_recipient
+                "[{}] Recipient is {} and uses this node as proxy, handling message locally",
+                session_id, msg_recipient
             );
 
             let connection = {
@@ -482,7 +561,10 @@ impl TCPProxy {
                 match clients_guard.get(&msg_recipient) {
                     Some(connection) => connection.clone(),
                     None => {
-                        eprintln!("Error: Connection not found for recipient {}", msg_recipient);
+                        eprintln!(
+                            "[{}] Error: Connection not found for recipient {}",
+                            session_id, msg_recipient
+                        );
                         return Ok(());
                     }
                 }
@@ -492,7 +574,7 @@ impl TCPProxy {
                 .await
                 .is_err()
             {
-                eprintln!("Failed to send message to client {}", msg_recipient);
+                eprintln!("[{}] Failed to send message to client {}", session_id, msg_recipient);
             }
 
             return Ok(());
@@ -501,7 +583,10 @@ impl TCPProxy {
         // Case C
         // Proxying message out. Sender is behind NAT & localhost
         if msg_sender.starts_with("localhost") || msg_sender.starts_with("@@localhost") {
-            println!("Proxying message out. Sender is behind NAT & localhost");
+            println!(
+                "[{}] Proxying message out. Sender is behind NAT & localhost",
+                session_id
+            );
             let client_identity_pk = client_identity.split(":::").last().unwrap_or("").to_string();
             let modified_message = Self::modify_shinkai_message_proxied_localhost_to_external(
                 parsed_message,
@@ -509,19 +594,38 @@ impl TCPProxy {
                 identity_secret_key,
                 encryption_secret_key,
                 client_identity_pk,
+                session_id,
             )
             .await?;
 
-            Self::handle_proxy_out_to_ext_node(registry, msg_recipient, modified_message, writer.clone()).await?;
+            Self::handle_proxy_out_to_ext_node(registry, msg_recipient, modified_message, writer.clone(), session_id)
+                .await?;
 
             return Ok(());
         }
 
         // Case D
+        // Sending a message using the relayer public IP
+        // This could proce a loop in the relayer so we discard the message
+        let relayer_addresses = if !recipient_matches {
+            // Fetch the public keys from the registry
+            let registry_identity = registry.get_identity_record(tcp_node_name_string.clone()).await.unwrap();
+            registry_identity.address_or_proxy_nodes
+        } else {
+            vec![]
+        };
+        if relayer_addresses.iter().any(|addr| recipient_addresses.iter().any(|recipient_addr| addr == recipient_addr)) {
+            return Err(NetworkMessageError::RecipientLoopError(recipient_addresses.join(",")));
+        }
+
+        // Case E
         // Proxying message out. Sender is not localhost but a well defined identity
         // We need to proxy the message to the recipient
-        println!("Proxying message out. Sender is not localhost but a well defined identity");
-        Self::handle_proxy_out_to_ext_node(registry, msg_recipient, parsed_message, writer.clone()).await?;
+        println!(
+            "[{}] Proxying message out. Sender is not localhost but a well defined identity",
+            session_id
+        );
+        Self::handle_proxy_out_to_ext_node(registry, msg_recipient, parsed_message, writer.clone(), session_id).await?;
         Ok(())
     }
 
@@ -535,6 +639,7 @@ impl TCPProxy {
         registry: &ShinkaiRegistry,
         tcp_node_name: ShinkaiName,
         msg_sender: String,
+        session_id: Uuid,
     ) -> Result<(), NetworkMessageError> {
         // Fetch the public keys from the registry
         let registry_identity = registry.get_identity_record(msg_sender.clone()).await.unwrap();
@@ -567,7 +672,7 @@ impl TCPProxy {
         {
             Ok(message) => message,
             Err(e) => {
-                eprintln!("Error modifying Shinkai message: {}", e);
+                eprintln!("[{}] Error modifying Shinkai message: {}", session_id, e);
                 return Ok(());
             }
         };
@@ -577,8 +682,8 @@ impl TCPProxy {
             Some(subidentity) => subidentity,
             None => {
                 eprintln!(
-                    "Error: No subidentity found for the recipient. Subidentity: {:?}",
-                    updated_message.external_metadata.recipient
+                    "[{}] Error: No subidentity found for the recipient. Subidentity: {:?}",
+                    session_id, updated_message.external_metadata.recipient
                 );
                 return Ok(());
             }
@@ -590,7 +695,7 @@ impl TCPProxy {
             match pk_to_clients_guard.get(&subidentity) {
                 Some(client_identity) => client_identity.clone(),
                 None => {
-                    eprintln!("Error: Client not found for recipient {}", msg_sender);
+                    eprintln!("[{}] Error: Client not found for recipient {}", session_id, msg_sender);
                     return Ok(());
                 }
             }
@@ -601,7 +706,10 @@ impl TCPProxy {
             match clients_guard.get(&client_identity) {
                 Some(connection) => connection.clone(),
                 None => {
-                    eprintln!("Error: Connection not found for recipient {}", msg_sender);
+                    eprintln!(
+                        "[{}] Error: Connection not found for recipient {}",
+                        session_id, msg_sender
+                    );
                     return Ok(());
                 }
             }
@@ -612,7 +720,7 @@ impl TCPProxy {
             .await
             .is_err()
         {
-            eprintln!("Failed to send message to client {}", client_identity);
+            eprintln!("[{}] Failed to send message to client {}", session_id, client_identity);
         }
 
         Ok(())
@@ -623,15 +731,22 @@ impl TCPProxy {
         msg_recipient: String,
         modified_message: ShinkaiMessage,
         writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+        session_id: Uuid,
     ) -> Result<(), NetworkMessageError> {
         match registry.get_identity_record(msg_recipient.clone()).await {
             Ok(onchain_identity) => {
                 match onchain_identity.first_address().await {
                     Ok(first_address) => {
-                        println!("Connecting to first address: {}", first_address);
+                        println!(
+                            "[{}] Connecting to first address: {} for identity: {}",
+                            session_id, first_address, onchain_identity.shinkai_identity
+                        );
                         match TcpStream::connect(first_address).await {
                             Ok(mut stream) => {
-                                println!("Connected successfully. Streaming...");
+                                println!(
+                                    "[{}] Establish connection to {} successful. Streaming...",
+                                    session_id, onchain_identity.shinkai_identity
+                                );
                                 let payload = modified_message.encode_message().unwrap();
 
                                 let identity_bytes = msg_recipient.as_bytes();
@@ -648,30 +763,39 @@ impl TCPProxy {
 
                                 stream.write_all(&data_to_send).await?;
                                 stream.flush().await?;
-                                println!("Sent message to {}", stream.peer_addr().unwrap());
+                                println!("[{}] Sent message to {}", session_id, stream.peer_addr().unwrap());
                             }
                             Err(e) => {
-                                eprintln!("Failed to connect to first address for {}: {}", msg_recipient, e);
+                                eprintln!(
+                                    "[{}] Failed to connect to first address for {}: {}",
+                                    session_id, msg_recipient, e
+                                );
                                 let error_message = format!("Failed to connect to first address for {}", msg_recipient);
                                 send_message_with_length(writer.clone(), error_message).await?;
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to fetch first address for {}: {}", msg_recipient, e);
+                        eprintln!(
+                            "[{}] Failed to fetch first address for {}: {}",
+                            session_id, msg_recipient, e
+                        );
                         let error_message = format!(
-                            "Recipient {} not connected and failed to fetch first address",
-                            msg_recipient
+                            "[{}] Recipient {} not connected and failed to fetch first address",
+                            session_id, msg_recipient
                         );
                         send_message_with_length(writer.clone(), error_message).await?;
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to fetch onchain identity for {}: {}", msg_recipient, e);
+                eprintln!(
+                    "[{}] Failed to fetch onchain identity for {}: {}",
+                    session_id, msg_recipient, e
+                );
                 let error_message = format!(
-                    "Recipient {} not connected and failed to fetch onchain identity",
-                    msg_recipient
+                    "[{}] Recipient {} not connected and failed to fetch onchain identity",
+                    session_id, msg_recipient
                 );
                 send_message_with_length(writer.clone(), error_message).await?;
             }
@@ -685,6 +809,7 @@ impl TCPProxy {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         subidentity: String,
+        session_id: Uuid,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
         let mut modified_message = message;
         if modified_message.is_body_currently_encrypted() {
@@ -698,8 +823,8 @@ impl TCPProxy {
                     .map_err(|e| NetworkMessageError::EncryptionError(format!("Failed to decrypt message: {}", e)))?;
             } else {
                 eprintln!(
-                    "Error: No intra_sender found for the recipient. Identity: {:?}",
-                    subidentity
+                    "[{}] Error: No intra_sender found for the recipient. Identity: {:?}",
+                    session_id, subidentity
                 );
             }
         }

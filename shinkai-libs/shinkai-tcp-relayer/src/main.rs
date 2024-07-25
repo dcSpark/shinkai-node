@@ -69,6 +69,14 @@ async fn main() -> Result<(), NetworkMessageError> {
                 .env("NODE_NAME"),
         )
         .arg(
+            Arg::with_name("max_connections")
+                .long("max-connections")
+                .value_name("MAX_CONNECTIONS")
+                .help("Maximum number of concurrent connections")
+                .takes_value(true)
+                .env("MAX_CONNECTIONS"),
+        )
+        .arg(
             Arg::with_name("open_to_all")
                 .long("open-to-all")
                 .value_name("OPEN_TO_ALL")
@@ -86,6 +94,8 @@ async fn main() -> Result<(), NetworkMessageError> {
     let encryption_secret_key = matches.value_of("encryption_secret_key").unwrap().to_string();
     let node_name = matches.value_of("node_name").unwrap().to_string();
     let open_to_all = matches.value_of("open_to_all").map(|v| v == "true").unwrap_or(true);
+    let max_connections = matches.value_of("max_connections").map(|v| v.parse().unwrap_or(20));
+
 
     let identity_secret_key =
         string_to_signature_secret_key(&identity_secret_key).expect("Invalid IDENTITY_SECRET_KEY");
@@ -101,6 +111,7 @@ async fn main() -> Result<(), NetworkMessageError> {
         Some(node_name),
         rpc_url,
         contract_address,
+        max_connections,
     )
     .await?;
 

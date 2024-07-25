@@ -628,7 +628,7 @@ impl MySubscriptionsManager {
 
                 // Add a nice message after subscription has been confirmed
                 let notification_message = format!(
-                    "Subscription to folder '{}' from user '{}' has been confirmed.",
+                    "Subscription to folder '{}' from user '{}' has been confirmed. It may take a few minutes to fully sync, depending on the streaming node's payload.",
                     payload.shared_folder,
                     streamer_node_name.get_node_name_string()
                 );

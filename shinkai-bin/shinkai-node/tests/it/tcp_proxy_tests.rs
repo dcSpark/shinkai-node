@@ -230,6 +230,7 @@ fn tcp_proxy_test_identity() {
                 Some(tcp_proxy_identity_name.to_string()),
                 None,
                 None,
+                None,
             )
             .await
             .unwrap();
@@ -633,6 +634,7 @@ fn tcp_proxy_test_localhost() {
                 Some(tcp_proxy_identity_sk),
                 Some(tcp_proxy_encryption_sk),
                 Some(tcp_proxy_identity_name.to_string()),
+                None,
                 None,
                 None,
             )

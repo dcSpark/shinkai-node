@@ -1,6 +1,6 @@
 [package]
 name = "shinkai_tcp_relayer"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,6 +20,7 @@ hex = "=0.4.3"
 chrono = "0.4"
 dotenv = "0.15.0"
 derivative = "2.2"
+uuid = { version = "0.8", features = ["v4"] }
 
 [dependencies.serde]
 version = "1.0.188"
