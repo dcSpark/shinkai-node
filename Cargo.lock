@@ -7742,6 +7742,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "futures",
+ "regex",
  "serde",
  "serde_json",
  "tokio",

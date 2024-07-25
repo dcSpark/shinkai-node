@@ -7,7 +7,6 @@ use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::network::ws_manager::WSUpdateHandler;
-use crate::tools::js_toolkit::JSToolkit;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
