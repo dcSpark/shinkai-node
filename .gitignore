@@ -76,3 +76,5 @@ run_local_ai.sh
 subscriber.key
 identity_proxied.key
 localhost_proxied.key
+run_local_ai.sh
+subscriber.key

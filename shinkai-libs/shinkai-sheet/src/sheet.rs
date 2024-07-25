@@ -1,12 +1,14 @@
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use shinkai_dsl::dsl_schemas::Workflow;
 use std::collections::{HashMap, HashSet};
 
-use crate::{cell_name_converter::CellNameConverter, sheet_job::SheetJob};
+use crate::{cell_name_converter::CellNameConverter, column_dependency_manager::ColumnDependencyManager, sheet_job::SheetJob};
 
 pub type RowIndex = usize;
 pub type ColumnIndex = usize;
+pub type Formula = String;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ColumnDefinition {
@@ -21,41 +23,19 @@ pub enum ColumnBehavior {
     Number,
     Formula(String),
     LLMCall {
-        prompt_template: String,
-        input_columns: Vec<usize>,
+        input: Formula,
+        workflow: Workflow,
     },
-}
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ColumnDependencyManager {
-    // Column -> Columns it depends on
-    dependencies: HashMap<usize, HashSet<usize>>,
-    // Column -> Columns that depend on it
-    reverse_dependencies: HashMap<usize, HashSet<usize>>,
-}
-
-impl ColumnDependencyManager {
-    pub fn add_dependency(&mut self, from: usize, to: usize) {
-        self.dependencies.entry(from).or_default().insert(to);
-        self.reverse_dependencies.entry(to).or_default().insert(from);
-    }
-
-    pub fn remove_dependency(&mut self, from: usize, to: usize) {
-        if let Some(deps) = self.dependencies.get_mut(&from) {
-            deps.remove(&to);
-        }
-        if let Some(rev_deps) = self.reverse_dependencies.get_mut(&to) {
-            rev_deps.remove(&from);
-        }
-    }
-
-    pub fn get_dependents(&self, column: usize) -> HashSet<usize> {
-        self.dependencies.get(&column).cloned().unwrap_or_default()
-    }
-
-    pub fn get_reverse_dependents(&self, column: usize) -> HashSet<usize> {
-        self.reverse_dependencies.get(&column).cloned().unwrap_or_default()
-    }
+    SingleFile {
+        path: String,
+        name: String,
+    },
+    MultipleFiles {
+        files: Vec<(String, String)>, // (path, name)
+    },
+    UploadedFiles {
+        files: Vec<String>, // Mocking uploaded files as strings
+    },
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -79,7 +59,7 @@ pub trait WorkflowJobCreator {
         &self,
         row: usize,
         col: usize,
-        prompt_template: &str,
+        workflow: &Workflow,
         input_columns: &[usize],
         cell_values: &[String],
     ) -> Box<dyn SheetJob>;
@@ -176,12 +156,22 @@ impl Sheet {
                     self.set_cell_value(row, col, value, workflow_job_creator).unwrap();
                 }
             }
-            ColumnBehavior::LLMCall {
-                prompt_template,
-                input_columns,
-            } => {
-                let job = self.create_workflow_job(row, col, &prompt_template, &input_columns, workflow_job_creator);
+            ColumnBehavior::LLMCall { input, workflow } => {
+                let job = self.create_workflow_job(row, col, &workflow, &[], workflow_job_creator);
                 jobs.push(job);
+            }
+            ColumnBehavior::SingleFile { path, name } => {
+                println!("Single file: {} ({})", name, path);
+            }
+            ColumnBehavior::MultipleFiles { files } => {
+                for (path, name) in files {
+                    println!("File: {} ({})", name, path);
+                }
+            }
+            ColumnBehavior::UploadedFiles { files } => {
+                for file in files {
+                    println!("Uploaded file: {}", file);
+                }
             }
             _ => {}
         }
@@ -232,7 +222,7 @@ impl Sheet {
         &mut self,
         row: RowIndex,
         col: ColumnIndex,
-        prompt_template: &str,
+        workflow: &Workflow,
         input_columns: &[ColumnIndex],
         workflow_job_creator: &dyn WorkflowJobCreator,
     ) -> Box<dyn SheetJob> {
@@ -246,7 +236,7 @@ impl Sheet {
             self.column_dependency_manager.add_dependency(col, input_col);
         }
 
-        workflow_job_creator.create_workflow_job(row, col, prompt_template, input_columns, &input_values)
+        workflow_job_creator.create_workflow_job(row, col, workflow, input_columns, &input_values)
     }
 
     fn get_cell_value(&self, row: RowIndex, col: ColumnIndex) -> Option<String> {
@@ -285,14 +275,14 @@ mod tests {
             &self,
             row: usize,
             col: usize,
-            prompt_template: &str,
+            _workflow: &Workflow,
             input_columns: &[usize],
-            cell_values: &[String],
+            _cell_values: &[String],
         ) -> Box<dyn SheetJob> {
             Box::new(MockupSheetJob::new(
                 "mock_job_id".to_string(),
                 CellId(format!("{}:{}", row, col)),
-                prompt_template.to_string(),
+                "".to_string(),
                 input_columns.iter().map(|&col| CellId(col.to_string())).collect(),
             ))
         }

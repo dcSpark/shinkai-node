@@ -7745,6 +7745,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "shinkai_dsl",
  "tokio",
  "uuid 1.8.0",
 ]
