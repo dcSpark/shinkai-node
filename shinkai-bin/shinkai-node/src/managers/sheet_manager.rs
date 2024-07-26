@@ -16,7 +16,7 @@ pub struct SheetManager {
     pub db: Weak<ShinkaiDB>,
     pub job_manager: Arc<Mutex<JobManager>>,
     pub user_profile: ShinkaiName,
-    pub workflow_job_creator: Arc<dyn WorkflowJobCreator + Send + Sync>,
+    pub workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
 }
 
 impl SheetManager {
@@ -24,7 +24,7 @@ impl SheetManager {
         db: Weak<ShinkaiDB>,
         job_manager: Arc<Mutex<JobManager>>,
         node_name: ShinkaiName,
-        workflow_job_creator: Arc<dyn WorkflowJobCreator + Send + Sync>,
+        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Only works for main right now
         let user_profile = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())?;
@@ -93,7 +93,7 @@ impl SheetManager {
         value: String,
     ) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        sheet.set_cell_value(row, col, value, self.workflow_job_creator.as_ref()).await?;
+        sheet.set_cell_value(row, col, value, self.workflow_job_creator.clone()).await?;
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
@@ -113,7 +113,6 @@ impl SheetManager {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn initiate_workflow_job(
         &mut self,
         sheet_id: &str,
@@ -130,9 +129,9 @@ impl SheetManager {
             workflow,
             input_columns,
             llm_provider_name,
-            self.workflow_job_creator.as_ref(),
-        );
-
+            self.workflow_job_creator.clone(),
+        ).await;
+    
         let job_message = JobMessage {
             job_id: job.id().to_string(),
             content: job.prompt().to_string(),
@@ -141,14 +140,14 @@ impl SheetManager {
             workflow_code: None,
             workflow_name: None,
         };
-
+    
         let profile = ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap();
         let mut job_manager = self.job_manager.lock().await;
         job_manager
             .add_job_message_to_job_queue(&job_message, &profile)
             .await
             .map_err(|e| e.to_string())?;
-
+    
         Ok(())
     }
 

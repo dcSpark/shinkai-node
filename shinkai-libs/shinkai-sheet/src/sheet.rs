@@ -2,6 +2,7 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
+use std::any::Any;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -115,6 +116,9 @@ pub trait WorkflowJobCreator: Send + Sync {
         input_columns: &[usize],
         cell_values: &[String],
     ) -> Box<dyn SheetJob>;
+
+    // Used for testing
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl Default for Sheet {
@@ -138,14 +142,12 @@ impl Sheet {
         self.update_sender = Some(sender);
     }
 
+    pub fn dispatch(&mut self, action: SheetAction) {
+        *self = sheet_reducer(self.clone(), action);
+    }
+
     pub fn set_column(&mut self, definition: ColumnDefinition) {
-        if let ColumnBehavior::Formula(ref formula) = definition.behavior {
-            let dependencies = self.parse_formula_dependencies(formula);
-            for dep in dependencies {
-                self.column_dependency_manager.add_dependency(definition.id, dep);
-            }
-        }
-        self.columns.insert(definition.id, definition);
+        self.dispatch(SheetAction::SetColumn(definition));
     }
 
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<ColumnIndex> {
@@ -172,36 +174,31 @@ impl Sheet {
         row: RowIndex,
         col: ColumnIndex,
         value: String,
-        workflow_job_creator: &dyn WorkflowJobCreator,
+        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
     ) -> Result<(), String> {
         if !self.columns.contains_key(&col) {
             return Err("Column index out of bounds".to_string());
         }
 
-        let row_cells = self.rows.entry(row).or_default();
-        row_cells.insert(
-            col,
-            Cell {
-                value: Some(value),
-                last_updated: Utc::now(),
-                status: CellStatus::Ready,
-            },
-        );
+        self.dispatch(SheetAction::SetCellValue { row, col, value });
 
         let changed_cell_id = CellId(format!("{}:{}", row, col));
-        self.trigger_update_event(&changed_cell_id, workflow_job_creator).await;
+        self.dispatch(SheetAction::TriggerUpdateEvent {
+            changed_cell_id,
+            workflow_job_creator,
+        });
         Ok(())
     }
 
     pub async fn trigger_update_event(
         &mut self,
         changed_cell_id: &CellId,
-        workflow_job_creator: &dyn WorkflowJobCreator,
+        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
     ) {
         let (row, col) = self.cell_id_to_indices(changed_cell_id);
         let dependents = self.column_dependency_manager.get_dependents(col);
         for dependent_col in dependents {
-            self.update_cell(row, dependent_col, workflow_job_creator); // Note: need to fix this one
+            self.update_cell(row, dependent_col, workflow_job_creator.clone()); // Note: need to fix this one
         }
         if let Some(sender) = &self.update_sender {
             sender.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
@@ -212,7 +209,7 @@ impl Sheet {
         &mut self,
         row: RowIndex,
         col: ColumnIndex,
-        workflow_job_creator: &dyn WorkflowJobCreator,
+        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
     ) -> Vec<Box<dyn SheetJob>> {
         eprintln!("Updating cell: {} {}", row, col);
         let mut jobs = Vec::new();
@@ -249,8 +246,9 @@ impl Sheet {
                     );
                 }
 
-                let job =
-                    self.initiate_workflow_job(row, col, &workflow, &[], &llm_provider_name, workflow_job_creator);
+                let job = self
+                    .initiate_workflow_job(row, col, &workflow, &[], &llm_provider_name, workflow_job_creator)
+                    .await;
                 jobs.push(job);
             }
             ColumnBehavior::SingleFile { path, name } => {
@@ -311,21 +309,22 @@ impl Sheet {
         Some(result)
     }
 
-    pub fn initiate_workflow_job(
+    pub async fn initiate_workflow_job(
         &mut self,
         row: RowIndex,
         col: ColumnIndex,
         workflow: &Workflow,
         input_columns: &[ColumnIndex],
         llm_provider_name: &str,
-        workflow_job_creator: &dyn WorkflowJobCreator,
+        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
     ) -> Box<dyn SheetJob> {
         let input_values: Vec<String> = input_columns
             .iter()
             .filter_map(|&col_id| self.get_cell_value(row, col_id))
             .collect();
 
-        workflow_job_creator.initiate_workflow_job(row, col, workflow, input_columns, &input_values)
+        let creator = workflow_job_creator.lock().await;
+        creator.initiate_workflow_job(row, col, workflow, input_columns, &input_values)
     }
 
     pub fn get_cell_value(&self, row: RowIndex, col: ColumnIndex) -> Option<String> {
@@ -348,6 +347,137 @@ impl Sheet {
     pub fn get_column_definitions(&self) -> Vec<(ColumnIndex, &ColumnDefinition)> {
         self.columns.iter().map(|(&index, def)| (index, def)).collect()
     }
+
+    pub fn print_as_ascii_table(&self) {
+        // Collect column headers
+        let mut headers: Vec<String> = self.columns.values()
+            .map(|col_def| col_def.name.clone())
+            .collect();
+        headers.insert(0, "Row".to_string()); // Add "Row" header for row indices
+
+        // Calculate the maximum width for each column
+        let mut col_widths: Vec<usize> = headers.iter().map(|header| header.len()).collect();
+        for (row_index, row_cells) in &self.rows {
+            col_widths[0] = col_widths[0].max(row_index.to_string().len());
+            for (col_index, cell) in row_cells {
+                let cell_value_len = cell.value.as_ref().map_or(0, |v| v.len());
+                col_widths[*col_index + 1] = col_widths[*col_index + 1].max(cell_value_len);
+            }
+        }
+
+        // Print headers with padding
+        let header_line: Vec<String> = headers.iter()
+            .enumerate()
+            .map(|(i, header)| format!("{:width$}", header, width = col_widths[i]))
+            .collect();
+        println!("{}", header_line.join(" | "));
+        println!("{}", "-".repeat(header_line.join(" | ").len()));
+
+        // Print rows with padding
+        for (row_index, row_cells) in &self.rows {
+            let mut row_data: Vec<String> = vec![format!("{:width$}", row_index, width = col_widths[0])];
+            for col_index in 0..self.columns.len() {
+                let cell_value = row_cells.get(&col_index)
+                    .and_then(|cell| cell.value.clone())
+                    .unwrap_or_else(|| "".to_string());
+                row_data.push(format!("{:width$}", cell_value, width = col_widths[col_index + 1]));
+            }
+            println!("{}", row_data.join(" | "));
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum SheetAction {
+    SetColumn(ColumnDefinition),
+    SetCellValue {
+        row: RowIndex,
+        col: ColumnIndex,
+        value: String,
+    },
+    TriggerUpdateEvent {
+        changed_cell_id: CellId,
+        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
+    },
+    // Add other actions as needed
+}
+
+impl std::fmt::Debug for SheetAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SheetAction::SetColumn(definition) => f.debug_struct("SetColumn").field("definition", definition).finish(),
+            SheetAction::SetCellValue { row, col, value } => f
+                .debug_struct("SetCellValue")
+                .field("row", row)
+                .field("col", col)
+                .field("value", value)
+                .finish(),
+            SheetAction::TriggerUpdateEvent { changed_cell_id, .. } => f
+                .debug_struct("TriggerUpdateEvent")
+                .field("changed_cell_id", changed_cell_id)
+                .field("workflow_job_creator", &"Arc<Mutex<Box<dyn WorkflowJobCreator>>>")
+                .finish(),
+            // Add other actions as needed
+        }
+    }
+}
+
+// Implement the reducer function
+pub fn sheet_reducer(mut state: Sheet, action: SheetAction) -> Sheet {
+    //  if std::env::var("LOG_REDUX").is_ok() {
+    println!("Dispatching action: {:?}", action);
+    println!("Current state: \n");
+    state.print_as_ascii_table();
+    // }
+
+    match action {
+        SheetAction::SetColumn(definition) => {
+            if let ColumnBehavior::Formula(ref formula) = definition.behavior {
+                let dependencies = state.parse_formula_dependencies(formula);
+                for dep in dependencies {
+                    state.column_dependency_manager.add_dependency(definition.id, dep);
+                }
+            }
+            state.columns.insert(definition.id, definition);
+        }
+        SheetAction::SetCellValue { row, col, value } => {
+            if !state.columns.contains_key(&col) {
+                return state; // Column index out of bounds
+            }
+
+            let row_cells = state.rows.entry(row).or_default();
+            row_cells.insert(
+                col,
+                Cell {
+                    value: Some(value),
+                    last_updated: Utc::now(),
+                    status: CellStatus::Ready,
+                },
+            );
+        }
+        SheetAction::TriggerUpdateEvent {
+            changed_cell_id,
+            workflow_job_creator,
+        } => {
+            let (row, col) = state.cell_id_to_indices(&changed_cell_id);
+            let dependents = state.column_dependency_manager.get_dependents(col);
+            for dependent_col in dependents {
+                // Dispatch an action to update the dependent cell
+                let mut state_clone = state.clone();
+                let workflow_job_creator = workflow_job_creator.clone();
+                tokio::spawn(async move {
+                    state_clone.update_cell(row, dependent_col, workflow_job_creator).await;
+                });
+            }
+            if let Some(sender) = &state.update_sender {
+                let sender_clone = sender.clone();
+                tokio::spawn(async move {
+                    sender_clone.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
+                });
+            }
+        } // Handle other actions
+    }
+    state
 }
 
 #[cfg(test)]
@@ -358,13 +488,22 @@ mod tests {
 
     use super::*;
 
+    #[derive(Clone)]
     struct MockWorkflowJobCreator {
         sheet: Arc<Mutex<Sheet>>,
+        workflow_job_creator: Option<Arc<Mutex<Box<dyn WorkflowJobCreator>>>>,
     }
 
     impl MockWorkflowJobCreator {
         fn new(sheet: Arc<Mutex<Sheet>>) -> Self {
-            Self { sheet }
+            Self {
+                sheet,
+                workflow_job_creator: None,
+            }
+        }
+
+        fn set_workflow_job_creator(&mut self, creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>) {
+            self.workflow_job_creator = Some(creator);
         }
 
         async fn complete_job(&self, cell_id: CellId, result: String) {
@@ -374,10 +513,12 @@ mod tests {
             };
 
             let mut sheet = self.sheet.lock().await;
-            sheet
-                .set_cell_value(row, col, result, self)
-                .await
-                .expect("Failed to set cell value");
+            if let Some(ref workflow_job_creator) = self.workflow_job_creator {
+                sheet
+                    .set_cell_value(row, col, result, workflow_job_creator.clone())
+                    .await
+                    .expect("Failed to set cell value");
+            }
         }
     }
 
@@ -394,9 +535,13 @@ mod tests {
             let cell_id_clone = cell_id.clone();
             let result = "Job Result".to_string();
             let sheet = self.sheet.clone();
+            let workflow_job_creator = self.workflow_job_creator.clone().unwrap();
             tokio::spawn(async move {
                 // Simulate job completion
-                let creator = MockWorkflowJobCreator { sheet };
+                let creator = MockWorkflowJobCreator {
+                    sheet,
+                    workflow_job_creator: Some(workflow_job_creator),
+                };
                 creator.complete_job(cell_id, result).await;
             });
 
@@ -406,6 +551,34 @@ mod tests {
                 "".to_string(),
                 input_columns.iter().map(|&col| CellId(col.to_string())).collect(),
             ))
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    impl MockWorkflowJobCreator {
+        async fn complete_job_from_trait_object(
+            workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
+            _sheet: Arc<Mutex<Sheet>>,
+            cell_id: CellId,
+            result: String,
+        ) {
+            let creator = workflow_job_creator.lock().await;
+            if let Some(mock_creator) = creator.as_any().downcast_ref::<MockWorkflowJobCreator>() {
+                mock_creator.complete_job(cell_id, result).await;
+            } else {
+                panic!("Failed to downcast to MockWorkflowJobCreator");
+            }
+        }
+
+        fn create_with_workflow_job_creator(sheet: Arc<Mutex<Sheet>>) -> Arc<Mutex<Box<dyn WorkflowJobCreator>>> {
+            let mut mock_creator = MockWorkflowJobCreator::new(sheet.clone());
+            let workflow_job_creator =
+                Arc::new(Mutex::new(Box::new(mock_creator.clone()) as Box<dyn WorkflowJobCreator>));
+            mock_creator.set_workflow_job_creator(workflow_job_creator.clone());
+            Arc::new(Mutex::new(Box::new(mock_creator) as Box<dyn WorkflowJobCreator>))
         }
     }
 
@@ -447,8 +620,8 @@ mod tests {
         assert_eq!(sheet.lock().await.columns[&0], column_text);
         assert_eq!(sheet.lock().await.columns[&1], column_llm);
 
-        let workflow_job_creator = MockWorkflowJobCreator::new(sheet.clone());
-        let jobs = sheet.lock().await.update_cell(0, 1, &workflow_job_creator).await;
+        let workflow_job_creator = MockWorkflowJobCreator::create_with_workflow_job_creator(sheet.clone());
+        let jobs = sheet.lock().await.update_cell(0, 1, workflow_job_creator.clone()).await;
 
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].id(), "mock_job_id");
@@ -464,9 +637,15 @@ mod tests {
         }
 
         // Simulate job completion
-        workflow_job_creator
-            .complete_job(CellId("0:1".to_string()), "Hello World".to_string())
+        {
+            MockWorkflowJobCreator::complete_job_from_trait_object(
+                workflow_job_creator,
+                sheet.clone(),
+                CellId("0:1".to_string()),
+                "Hello World".to_string(),
+            )
             .await;
+        }
 
         // Check the value of the cell after the job completion
         let cell_value = sheet.lock().await.get_cell_value(0, 1);
@@ -476,6 +655,104 @@ mod tests {
             let sheet_locked = sheet.lock().await;
             let cell_status = sheet_locked.get_cell(0, 1).map(|cell| &cell.status);
             assert_eq!(cell_status, Some(&CellStatus::Ready));
+            sheet_locked.print_as_ascii_table();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_llm_call_with_dependent_column() {
+        let sheet = Arc::new(Mutex::new(Sheet::new()));
+        let column_text = ColumnDefinition {
+            id: 0,
+            name: "Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        let workflow_str = r#"
+            workflow WorkflowTest v0.1 {
+                step Main {
+                    $RESULT = call opinionated_inference($INPUT)
+                }
+            }
+        "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        let column_llm = ColumnDefinition {
+            id: 1,
+            name: "LLM Call Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "Say Hello World".to_string(),
+                workflow,
+                llm_provider_name: "MockProvider".to_string(),
+            },
+        };
+
+        let column_formula = ColumnDefinition {
+            id: 2,
+            name: "Formula Column".to_string(),
+            behavior: ColumnBehavior::Formula("=A1 + \" And Space\"".to_string()),
+        };
+
+        {
+            let mut sheet = sheet.lock().await;
+            sheet.set_column(column_text.clone());
+            sheet.set_column(column_llm.clone());
+            sheet.set_column(column_formula.clone());
+        }
+
+        assert_eq!(sheet.lock().await.columns.len(), 3);
+        assert_eq!(sheet.lock().await.columns[&0], column_text);
+        assert_eq!(sheet.lock().await.columns[&1], column_llm);
+        assert_eq!(sheet.lock().await.columns[&2], column_formula);
+
+        let workflow_job_creator = MockWorkflowJobCreator::create_with_workflow_job_creator(sheet.clone());
+
+        let jobs = sheet.lock().await.update_cell(0, 1, workflow_job_creator.clone()).await;
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id(), "mock_job_id");
+
+        // {
+        //     let sheet_locked = sheet.lock().await;
+        //     sheet_locked.print_as_ascii_table();
+        // }
+
+        // Check the value of the LLM call cell after the update
+        let cell_value_llm = sheet.lock().await.get_cell_value(0, 1);
+        assert_eq!(cell_value_llm, None);
+
+        // Check the value of the formula cell before the LLM call job is completed
+        let cell_value_formula = sheet.lock().await.get_cell_value(0, 2);
+        assert_eq!(cell_value_formula, Some(" And Space".to_string()));
+
+        {
+            let sheet_locked = sheet.lock().await;
+            let cell_status_llm = sheet_locked.get_cell(0, 1).map(|cell| &cell.status);
+            assert_eq!(cell_status_llm, Some(&CellStatus::Pending));
+            sheet_locked.print_as_ascii_table();
+        }
+
+        // Simulate job completion
+        MockWorkflowJobCreator::complete_job_from_trait_object(
+            workflow_job_creator,
+            sheet.clone(),
+            CellId("0:1".to_string()),
+            "Hello World".to_string(),
+        )
+        .await;
+
+        // Check the value of the LLM call cell after the job completion
+        let cell_value_llm = sheet.lock().await.get_cell_value(0, 1);
+        assert_eq!(cell_value_llm, Some("Hello World".to_string()));
+
+        // Check the value of the formula cell after the LLM call job is completed
+        let cell_value_formula = sheet.lock().await.get_cell_value(0, 2);
+        assert_eq!(cell_value_formula, Some("Hello World And Space".to_string()));
+
+        {
+            let sheet_locked = sheet.lock().await;
+            let cell_status_llm = sheet_locked.get_cell(0, 1).map(|cell| &cell.status);
+            sheet_locked.print_as_ascii_table();
+            assert_eq!(cell_status_llm, Some(&CellStatus::Ready));
         }
     }
 }

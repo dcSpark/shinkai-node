@@ -24,6 +24,7 @@ impl CellNameConverter {
     }
 
     pub fn cell_name_to_indices(name: &str) -> (usize, usize) {
+        eprintln!("cell_name_to_indices: {}", name);
         let re = Regex::new(r"([A-Z]+)(\d+)").unwrap();
         let caps = re.captures(name).unwrap();
         let col_name = &caps[1];
