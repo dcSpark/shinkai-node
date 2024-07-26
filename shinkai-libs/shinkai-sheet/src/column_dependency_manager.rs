@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ColumnDependencyManager {
     // Column -> Columns it depends on
-    dependencies: HashMap<usize, HashSet<usize>>,
+    pub dependencies: HashMap<usize, HashSet<usize>>,
     // Column -> Columns that depend on it
-    reverse_dependencies: HashMap<usize, HashSet<usize>>,
+    pub reverse_dependencies: HashMap<usize, HashSet<usize>>,
 }
 
 impl ColumnDependencyManager {

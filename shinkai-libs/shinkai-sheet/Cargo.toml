@@ -12,7 +12,12 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6.1", features = ["v4"] }
 regex = "1"
 shinkai_dsl = { path = "../shinkai-dsl" }
+async-channel = "1.6.1"
 
 [dependencies.serde]
 version = "1.0.188"
 features = ["derive"]
+
+[[test]]
+name = "sheet_common_tests"
+path = "tests/sheet_common_tests.rs"
