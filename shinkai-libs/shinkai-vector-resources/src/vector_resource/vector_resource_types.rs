@@ -310,6 +310,32 @@ impl RetrievedNode {
 
         Ok(grouped_results)
     }
+
+    // Normalizes the scores of the retrieved nodes based on the embedding normalization factor.
+    // Used during vector search to support different embedding models.
+    pub fn normalize_scores(nodes: &mut Vec<RetrievedNode>) {
+        // Skip normalization if every model is the same
+        let first_node = nodes.first();
+        if let Some(first_node) = first_node {
+            let model = &first_node.resource_header.resource_embedding_model_used;
+
+            if nodes
+                .iter()
+                .all(|node| node.resource_header.resource_embedding_model_used == *model)
+            {
+                return;
+            }
+        }
+
+        for node in nodes {
+            let factor = node
+                .resource_header
+                .resource_embedding_model_used
+                .embedding_normalization_factor();
+
+            node.score = node.score * factor;
+        }
+    }
 }
 
 /// Represents a Vector Resource Node which holds a unique id, one of the types of NodeContent,

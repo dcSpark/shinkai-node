@@ -158,6 +158,9 @@ impl VectorFS {
             }
         }
 
+        // Normalize scores for different embedding model types
+        RetrievedNode::normalize_scores(&mut ret_nodes);
+
         let mut final_results = vec![];
         for node in RetrievedNode::sort_by_score(&ret_nodes, num_of_results) {
             let fs_path = fs_path_hashmap.get(&node.resource_header.reference_string()).ok_or(
