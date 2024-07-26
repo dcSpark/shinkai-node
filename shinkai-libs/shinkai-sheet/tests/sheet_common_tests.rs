@@ -61,7 +61,7 @@ mod tests {
         sheet.set_column(updated_column_text.clone());
         assert_eq!(sheet.columns[&0].name, "Updated Text Column");
     }
-   
+
     #[tokio::test]
     async fn test_set_cell_value() {
         let mut sheet = Sheet::new();
@@ -73,7 +73,9 @@ mod tests {
         sheet.set_column(column);
 
         let workflow_job_creator = MockWorkflowJobCreator;
-        let result = sheet.set_cell_value(0, 0, "Test Value".to_string(), &workflow_job_creator).await;
+        let result = sheet
+            .set_cell_value(0, 0, "Test Value".to_string(), &workflow_job_creator)
+            .await;
         assert!(result.is_ok());
 
         let cell = sheet.get_cell(0, 0).unwrap();
@@ -102,7 +104,6 @@ mod tests {
         assert_eq!(sheet.columns[&2], column_c);
     }
 
-    
     #[tokio::test]
     async fn test_formula_evaluation() {
         let mut sheet = Sheet::new();
@@ -149,7 +150,6 @@ mod tests {
         assert_eq!(cell.value, Some("ByeWorld".to_string()));
     }
 
-    
     #[tokio::test]
     async fn test_formula_evaluation_multiple_references() {
         let mut sheet = Sheet::new();
@@ -206,7 +206,6 @@ mod tests {
         assert_eq!(cell.value, Some("ByeWorldAgain".to_string()));
     }
 
-    
     #[tokio::test]
     async fn test_formula_evaluation_with_literals() {
         let mut sheet = Sheet::new();

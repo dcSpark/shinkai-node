@@ -11,6 +11,10 @@ pub enum JobStatus {
     Failed,
 }
 
+// what do we actually need?
+// - row, column
+// - input
+
 pub trait SheetJob: Send + Sync {
     fn id(&self) -> &str;
     fn cell_id(&self) -> &CellId;
