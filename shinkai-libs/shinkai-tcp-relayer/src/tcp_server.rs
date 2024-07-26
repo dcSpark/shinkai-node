@@ -748,8 +748,13 @@ impl TCPProxy {
                                     session_id, onchain_identity.shinkai_identity
                                 );
                                 let payload = modified_message.encode_message().unwrap();
-
-                                let identity_bytes = msg_recipient.as_bytes();
+                                // Add '@@' to message recipient if it doesn't start with that
+                                let modified_msg_recipient = if !msg_recipient.starts_with("@@") {
+                                    format!("@@{}", msg_recipient)
+                                } else {
+                                    msg_recipient.clone()
+                                };
+                                let identity_bytes = modified_msg_recipient.as_bytes();
                                 let identity_length = (identity_bytes.len() as u32).to_be_bytes();
                                 let total_length =
                                     (payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
