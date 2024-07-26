@@ -64,6 +64,21 @@ impl EmbeddingModelType {
             },
         }
     }
+
+    // Returns the normalization factor for the embedding model to calibrate vector search with different embedding model types
+    // The reference model is snowflake-arctic-embed:xs
+    pub fn embedding_normalization_factor(&self) -> f32 {
+        match self {
+            EmbeddingModelType::TextEmbeddingsInference(_) => 1.0,
+            EmbeddingModelType::OpenAI(_) => 1.0,
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
+                OllamaTextEmbeddingsInference::AllMiniLML6v2 => 1.0,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => 1.0,
+                OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => 1.5,
+                OllamaTextEmbeddingsInference::Other(_) => 1.0,
+            },
+        }
+    }
 }
 
 impl fmt::Display for EmbeddingModelType {

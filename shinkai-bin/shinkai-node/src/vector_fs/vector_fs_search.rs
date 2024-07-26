@@ -10,9 +10,7 @@ use shinkai_vector_resources::vector_resource::{
 };
 use shinkai_vector_resources::{
     embeddings::Embedding,
-    vector_resource::{
-        RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResourceCore, VectorResourceSearch,
-    },
+    vector_resource::{RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResourceSearch},
 };
 use std::collections::HashMap;
 
@@ -149,11 +147,7 @@ impl VectorFS {
                             ret_node.score = deep_search_scores_average_out(
                                 Some(query_text.clone()),
                                 score,
-                                resource
-                                    .as_trait_object()
-                                    .description()
-                                    .unwrap_or("")
-                                    .to_string(),
+                                resource.as_trait_object().description().unwrap_or("").to_string(),
                                 ret_node.score,
                                 ret_node.node.get_text_content().unwrap_or("").to_string(),
                             );
@@ -163,6 +157,9 @@ impl VectorFS {
                 }
             }
         }
+
+        // Normalize scores for different embedding model types
+        RetrievedNode::normalize_scores(&mut ret_nodes);
 
         let mut final_results = vec![];
         for node in RetrievedNode::sort_by_score(&ret_nodes, num_of_results) {
