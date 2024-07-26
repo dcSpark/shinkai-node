@@ -1,7 +1,7 @@
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -151,7 +151,11 @@ impl GenericInferenceChain {
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
+
+        let is_openai = matches!(llm_provider.model, LLMProviderInterface::OpenAI(_));
+        let is_ollama_llama3_1 = matches!(llm_provider.model, LLMProviderInterface::Ollama(ref model_type) if model_type.model_type.starts_with("llama3.1"));
+
+        if is_openai || is_ollama_llama3_1 {
             if let Some(tool_router) = &tool_router {
                 let tool_router = tool_router.lock().await;
 
