@@ -1,5 +1,26 @@
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::Aead;
+use aes_gcm::{Aes256Gcm, KeyInit};
+use chrono::{TimeZone, Utc};
+use mockito::Server;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, Ollama, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson,
+    APIVecFsRetrieveVectorSearchSimplifiedJson, MessageSchemaType,
+};
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
+use shinkai_message_primitives::shinkai_utils::file_encryption::{
+    aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
+    unsafe_deterministic_aes_encryption_key,
+};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use shinkai_node::network::node::NodeCommand;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_vector_resources::data_tags::DataTag;
@@ -17,7 +38,15 @@ use shinkai_vector_resources::vector_resource::{
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::runtime::Runtime;
+
+use crate::it::utils::node_test_api::{
+    api_initial_registration_with_no_code_for_device, api_llm_provider_registration,
+};
+use crate::it::vector_fs_api_tests::generate_message_with_payload;
+
+use super::utils::test_boilerplate::run_test_one_node_network;
 
 fn setup() {
     let path = Path::new("db_tests/");
@@ -387,10 +416,6 @@ async fn test_vector_fs_saving_reading() {
     // Animal facts search
     let query_string = "What do you know about camels?".to_string();
     println!("Query String: {}", query_string);
-    let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string.clone(), &reader)
-        .await
-        .unwrap();
     let res = vector_fs
         .deep_vector_search(&reader, query_string.clone(), 100, 100)
         .await
@@ -607,7 +632,7 @@ async fn test_vector_fs_operations() {
 
     // Create a Vector Resource and source file to be added into the VectorFS
     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
-    let mut resource = BaseVectorResource::Document(doc_resource);
+    let resource = BaseVectorResource::Document(doc_resource);
     let resource_name = resource.as_trait_object().name();
     let resource_ref_string = resource.as_trait_object().reference_string();
     let resource_merkle_root = resource.as_trait_object().get_merkle_root();
@@ -746,7 +771,7 @@ async fn test_vector_fs_operations() {
     assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
     assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     let node = vector_fs
         ._retrieve_core_resource_node_at_path(dest_reader.path.clone(), &dest_reader.profile)
@@ -841,7 +866,7 @@ async fn test_vector_fs_operations() {
         .await
         .unwrap();
 
-    let mut retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
+    let retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
     let old_description = retrieved_vr.as_trait_object().description();
 
     let new_description = "New description".to_string();
@@ -850,7 +875,7 @@ async fn test_vector_fs_operations() {
         .await
         .unwrap();
 
-    let mut updated_retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
+    let updated_retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
 
     assert_ne!(old_description, updated_retrieved_vr.as_trait_object().description());
     assert_eq!(
@@ -865,7 +890,7 @@ async fn test_vector_fs_operations() {
     // VRPack creation & unpacking into VecFS tests
     //
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     let reader = orig_writer
         .new_reader_copied_data(VRPath::root(), &mut vector_fs)
@@ -892,7 +917,7 @@ async fn test_vector_fs_operations() {
         .unwrap();
 
     println!("\n\n\nVectorFS:");
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     let vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
 
@@ -912,10 +937,6 @@ async fn test_vector_fs_operations() {
         .is_err());
 
     // Prepare a writer for the 'unpacked' folder
-    let root_writer = vector_fs
-        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
-        .await
-        .unwrap();
     let unpack_writer = vector_fs
         .new_writer(default_test_profile(), unpack_path.clone(), default_test_profile())
         .await
@@ -947,12 +968,12 @@ async fn test_vector_fs_operations() {
     assert_eq!(simplified_folder.clone().as_folder().unwrap().child_items.len(), 1);
     assert_eq!(simplified_folder.as_folder().unwrap().child_folders.len(), 1);
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     // Compare original vrpack with new re-created vrpack
 
     let old_vrpack = vrpack.clone();
-    let mut old_vrpack_contents = old_vrpack.unpack_all_vrkais().unwrap();
+    let old_vrpack_contents = old_vrpack.unpack_all_vrkais().unwrap();
 
     let reader = orig_writer
         .new_reader_copied_data(
@@ -961,8 +982,8 @@ async fn test_vector_fs_operations() {
         )
         .await
         .unwrap();
-    let mut new_vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
-    let mut new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
+    let new_vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
+    let new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
 
     println!("\n\nOld VRPack:");
     old_vrpack.print_internal_structure(None);
@@ -998,7 +1019,7 @@ async fn test_vector_fs_operations() {
         .new_writer_copied_data(VRPath::root().push_cloned("unpacked".to_string()), &mut vector_fs)
         .await
         .unwrap();
-    vector_fs.delete_folder(&unpack_writer).await.unwrap();
+    vector_fs.delete_folder(&deletion_writer).await.unwrap();
 
     //
     // Move/Deletion Tests for Folders
@@ -1320,3 +1341,420 @@ async fn test_remove_code_blocks_with_parsed_user_message() {
 //     println!("List elements in example3:");
 //     parsed_user_message3.print_list_elements();
 // }
+
+#[test]
+fn vector_search_multiple_embedding_models_test() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
+    init_default_tracing();
+    run_test_one_node_network(|env| {
+        Box::pin(async move {
+            let node1_commands_sender = env.node1_commands_sender.clone();
+            let node1_identity_name = env.node1_identity_name.clone();
+            let node1_profile_name = env.node1_profile_name.clone();
+            let node1_device_name = env.node1_device_name.clone();
+            let node1_agent = env.node1_llm_provider.clone();
+            let node1_encryption_pk = env.node1_encryption_pk;
+            let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
+            let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
+            let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
+            let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_abort_handler = env.node1_abort_handler;
+
+            let node1_db_weak = Arc::downgrade(&env.node1_db);
+
+            // For this test
+            let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
+
+            {
+                // Register a Profile in Node1 and verifies it
+                eprintln!("\n\nRegister a Device with main Profile in Node1 and verify it");
+                api_initial_registration_with_no_code_for_device(
+                    node1_commands_sender.clone(),
+                    env.node1_profile_name.as_str(),
+                    env.node1_identity_name.as_str(),
+                    node1_encryption_pk,
+                    node1_device_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_device_identity_sk),
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_device_name.as_str(),
+                )
+                .await;
+            }
+            let server = Server::new();
+            {
+                // Register an Agent
+                eprintln!("\n\nRegister an Agent in Node1 and verify it");
+                let agent_name = ShinkaiName::new(
+                    format!(
+                        "{}/{}/agent/{}",
+                        node1_identity_name.clone(),
+                        node1_profile_name.clone(),
+                        node1_agent.clone()
+                    )
+                    .to_string(),
+                )
+                .unwrap();
+
+                let ollama = Ollama {
+                    model_type: "mixtral:8x7b-instruct-v0.1-q4_1".to_string(),
+                };
+
+                let agent = SerializedLLMProvider {
+                    id: node1_agent.clone().to_string(),
+                    full_identity_name: agent_name,
+                    perform_locally: false,
+                    api_key: Some("".to_string()),
+                    external_url: Some(server.url()),
+                    model: LLMProviderInterface::Ollama(ollama),
+                    toolkit_permissions: vec![],
+                    storage_bucket_permissions: vec![],
+                    allowed_message_senders: vec![],
+                };
+                api_llm_provider_registration(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk,
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    agent,
+                )
+                .await;
+            }
+            // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
+            {
+                eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
+
+                let message_content = aes_encryption_key_to_string(symmetrical_sk);
+                let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    "job::test::false".to_string(),
+                    message_content.clone(),
+                    node1_profile_name.to_string(),
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string(),
+                )
+                .unwrap();
+
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
+            }
+            {
+                // Update supported embedding models
+                let payload = [
+                    OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M.to_string(),
+                    OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs.to_string(),
+                ];
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::UpdateSupportedEmbeddingModels,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res: res_sender })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+            }
+            {
+                let db_strong = node1_db_weak.upgrade().unwrap();
+                db_strong.update_local_processing_preference(true).unwrap();
+
+                // Create Folder
+                let payload = APIVecFsCreateFolder {
+                    path: "/".to_string(),
+                    folder_name: "test_folder".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsCreateFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+            }
+            {
+                // Upload .vrkai file with jina es embeddings to inbox
+                // Prepare the file to be read
+                let filename = "../../files/hispania_jina_es.vrkai";
+                let file_path = Path::new(filename);
+
+                // Read the file into a buffer
+                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
+
+                // Encrypt the file using Aes256Gcm
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let nonce_slice = nonce.as_slice();
+                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
+                        filename: filename.to_string(),
+                        file: ciphertext,
+                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                        encrypted_nonce: nonce_str,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+            }
+            {
+                // Convert File and Save to Folder
+                let payload = APIConvertFilesAndSaveToFolder {
+                    path: "/test_folder".to_string(),
+                    file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::ConvertFilesAndSaveToFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+            }
+            {
+                // Recover file from path using APIVecFSRetrievePathSimplifiedJson
+                let payload = APIVecFsRetrievePathSimplifiedJson {
+                    path: "/test_folder/hispania".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                // eprintln!("resp for current file system files: {}", resp);
+
+                // Assuming `resp` is now a serde_json::Value
+                let resp_json = serde_json::to_string(&resp).expect("Failed to convert response to string");
+                // eprintln!("resp for current file system files: {}", resp_json);
+
+                // TODO: convert to json and then compare
+                let expected_path = "/test_folder/hispania";
+                assert!(
+                    resp_json.contains(expected_path),
+                    "Response does not contain the expected file path: {}",
+                    expected_path
+                );
+            }
+            {
+                // Upload .vrkai file to inbox
+                // Prepare the file to be read
+                let filename = "../../files/short_story.md";
+                let file_path = Path::new(filename);
+
+                // Read the file into a buffer
+                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
+
+                // Encrypt the file using Aes256Gcm
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let nonce_slice = nonce.as_slice();
+                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
+                        filename: filename.to_string(),
+                        file: ciphertext,
+                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                        encrypted_nonce: nonce_str,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+            }
+            {
+                // Convert File and Save to Folder
+                let payload = APIConvertFilesAndSaveToFolder {
+                    path: "/test_folder".to_string(),
+                    file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::ConvertFilesAndSaveToFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+            }
+            {
+                // Recover file from path using APIVecFSRetrievePathSimplifiedJson
+                let payload = APIVecFsRetrievePathSimplifiedJson {
+                    path: "/test_folder/short_story".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                // eprintln!("resp for current file system files: {}", resp);
+
+                // Assuming `resp` is now a serde_json::Value
+                let resp_json = serde_json::to_string(&resp).expect("Failed to convert response to string");
+                // eprintln!("resp for current file system files: {}", resp_json);
+
+                // TODO: convert to json and then compare
+                let expected_path = "/test_folder/short_story";
+                assert!(
+                    resp_json.contains(expected_path),
+                    "Response does not contain the expected file path: {}",
+                    expected_path
+                );
+            }
+            {
+                // Do deep search
+                let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
+                    search: "Dónde estaba ubicada la capital principal?".to_string(),
+                    path: None,
+                    max_results: Some(10),
+                    max_files_to_scan: Some(100),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                for r in &resp {
+                    eprintln!("\n\nSearch result: {:?}", r);
+                }
+
+                assert!(!resp.is_empty(), "Response is empty.");
+                assert!(&resp
+                    .iter()
+                    .any(|r| r.0.contains("principal capital estaba situada en Qart Hadasht")));
+            }
+            node1_abort_handler.abort();
+        })
+    });
+}

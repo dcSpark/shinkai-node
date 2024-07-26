@@ -3372,6 +3372,7 @@ impl Node {
 
     pub async fn api_update_supported_embedding_models(
         db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3412,7 +3413,20 @@ impl Node {
             .collect();
 
         // Update the supported embedding models in the database
-        match db.update_supported_embedding_models(new_supported_models) {
+        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to update supported embedding models: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        match vector_fs
+            .set_profile_supported_models(&requester_name, &requester_name, new_supported_models)
+            .await
+        {
             Ok(_) => {
                 let _ = res
                     .send(Ok("Supported embedding models updated successfully".to_string()))
