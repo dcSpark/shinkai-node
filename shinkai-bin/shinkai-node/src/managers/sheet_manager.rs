@@ -53,22 +53,21 @@ impl SheetManager {
         })
     }
 
-    pub fn add_sheet(&mut self, id: String, sheet: Sheet) -> Result<(), ShinkaiDBError> {
-        let (sender, receiver) = async_channel::unbounded();
-        self.sheets.insert(id.clone(), (sheet.clone(), sender.clone()));
-
-        // Set the update sender after adding the sheet to the manager
-        if let Some((sheet, _)) = self.sheets.get_mut(&id) {
-            sheet.set_update_sender(sender);
-        }
-
+    pub fn add_sheet(&mut self, sheet: Sheet) -> Result<(), ShinkaiDBError> {
+        let (sender, _receiver) = async_channel::unbounded();
+        let sheet_id = sheet.uuid.clone();
+        let mut sheet_clone = sheet.clone();
+        sheet_clone.set_update_sender(sender.clone());
+    
+        self.sheets.insert(sheet_id, (sheet_clone, sender));
+    
         // Add the sheet to the database
         let db_strong = self
             .db
             .upgrade()
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
         db_strong.save_sheet(sheet, self.user_profile.clone())?;
-
+    
         Ok(())
     }
 
