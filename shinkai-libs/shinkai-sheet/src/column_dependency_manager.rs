@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::sheet::ColumnIndex;
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ColumnDependencyManager {
     // Column -> Columns it depends on
@@ -22,6 +24,16 @@ impl ColumnDependencyManager {
         }
         if let Some(rev_deps) = self.reverse_dependencies.get_mut(&to) {
             rev_deps.remove(&from);
+        }
+    }
+
+    pub fn update_dependencies(&mut self, col: ColumnIndex, dependencies: HashSet<ColumnIndex>) {
+        // Remove existing dependencies for the column
+        self.dependencies.remove(&col);
+        
+        // Add new dependencies
+        for &dep in &dependencies {
+            self.add_dependency(col, dep);
         }
     }
 

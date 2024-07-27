@@ -36,7 +36,9 @@ mod tests {
     use tokio::sync::Mutex;
 
     fn create_workflow_job_creator() -> Arc<Mutex<Box<dyn WorkflowJobCreator>>> {
-        Arc::new(Mutex::new(Box::new(MockWorkflowJobCreator) as Box<dyn WorkflowJobCreator>))
+        Arc::new(Mutex::new(
+            Box::new(MockWorkflowJobCreator) as Box<dyn WorkflowJobCreator>
+        ))
     }
 
     #[test]
@@ -132,7 +134,7 @@ mod tests {
         let column_c = ColumnDefinition {
             id: 2,
             name: "Column C".to_string(),
-            behavior: ColumnBehavior::Formula("=A1+B1".to_string()),
+            behavior: ColumnBehavior::Formula("=A+B".to_string()),
         };
         sheet.set_column(column_a);
         sheet.set_column(column_b);
@@ -183,7 +185,7 @@ mod tests {
         let column_d = ColumnDefinition {
             id: 3,
             name: "Column D".to_string(),
-            behavior: ColumnBehavior::Formula("=A1+B1+C1".to_string()),
+            behavior: ColumnBehavior::Formula("=A+B+C".to_string()),
         };
         sheet.set_column(column_a);
         sheet.set_column(column_b);
@@ -234,12 +236,12 @@ mod tests {
         let column_c = ColumnDefinition {
             id: 2,
             name: "Column C".to_string(),
-            behavior: ColumnBehavior::Formula("=A1+\" \"+B1".to_string()),
+            behavior: ColumnBehavior::Formula("=A+\" \"+B".to_string()),
         };
         sheet.set_column(column_a);
         sheet.set_column(column_b);
         sheet.set_column(column_c);
-
+    
         let workflow_job_creator = create_workflow_job_creator();
         sheet
             .set_cell_value(0, 0, "Hello".to_string(), workflow_job_creator.clone())
@@ -250,16 +252,16 @@ mod tests {
             .await
             .unwrap();
         sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
-
+    
         let cell = sheet.get_cell(0, 2).unwrap();
         assert_eq!(cell.value, Some("Hello World".to_string()));
-
+    
         sheet
             .set_cell_value(0, 0, "Bye".to_string(), workflow_job_creator.clone())
             .await
             .unwrap();
         sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
-
+    
         let cell = sheet.get_cell(0, 2).unwrap();
         assert_eq!(cell.value, Some("Bye World".to_string()));
     }
@@ -280,7 +282,7 @@ mod tests {
         let column_c = ColumnDefinition {
             id: 2,
             name: "Column C".to_string(),
-            behavior: ColumnBehavior::Formula("=A1+B1+\"hey\"".to_string()),
+            behavior: ColumnBehavior::Formula("=A+B+\"hey\"".to_string()),
         };
         sheet.set_column(column_a);
         sheet.set_column(column_b);
@@ -318,7 +320,7 @@ mod tests {
         let column_b = ColumnDefinition {
             id: 1,
             name: "Column B".to_string(),
-            behavior: ColumnBehavior::Formula("=A1+\" Copy\"".to_string()),
+            behavior: ColumnBehavior::Formula("=A+\" Copy\"".to_string()),
         };
         sheet.set_column(column_a);
         sheet.set_column(column_b);
