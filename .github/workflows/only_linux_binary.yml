@@ -1,0 +1,63 @@
+name: Build shinkai-node Linux binary
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build:
+    name: Build binary
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    steps:
+        - name: Checkout sources
+          uses: actions/checkout@v4
+    
+        - name: Cache cargo assets
+          id: cache
+          uses: actions/cache@v4
+          with:
+            path: |
+              ~/.cargo/bin/
+              ~/.cargo/registry/index/
+              ~/.cargo/registry/cache/
+              ~/.cargo/git/db/
+              target/
+            key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+        - name: Build
+          run: cargo build --release
+
+        - name: Upload binaries to release
+          uses: svenstaro/upload-release-action@v2
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
+          with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: target/release/shinkai_node${{ env.EXTENSION }}
+            asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
+            tag: ${{ github.ref }}
+            overwrite: true
+
+        - name: Prepare binary files
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
+          run: |
+            mkdir files-to-r2
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-${{ github.ref_name }}${{ env.EXTENSION }}
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-latest${{ env.EXTENSION }}
+
+        - name: Upload binaries to R2 bucket
+          uses: shallwefootball/s3-upload-action@master
+          with:
+            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
+            aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+            aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+            aws_bucket: shinkai-download
+            source_dir: files-to-r2
+            destination_dir: ./shinkai-node/binaries/${{ matrix.arch }}/
