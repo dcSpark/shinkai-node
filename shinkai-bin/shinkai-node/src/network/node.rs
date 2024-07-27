@@ -2924,7 +2924,7 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("Sending {:?} to {:?}", message, peer),
+            &format!("Sending Message with Ext Metadata {:?} to {:?}", message.external_metadata, peer),
         );
         let address = peer.0;
         let message = Arc::new(message);
