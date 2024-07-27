@@ -3033,16 +3033,24 @@ impl Node {
                 None
             }
         } else {
-            match TcpStream::connect(address).await {
-                Ok(stream) => {
+            match tokio::time::timeout(Duration::from_secs(4), TcpStream::connect(address)).await {
+                Ok(Ok(stream)) => {
                     let (_, writer) = tokio::io::split(stream);
                     Some(Arc::new(Mutex::new(writer)))
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     shinkai_log(
                         ShinkaiLogOption::Node,
                         ShinkaiLogLevel::Error,
                         &format!("Failed to connect to {}: {}", address, e),
+                    );
+                    None
+                }
+                Err(_) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Connection to {} timed out", address),
                     );
                     None
                 }
