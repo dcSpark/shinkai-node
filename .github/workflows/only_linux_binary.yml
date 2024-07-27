@@ -1,4 +1,4 @@
-name: Build shinkai-node binaries
+name: Build shinkai-node Linux binary
 
 on:
   workflow_dispatch:
