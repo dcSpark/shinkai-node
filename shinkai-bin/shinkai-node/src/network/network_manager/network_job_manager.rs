@@ -295,11 +295,11 @@ impl NetworkJobManager {
                                     ShinkaiLogOption::JobExecution,
                                     ShinkaiLogLevel::Info,
                                     &format!(
-                                        "Acquired permit for job {} (Receiver: {}, Sender: {}). {} / {} permits in use.",
+                                        "Acquired permit for job {} (Receiver: {}, Sender: {}). {} / {} permits available.",
                                         job_id, job.receiver_address, job.unsafe_sender_address, semaphore.available_permits(), max_parallel_jobs
                                     ),
                                 );
-                                
+
                                 // Measure the time taken to process the job
                                 let start_time = std::time::Instant::now();
 
@@ -327,14 +327,26 @@ impl NetworkJobManager {
                                 };
 
                                 let duration = start_time.elapsed();
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Info,
-                                    &format!(
-                                        "Job {} processed in {:?} (Receiver: {}, Sender: {})",
-                                        job_id, duration, job.receiver_address, job.unsafe_sender_address
-                                    ),
-                                );
+                                if duration.as_secs() > 10 {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        &format!(
+                                            "### Warning ### Slow process: Job {} processed in {:?} (Receiver: {}, Sender: {}). Dropping permit. {} / {} permits available.",
+                                            job_id, duration, job.receiver_address, job.unsafe_sender_address, semaphore.available_permits() + 1, max_parallel_jobs
+                                        ),
+                                    );
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Info,
+                                        &format!(
+                                            "Job {} processed in {:?} (Receiver: {}, Sender: {}). Dropping permit. {} / {} permits available.",
+                                            job_id, duration, job.receiver_address, job.unsafe_sender_address, semaphore.available_permits() + 1, max_parallel_jobs
+                                        ),
+                                    );
+                                }
+
 
                                 match result {
                                     Ok(_) => {
