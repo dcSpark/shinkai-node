@@ -291,10 +291,13 @@ impl NetworkJobManager {
 
                         match job {
                             Ok(Some(job)) => {
+                                // Measure the time taken to process the job
+                                let start_time = std::time::Instant::now();
+
                                 // Acquire the lock, process the job, and immediately release the lock
                                 let result = {
                                     let result = job_processing_fn(
-                                        job,
+                                        job.clone(),
                                         db_clone_2,
                                         vector_fs_clone_2,
                                         my_node_profile_name_clone_2,
@@ -313,6 +316,16 @@ impl NetworkJobManager {
                                         Err(NetworkJobQueueError::JobDequeueFailed(job_id.clone()))
                                     }
                                 };
+
+                                let duration = start_time.elapsed();
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    &format!(
+                                        "Job {} processed in {:?} (Receiver: {}, Sender: {})",
+                                        job_id, duration, job.receiver_address, job.unsafe_sender_address
+                                    ),
+                                );
 
                                 match result {
                                     Ok(_) => {
