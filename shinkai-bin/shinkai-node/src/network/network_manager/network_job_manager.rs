@@ -291,6 +291,15 @@ impl NetworkJobManager {
 
                         match job {
                             Ok(Some(job)) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    &format!(
+                                        "Acquired permit for job {} (Receiver: {}, Sender: {}). {} / {} permits in use.",
+                                        job_id, job.receiver_address, job.unsafe_sender_address, semaphore.available_permits(), max_parallel_jobs
+                                    ),
+                                );
+                                
                                 // Measure the time taken to process the job
                                 let start_time = std::time::Instant::now();
 
