@@ -11,8 +11,10 @@ use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::network::ws_manager::WSUpdateHandler;
@@ -545,6 +547,10 @@ pub struct Node {
     pub ws_server: Option<tokio::task::JoinHandle<()>>,
     // Tool Router. Option so it is less painful to test
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
+    pub callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+    // Sheet Manager.
+    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     // Default embedding model for new profiles
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
@@ -738,6 +744,7 @@ impl Node {
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -768,6 +775,8 @@ impl Node {
             ws_address,
             ws_manager_trait,
             ws_server: None,
+            callback_manager: None,
+            sheet_manager: None,
             tool_router: Some(Arc::new(Mutex::new(tool_router))),
             default_embedding_model,
             supported_embedding_models,
@@ -778,7 +787,7 @@ impl Node {
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let db_weak = Arc::downgrade(&self.db);
         let vector_fs_weak = Arc::downgrade(&self.vector_fs);
-        self.job_manager = Some(Arc::new(Mutex::new(
+        let job_manager = Arc::new(Mutex::new(
             JobManager::new(
                 db_weak,
                 Arc::clone(&self.identity_manager),
@@ -791,7 +800,8 @@ impl Node {
                 self.tool_router.clone(),
             )
             .await,
-        )));
+        ));
+        self.job_manager = Some(job_manager.clone());
 
         shinkai_log(
             ShinkaiLogOption::Node,
@@ -813,6 +823,21 @@ impl Node {
             ))),
             None => None,
         };
+        // let workflow_job_creator =
+        // let sheet_manager = Arc::new(Mutex::new(SheetManager::new(
+        //     Arc::downgrade(&self.db),
+        //     self.job_manager.clone(),
+        //     self.node_name.clone(),
+        //     None,
+        // )));
+
+        // self.callback_manager = Arc::new(Mutex::new(JobCallbackManager::new(
+        //         job_manager,
+        //         self.sheet_manager.clone(),
+        //         self.cron_manager.clone(),
+
+        // )));
+
         self.initialize_embedding_models().await?;
         {
             // Starting the WebSocket server

@@ -1,17 +1,13 @@
 use async_channel::Sender;
+use async_recursion::async_recursion;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
-use std::any::Any;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-use tokio::sync::Mutex;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::{
-    cell_name_converter::CellNameConverter, column_dependency_manager::ColumnDependencyManager, sheet_job::SheetJob,
+    cell_name_converter::CellNameConverter, column_dependency_manager::ColumnDependencyManager,
 };
 
 const MAX_DEPENDENCY_DEPTH: usize = 20;
@@ -19,6 +15,8 @@ const MAX_DEPENDENCY_DEPTH: usize = 20;
 pub type RowIndex = usize;
 pub type ColumnIndex = usize;
 pub type Formula = String;
+pub type FilePath = String;
+pub type FileName = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SheetUpdate {
@@ -43,10 +41,11 @@ pub enum ColumnBehavior {
     Number,
     Formula(String),
     LLMCall {
-        input: Formula,
+        input: Formula, // Note: Maybe actually not needed?
         workflow: Workflow,
-        llm_provider_name: String,
+        llm_provider_name: String, // Note: maybe we want a duality: specific model or some rules that pick a model e.g. Cheap + Private
     },
+    // TODO: merge single and multiple files into a single enum
     SingleFile {
         path: String,
         name: String,
@@ -54,6 +53,7 @@ pub enum ColumnBehavior {
     MultipleFiles {
         files: Vec<(String, String)>, // (path, name)
     },
+    // TODO: Add support for uploaded files. Specify String
     UploadedFiles {
         files: Vec<String>, // Mocking uploaded files as strings
     },
@@ -75,6 +75,12 @@ pub struct Cell {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct CellId(pub String);
 
+/// The `Sheet` struct represents the state of a spreadsheet.
+/// This implementation uses a Redux-like architecture for managing state updates.
+/// State updates are performed through actions, and the reducer function processes these actions to produce a new state.
+/// Each action can also produce a list of jobs (side effects) that need to be executed asynchronously.
+/// The state and jobs are returned as a tuple from the reducer, ensuring that the state is updated correctly
+/// and the jobs can be processed externally.
 #[derive(Serialize, Deserialize)]
 pub struct Sheet {
     pub uuid: String,
@@ -109,18 +115,13 @@ impl Clone for Sheet {
     }
 }
 
-pub trait WorkflowJobCreator: Send + Sync {
-    fn initiate_workflow_job(
-        &self,
-        row: usize,
-        col: usize,
-        workflow: &Workflow,
-        input_columns: &[usize],
-        cell_values: &[String],
-    ) -> Box<dyn SheetJob>;
-
-    // Used for testing
-    fn as_any(&self) -> &dyn Any;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkflowSheetJobData {
+    pub row: RowIndex,
+    pub col: ColumnIndex,
+    pub col_definition: ColumnDefinition,
+    pub workflow: Workflow,
+    pub input_cells: Vec<(RowIndex, ColumnIndex, ColumnDefinition)>,
 }
 
 impl Default for Sheet {
@@ -144,12 +145,14 @@ impl Sheet {
         self.update_sender = Some(sender);
     }
 
-    pub fn dispatch(&mut self, action: SheetAction) {
-        *self = sheet_reducer(self.clone(), action);
+    pub async fn dispatch(&mut self, action: SheetAction) -> Vec<WorkflowSheetJobData> {
+        let (new_state, jobs) = sheet_reducer(self.clone(), action).await;
+        *self = new_state;
+        jobs
     }
 
-    pub fn set_column(&mut self, definition: ColumnDefinition) {
-        self.dispatch(SheetAction::SetColumn(definition.clone()));
+    pub async fn set_column(&mut self, definition: ColumnDefinition) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
 
         if let ColumnBehavior::Formula(formula) = &definition.behavior {
             let dependencies = self.parse_formula_dependencies(formula);
@@ -170,14 +173,19 @@ impl Sheet {
         for row in active_rows {
             if let ColumnBehavior::Formula(formula) = &definition.behavior {
                 if let Some(value) = self.evaluate_formula(formula, row, definition.id) {
-                    self.dispatch(SheetAction::SetCellValue {
-                        row,
-                        col: definition.id,
-                        value,
-                    });
+                    let new_jobs = self
+                        .dispatch(SheetAction::SetCellValue {
+                            row,
+                            col: definition.id,
+                            value,
+                        })
+                        .await;
+                    jobs.extend(new_jobs);
                 }
             }
         }
+
+        Ok(jobs)
     }
 
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<ColumnIndex> {
@@ -202,101 +210,27 @@ impl Sheet {
         row: RowIndex,
         col: ColumnIndex,
         value: String,
-        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<WorkflowSheetJobData>, String> {
         if !self.columns.contains_key(&col) {
             return Err("Column index out of bounds".to_string());
         }
 
-        self.dispatch(SheetAction::SetCellValue { row, col, value });
+        // this jobs is expected to always be empty. we are inserting a value into a cell
+        let mut jobs = self.dispatch(SheetAction::SetCellValue { row, col, value }).await;
 
         let changed_cell_id = CellId(format!("{}:{}", row, col));
-        self.dispatch(SheetAction::TriggerUpdateEvent {
-            changed_cell_id,
-            workflow_job_creator,
-            visited: HashSet::new(),
-            depth: 0,
-        });
-        Ok(())
-    }
+        // unlike the previous job, this one *may* have updates because some formulas or workflows may depend on us
+        // so updating x,y cell may trigger workflow(s) that depends on x,y
+        let new_jobs = self
+            .dispatch(SheetAction::TriggerUpdateEvent {
+                changed_cell_id,
+                visited: HashSet::new(),
+                depth: 0,
+            })
+            .await;
 
-    pub async fn trigger_update_event(
-        &mut self,
-        changed_cell_id: &CellId,
-        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
-    ) {
-        let (row, col) = self.cell_id_to_indices(changed_cell_id);
-        let dependents = self.column_dependency_manager.get_dependents(col);
-        for dependent_col in dependents {
-            self.update_cell(row, dependent_col, workflow_job_creator.clone()).await;
-        }
-        if let Some(sender) = &self.update_sender {
-            sender.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
-        }
-    }
-
-    pub async fn update_cell(
-        &mut self,
-        row: RowIndex,
-        col: ColumnIndex,
-        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
-    ) -> Vec<Box<dyn SheetJob>> {
-        eprintln!("Updating cell: {} {}", row, col);
-        let mut jobs = Vec::new();
-        let column_behavior = self.columns.get(&col).unwrap().behavior.clone();
-        match column_behavior {
-            ColumnBehavior::Formula(formula) => {
-                if let Some(value) = self.evaluate_formula(&formula, row, col) {
-                    self.set_cell_value(row, col, value, workflow_job_creator)
-                        .await
-                        .unwrap();
-                }
-            }
-            ColumnBehavior::LLMCall {
-                input,
-                workflow,
-                llm_provider_name,
-            } => {
-                // Set cell status to Pending
-                eprintln!("Setting cell status to Pending");
-                let row_cells = self.rows.entry(row).or_default();
-                if let Some(cell) = row_cells.get_mut(&col) {
-                    eprintln!("Setting cell status to Pending");
-                    cell.status = CellStatus::Pending;
-                } else {
-                    eprintln!("Creating new cell with status Pending");
-                    // If the cell does not exist, create it with Pending status
-                    row_cells.insert(
-                        col,
-                        Cell {
-                            value: None,
-                            last_updated: Utc::now(),
-                            status: CellStatus::Pending,
-                        },
-                    );
-                }
-
-                let job = self
-                    .initiate_workflow_job(row, col, &workflow, &[], &llm_provider_name, workflow_job_creator)
-                    .await;
-                jobs.push(job);
-            }
-            ColumnBehavior::SingleFile { path, name } => {
-                println!("Single file: {} ({})", name, path);
-            }
-            ColumnBehavior::MultipleFiles { files } => {
-                for (path, name) in files {
-                    println!("File: {} ({})", name, path);
-                }
-            }
-            ColumnBehavior::UploadedFiles { files } => {
-                for file in files {
-                    println!("Uploaded file: {}", file);
-                }
-            }
-            _ => {}
-        }
-        jobs
+        jobs.extend(new_jobs);
+        Ok(jobs)
     }
 
     pub fn evaluate_formula(&mut self, formula: &str, row: RowIndex, col: ColumnIndex) -> Option<String> {
@@ -334,23 +268,10 @@ impl Sheet {
         Some(result)
     }
 
-    pub async fn initiate_workflow_job(
-        &mut self,
-        row: RowIndex,
-        col: ColumnIndex,
-        workflow: &Workflow,
-        input_columns: &[ColumnIndex],
-        llm_provider_name: &str,
-        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
-    ) -> Box<dyn SheetJob> {
-        let input_values: Vec<String> = input_columns
-            .iter()
-            .filter_map(|&col_id| self.get_cell_value(row, col_id))
-            .collect();
-
-        let creator = workflow_job_creator.lock().await;
-        creator.initiate_workflow_job(row, col, workflow, input_columns, &input_values)
-    }
+    // Note: if we create a workflow in B that depends on A (not defined)
+    // then we should skip the workflow creation and set the cell to Pending
+    // and then when A is defined, we should trigger the workflow
+    // Same goes for A -> B -> C
 
     pub fn get_cell_value(&self, row: RowIndex, col: ColumnIndex) -> Option<String> {
         self.rows
@@ -373,6 +294,7 @@ impl Sheet {
         self.columns.iter().map(|(&index, def)| (index, def)).collect()
     }
 
+    #[allow(dead_code)]
     fn get_column_formula(&self, col: ColumnIndex) -> Option<String> {
         self.columns.get(&col).and_then(|col_def| {
             if let ColumnBehavior::Formula(formula) = &col_def.behavior {
@@ -383,29 +305,62 @@ impl Sheet {
         })
     }
 
+    fn get_input_cells_for_column(
+        &self,
+        row: RowIndex,
+        col: ColumnIndex,
+    ) -> Vec<(RowIndex, ColumnIndex, ColumnDefinition)> {
+        let mut input_cells = Vec::new();
+
+        if let Some(column_definition) = self.columns.get(&col) {
+            match &column_definition.behavior {
+                ColumnBehavior::Formula(formula) => {
+                    let dependencies = self.parse_formula_dependencies(formula);
+                    for dep_col in dependencies {
+                        if let Some(dep_col_def) = self.columns.get(&dep_col) {
+                            input_cells.push((row, dep_col, dep_col_def.clone()));
+                        }
+                    }
+                }
+                ColumnBehavior::LLMCall { input, .. } => {
+                    let dependencies = self.parse_formula_dependencies(input);
+                    for dep_col in dependencies {
+                        if let Some(dep_col_def) = self.columns.get(&dep_col) {
+                            input_cells.push((row, dep_col, dep_col_def.clone()));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        input_cells
+    }
+
     pub fn print_as_ascii_table(&self) {
         // Collect column headers in order
         let mut headers: Vec<String> = (0..self.columns.len())
             .filter_map(|i| self.columns.get(&i).map(|col_def| col_def.name.clone()))
             .collect();
         headers.insert(0, "Row".to_string());
-    
+
         // Calculate the maximum width for each column
         let mut col_widths: Vec<usize> = headers.iter().map(|header| header.len()).collect();
         let max_row = *self.rows.keys().max().unwrap_or(&0);
         col_widths[0] = col_widths[0].max(max_row.to_string().len());
-    
+
         for row_index in 0..=max_row {
             if let Some(row_cells) = self.rows.get(&row_index) {
                 for col_index in 0..self.columns.len() {
-                    let cell_value_len = row_cells.get(&col_index)
+                    let cell_value_len = row_cells
+                        .get(&col_index)
                         .and_then(|cell| cell.value.as_ref().map(|v| v.len()))
                         .unwrap_or(0);
                     col_widths[col_index + 1] = col_widths[col_index + 1].max(cell_value_len);
                 }
             }
         }
-    
+
         // Print headers with padding
         let header_line: Vec<String> = headers
             .iter()
@@ -414,7 +369,7 @@ impl Sheet {
             .collect();
         println!("{}", header_line.join(" | "));
         println!("{}", "-".repeat(header_line.join(" | ").len()));
-    
+
         // Print rows with padding
         for row_index in 0..=max_row {
             let mut row_data: Vec<String> = vec![format!("{:width$}", row_index, width = col_widths[0])];
@@ -434,7 +389,10 @@ impl Sheet {
     }
 }
 
-#[derive(Clone)]
+// Note: add a method that can compact the sheet state in a way that a job can check if it's still valid or it can be completed
+// with the current state
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SheetAction {
     SetColumn(ColumnDefinition),
     SetCellValue {
@@ -444,35 +402,15 @@ pub enum SheetAction {
     },
     TriggerUpdateEvent {
         changed_cell_id: CellId,
-        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
         visited: HashSet<(RowIndex, ColumnIndex)>,
         depth: usize,
     },
     // Add other actions as needed
 }
 
-impl std::fmt::Debug for SheetAction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SheetAction::SetColumn(definition) => f.debug_struct("SetColumn").field("definition", definition).finish(),
-            SheetAction::SetCellValue { row, col, value } => f
-                .debug_struct("SetCellValue")
-                .field("row", row)
-                .field("col", col)
-                .field("value", value)
-                .finish(),
-            SheetAction::TriggerUpdateEvent { changed_cell_id, .. } => f
-                .debug_struct("TriggerUpdateEvent")
-                .field("changed_cell_id", changed_cell_id)
-                .field("workflow_job_creator", &"Arc<Mutex<Box<dyn WorkflowJobCreator>>>")
-                .finish(),
-            // Add other actions as needed
-        }
-    }
-}
-
 // Implement the reducer function
-pub fn sheet_reducer(mut state: Sheet, action: SheetAction) -> Sheet {
+#[async_recursion]
+pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec<WorkflowSheetJobData>) {
     //  if std::env::var("LOG_REDUX").is_ok() {
     println!("<Sheet Reducer>");
     println!("Dispatching action: {:?}", action);
@@ -480,6 +418,7 @@ pub fn sheet_reducer(mut state: Sheet, action: SheetAction) -> Sheet {
     state.print_as_ascii_table();
     // }
 
+    let mut jobs = Vec::new();
     match action {
         SheetAction::SetColumn(definition) => {
             if let ColumnBehavior::Formula(ref formula) = definition.behavior {
@@ -492,7 +431,7 @@ pub fn sheet_reducer(mut state: Sheet, action: SheetAction) -> Sheet {
         }
         SheetAction::SetCellValue { row, col, value } => {
             if !state.columns.contains_key(&col) {
-                return state; // Column index out of bounds
+                return (state, jobs); // Column index out of bounds
             }
 
             let row_cells = state.rows.entry(row).or_default();
@@ -507,45 +446,71 @@ pub fn sheet_reducer(mut state: Sheet, action: SheetAction) -> Sheet {
         }
         SheetAction::TriggerUpdateEvent {
             changed_cell_id,
-            workflow_job_creator,
             mut visited,
             depth,
         } => {
             if depth >= MAX_DEPENDENCY_DEPTH {
                 eprintln!("Maximum dependency depth reached. Possible circular dependency detected.");
-                return state;
+                return (state, jobs);
             }
 
             let (row, col) = state.cell_id_to_indices(&changed_cell_id);
 
             if !visited.insert((row, col)) {
                 eprintln!("Circular dependency detected at cell ({}, {})", row, col);
-                return state;
+                return (state, jobs);
             }
 
             let dependents = state.column_dependency_manager.get_reverse_dependents(col);
             eprintln!("Col: {:?} Dependents: {:?}", col, dependents);
             for dependent_col in dependents {
-                if let Some(formula) = state.get_column_formula(dependent_col) {
-                    if let Some(value) = state.evaluate_formula(&formula, row, dependent_col) {
-                        state = sheet_reducer(
-                            state,
-                            SheetAction::SetCellValue {
+                if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
+                    match &column_definition.behavior {
+                        ColumnBehavior::Formula(formula) => {
+                            if let Some(value) = state.evaluate_formula(formula, row, dependent_col) {
+                                let (new_state, mut new_jobs) = sheet_reducer(
+                                    state,
+                                    SheetAction::SetCellValue {
+                                        row,
+                                        col: dependent_col,
+                                        value,
+                                    },
+                                )
+                                .await;
+                                state = new_state;
+                                jobs.append(&mut new_jobs);
+
+                                let new_cell_id = CellId(format!("{}:{}", row, dependent_col));
+                                let (new_state, mut new_jobs) = sheet_reducer(
+                                    state,
+                                    SheetAction::TriggerUpdateEvent {
+                                        changed_cell_id: new_cell_id,
+                                        visited: visited.clone(),
+                                        depth: depth + 1,
+                                    },
+                                )
+                                .await;
+                                state = new_state;
+                                jobs.append(&mut new_jobs);
+                            }
+                        }
+                        ColumnBehavior::LLMCall {
+                            input,
+                            workflow,
+                            llm_provider_name,
+                        } => {
+                            let input_cells = state.get_input_cells_for_column(row, dependent_col);
+                            let workflow_job_data = WorkflowSheetJobData {
                                 row,
                                 col: dependent_col,
-                                value,
-                            },
-                        );
-                        let new_cell_id = CellId(format!("{}:{}", row, dependent_col));
-                        state = sheet_reducer(
-                            state,
-                            SheetAction::TriggerUpdateEvent {
-                                changed_cell_id: new_cell_id,
-                                workflow_job_creator: workflow_job_creator.clone(),
-                                visited: visited.clone(),
-                                depth: depth + 1,
-                            },
-                        );
+                                col_definition: column_definition.clone(),
+                                workflow: workflow.clone(),
+                                input_cells,
+                            };
+
+                            jobs.push(workflow_job_data);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -558,5 +523,5 @@ pub fn sheet_reducer(mut state: Sheet, action: SheetAction) -> Sheet {
             }
         } // Handle other actions
     }
-    state
+    (state, jobs)
 }

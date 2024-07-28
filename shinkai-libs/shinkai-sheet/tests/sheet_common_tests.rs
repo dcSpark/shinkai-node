@@ -1,61 +1,25 @@
-use std::any::Any;
-
 use chrono::Utc;
-use shinkai_dsl::dsl_schemas::Workflow;
-use shinkai_sheet::sheet::{CellId, ColumnBehavior, ColumnDefinition, Sheet, WorkflowJobCreator};
-use shinkai_sheet::sheet_job::{MockupSheetJob, SheetJob};
-
-struct MockWorkflowJobCreator;
-
-impl WorkflowJobCreator for MockWorkflowJobCreator {
-    fn initiate_workflow_job(
-        &self,
-        row: usize,
-        col: usize,
-        _workflow: &Workflow,
-        input_columns: &[usize],
-        _cell_values: &[String],
-    ) -> Box<dyn SheetJob> {
-        Box::new(MockupSheetJob::new(
-            "mock_job_id".to_string(),
-            CellId(format!("{}:{}", row, col)),
-            "".to_string(),
-            input_columns.iter().map(|&col| CellId(col.to_string())).collect(),
-        ))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
+use shinkai_sheet::sheet::{ColumnBehavior, ColumnDefinition, Sheet};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
 
-    fn create_workflow_job_creator() -> Arc<Mutex<Box<dyn WorkflowJobCreator>>> {
-        Arc::new(Mutex::new(
-            Box::new(MockWorkflowJobCreator) as Box<dyn WorkflowJobCreator>
-        ))
-    }
-
-    #[test]
-    fn test_add_column() {
+    #[tokio::test]
+    async fn test_add_column() {
         let mut sheet = Sheet::new();
         let column = ColumnDefinition {
             id: 0,
             name: "Column 1".to_string(),
             behavior: ColumnBehavior::Text,
         };
-        sheet.set_column(column.clone());
+        let _ = sheet.set_column(column.clone()).await;
         assert_eq!(sheet.columns.len(), 1);
         assert_eq!(sheet.columns[&0], column);
     }
 
-    #[test]
-    fn test_update_column() {
+    #[tokio::test]
+    async fn test_update_column() {
         let mut sheet = Sheet::new();
         let column_text = ColumnDefinition {
             id: 0,
@@ -63,7 +27,7 @@ mod tests {
             behavior: ColumnBehavior::Text,
         };
 
-        sheet.set_column(column_text.clone());
+        let _ = sheet.set_column(column_text.clone()).await;
         assert_eq!(sheet.columns[&0].name, "Text Column");
 
         let updated_column_text = ColumnDefinition {
@@ -72,7 +36,7 @@ mod tests {
             behavior: ColumnBehavior::Text,
         };
 
-        sheet.set_column(updated_column_text.clone());
+        let _ = sheet.set_column(updated_column_text.clone()).await;
         assert_eq!(sheet.columns[&0].name, "Updated Text Column");
     }
 
@@ -84,12 +48,9 @@ mod tests {
             name: "Column 1".to_string(),
             behavior: ColumnBehavior::Text,
         };
-        sheet.set_column(column);
+        let _ = sheet.set_column(column).await;
 
-        let workflow_job_creator = create_workflow_job_creator();
-        let result = sheet
-            .set_cell_value(0, 0, "Test Value".to_string(), workflow_job_creator)
-            .await;
+        let result = sheet.set_cell_value(0, 0, "Test Value".to_string()).await;
         assert!(result.is_ok());
 
         let cell = sheet.get_cell(0, 0).unwrap();
@@ -97,8 +58,8 @@ mod tests {
         assert!(cell.last_updated <= Utc::now());
     }
 
-    #[test]
-    fn test_add_non_consecutive_columns() {
+    #[tokio::test]
+    async fn test_add_non_consecutive_columns() {
         let mut sheet = Sheet::new();
         let column_a = ColumnDefinition {
             id: 0,
@@ -110,8 +71,8 @@ mod tests {
             name: "Column C".to_string(),
             behavior: ColumnBehavior::Text,
         };
-        sheet.set_column(column_a.clone());
-        sheet.set_column(column_c.clone());
+        let _ = sheet.set_column(column_a.clone()).await;
+        let _ = sheet.set_column(column_c.clone()).await;
 
         assert_eq!(sheet.columns.len(), 2);
         assert_eq!(sheet.columns[&0], column_a);
@@ -136,29 +97,17 @@ mod tests {
             name: "Column C".to_string(),
             behavior: ColumnBehavior::Formula("=A+B".to_string()),
         };
-        sheet.set_column(column_a);
-        sheet.set_column(column_b);
-        sheet.set_column(column_c);
+        let _ = sheet.set_column(column_a).await;
+        let _ = sheet.set_column(column_b).await;
+        let _ = sheet.set_column(column_c).await;
 
-        let workflow_job_creator = create_workflow_job_creator();
-        sheet
-            .set_cell_value(0, 0, "Hello".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet
-            .set_cell_value(0, 1, "World".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
+        sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();
+        sheet.set_cell_value(0, 1, "World".to_string()).await.unwrap();
 
         let cell = sheet.get_cell(0, 2).unwrap();
         assert_eq!(cell.value, Some("HelloWorld".to_string()));
 
-        sheet
-            .set_cell_value(0, 0, "Bye".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
+        sheet.set_cell_value(0, 0, "Bye".to_string()).await.unwrap();
 
         let cell = sheet.get_cell(0, 2).unwrap();
         assert_eq!(cell.value, Some("ByeWorld".to_string()));
@@ -187,34 +136,19 @@ mod tests {
             name: "Column D".to_string(),
             behavior: ColumnBehavior::Formula("=A+B+C".to_string()),
         };
-        sheet.set_column(column_a);
-        sheet.set_column(column_b);
-        sheet.set_column(column_c);
-        sheet.set_column(column_d);
+        let _ = sheet.set_column(column_a).await;
+        let _ = sheet.set_column(column_b).await;
+        let _ = sheet.set_column(column_c).await;
+        let _ = sheet.set_column(column_d).await;
 
-        let workflow_job_creator = create_workflow_job_creator();
-        sheet
-            .set_cell_value(0, 0, "Hello".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet
-            .set_cell_value(0, 1, "World".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet
-            .set_cell_value(0, 2, "Again".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 3, workflow_job_creator.clone()).await;
+        sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();
+        sheet.set_cell_value(0, 1, "World".to_string()).await.unwrap();
+        sheet.set_cell_value(0, 2, "Again".to_string()).await.unwrap();
 
         let cell = sheet.get_cell(0, 3).unwrap();
         assert_eq!(cell.value, Some("HelloWorldAgain".to_string()));
 
-        sheet
-            .set_cell_value(0, 0, "Bye".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 3, workflow_job_creator.clone()).await;
+        sheet.set_cell_value(0, 0, "Bye".to_string()).await.unwrap();
 
         let cell = sheet.get_cell(0, 3).unwrap();
         assert_eq!(cell.value, Some("ByeWorldAgain".to_string()));
@@ -238,30 +172,18 @@ mod tests {
             name: "Column C".to_string(),
             behavior: ColumnBehavior::Formula("=A+\" \"+B".to_string()),
         };
-        sheet.set_column(column_a);
-        sheet.set_column(column_b);
-        sheet.set_column(column_c);
-    
-        let workflow_job_creator = create_workflow_job_creator();
-        sheet
-            .set_cell_value(0, 0, "Hello".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet
-            .set_cell_value(0, 1, "World".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
-    
+        let _ = sheet.set_column(column_a).await;
+        let _ = sheet.set_column(column_b).await;
+        let _ = sheet.set_column(column_c).await;
+
+        sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();
+        sheet.set_cell_value(0, 1, "World".to_string()).await.unwrap();
+
         let cell = sheet.get_cell(0, 2).unwrap();
         assert_eq!(cell.value, Some("Hello World".to_string()));
-    
-        sheet
-            .set_cell_value(0, 0, "Bye".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
-    
+
+        sheet.set_cell_value(0, 0, "Bye".to_string()).await.unwrap();
+
         let cell = sheet.get_cell(0, 2).unwrap();
         assert_eq!(cell.value, Some("Bye World".to_string()));
     }
@@ -284,20 +206,12 @@ mod tests {
             name: "Column C".to_string(),
             behavior: ColumnBehavior::Formula("=A+B+\"hey\"".to_string()),
         };
-        sheet.set_column(column_a);
-        sheet.set_column(column_b);
-        sheet.set_column(column_c);
+        let _ = sheet.set_column(column_a).await;
+        let _ = sheet.set_column(column_b).await;
+        let _ = sheet.set_column(column_c).await;
 
-        let workflow_job_creator = create_workflow_job_creator();
-        sheet
-            .set_cell_value(0, 0, "Hello".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet
-            .set_cell_value(0, 1, "World".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 2, workflow_job_creator.clone()).await;
+        sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();
+        sheet.set_cell_value(0, 1, "World".to_string()).await.unwrap();
 
         let dependents = sheet.column_dependency_manager.get_dependents(2);
         assert!(dependents.contains(&0));
@@ -322,20 +236,13 @@ mod tests {
             name: "Column B".to_string(),
             behavior: ColumnBehavior::Formula("=A+\" Copy\"".to_string()),
         };
-        sheet.set_column(column_a);
-        sheet.set_column(column_b);
-
-        let workflow_job_creator = create_workflow_job_creator();
-        sheet.update_cell(0, 1, workflow_job_creator.clone()).await;
+        let _ = sheet.set_column(column_a).await;
+        let _ = sheet.set_column(column_b).await;
 
         let cell_b = sheet.get_cell(0, 1).unwrap();
         assert_eq!(cell_b.value, Some(" Copy".to_string()));
 
-        sheet
-            .set_cell_value(0, 0, "Not Empty".to_string(), workflow_job_creator.clone())
-            .await
-            .unwrap();
-        sheet.update_cell(0, 1, workflow_job_creator.clone()).await;
+        sheet.set_cell_value(0, 0, "Not Empty".to_string()).await.unwrap();
 
         let cell_b_updated = sheet.get_cell(0, 1).unwrap();
         assert_eq!(cell_b_updated.value, Some("Not Empty Copy".to_string()));

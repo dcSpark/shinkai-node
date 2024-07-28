@@ -2,10 +2,8 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use async_channel::{Receiver, Sender};
-use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use shinkai_sheet::sheet::{ColumnDefinition, Sheet, SheetUpdate, WorkflowJobCreator};
+use shinkai_sheet::sheet::{ColumnDefinition, Sheet, SheetUpdate};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
@@ -16,7 +14,6 @@ pub struct SheetManager {
     pub db: Weak<ShinkaiDB>,
     pub job_manager: Arc<Mutex<JobManager>>,
     pub user_profile: ShinkaiName,
-    pub workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
 }
 
 impl SheetManager {
@@ -24,7 +21,6 @@ impl SheetManager {
         db: Weak<ShinkaiDB>,
         job_manager: Arc<Mutex<JobManager>>,
         node_name: ShinkaiName,
-        workflow_job_creator: Arc<Mutex<Box<dyn WorkflowJobCreator>>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Only works for main right now
         let user_profile = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())?;
@@ -49,7 +45,6 @@ impl SheetManager {
             db,
             job_manager,
             user_profile,
-            workflow_job_creator,
         })
     }
 
@@ -58,22 +53,23 @@ impl SheetManager {
         let sheet_id = sheet.uuid.clone();
         let mut sheet_clone = sheet.clone();
         sheet_clone.set_update_sender(sender.clone());
-    
+
         self.sheets.insert(sheet_id, (sheet_clone, sender));
-    
+
         // Add the sheet to the database
         let db_strong = self
             .db
             .upgrade()
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
         db_strong.save_sheet(sheet, self.user_profile.clone())?;
-    
+
         Ok(())
     }
 
     pub async fn set_column(&mut self, sheet_id: &str, column: ColumnDefinition) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        sheet.set_column(column.clone());
+        let jobs = sheet.set_column(column.clone()).await;
+        // TODO: add cb to jobs and send them
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
@@ -92,7 +88,10 @@ impl SheetManager {
         value: String,
     ) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        sheet.set_cell_value(row, col, value, self.workflow_job_creator.clone()).await?;
+        let jobs = sheet
+            .set_cell_value(row, col, value)
+            .await?;
+        // TODO: add cb to jobs and send them
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
@@ -112,47 +111,49 @@ impl SheetManager {
         }
     }
 
-    pub async fn initiate_workflow_job(
-        &mut self,
-        sheet_id: &str,
-        row: usize,
-        col: usize,
-        workflow: &Workflow,
-        input_columns: &[usize],
-        llm_provider_name: &str,
-    ) -> Result<(), String> {
-        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        let job = sheet.initiate_workflow_job(
-            row,
-            col,
-            workflow,
-            input_columns,
-            llm_provider_name,
-            self.workflow_job_creator.clone(),
-        ).await;
-    
-        let job_message = JobMessage {
-            job_id: job.id().to_string(),
-            content: job.prompt().to_string(),
-            files_inbox: "".to_string(),
-            parent: None,
-            workflow_code: None,
-            workflow_name: None,
-        };
-    
-        let profile = ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap();
-        let mut job_manager = self.job_manager.lock().await;
-        job_manager
-            .add_job_message_to_job_queue(&job_message, &profile)
-            .await
-            .map_err(|e| e.to_string())?;
-    
-        Ok(())
-    }
+    // TODO: is this necessary?
+    // pub async fn initiate_workflow_job(
+    //     &mut self,
+    //     sheet_id: &str,
+    //     row: usize,
+    //     col: usize,
+    //     workflow: &Workflow,
+    //     input_columns: &[usize],
+    //     llm_provider_name: &str,
+    // ) -> Result<(), String> {
+    //     let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+    //     let job = sheet.initiate_workflow_job(
+    //         row,
+    //         col,
+    //         workflow,
+    //         input_columns,
+    //         llm_provider_name,
+    //         self.workflow_job_creator.clone(),
+    //     ).await;
 
-    async fn handle_updates(mut receiver: Receiver<SheetUpdate>) {
+    //     let job_message = JobMessage {
+    //         job_id: job.id().to_string(),
+    //         content: job.prompt().to_string(),
+    //         files_inbox: "".to_string(),
+    //         parent: None,
+    //         workflow_code: None,
+    //         workflow_name: None,
+    //     };
+
+    //     let profile = ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap();
+    //     let mut job_manager = self.job_manager.lock().await;
+    //     job_manager
+    //         .add_job_message_to_job_queue(&job_message, &profile)
+    //         .await
+    //         .map_err(|e| e.to_string())?;
+
+    //     Ok(())
+    // }
+
+    async fn handle_updates(receiver: Receiver<SheetUpdate>) {
         while let Ok(update) = receiver.recv().await {
             // Handle the update (e.g., log it, process it, etc.)
+            // TODO: check from which sheet the update came from
             println!("Received update: {:?}", update);
         }
     }

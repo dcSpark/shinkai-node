@@ -7741,6 +7741,7 @@ name = "shinkai_sheet"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "async-recursion",
  "chrono",
  "dashmap",
  "futures",

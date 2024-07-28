@@ -13,6 +13,7 @@ uuid = { version = "1.6.1", features = ["v4"] }
 regex = "1"
 shinkai_dsl = { path = "../shinkai-dsl" }
 async-channel = "1.6.1"
+async-recursion = "1.0.5"
 
 [dependencies.serde]
 version = "1.0.188"
