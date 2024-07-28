@@ -44,6 +44,7 @@ pub enum ColumnBehavior {
         input: Formula, // Note: Maybe actually not needed?
         workflow: Workflow,
         llm_provider_name: String, // Note: maybe we want a duality: specific model or some rules that pick a model e.g. Cheap + Private
+        input_hash: Option<String>, // New parameter to store the hash of inputs (avoid recomputation)
     },
     // TODO: merge single and multiple files into a single enum
     SingleFile {
@@ -337,6 +338,21 @@ impl Sheet {
         input_cells
     }
 
+    fn compute_input_hash(&self, input_cells: &[(RowIndex, ColumnIndex, ColumnDefinition)], workflow: &Workflow) -> Option<String> {
+        if input_cells.is_empty() {
+            return None;
+        }
+
+        let mut inputs: Vec<String> = input_cells
+            .iter()
+            .map(|(row, col, _)| format!("{}:{}", row, col))
+            .collect();
+        inputs.sort();
+        let concatenated = inputs.join(",");
+        let workflow_key = workflow.generate_key();
+        Some(blake3::hash(format!("{}::{}", concatenated, workflow_key).as_bytes()).to_hex().to_string())
+    }
+
     pub fn print_as_ascii_table(&self) {
         // Collect column headers in order
         let mut headers: Vec<String> = (0..self.columns.len())
@@ -498,6 +514,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             input,
                             workflow,
                             llm_provider_name,
+                            input_hash,
                         } => {
                             let input_cells = state.get_input_cells_for_column(row, dependent_col);
                             let workflow_job_data = WorkflowSheetJobData {

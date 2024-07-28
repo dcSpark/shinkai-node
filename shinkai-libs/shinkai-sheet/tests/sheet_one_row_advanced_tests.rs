@@ -46,6 +46,7 @@ mod tests {
                 input: "Say Hello World".to_string(),
                 workflow,
                 llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
             },
         };
 

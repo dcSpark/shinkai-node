@@ -14,6 +14,7 @@ regex = "1"
 shinkai_dsl = { path = "../shinkai-dsl" }
 async-channel = "1.6.1"
 async-recursion = "1.0.5"
+blake3 = "1.2.0"
 
 [dependencies.serde]
 version = "1.0.188"
