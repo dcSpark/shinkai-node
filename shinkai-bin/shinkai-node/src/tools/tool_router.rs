@@ -137,43 +137,43 @@ impl ToolRouter {
         let start_time = Instant::now();
 
         // If the generator's model matches the previous computed workflows, then we use the new approach
-        if let EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-        ) = model_type
-        {
-            // Parse the JSON data into a generic JSON value
-            let data = workflows_data::WORKFLOWS_JSON;
-            let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
-            let json_array = json_value.as_array().expect("Expected JSON data to be an array");
+        // if let EmbeddingModelType::OllamaTextEmbeddingsInference(
+        //     OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+        // ) = model_type
+        // {
+        //     // Parse the JSON data into a generic JSON value
+        //     let data = workflows_data::WORKFLOWS_JSON;
+        //     let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
+        //     let json_array = json_value.as_array().expect("Expected JSON data to be an array");
 
-            // Insert each workflow into the routing resource and save to the database
-            for item in json_array {
-                // Parse the shinkai_tool field
-                let shinkai_tool_value = &item["shinkai_tool"];
-                let shinkai_tool: ShinkaiTool =
-                    serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
+        //     // Insert each workflow into the routing resource and save to the database
+        //     for item in json_array {
+        //         // Parse the shinkai_tool field
+        //         let shinkai_tool_value = &item["shinkai_tool"];
+        //         let shinkai_tool: ShinkaiTool =
+        //             serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
 
-                // Parse the embedding field
-                let embedding_value = &item["embedding"];
-                let embedding: Embedding =
-                    serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
+        //         // Parse the embedding field
+        //         let embedding_value = &item["embedding"];
+        //         let embedding: Embedding =
+        //             serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
 
-                let _ = routing_resource.insert_text_node(
-                    shinkai_tool.tool_router_key(),
-                    shinkai_tool.to_json().unwrap(),
-                    None,
-                    embedding,
-                    &vec![],
-                );
+        //         let _ = routing_resource.insert_text_node(
+        //             shinkai_tool.tool_router_key(),
+        //             shinkai_tool.to_json().unwrap(),
+        //             None,
+        //             embedding,
+        //             &vec![],
+        //         );
 
-                // Save the workflow to the database
-                if let ShinkaiTool::Workflow(workflow_tool) = &shinkai_tool {
-                    if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
-                        eprintln!("Error saving workflow to DB: {:?}", e);
-                    }
-                }
-            }
-        } else {
+        //         // Save the workflow to the database
+        //         if let ShinkaiTool::Workflow(workflow_tool) = &shinkai_tool {
+        //             if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
+        //                 eprintln!("Error saving workflow to DB: {:?}", e);
+        //             }
+        //         }
+        //     }
+        // } else {
             // Generate the static workflows
             let workflows = WorkflowTool::static_tools();
             println!("Number of static workflows: {}", workflows.len());
@@ -204,7 +204,7 @@ impl ToolRouter {
                     eprintln!("Error saving workflow to DB: {:?}", e);
                 }
             }
-        }
+        // }
 
         let duration = start_time.elapsed();
         if env::var("LOG_ALL").unwrap_or_default() == "1" {
