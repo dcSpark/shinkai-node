@@ -339,7 +339,7 @@ impl Prompt {
                     // If we were processing ExtraContext, add it as a single System message
                     if processing_extra_context {
                         let extra_context_message = LlmMessage {
-                            role: Some(SubPromptType::System.to_string()),
+                            role: Some(SubPromptType::User.to_string()),
                             content: Some(extra_context_content.trim().to_string()),
                             name: None,
                             function_call: None,
@@ -365,7 +365,7 @@ impl Prompt {
         // If there are any remaining ExtraContext sub-prompts, add them as a single message
         if processing_extra_context && !extra_context_content.is_empty() {
             let extra_context_message = LlmMessage {
-                role: Some(SubPromptType::System.to_string()),
+                role: Some(SubPromptType::User.to_string()),
                 content: Some(extra_context_content.trim().to_string()),
                 name: None,
                 function_call: None,
