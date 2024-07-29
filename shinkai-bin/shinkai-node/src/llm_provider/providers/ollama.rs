@@ -23,7 +23,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-fn truncate_image_content_in_payload(payload: &mut JsonValue) {
+pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(images) = payload.get_mut("images") {
         if let Some(array) = images.as_array_mut() {
             for image in array {
