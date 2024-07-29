@@ -1,11 +1,13 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::GenericAPI;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Groq;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LocalLLM;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Ollama;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAI;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Gemini;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Exo;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::ShinkaiBackend;
 
 #[pyclass]
@@ -42,6 +44,16 @@ impl PyLLMProviderInterface {
             let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
             Ok(Self {
                 inner: LLMProviderInterface::Groq(Groq { model_type }),
+            })
+        } else if s.starts_with("gemini:") {
+            let model_type = s.strip_prefix("gemini:").unwrap_or("").to_string();
+            Ok(Self {
+                inner: LLMProviderInterface::Gemini(Gemini { model_type }),
+            })
+        } else if s.starts_with("exo:") {
+            let model_type = s.strip_prefix("exo:").unwrap_or("").to_string();
+            Ok(Self {
+                inner: LLMProviderInterface::Exo(Exo { model_type }),
             })
         } else {
             Ok(Self {
@@ -80,6 +92,7 @@ impl PyLLMProviderInterface {
             LLMProviderInterface::Ollama(ollama) => Ok(format!("ollama:{}", ollama.model_type)),
             LLMProviderInterface::Groq(groq) => Ok(format!("groq:{}", groq.model_type)),
             LLMProviderInterface::Gemini(gemini) => Ok(format!("gemini:{}", gemini.model_type)),
+            LLMProviderInterface::Exo(exo) => Ok(format!("exo:{}", exo.model_type)),
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 Ok(format!("shinkai-backend:{}", shinkai_backend.model_type()))
             }

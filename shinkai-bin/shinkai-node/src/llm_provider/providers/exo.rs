@@ -6,15 +6,17 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 use crate::network::ws_manager::{WSMetadata, WSUpdateHandler};
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
+use super::ollama::truncate_image_content_in_payload;
 use super::LLMService;
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Exo, LLMProviderInterface, Ollama};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
@@ -23,21 +25,39 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
-    if let Some(images) = payload.get_mut("images") {
-        if let Some(array) = images.as_array_mut() {
-            for image in array {
-                if let Some(str_image) = image.as_str() {
-                    let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
-                    *image = JsonValue::String(truncated_image);
-                }
-            }
-        }
-    }
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExoAPIStreamingResponse {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub model: String,
+    pub system_fingerprint: String,
+    pub choices: Vec<ExoChoice>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExoChoice {
+    pub index: i32,
+    pub message: ExoMessage,
+    pub logprobs: Option<JsonValue>,
+    pub finish_reason: Option<String>,
+    pub delta: ExoDelta,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExoMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExoDelta {
+    pub role: String,
+    pub content: String,
 }
 
 #[async_trait]
-impl LLMService for Ollama {
+impl LLMService for Exo {
     async fn call_api(
         &self,
         client: &Client,
@@ -50,7 +70,7 @@ impl LLMService for Ollama {
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
-            let url = format!("{}{}", base_url, "/api/chat");
+            let url = format!("{}{}", base_url, "/v1/chat/completions");
 
             let messages_result = ollama_conversation_prepare_messages(&model, prompt)?;
             let messages_json = match messages_result.messages {
@@ -68,10 +88,10 @@ impl LLMService for Ollama {
                 format!("Messages JSON: {:?}", messages_json).as_str(),
             );
             // Print messages_json as a pretty JSON string
-            // match serde_json::to_string_pretty(&messages_json) {
-            //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-            //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-            // };
+            match serde_json::to_string_pretty(&messages_json) {
+                Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+                Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+            };
 
             let mut payload = json!({
                 "model": self.model_type,
@@ -111,43 +131,40 @@ impl LLMService for Ollama {
                         if !previous_json_chunk.is_empty() {
                             chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
                         }
-                        let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
+                        if chunk_str.starts_with("data: ") {
+                            chunk_str = chunk_str.trim_start_matches("data: ").to_string();
+                        }
+                        let data_resp: Result<ExoAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
                             Ok(data) => {
                                 previous_json_chunk = "".to_string();
-                                response_text.push_str(&data.message.content);
+                                if let Some(choice) = data.choices.get(0) {
+                                    response_text.push_str(&choice.delta.content);
 
-                                // Note: this is the code for enabling WS
-                                if let Some(ref manager) = ws_manager_trait {
-                                    if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
+                                    // Note: this is the code for enabling WS
+                                    if let Some(ref manager) = ws_manager_trait {
+                                        if let Some(ref inbox_name) = inbox_name {
+                                            let m = manager.lock().await;
+                                            let inbox_name_string = inbox_name.to_string();
 
-                                        let metadata = WSMetadata {
-                                            id: Some(session_id.clone()),
-                                            is_done: data.done,
-                                            done_reason: if data.done { data.done_reason.clone() } else { None },
-                                            total_duration: if data.done {
-                                                data.total_duration.map(|d| d as u64)
-                                            } else {
-                                                None
-                                            },
-                                            eval_count: if data.done {
-                                                data.eval_count.map(|c| c as u64)
-                                            } else {
-                                                None
-                                            },
-                                        };
+                                            let metadata = WSMetadata {
+                                                id: Some(session_id.clone()),
+                                                is_done: choice.finish_reason.is_some(),
+                                                done_reason: choice.finish_reason.clone(),
+                                                total_duration: None, // Not available in the new format
+                                                eval_count: None, // Not available in the new format
+                                            };
 
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                data.message.content,
-                                                Some(metadata),
-                                                true,
-                                            )
-                                            .await;
+                                            let _ = m
+                                                .queue_message(
+                                                    WSTopic::Inbox,
+                                                    inbox_name_string,
+                                                    choice.delta.content.clone(),
+                                                    Some(metadata),
+                                                    true,
+                                                )
+                                                .await;
+                                        }
                                     }
                                 }
                             }

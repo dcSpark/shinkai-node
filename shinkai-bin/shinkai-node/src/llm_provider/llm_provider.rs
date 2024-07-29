@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use crate::network::ws_manager::WSUpdateHandler;
 
+use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::Prompt;
-use super::parsing_helper::ParsingHelper;
 use super::providers::LLMService;
-use super::{error::LLMProviderError, execution::prompts::subprompts::SubPromptType};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -126,6 +125,18 @@ impl LLMProvider {
                     )
                     .await
             }
+            LLMProviderInterface::Exo(exo) => {
+                exo.call_api(
+                    &self.client,
+                    self.external_url.as_ref(),
+                    self.api_key.as_ref(),
+                    prompt.clone(),
+                    self.model.clone(),
+                    inbox_name,
+                    ws_manager_trait,
+                )
+                .await
+            }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 shinkai_backend
                     .call_api(
@@ -152,17 +163,18 @@ impl LLMProvider {
                 .await
             }
             LLMProviderInterface::Gemini(gemini) => {
-                gemini.call_api(
-                    &self.client,
-                    self.external_url.as_ref(),
-                    self.api_key.as_ref(),
-                    prompt.clone(),
-                    self.model.clone(),
-                    inbox_name,
-                    ws_manager_trait,
-                )
-                .await
-            } 
+                gemini
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                    )
+                    .await
+            }
             LLMProviderInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
