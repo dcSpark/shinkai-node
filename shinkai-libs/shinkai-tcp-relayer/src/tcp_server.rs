@@ -507,14 +507,15 @@ impl TCPProxy {
         let tcp_node_name_string = tcp_node_name.to_string().trim_start_matches("@@").to_string();
 
         // For Debugging
-        // println!("TCP Node Name: {}", tcp_node_name_string);
-        // println!("MSG Recipient: {}", msg_recipient);
-        // println!("MSG Sender: {}", msg_sender);
+        println!("[{}] TCP Node Name: {}", session_id, tcp_node_name_string);
+        println!("[{}] MSG Recipient: {}", session_id, msg_recipient);
+        println!("[{}] MSG Sender: {}", session_id, msg_sender);
 
         // Case A
         // If Message Recipient is TCP Node Name
         // We proxied a message from a localhost identity and we are getting the response
         if msg_recipient == tcp_node_name_string {
+            println!("[{}] Case A", session_id);
             println!(
                 "[{}] Recipient is the same as the node name, handling message locally",
                 session_id
@@ -551,6 +552,7 @@ impl TCPProxy {
 
         // if the node is using the proxy as a relay then it will be in the recipient_addresses
         if recipient_addresses.iter().any(|addr| addr == &tcp_node_name_string) {
+            println!("[{}] Case B", session_id);
             println!(
                 "[{}] Recipient is {} and uses this node as proxy, handling message locally",
                 session_id, msg_recipient
@@ -583,6 +585,7 @@ impl TCPProxy {
         // Case C
         // Proxying message out. Sender is behind NAT & localhost
         if msg_sender.starts_with("localhost") || msg_sender.starts_with("@@localhost") {
+            println!("[{}] Case C", session_id);
             println!(
                 "[{}] Proxying message out. Sender is behind NAT & localhost",
                 session_id
@@ -615,12 +618,14 @@ impl TCPProxy {
             vec![]
         };
         if relayer_addresses.iter().any(|addr| recipient_addresses.iter().any(|recipient_addr| addr == recipient_addr)) {
+            println!("[{}] Case D", session_id);
             return Err(NetworkMessageError::RecipientLoopError(recipient_addresses.join(",")));
         }
 
         // Case E
         // Proxying message out. Sender is not localhost but a well defined identity
         // We need to proxy the message to the recipient
+        println!("[{}] Case E", session_id);
         println!(
             "[{}] Proxying message out. Sender is not localhost but a well defined identity",
             session_id

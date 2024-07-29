@@ -2757,7 +2757,12 @@ impl Node {
             let network_job_manager = Arc::clone(&network_job_manager);
             let conn_limiter_clone = conn_limiter.clone();
 
-            eprintln!("loop before spawn for normal socket");
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                &format!("Spawning task to handle connection from {}", ip),
+            );
+
             tokio::spawn(async move {
                 let (reader, _writer) = tokio::io::split(socket);
                 let reader = Arc::new(Mutex::new(reader));
@@ -2793,6 +2798,7 @@ impl Node {
         addr: SocketAddr,
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let start_time = Utc::now();
         let mut length_bytes = [0u8; 4];
         {
             let mut reader = reader.lock().await;
@@ -2854,6 +2860,15 @@ impl Node {
             let mut network_job_manager = network_job_manager.lock().await;
             network_job_manager.add_network_job_to_queue(&network_job).await?;
         }
+
+        let end_time = Utc::now();
+        let duration = end_time - start_time;
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Finished handling connection from {:?} in {:?}", addr, duration),
+        );
+
         Ok(())
     }
 
@@ -2877,7 +2892,10 @@ impl Node {
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Info,
-                &format!("Retrying message: {:?}", retry_message.message),
+                &format!(
+                    "Retrying Message with External Metadata: {:?}",
+                    retry_message.message.external_metadata
+                ),
             );
 
             // Retry the message
@@ -2924,13 +2942,22 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("Sending {:?} to {:?}", message, peer),
+            &format!("Sending Message with Ext Metadata {:?} to {:?}", message.external_metadata, peer),
         );
         let address = peer.0;
         let message = Arc::new(message);
 
         tokio::spawn(async move {
+            let start_time = Utc::now();
+            let writer_start_time = Utc::now();
             let writer = Node::get_writer(address, proxy_connection_info, maybe_identity_manager.clone()).await;
+            let writer_end_time = Utc::now(); // End time for get_writer
+            let writer_duration = writer_end_time - writer_start_time;
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                &format!("Time taken to get_writer: {:?}", writer_duration),
+            );
 
             if let Some(writer) = writer {
                 let encoded_msg = message.encode_message().unwrap();
@@ -2980,6 +3007,13 @@ impl Node {
                 let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
                 db.add_message_to_retry(&retry_message, retry_time).unwrap();
             }
+            let end_time = Utc::now();
+            let duration = end_time - start_time;
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                &format!("Finished sending message to {:?} in {:?}", address, duration),
+            );
         });
     }
 
@@ -2999,16 +3033,24 @@ impl Node {
                 None
             }
         } else {
-            match TcpStream::connect(address).await {
-                Ok(stream) => {
+            match tokio::time::timeout(Duration::from_secs(4), TcpStream::connect(address)).await {
+                Ok(Ok(stream)) => {
                     let (_, writer) = tokio::io::split(stream);
                     Some(Arc::new(Mutex::new(writer)))
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     shinkai_log(
                         ShinkaiLogOption::Node,
                         ShinkaiLogLevel::Error,
                         &format!("Failed to connect to {}: {}", address, e),
+                    );
+                    None
+                }
+                Err(_) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Connection to {} timed out", address),
                     );
                     None
                 }
