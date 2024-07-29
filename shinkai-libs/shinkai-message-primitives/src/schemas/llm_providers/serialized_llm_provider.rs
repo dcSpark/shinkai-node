@@ -27,6 +27,7 @@ pub enum LLMProviderInterface {
     LocalLLM(LocalLLM),
     Groq(Groq),
     Gemini(Gemini),
+    Exo(Exo),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -49,6 +50,17 @@ pub struct Groq {
 }
 
 impl Groq {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct Exo {
+    pub model_type: String,
+}
+
+impl Exo {
     pub fn model_type(&self) -> String {
         self.model_type.to_string()
     }
@@ -119,6 +131,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("gemini:") {
             let model_type = s.strip_prefix("gemini:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Gemini(Gemini { model_type }))
+        } else if s.starts_with("exo:") {
+            let model_type = s.strip_prefix("exo:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::Exo(Exo { model_type }))
         } else {
             Err(())
         }
@@ -153,6 +168,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::Gemini(gemini) => {
                 let model_type = format!("gemini:{}", gemini.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::Exo(exo) => {
+                let model_type = format!("exo:{}", exo.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -193,10 +212,13 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "gemini" => Ok(LLMProviderInterface::Gemini(Gemini {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "exo" => Ok(LLMProviderInterface::Exo(Exo {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq"],
+                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini"],
             )),
         }
     }

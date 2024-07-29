@@ -152,32 +152,40 @@ impl ModelCapabilitiesManager {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                     vec![ModelCapability::TextInference]
                 }
-                "gpt-vision" | "gpt-4-vision-preview" | "gp4o" | "gpt-4o" | "PREMIUM_VISION_INFERENCE" | "gpt-4o-mini" => {
+                "gpt-vision"
+                | "gpt-4-vision-preview"
+                | "gp4o"
+                | "gpt-4o"
+                | "PREMIUM_VISION_INFERENCE"
+                | "gpt-4o-mini" => {
                     vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
                 }
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
-            LLMProviderInterface::Ollama(ollama) => match ollama.model_type.as_str() {
-                model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("llava") => {
-                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                }
-                model_type if model_type.starts_with("bakllava") => {
-                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                }
-                model_type if model_type.starts_with("moondream") => {
-                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                }
-                model_type if model_type.contains("minicpm_llama3") => {
-                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                }
-                _ => vec![ModelCapability::TextInference],
-            },
-            LLMProviderInterface::Groq(groq) => {
-                vec![ModelCapability::TextInference]
-            },
+            LLMProviderInterface::Ollama(model) => Self::get_capabilities_for_model_type(model.model_type().as_str()),
+            LLMProviderInterface::Exo(model) => Self::get_capabilities_for_model_type(model.model_type().as_str()),
+            LLMProviderInterface::Groq(model) => Self::get_capabilities_for_model_type(model.model_type().as_str()),
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
+        }
+    }
+
+    fn get_capabilities_for_model_type(model_type: &str) -> Vec<ModelCapability> {
+        match model_type {
+            model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("llava") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("bakllava") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("moondream") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.contains("minicpm_llama3") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            _ => vec![ModelCapability::TextInference],
         }
     }
 
@@ -212,6 +220,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
             LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
+            LLMProviderInterface::Exo(_) => ModelCost::Cheap,
         }
     }
 
@@ -230,6 +239,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
             LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
         }
     }
 
@@ -346,6 +356,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, gemini.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::Exo(exo) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, exo.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -391,44 +406,38 @@ impl ModelCapabilitiesManager {
                     32_000
                 }
             }
-            LLMProviderInterface::Groq(groq) => {
-                // Fill in the appropriate logic for GenericAPI
-                if groq.model_type == "llama3-70b-8192" {
-                    8_000
-                } else {
-                    4096
-                }
-            }
-            LLMProviderInterface::Gemini(_) => {
-                1_000_000
-            }
-            LLMProviderInterface::Ollama(ollama) => {
-                return match ollama.model_type.as_str() {
-                    model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
-                    model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
-                    model_type if model_type.starts_with("mixtral:8x22b") => 65_000,
-                    model_type if model_type.starts_with("llama3-gradient") => 256_000,
-                    model_type if model_type.starts_with("falcon2") => 8_000,
-                    model_type if model_type.starts_with("llama3-chatqa") => 8_000,
-                    model_type if model_type.starts_with("llava-phi3") => 4_000,
-                    model_type if model_type.contains("minicpm_llama3") => 4_000,
-                    model_type if model_type.starts_with("dolphin-llama3") => 8_000,
-                    model_type if model_type.starts_with("command-r-plus") => 128_000,
-                    model_type if model_type.starts_with("codestral") => 32_000,
-                    model_type if model_type.starts_with("gemma2") => 8_000,
-                    model_type if model_type.starts_with("qwen2:0.5b") => 32_000,
-                    model_type if model_type.starts_with("qwen2:1.5b") => 32_000,
-                    model_type if model_type.starts_with("qwen2:7b") => 128_000,
-                    model_type if model_type.starts_with("qwen2:72b") => 128_000,
-                    model_type if model_type.starts_with("aya") => 32_000,
-                    model_type if model_type.starts_with("wizardlm2") => 8_000,
-                    model_type if model_type.starts_with("phi2") => 4_000,
-                    model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
-                    model_type if model_type.starts_with("llama3.1") => 128_000,
-                    model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
-                    _ => 4096, // Default token count if no specific model type matches
-                };
-            }
+            LLMProviderInterface::Gemini(_) => 1_000_000,
+            LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
+            LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
+            LLMProviderInterface::Groq(groq) => Self::get_max_tokens_for_model_type(&groq.model_type),
+        }
+    }
+
+    fn get_max_tokens_for_model_type(model_type: &str) -> usize {
+        match model_type {
+            model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
+            model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
+            model_type if model_type.starts_with("mixtral:8x22b") => 65_000,
+            model_type if model_type.starts_with("llama3-gradient") => 256_000,
+            model_type if model_type.starts_with("falcon2") => 8_000,
+            model_type if model_type.starts_with("llama3-chatqa") => 8_000,
+            model_type if model_type.starts_with("llava-phi3") => 4_000,
+            model_type if model_type.contains("minicpm_llama3") => 4_000,
+            model_type if model_type.starts_with("dolphin-llama3") => 8_000,
+            model_type if model_type.starts_with("command-r-plus") => 128_000,
+            model_type if model_type.starts_with("codestral") => 32_000,
+            model_type if model_type.starts_with("gemma2") => 8_000,
+            model_type if model_type.starts_with("qwen2:0.5b") => 32_000,
+            model_type if model_type.starts_with("qwen2:1.5b") => 32_000,
+            model_type if model_type.starts_with("qwen2:7b") => 128_000,
+            model_type if model_type.starts_with("qwen2:72b") => 128_000,
+            model_type if model_type.starts_with("aya") => 32_000,
+            model_type if model_type.starts_with("wizardlm2") => 8_000,
+            model_type if model_type.starts_with("phi2") => 4_000,
+            model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
+            model_type if model_type.starts_with("llama3.1") => 128_000,
+            model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
+            _ => 4096, // Default token count if no specific model type matches
         }
     }
 
@@ -476,6 +485,7 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for Ollama
                 4096
             }
+            LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(_) => {
                 // Fill in the appropriate logic for Ollama
                 4096
@@ -526,6 +536,10 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Ollama(_) => {
+                // Fill in the appropriate logic for Ollama
+                "".to_string()
+            }
+            LLMProviderInterface::Exo(_) => {
                 // Fill in the appropriate logic for Ollama
                 "".to_string()
             }
