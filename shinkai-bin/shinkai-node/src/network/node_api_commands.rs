@@ -3078,7 +3078,10 @@ impl Node {
                     let shinkai_tool = ShinkaiTool::Workflow(workflow_tool);
 
                     // Add the tool to the ToolRouter
-                    match tool_router.add_shinkai_tool(&requester_name, &shinkai_tool, embedding) {
+                    match tool_router
+                        .add_shinkai_tool(&requester_name, &shinkai_tool, embedding)
+                        .await
+                    {
                         Ok(_) => {
                             let response =
                                 json!({ "status": "success", "message": "Workflow added to database and tool router" });
@@ -3158,7 +3161,10 @@ impl Node {
                 // Remove the workflow from the tool_router
                 if let Some(tool_router) = tool_router {
                     let mut tool_router = tool_router.lock().await;
-                    match tool_router.delete_shinkai_tool(&requester_name, &workflow_key.name, "workflow") {
+                    match tool_router
+                        .delete_shinkai_tool(&requester_name, workflow_key_str)
+                        .await
+                    {
                         Ok(_) => {
                             let response = json!({ "status": "success", "message": "Workflow removed from database and tool router" });
                             let _ = res.send(Ok(response)).await;

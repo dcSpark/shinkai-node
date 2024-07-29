@@ -27,18 +27,35 @@ use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
+use tokio::sync::RwLock;
 
 use super::js_toolkit::JSToolkit;
 use super::shinkai_tool::ShinkaiTool;
 
 /// A top level struct which indexes Tools (Rust or JS or Workflows) installed in the Shinkai Node
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct ToolRouter {
     pub routing_resources: HashMap<String, MapVectorResource>,
-    // pub workflows_for_search: RwLock<HashMap<ShinkaiName, ShinkaiTool>>,
+    pub shinkai_tools_for_search: RwLock<HashMap<String, ShinkaiTool>>,
     // We use started so we can defer the initialization of the routing_resources using a
     // generator that may not be available at the time of creation
     started: bool,
+}
+
+impl Clone for ToolRouter {
+    fn clone(&self) -> Self {
+        ToolRouter {
+            routing_resources: self.routing_resources.clone(),
+            shinkai_tools_for_search: RwLock::new(self.shinkai_tools_for_search.blocking_read().clone()),
+            started: self.started,
+        }
+    }
+}
+
+impl PartialEq for ToolRouter {
+    fn eq(&self, other: &Self) -> bool {
+        self.routing_resources == other.routing_resources && self.started == other.started
+    }
 }
 
 impl Default for ToolRouter {
@@ -52,7 +69,7 @@ impl ToolRouter {
     pub fn new() -> Self {
         ToolRouter {
             routing_resources: HashMap::new(),
-            // workflows: RwLock::new(HashMap::new()),
+            shinkai_tools_for_search: RwLock::new(HashMap::new()),
             started: false,
         }
     }
@@ -86,7 +103,12 @@ impl ToolRouter {
         let mut routing_resource = MapVectorResource::new_empty(name, desc, source, true);
 
         // Add Rust tools
-        Self::add_rust_tools(&mut routing_resource, generator.box_clone()).await;
+        Self::add_rust_tools(
+            &mut routing_resource,
+            generator.box_clone(),
+            &self.shinkai_tools_for_search,
+        )
+        .await;
 
         // Add JS tools and workflows
         if let Some(db) = db.upgrade() {
@@ -96,9 +118,17 @@ impl ToolRouter {
                 generator.box_clone(),
                 db.clone(),
                 profile.clone(),
+                &self.shinkai_tools_for_search,
             )
             .await;
-            Self::add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
+            Self::add_js_tools(
+                &mut routing_resource,
+                generator,
+                db,
+                profile.clone(),
+                &self.shinkai_tools_for_search,
+            )
+            .await;
         }
 
         self.routing_resources.insert(profile.to_string(), routing_resource);
@@ -106,7 +136,11 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn add_rust_tools(routing_resource: &mut MapVectorResource, generator: Box<dyn EmbeddingGenerator>) {
+    async fn add_rust_tools(
+        routing_resource: &mut MapVectorResource,
+        generator: Box<dyn EmbeddingGenerator>,
+        shinkai_tools_for_search: &RwLock<HashMap<String, ShinkaiTool>>,
+    ) {
         // Generate the static Rust tools
         let rust_tools = RustTool::static_tools(generator).await;
 
@@ -117,11 +151,15 @@ impl ToolRouter {
 
             let _ = routing_resource.insert_text_node(
                 shinkai_tool.tool_router_key(),
-                shinkai_tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
+                shinkai_tool.formatted_tool_summary_for_ui(),
                 None,
                 tool.tool_embedding.clone(),
                 &vec![],
             );
+
+            // Update shinkai_tools_for_search
+            let mut tools_for_search = shinkai_tools_for_search.write().await;
+            tools_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool);
         }
     }
 
@@ -130,8 +168,10 @@ impl ToolRouter {
         generator: Box<dyn EmbeddingGenerator>,
         db: Arc<ShinkaiDB>,
         profile: ShinkaiName,
+        shinkai_tools_for_search: &RwLock<HashMap<String, ShinkaiTool>>,
     ) {
         let model_type = generator.model_type();
+        let mut workflows_for_search = shinkai_tools_for_search.write().await;
 
         // Measure the time it takes to generate static workflows
         let start_time = Instant::now();
@@ -160,7 +200,7 @@ impl ToolRouter {
 
                 let _ = routing_resource.insert_text_node(
                     shinkai_tool.tool_router_key(),
-                    shinkai_tool.to_json().unwrap(),
+                    shinkai_tool.formatted_tool_summary_for_ui(),
                     None,
                     embedding,
                     &vec![],
@@ -171,6 +211,7 @@ impl ToolRouter {
                     if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
                         eprintln!("Error saving workflow to DB: {:?}", e);
                     }
+                    workflows_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool.clone());
                 }
             }
         } else {
@@ -193,7 +234,7 @@ impl ToolRouter {
 
                 let _ = routing_resource.insert_text_node(
                     shinkai_tool.tool_router_key(),
-                    shinkai_tool.to_json().unwrap(),
+                    shinkai_tool.formatted_tool_summary_for_ui(),
                     None,
                     embedding,
                     &vec![],
@@ -203,6 +244,7 @@ impl ToolRouter {
                 if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
                     eprintln!("Error saving workflow to DB: {:?}", e);
                 }
+                workflows_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool.clone());
             }
         }
 
@@ -217,6 +259,7 @@ impl ToolRouter {
         generator: Box<dyn EmbeddingGenerator>,
         db: Arc<ShinkaiDB>,
         profile: ShinkaiName,
+        shinkai_tools_for_search: &RwLock<HashMap<String, ShinkaiTool>>,
     ) {
         // Add static JS tools
         let tools = built_in_tools::get_tools();
@@ -250,11 +293,15 @@ impl ToolRouter {
 
                         let _ = routing_resource.insert_text_node(
                             shinkai_tool.tool_router_key(),
-                            shinkai_tool.to_json().unwrap(),
+                            shinkai_tool.formatted_tool_summary_for_ui(),
                             None,
                             embedding,
                             &vec![],
                         );
+
+                        // Update shinkai_tools_for_search
+                        let mut tools_for_search = shinkai_tools_for_search.write().await;
+                        tools_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool);
                     }
                 }
             }
@@ -263,7 +310,7 @@ impl ToolRouter {
     }
 
     /// Adds a tool into the ToolRouter instance.
-    pub fn add_shinkai_tool(
+    pub async fn add_shinkai_tool(
         &mut self,
         profile: &ShinkaiName,
         shinkai_tool: &ShinkaiTool,
@@ -280,7 +327,7 @@ impl ToolRouter {
             .routing_resources
             .get_mut(&profile.to_string())
             .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
-        let data = shinkai_tool.to_json()?;
+        let data = shinkai_tool.formatted_tool_summary_for_ui();
         let router_key = shinkai_tool.tool_router_key();
         let metadata = None;
 
@@ -297,8 +344,12 @@ impl ToolRouter {
                     NodeContent::Text(data),
                     metadata,
                     &embedding,
-                    &vec![],
+                    &vec![shinkai_tool.tool_type()],
                 );
+
+                // Update shinkai_tools_for_search
+                let mut tools_for_search = self.shinkai_tools_for_search.write().await;
+                tools_for_search.insert(router_key, shinkai_tool.clone());
             }
         }
 
@@ -306,12 +357,7 @@ impl ToolRouter {
     }
 
     /// Deletes the tool inside of the ToolRouter given a valid id
-    pub fn delete_shinkai_tool(
-        &mut self,
-        profile: &ShinkaiName,
-        tool_name: &str,
-        toolkit_name: &str,
-    ) -> Result<(), ToolError> {
+    pub async fn delete_shinkai_tool(&mut self, profile: &ShinkaiName, tool_key: String) -> Result<(), ToolError> {
         if !self.started {
             return Err(ToolError::NotStarted);
         }
@@ -323,9 +369,13 @@ impl ToolRouter {
             .routing_resources
             .get_mut(&profile.to_string())
             .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
-        let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         routing_resource.print_all_nodes_exhaustive(None, false, false);
-        routing_resource.remove_node_dt_specified(key, None, true)?;
+        routing_resource.remove_node_dt_specified(tool_key.clone(), None, true)?;
+
+        // Update workflows_for_search
+        let mut workflows_for_search = self.shinkai_tools_for_search.write().await;
+        workflows_for_search.remove(&tool_key);
+
         Ok(())
     }
 
@@ -360,14 +410,18 @@ impl ToolRouter {
                 };
 
                 // We save tool instead of shinkai_tool so it also includes the code
-                self.add_shinkai_tool(&profile, &tool, embedding)?;
+                self.add_shinkai_tool(&profile, &tool, embedding).await?;
             }
         }
         Ok(())
     }
 
     /// Removes a JSToolkit from the ToolRouter instance.
-    pub fn remove_js_toolkit(&mut self, profile: &ShinkaiName, toolkit: Vec<ShinkaiTool>) -> Result<(), ToolError> {
+    pub async fn remove_js_toolkit(
+        &mut self,
+        profile: &ShinkaiName,
+        toolkit: Vec<ShinkaiTool>,
+    ) -> Result<(), ToolError> {
         if !self.started {
             return Err(ToolError::NotStarted);
         }
@@ -379,35 +433,36 @@ impl ToolRouter {
             if let ShinkaiTool::JS(js_tool) = tool {
                 let js_lite_tool = js_tool.to_without_code();
                 let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
-                self.delete_shinkai_tool(&profile, &shinkai_tool.name(), &shinkai_tool.toolkit_name())?;
+                self.delete_shinkai_tool(&profile, shinkai_tool.tool_router_key())
+                    .await?;
             }
         }
         Ok(())
     }
 
-    /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal Node
-    /// within the ToolRouter.
-    pub fn get_shinkai_tool(
-        &self,
-        profile: &ShinkaiName,
-        tool_name: &str,
-        toolkit_name: &str,
-    ) -> Result<ShinkaiTool, ToolError> {
-        if !self.started {
-            return Err(ToolError::NotStarted);
-        }
+    // /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal Node
+    // /// within the ToolRouter.
+    // pub fn get_shinkai_tool(
+    //     &self,
+    //     profile: &ShinkaiName,
+    //     tool_name: &str,
+    //     toolkit_name: &str,
+    // ) -> Result<ShinkaiTool, ToolError> {
+    //     if !self.started {
+    //         return Err(ToolError::NotStarted);
+    //     }
 
-        let profile = profile
-            .extract_profile()
-            .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
-        let routing_resource = self
-            .routing_resources
-            .get(&profile.to_string())
-            .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
-        let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
-        let node = routing_resource.get_root_node(key)?;
-        ShinkaiTool::from_json(node.get_text_content()?)
-    }
+    //     let profile = profile
+    //         .extract_profile()
+    //         .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
+    //     let routing_resource = self
+    //         .routing_resources
+    //         .get(&profile.to_string())
+    //         .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
+    //     let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
+    //     let node = routing_resource.get_root_node(key)?;
+    //     ShinkaiTool::from_json(node.get_text_content()?)
+    // }
 
     /// Returns a list of ShinkaiTools of the most similar that
     /// have matching data tag names.
@@ -456,11 +511,7 @@ impl ToolRouter {
         // Print out the score and toolkit name for each node
         for node in &nodes {
             if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
-                eprintln!(
-                    "Node Score: {}, Toolkit Name: {}",
-                    node.score,
-                    shinkai_tool.toolkit_name()
-                );
+                eprintln!("Node Score: {}, Toolkit Name: {}", node.score, shinkai_tool.id_name());
             }
         }
         Ok(self.ret_nodes_to_tools(&nodes))
@@ -495,15 +546,14 @@ impl ToolRouter {
 
         // Perform name similarity search
         let mut name_similarity_results = vec![];
-        for node in routing_resource.get_root_nodes() {
-            if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.get_text_content()?) {
-                if let ShinkaiTool::Workflow(_) = shinkai_tool {
-                    let name = shinkai_tool.name().to_lowercase();
-                    let query = name_query.to_lowercase();
-                    if name.contains(&query) {
-                        let similarity_score = (query.len() as f64 / name.len() as f64) as f32;
-                        name_similarity_results.push((shinkai_tool, similarity_score));
-                    }
+        let tools_for_search = self.shinkai_tools_for_search.read().await;
+        for shinkai_tool in tools_for_search.values() {
+            if let ShinkaiTool::Workflow(_) = shinkai_tool {
+                let name = shinkai_tool.name().to_lowercase();
+                let query = name_query.to_lowercase();
+                if name.contains(&query) {
+                    let similarity_score = (query.len() as f64 / name.len() as f64) as f32;
+                    name_similarity_results.push((shinkai_tool.clone(), similarity_score));
                 }
             }
         }
@@ -513,11 +563,11 @@ impl ToolRouter {
         let mut seen_keys = std::collections::HashSet::new();
 
         for node in vector_nodes {
-            if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
+            let tool_id = node.node.id.clone();
+            if let Some(shinkai_tool) = tools_for_search.get(&tool_id) {
                 if let ShinkaiTool::Workflow(_) = shinkai_tool {
-                    let key = shinkai_tool.tool_router_key();
-                    if seen_keys.insert(key.clone()) {
-                        combined_results.push((shinkai_tool, node.score));
+                    if seen_keys.insert(tool_id.clone()) {
+                        combined_results.push((shinkai_tool.clone(), node.score));
                     }
                 }
             }
@@ -651,6 +701,7 @@ impl ToolRouter {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         Ok(ToolRouter {
             routing_resources: serde_json::from_str(json).map_err(|_| ToolError::FailedJSONParsing)?,
+            shinkai_tools_for_search: RwLock::new(HashMap::new()),
             started: false,
         })
     }

@@ -472,11 +472,6 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-        shinkai_log(
-            ShinkaiLogOption::Api,
-            ShinkaiLogLevel::Info,
-            &format!("Inboxes: {}", inboxes.join(", ")),
-        );
         Ok(inboxes)
     }
 

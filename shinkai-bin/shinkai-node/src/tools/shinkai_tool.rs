@@ -20,7 +20,7 @@ impl ShinkaiTool {
     pub fn tool_router_key(&self) -> String {
         match self {
             // so it generates name:::version
-            ShinkaiTool::Workflow(w) => Self::gen_router_key(w.workflow.version.clone(), self.name()),
+            ShinkaiTool::Workflow(w) => Self::gen_router_key(w.workflow.version.clone(), self.id_name()),
             _ => {
                 let (name, toolkit_name) = (
                     self.name(),
@@ -36,6 +36,16 @@ impl ShinkaiTool {
         }
     }
 
+    /// Returns the type of ShinkaiTool as a string
+    pub fn tool_type(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(_) => "Rust".to_string(),
+            ShinkaiTool::JS(_) => "JS".to_string(),
+            ShinkaiTool::JSLite(_) => "JSLite".to_string(),
+            ShinkaiTool::Workflow(_) => "Workflow".to_string(),
+        }
+    }
+
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(name: String, toolkit_name: String) -> String {
         // We replace any `/` in order to not have the names break VRPaths
@@ -44,6 +54,11 @@ impl ShinkaiTool {
 
     /// Tool name
     pub fn name(&self) -> String {
+        self.id_name().replace('_', " ")
+    }
+
+    /// Toolkit id name the tool is from
+    pub fn id_name(&self) -> String {
         match self {
             ShinkaiTool::Rust(r) => r.name.clone(),
             ShinkaiTool::JS(j) => j.name.clone(),
@@ -51,6 +66,7 @@ impl ShinkaiTool {
             ShinkaiTool::Workflow(w) => w.get_name(),
         }
     }
+
     /// Tool description
     pub fn description(&self) -> String {
         match self {
@@ -58,16 +74,6 @@ impl ShinkaiTool {
             ShinkaiTool::JS(j) => j.description.clone(),
             ShinkaiTool::JSLite(j) => j.description.clone(),
             ShinkaiTool::Workflow(w) => w.get_description(),
-        }
-    }
-
-    /// Toolkit name the tool is from
-    pub fn toolkit_name(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r) => r.name.clone(),
-            ShinkaiTool::JS(j) => j.name.clone(),
-            ShinkaiTool::JSLite(j) => j.name.clone(),
-            ShinkaiTool::Workflow(w) => w.get_name(),
         }
     }
 
@@ -94,7 +100,7 @@ impl ShinkaiTool {
     /// Returns a formatted summary of the tool
     pub fn formatted_tool_summary_for_ui(&self) -> String {
         format!(
-            "Tool Name: {}\nToolkit Name: {}\nDescription: {}",
+            "Tool Name: {}. Toolkit Name: {}. Description: {}",
             self.name(),
             self.toolkit_type_name(),
             self.description(),
