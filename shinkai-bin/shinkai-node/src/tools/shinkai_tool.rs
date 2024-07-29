@@ -54,7 +54,7 @@ impl ShinkaiTool {
 
     /// Tool name
     pub fn name(&self) -> String {
-        self.id_name().replace('_', " ")
+        self.id_name() // .replace('_', " ")
     }
 
     /// Toolkit id name the tool is from
@@ -147,15 +147,14 @@ impl ShinkaiTool {
     }
 
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
-    // TODO: improve the formatting so it's better for vector embeddings
     pub fn format_embedding_string(&self) -> String {
-        let mut embedding_string = format!("{} {}\n", self.name(), self.description());
+        let mut embedding_string = format!("{} {}", self.name(), self.description());
 
-        embedding_string.push_str("Input Args:\n");
+        // embedding_string.push_str("Input Args:\n");
 
-        for arg in self.input_args() {
-            embedding_string.push_str(&format!("- {} : {}\n", arg.name, arg.description));
-        }
+        // for arg in self.input_args() {
+        //     embedding_string.push_str(&format!("- {} : {}\n", arg.name, arg.description));
+        // }
 
         embedding_string
     }

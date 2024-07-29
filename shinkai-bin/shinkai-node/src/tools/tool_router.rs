@@ -132,6 +132,7 @@ impl ToolRouter {
         }
 
         self.routing_resources.insert(profile.to_string(), routing_resource);
+        eprintln!("ToolRouter started for profile: {}", profile);
         self.started = true;
         Ok(())
     }
@@ -151,7 +152,7 @@ impl ToolRouter {
 
             let _ = routing_resource.insert_text_node(
                 shinkai_tool.tool_router_key(),
-                shinkai_tool.formatted_tool_summary_for_ui(),
+                shinkai_tool.format_embedding_string(),
                 None,
                 tool.tool_embedding.clone(),
                 &vec![],
@@ -176,45 +177,45 @@ impl ToolRouter {
         // Measure the time it takes to generate static workflows
         let start_time = Instant::now();
 
-        // If the generator's model matches the previous computed workflows, then we use the new approach
-        if let EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-        ) = model_type
-        {
-            // Parse the JSON data into a generic JSON value
-            let data = workflows_data::WORKFLOWS_JSON;
-            let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
-            let json_array = json_value.as_array().expect("Expected JSON data to be an array");
+        // // If the generator's model matches the previous computed workflows, then we use the new approach
+        // if let EmbeddingModelType::OllamaTextEmbeddingsInference(
+        //     OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+        // ) = model_type
+        // {
+        //     // Parse the JSON data into a generic JSON value
+        //     let data = workflows_data::WORKFLOWS_JSON;
+        //     let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
+        //     let json_array = json_value.as_array().expect("Expected JSON data to be an array");
 
-            // Insert each workflow into the routing resource and save to the database
-            for item in json_array {
-                // Parse the shinkai_tool field
-                let shinkai_tool_value = &item["shinkai_tool"];
-                let shinkai_tool: ShinkaiTool =
-                    serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
+        //     // Insert each workflow into the routing resource and save to the database
+        //     for item in json_array {
+        //         // Parse the shinkai_tool field
+        //         let shinkai_tool_value = &item["shinkai_tool"];
+        //         let shinkai_tool: ShinkaiTool =
+        //             serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
 
-                // Parse the embedding field
-                let embedding_value = &item["embedding"];
-                let embedding: Embedding =
-                    serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
+        //         // Parse the embedding field
+        //         let embedding_value = &item["embedding"];
+        //         let embedding: Embedding =
+        //             serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
 
-                let _ = routing_resource.insert_text_node(
-                    shinkai_tool.tool_router_key(),
-                    shinkai_tool.formatted_tool_summary_for_ui(),
-                    None,
-                    embedding,
-                    &vec![],
-                );
+        //         let _ = routing_resource.insert_text_node(
+        //             shinkai_tool.tool_router_key(),
+        //             shinkai_tool.formatted_tool_summary_for_ui(),
+        //             None,
+        //             embedding,
+        //             &vec![],
+        //         );
 
-                // Save the workflow to the database
-                if let ShinkaiTool::Workflow(workflow_tool) = &shinkai_tool {
-                    if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
-                        eprintln!("Error saving workflow to DB: {:?}", e);
-                    }
-                    workflows_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool.clone());
-                }
-            }
-        } else {
+        //         // Save the workflow to the database
+        //         if let ShinkaiTool::Workflow(workflow_tool) = &shinkai_tool {
+        //             if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
+        //                 eprintln!("Error saving workflow to DB: {:?}", e);
+        //             }
+        //             workflows_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool.clone());
+        //         }
+        //     }
+        // } else {
             // Generate the static workflows
             let workflows = WorkflowTool::static_tools();
             println!("Number of static workflows: {}", workflows.len());
@@ -232,9 +233,10 @@ impl ToolRouter {
                         .unwrap()
                 };
 
+                println!("Inserting workflow: {}", shinkai_tool.tool_router_key());
                 let _ = routing_resource.insert_text_node(
                     shinkai_tool.tool_router_key(),
-                    shinkai_tool.formatted_tool_summary_for_ui(),
+                    shinkai_tool.format_embedding_string(),
                     None,
                     embedding,
                     &vec![],
@@ -246,7 +248,7 @@ impl ToolRouter {
                 }
                 workflows_for_search.insert(shinkai_tool.tool_router_key(), shinkai_tool.clone());
             }
-        }
+        // }
 
         let duration = start_time.elapsed();
         if env::var("LOG_ALL").unwrap_or_default() == "1" {
@@ -293,7 +295,7 @@ impl ToolRouter {
 
                         let _ = routing_resource.insert_text_node(
                             shinkai_tool.tool_router_key(),
-                            shinkai_tool.formatted_tool_summary_for_ui(),
+                            shinkai_tool.format_embedding_string(),
                             None,
                             embedding,
                             &vec![],
@@ -327,7 +329,7 @@ impl ToolRouter {
             .routing_resources
             .get_mut(&profile.to_string())
             .ok_or_else(|| ToolError::InvalidProfile("Profile not found".to_string()))?;
-        let data = shinkai_tool.formatted_tool_summary_for_ui();
+        let data = shinkai_tool.format_embedding_string();
         let router_key = shinkai_tool.tool_router_key();
         let metadata = None;
 
@@ -536,6 +538,7 @@ impl ToolRouter {
         let profile = profile
             .extract_profile()
             .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
+        eprintln!("Searching for workflows in profile: {}", profile);
         let routing_resource = self
             .routing_resources
             .get(&profile.to_string())
