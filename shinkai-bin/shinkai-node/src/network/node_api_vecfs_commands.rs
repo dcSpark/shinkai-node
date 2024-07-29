@@ -24,6 +24,7 @@ use shinkai_message_primitives::{
             APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
         },
     },
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
@@ -434,6 +435,20 @@ impl Node {
                 (content, path_ids, score)
             })
             .collect();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Top 5 search results:\n{}",
+                results
+                    .iter()
+                    .take(5)
+                    .map(|(text, _, score)| format!("score: {}, text: {}\n", score, text))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        );
 
         let _ = res.send(Ok(results)).await.map_err(|_| ());
         Ok(())

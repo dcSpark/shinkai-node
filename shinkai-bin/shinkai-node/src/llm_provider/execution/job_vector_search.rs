@@ -179,6 +179,24 @@ impl JobManager {
         //     eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
         // }
 
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Top 5 search results:\n{}",
+                final_nodes
+                    .iter()
+                    .take(5)
+                    .map(|node| format!(
+                        "score: {}, text: {}\n",
+                        node.score,
+                        node.node.get_text_content().unwrap_or("")
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        );
+
         Ok((final_nodes, first_intro_text))
     }
 
