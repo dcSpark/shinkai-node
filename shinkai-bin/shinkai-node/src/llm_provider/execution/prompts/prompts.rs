@@ -3,7 +3,7 @@ use crate::{
         error::LLMProviderError,
         job::JobStepResult,
         providers::shared::{
-            llm_message::{DetailedFunctionCall,LlmMessage},
+            llm_message::{DetailedFunctionCall, LlmMessage},
             openai::{FunctionCall, FunctionCallResponse},
         },
     },
@@ -550,7 +550,7 @@ mod tests {
                 functions: None,
             },
             LlmMessage {
-                role: Some("system".to_string()),
+                role: Some("user".to_string()),
                 content: Some("Here is a list of relevant new content provided for you to potentially use while answering:\n- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00\n- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string()),
                 name: None,
                 function_call: None,
