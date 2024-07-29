@@ -21,8 +21,8 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
 
         // Add system prompt
-        let system_prompt = custom_system_prompt.unwrap_or_else(|| "You are a very helpful assistant.".to_string());
-        prompt.add_content(system_prompt, SubPromptType::ExtraContext, 98);
+        let system_prompt = custom_system_prompt.unwrap_or_else(|| "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string());
+        prompt.add_content(system_prompt, SubPromptType::System, 98);
 
         // Commented because it was confusing the LLM in some cases
         // If there is a document summary from the vector search add it with higher priority that the chunks
@@ -38,24 +38,6 @@ impl JobPromptGenerator {
         // }
 
         let has_ret_nodes = !ret_nodes.is_empty();
-
-        // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
-        // and also grouping i.e. instead of having 100 tiny messages, we have a message with the chunks grouped
-        {
-            if has_ret_nodes && !user_message.is_empty() {
-                prompt.add_content(
-                    "Here is some extra context to answer any future user questions: --- start --- \n".to_string(),
-                    SubPromptType::ExtraContext,
-                    97,
-                );
-            }
-            for node in ret_nodes {
-                prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
-            }
-            if has_ret_nodes && !user_message.is_empty() {
-                prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
-            }
-        }
 
         // Add previous messages
         if let Some(step_history) = job_step_history {
@@ -76,15 +58,28 @@ impl JobPromptGenerator {
         }
 
         // Add the user question and the preference prompt for the answer
-        if !user_message.is_empty() || custom_user_prompt.is_some() {
-            let user_prompt = custom_user_prompt.unwrap_or_else(|| {
-                if has_ret_nodes {
-                    "Answer the question using the extra context provided.".to_string()
-                } else {
-                    "Answer the question.".to_string()
-                }
-            });
-            prompt.add_content(format!("{}\n {}", user_message, user_prompt), SubPromptType::User, 100);
+        if !user_message.is_empty() {
+            let user_prompt = custom_user_prompt.unwrap_or_default();
+            let content = if user_prompt.is_empty() {
+                user_message.clone()
+            } else {
+                format!("{}\n {}", user_message, user_prompt)
+            };
+            prompt.add_content(content, SubPromptType::User, 100);
+        }
+
+        // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
+        // and also grouping i.e. instead of having 100 tiny messages, we have a message with the chunks grouped
+        {
+            if has_ret_nodes && !user_message.is_empty() {
+                prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
+            }
+            for node in ret_nodes {
+                prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
+            }
+            if has_ret_nodes && !user_message.is_empty() {
+                prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
+            }
         }
 
         // If function_call exists, it means that the LLM requested a function call and we need to send the response back

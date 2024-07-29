@@ -489,12 +489,6 @@ impl ShinkaiDB {
         let mut smart_inboxes = Vec::new();
 
         for inbox_id in inboxes {
-            shinkai_log(
-                ShinkaiLogOption::Api,
-                ShinkaiLogLevel::Info,
-                &format!("Inbox: {}", inbox_id),
-            );
-
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
