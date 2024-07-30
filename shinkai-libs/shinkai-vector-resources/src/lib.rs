@@ -2,6 +2,7 @@ pub mod data_tags;
 pub mod embedding_generator;
 pub mod embeddings;
 pub mod file_parser;
+pub mod graph_resource;
 pub mod metadata_index;
 pub mod model_type;
 pub mod resource_errors;
