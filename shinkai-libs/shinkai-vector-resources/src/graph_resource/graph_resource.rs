@@ -1,67 +1,43 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::{data_tags::DataTagIndex, metadata_index::MetadataIndex, shinkai_time::ShinkaiTime, vector_resource::Node};
+use crate::{
+    data_tags::DataTagIndex, embeddings::Embedding, metadata_index::MetadataIndex, shinkai_time::ShinkaiTime,
+    source::SourceFileMap,
+};
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GraphRagResource {
-    name: String,
-    description: Option<String>,
-    resource_id: String,
-    nodes: Vec<Node>,
-    edges: Vec<GraphEdge>,
-    data_tag_index: DataTagIndex,
-    created_datetime: DateTime<Utc>,
-    last_written_datetime: DateTime<Utc>,
-    metadata_index: MetadataIndex,
-    merkle_root: Option<String>,
-}
-
-/// Represents a Vector Resource Graph Edge which holds a connection between graph nodes.
+/// A GraphRAG resource which embeds a parquet file and metadata
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GraphEdge {
-    pub source: String,
-    pub target: String,
-    pub weight: f32,
+pub struct GraphRagResource {
+    pub name: String,
+    pub description: Option<String>,
+    pub parquet: Vec<u8>,
+    pub data_tag_index: DataTagIndex,
+    pub metadata_index: MetadataIndex,
+    pub sfm: Option<SourceFileMap>,
 }
 
 impl GraphRagResource {
-    pub fn new(name: String, description: Option<String>, nodes: Vec<Node>, edges: Vec<GraphEdge>) -> Self {
-        let current_time = ShinkaiTime::generate_time_now();
-        let resource_id = Uuid::new_v4().to_string();
-
+    pub fn new(name: String, description: Option<String>, parquet: Vec<u8>) -> Self {
         Self {
             name,
             description,
-            resource_id,
-            nodes,
-            edges,
+            parquet,
             data_tag_index: DataTagIndex::new(),
-            created_datetime: current_time,
-            last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
-            merkle_root: None,
+            sfm: None,
         }
     }
+}
 
-    pub fn new_empty(name: String, description: Option<String>) -> Self {
-        Self::new(name, description, Vec::new(), Vec::new())
-    }
-
-    pub fn node_count(&self) -> usize {
-        self.nodes.len()
-    }
-
-    pub fn edge_count(&self) -> usize {
-        self.edges.len()
-    }
-
-    pub fn get_nodes(&self) -> &Vec<Node> {
-        &self.nodes
-    }
-
-    pub fn get_edges(&self) -> &Vec<GraphEdge> {
-        &self.edges
-    }
+/// Represents a pack of GraphRAG resources which is the output of the GraphRAG indexing pipeline
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphRagPack {
+    pub name: String,
+    pub resources: Vec<GraphRagResource>,
+    // TODO: verify if it has the same structure as VR embeddings
+    pub embeddings: Vec<Embedding>,
+    pub metadata: HashMap<String, String>,
 }
