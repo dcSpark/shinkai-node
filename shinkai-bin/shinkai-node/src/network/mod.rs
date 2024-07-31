@@ -3,6 +3,7 @@ pub use node::Node;
 pub mod node_internal_commands;
 pub mod node_api_commands;
 pub mod node_local_commands;
+pub mod node_api_sheets;
 pub mod node_api;
 pub mod node_api_handlers;
 pub mod node_error;

@@ -3,6 +3,7 @@ use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provid
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use shinkai_sheet::sheet::ColumnDefinition;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -74,6 +75,11 @@ pub enum MessageSchemaType {
     ListWorkflows,
     UpdateSupportedEmbeddingModels,
     UpdateDefaultEmbeddingModel,
+    UserSheets,
+    SetColumn,
+    RemoveColumn,
+    RemoveSheet,
+    CreateEmptySheet,
 }
 
 impl MessageSchemaType {
@@ -143,6 +149,11 @@ impl MessageSchemaType {
             "ListWorkflows" => Some(Self::ListWorkflows),
             "UpdateSupportedEmbeddingModels" => Some(Self::UpdateSupportedEmbeddingModels),
             "UpdateDefaultEmbeddingModel" => Some(Self::UpdateDefaultEmbeddingModel),
+            "UserSheets" => Some(Self::UserSheets),
+            "SetColumn" => Some(Self::SetColumn),
+            "RemoveColumn" => Some(Self::RemoveColumn),
+            "RemoveSheet" => Some(Self::RemoveSheet),
+            "CreateEmptySheet" => Some(Self::CreateEmptySheet),
             _ => None,
         }
     }
@@ -212,6 +223,11 @@ impl MessageSchemaType {
             Self::ListWorkflows => "ListWorkflows",
             Self::UpdateSupportedEmbeddingModels => "UpdateSupportedEmbeddingModels",
             Self::UpdateDefaultEmbeddingModel => "UpdateDefaultEmbeddingModel",
+            Self::UserSheets => "UserSheets",
+            Self::SetColumn => "SetColumn",
+            Self::RemoveColumn => "RemoveColumn",
+            Self::RemoveSheet => "RemoveSheet",
+            Self::CreateEmptySheet => "CreateEmptySheet",
             Self::Empty => "",
         }
     }
@@ -257,7 +273,6 @@ where
     }
     Ok(s)
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FileDestinationSourceType {
@@ -519,6 +534,18 @@ pub struct TopicSubscription {
 pub struct APIAddWorkflow {
     pub workflow_raw: String,
     pub description: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APISetColumnPayload {
+    pub sheet_id: String,
+    pub column: ColumnDefinition,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APIRemoveColumnPayload {
+    pub sheet_id: String,
+    pub column_id: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

@@ -27,6 +27,26 @@ impl ColumnDependencyManager {
         }
     }
 
+    pub fn remove_column(&mut self, col: ColumnIndex) {
+        // Remove all dependencies where the column is a key
+        if let Some(deps) = self.dependencies.remove(&col) {
+            for dep in deps {
+                if let Some(rev_deps) = self.reverse_dependencies.get_mut(&dep) {
+                    rev_deps.remove(&col);
+                }
+            }
+        }
+
+        // Remove all reverse dependencies where the column is a value
+        if let Some(rev_deps) = self.reverse_dependencies.remove(&col) {
+            for rev_dep in rev_deps {
+                if let Some(deps) = self.dependencies.get_mut(&rev_dep) {
+                    deps.remove(&col);
+                }
+            }
+        }
+    }
+
     pub fn update_dependencies(&mut self, col: ColumnIndex, dependencies: HashSet<ColumnIndex>) {
         // Remove existing dependencies for the column
         self.dependencies.remove(&col);

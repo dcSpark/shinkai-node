@@ -3,6 +3,8 @@ use shinkai_sheet::sheet::{ColumnBehavior, ColumnDefinition, Sheet};
 
 #[cfg(test)]
 mod tests {
+    use shinkai_sheet::sheet::SheetAction;
+
     use super::*;
 
     #[tokio::test]
@@ -299,5 +301,73 @@ mod tests {
         let cell_d_1 = sheet.get_cell(1, 3).unwrap();
         sheet.print_as_ascii_table();
         assert_eq!(cell_d_1.value, Some("Foo Bar Copy".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_remove_columns_with_formula() {
+        let mut sheet = Sheet::new();
+        let column_a = ColumnDefinition {
+            id: 0,
+            name: "Column A".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let column_b = ColumnDefinition {
+            id: 1,
+            name: "Column B".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let column_c = ColumnDefinition {
+            id: 2,
+            name: "Column C".to_string(),
+            behavior: ColumnBehavior::Formula("=A+\" \"+B".to_string()),
+        };
+
+        // Add columns
+        let _ = sheet.set_column(column_a).await;
+        let _ = sheet.set_column(column_b).await;
+        let _ = sheet.set_column(column_c).await;
+
+        // Set cell values
+        sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();
+        sheet.set_cell_value(0, 1, "World".to_string()).await.unwrap();
+        sheet.set_cell_value(1, 0, "Foo".to_string()).await.unwrap();
+        sheet.set_cell_value(1, 1, "Bar".to_string()).await.unwrap();
+
+        // Check initial formula results
+        let cell_c_0 = sheet.get_cell(0, 2).unwrap();
+        assert_eq!(cell_c_0.value, Some("Hello World".to_string()));
+
+        let cell_c_1 = sheet.get_cell(1, 2).unwrap();
+        assert_eq!(cell_c_1.value, Some("Foo Bar".to_string()));
+
+        // Update a cell value and check formula result
+        sheet.set_cell_value(0, 0, "Bye".to_string()).await.unwrap();
+        let cell_c_updated_0 = sheet.get_cell(0, 2).unwrap();
+        assert_eq!(cell_c_updated_0.value, Some("Bye World".to_string()));
+
+        // Add another formula column
+        let column_d = ColumnDefinition {
+            id: 3,
+            name: "Column D".to_string(),
+            behavior: ColumnBehavior::Formula("=C+\" Copy\"".to_string()),
+        };
+        let _ = sheet.set_column(column_d).await;
+
+        let cell_d_0 = sheet.get_cell(0, 3).unwrap();
+        assert_eq!(cell_d_0.value, Some("Bye World Copy".to_string()));
+
+        let cell_d_1 = sheet.get_cell(1, 3).unwrap();
+        assert_eq!(cell_d_1.value, Some("Foo Bar Copy".to_string()));
+
+        // Remove the middle column
+        sheet.remove_column(1).await.unwrap();
+        sheet.print_as_ascii_table();
+
+        assert_eq!(sheet.columns.len(), 3);
+
+        // Remove the first column
+        sheet.remove_column(0).await.unwrap();
+        assert_eq!(sheet.columns.len(), 2);
+        sheet.print_as_ascii_table();
     }
 }

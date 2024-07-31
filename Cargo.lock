@@ -7633,6 +7633,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "shinkai_sheet",
  "shinkai_vector_resources",
  "thiserror",
  "tracing",

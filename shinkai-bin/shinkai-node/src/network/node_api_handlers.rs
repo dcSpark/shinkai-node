@@ -471,6 +471,82 @@ pub async fn delete_workflow_handler(
     .await
 }
 
+pub async fn set_column_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISetColumn {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn remove_column_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveColumn {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn user_sheets_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUserSheets {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn create_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APICreateSheet {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+// Handler for removing a sheet
+pub async fn remove_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveSheet {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn get_workflow_info_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

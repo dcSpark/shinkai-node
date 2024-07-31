@@ -6,9 +6,7 @@ use shinkai_dsl::dsl_schemas::Workflow;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::{
-    cell_name_converter::CellNameConverter, column_dependency_manager::ColumnDependencyManager,
-};
+use crate::{cell_name_converter::CellNameConverter, column_dependency_manager::ColumnDependencyManager};
 
 const MAX_DEPENDENCY_DEPTH: usize = 20;
 
@@ -189,6 +187,11 @@ impl Sheet {
         Ok(jobs)
     }
 
+    pub async fn remove_column(&mut self, col_index: ColumnIndex) -> Result<(), String> {
+        self.dispatch(SheetAction::RemoveColumn(col_index)).await;
+        Ok(())
+    }
+
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<ColumnIndex> {
         let parts: Vec<&str> = formula.split('+').collect();
         let mut dependencies = HashSet::new();
@@ -338,7 +341,11 @@ impl Sheet {
         input_cells
     }
 
-    fn compute_input_hash(&self, input_cells: &[(RowIndex, ColumnIndex, ColumnDefinition)], workflow: &Workflow) -> Option<String> {
+    fn compute_input_hash(
+        &self,
+        input_cells: &[(RowIndex, ColumnIndex, ColumnDefinition)],
+        workflow: &Workflow,
+    ) -> Option<String> {
         if input_cells.is_empty() {
             return None;
         }
@@ -350,7 +357,11 @@ impl Sheet {
         inputs.sort();
         let concatenated = inputs.join(",");
         let workflow_key = workflow.generate_key();
-        Some(blake3::hash(format!("{}::{}", concatenated, workflow_key).as_bytes()).to_hex().to_string())
+        Some(
+            blake3::hash(format!("{}::{}", concatenated, workflow_key).as_bytes())
+                .to_hex()
+                .to_string(),
+        )
     }
 
     pub fn print_as_ascii_table(&self) {
@@ -421,6 +432,7 @@ pub enum SheetAction {
         visited: HashSet<(RowIndex, ColumnIndex)>,
         depth: usize,
     },
+    RemoveColumn(ColumnIndex),
     // Add other actions as needed
 }
 
@@ -537,6 +549,77 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 tokio::spawn(async move {
                     sender_clone.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
                 });
+            }
+        }
+        SheetAction::RemoveColumn(col_index) => {
+            // Get dependents before removing the column
+            let dependents = state.column_dependency_manager.get_reverse_dependents(col_index);
+
+            // Remove the column
+            state.columns.remove(&col_index);
+            for row in state.rows.values_mut() {
+                row.remove(&col_index);
+            }
+            state.column_dependency_manager.remove_column(col_index);
+
+            // Re-order the columns
+            let mut new_columns = HashMap::new();
+            for (old_index, col_def) in state.columns.iter() {
+                let new_index = if *old_index > col_index {
+                    old_index - 1
+                } else {
+                    *old_index
+                };
+                new_columns.insert(
+                    new_index,
+                    ColumnDefinition {
+                        id: new_index,
+                        ..col_def.clone()
+                    },
+                );
+            }
+            state.columns = new_columns;
+
+            // Re-order the rows
+            for row in state.rows.values_mut() {
+                let mut new_row = HashMap::new();
+                for (old_index, cell) in row.iter() {
+                    let new_index = if *old_index > col_index {
+                        old_index - 1
+                    } else {
+                        *old_index
+                    };
+                    new_row.insert(new_index, cell.clone());
+                }
+                *row = new_row;
+            }
+
+            // Trigger updates for columns dependent on the removed column
+            for dependent_col in dependents {
+                for row_index in state.rows.keys().cloned().collect::<Vec<_>>() {
+                    let new_col_index = if dependent_col > col_index {
+                        dependent_col - 1
+                    } else {
+                        dependent_col
+                    };
+                    if let Some(column_definition) = state.columns.get(&new_col_index).cloned() {
+                        if let ColumnBehavior::Formula(formula) = &column_definition.behavior {
+                            if let Some(value) = state.evaluate_formula(formula, row_index, new_col_index) {
+                                let (new_state, mut new_jobs) = sheet_reducer(
+                                    state,
+                                    SheetAction::SetCellValue {
+                                        row: row_index,
+                                        col: new_col_index,
+                                        value,
+                                    },
+                                )
+                                .await;
+                                state = new_state;
+                                jobs.append(&mut new_jobs);
+                            }
+                        }
+                    }
+                }
             }
         } // Handle other actions
     }
