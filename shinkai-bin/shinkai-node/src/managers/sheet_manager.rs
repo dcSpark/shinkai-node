@@ -67,6 +67,13 @@ impl SheetManager {
         Ok(())
     }
 
+    pub fn get_sheet(&self, sheet_id: &str) -> Result<&Sheet, String> {
+        self.sheets
+            .get(sheet_id)
+            .map(|(sheet, _)| sheet)
+            .ok_or_else(|| "Sheet ID not found".to_string())
+    }
+
     // Note: is this really required?
     pub fn add_sheet(&mut self, sheet: Sheet) -> Result<(), ShinkaiDBError> {
         let (sender, _receiver) = async_channel::unbounded();
@@ -168,45 +175,6 @@ impl SheetManager {
         }
     }
 
-    // TODO: is this necessary?
-    // pub async fn initiate_workflow_job(
-    //     &mut self,
-    //     sheet_id: &str,
-    //     row: usize,
-    //     col: usize,
-    //     workflow: &Workflow,
-    //     input_columns: &[usize],
-    //     llm_provider_name: &str,
-    // ) -> Result<(), String> {
-    //     let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-    //     let job = sheet.initiate_workflow_job(
-    //         row,
-    //         col,
-    //         workflow,
-    //         input_columns,
-    //         llm_provider_name,
-    //         self.workflow_job_creator.clone(),
-    //     ).await;
-
-    //     let job_message = JobMessage {
-    //         job_id: job.id().to_string(),
-    //         content: job.prompt().to_string(),
-    //         files_inbox: "".to_string(),
-    //         parent: None,
-    //         workflow_code: None,
-    //         workflow_name: None,
-    //     };
-
-    //     let profile = ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap();
-    //     let mut job_manager = self.job_manager.lock().await;
-    //     job_manager
-    //         .add_job_message_to_job_queue(&job_message, &profile)
-    //         .await
-    //         .map_err(|e| e.to_string())?;
-
-    //     Ok(())
-    // }
-
     async fn handle_updates(receiver: Receiver<SheetUpdate>) {
         while let Ok(update) = receiver.recv().await {
             // Handle the update (e.g., log it, process it, etc.)
@@ -215,50 +183,3 @@ impl SheetManager {
         }
     }
 }
-
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct WorkflowSheetJob {
-//     id: String,
-//     cell_id: CellId,
-//     prompt: String,
-//     dependencies: Vec<CellId>,
-//     status: JobStatus,
-//     created_at: DateTime<Utc>,
-//     updated_at: DateTime<Utc>,
-//     result: Option<String>,
-// }
-
-// impl SheetJob for WorkflowSheetJob {
-//     fn id(&self) -> &str { &self.id }
-//     fn cell_id(&self) -> &CellId { &self.cell_id }
-//     fn prompt(&self) -> &str { &self.prompt }
-//     fn dependencies(&self) -> &[CellId] { &self.dependencies }
-//     fn status(&self) -> JobStatus { self.status.clone() }
-//     fn created_at(&self) -> DateTime<Utc> { self.created_at }
-//     fn updated_at(&self) -> DateTime<Utc> { self.updated_at }
-//     fn result(&self) -> Option<&str> { self.result.as_deref() }
-//     fn set_status(&mut self, status: JobStatus) {
-//         self.status = status;
-//         self.updated_at = Utc::now();
-//     }
-//     fn set_result(&mut self, result: String) {
-//         self.result = Some(result);
-//         self.updated_at = Utc::now();
-//     }
-// }
-
-// impl WorkflowSheetJob {
-//     pub fn new(id: String, cell_id: CellId, prompt: String, dependencies: Vec<CellId>) -> Self {
-//         let now = Utc::now();
-//         Self {
-//             id,
-//             cell_id,
-//             prompt,
-//             dependencies,
-//             status: JobStatus::Pending,
-//             created_at: now,
-//             updated_at: now,
-//             result: None,
-//         }
-//     }
-// }

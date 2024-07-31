@@ -81,6 +81,7 @@ pub enum MessageSchemaType {
     RemoveSheet,
     CreateEmptySheet,
     SetCellValue,
+    GetSheet,
 }
 
 impl MessageSchemaType {
@@ -156,6 +157,7 @@ impl MessageSchemaType {
             "RemoveSheet" => Some(Self::RemoveSheet),
             "CreateEmptySheet" => Some(Self::CreateEmptySheet),
             "SetCellValue" => Some(Self::SetCellValue),
+            "GetSheet" => Some(Self::GetSheet),
             _ => None,
         }
     }
@@ -231,6 +233,7 @@ impl MessageSchemaType {
             Self::RemoveSheet => "RemoveSheet",
             Self::CreateEmptySheet => "CreateEmptySheet",
             Self::SetCellValue => "SetCellValue",
+            Self::GetSheet => "GetSheet",
             Self::Empty => "",
         }
     }

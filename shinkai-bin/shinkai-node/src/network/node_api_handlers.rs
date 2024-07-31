@@ -561,6 +561,19 @@ pub async fn set_cell_value_handler(
     .await
 }
 
+pub async fn get_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetSheet {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
 pub async fn get_workflow_info_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

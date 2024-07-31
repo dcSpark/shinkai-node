@@ -56,6 +56,7 @@ use super::node_api_handlers::ping_all_handler;
 use super::node_api_handlers::remove_agent_handler;
 use super::node_api_handlers::remove_column_handler;
 use super::node_api_handlers::remove_sheet_handler;
+use super::node_api_handlers::get_sheet_handler;
 use super::node_api_handlers::retrieve_vrkai_handler;
 use super::node_api_handlers::retrieve_vrpack_handler;
 use super::node_api_handlers::scan_ollama_models_handler;
@@ -901,6 +902,15 @@ pub async fn run_api(
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| remove_sheet_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/get_sheet
+    let get_sheet = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_sheet")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| get_sheet_handler(node_commands_sender.clone(), message))
     };
 
     // POST v1/set_cell_value

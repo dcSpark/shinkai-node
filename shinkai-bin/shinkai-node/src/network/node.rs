@@ -486,6 +486,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APIGetSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIUpdateDefaultEmbeddingModel {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -1738,6 +1742,23 @@ impl Node {
                                             let sheet_manager = self.sheet_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_set_cell_value(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetSheet { msg, res }
+                                        NodeCommand::APIGetSheet { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_sheet(
                                                     sheet_manager,
                                                     node_name_clone,
                                                     identity_manager_clone,

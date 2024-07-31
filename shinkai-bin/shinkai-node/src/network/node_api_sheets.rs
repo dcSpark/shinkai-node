@@ -437,4 +437,74 @@ impl Node {
             }
         }
     }
+
+    pub async fn api_get_sheet(
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (sheet_id, requester_name) = match Self::validate_and_extract_payload::<String>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::GetSheet,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let sheet_manager = match sheet_manager {
+            Some(manager) => manager,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "SheetManager is not available".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Lock the sheet_manager before using it
+        let sheet_manager_guard = sheet_manager.lock().await;
+
+        // Get the sheet using SheetManager
+        match sheet_manager_guard.get_sheet(&sheet_id) {
+            Ok(sheet) => {
+                let response = json!(sheet);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Failed to get sheet: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
 }
