@@ -23,7 +23,6 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_sheet::sheet::Sheet;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::FileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
@@ -168,6 +167,12 @@ impl JobManager {
         if workflow_found {
             return Ok(job_id);
         }
+
+        // 3.- *If* a sheet job is found, processing job message is taken over by this alternate logic
+        // TODO: implement logic
+        // TODO: logic should check SheetManager for the latest inputs
+        // TODO: logic should check for callbacks and add them to the JobManagerQueue if required
+        // TODO: implement test
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
