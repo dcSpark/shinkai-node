@@ -1,0 +1,13 @@
+[package]
+name = "shinkai-graphrag"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.74"
+futures = "0.3.30"
+polars = "0.41.3"
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.117"
+tiktoken = "1.0.1"
+tokio = { version = "1.36", features = ["full"] }
