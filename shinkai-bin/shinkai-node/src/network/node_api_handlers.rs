@@ -531,7 +531,6 @@ pub async fn create_sheet_handler(
     .await
 }
 
-// Handler for removing a sheet
 pub async fn remove_sheet_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -540,6 +539,21 @@ pub async fn remove_sheet_handler(
         node_commands_sender,
         message,
         |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveSheet {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn set_cell_value_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISetCellValue {
             msg: message,
             res: res_sender,
         },

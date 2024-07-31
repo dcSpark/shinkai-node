@@ -67,6 +67,7 @@ impl SheetManager {
         Ok(())
     }
 
+    // Note: is this really required?
     pub fn add_sheet(&mut self, sheet: Sheet) -> Result<(), ShinkaiDBError> {
         let (sender, _receiver) = async_channel::unbounded();
         let sheet_id = sheet.uuid.clone();

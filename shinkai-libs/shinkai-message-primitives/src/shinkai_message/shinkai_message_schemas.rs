@@ -80,6 +80,7 @@ pub enum MessageSchemaType {
     RemoveColumn,
     RemoveSheet,
     CreateEmptySheet,
+    SetCellValue,
 }
 
 impl MessageSchemaType {
@@ -154,6 +155,7 @@ impl MessageSchemaType {
             "RemoveColumn" => Some(Self::RemoveColumn),
             "RemoveSheet" => Some(Self::RemoveSheet),
             "CreateEmptySheet" => Some(Self::CreateEmptySheet),
+            "SetCellValue" => Some(Self::SetCellValue),
             _ => None,
         }
     }
@@ -228,6 +230,7 @@ impl MessageSchemaType {
             Self::RemoveColumn => "RemoveColumn",
             Self::RemoveSheet => "RemoveSheet",
             Self::CreateEmptySheet => "CreateEmptySheet",
+            Self::SetCellValue => "SetCellValue",
             Self::Empty => "",
         }
     }
@@ -546,6 +549,14 @@ pub struct APISetColumnPayload {
 pub struct APIRemoveColumnPayload {
     pub sheet_id: String,
     pub column_id: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APISetCellValuePayload {
+    pub sheet_id: String,
+    pub row: usize,
+    pub col: usize,
+    pub value: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

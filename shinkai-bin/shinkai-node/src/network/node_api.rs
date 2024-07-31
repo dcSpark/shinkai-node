@@ -71,6 +71,7 @@ use super::node_api_handlers::update_smart_inbox_name_handler;
 use super::node_api_handlers::update_workflow_handler;
 use super::node_api_handlers::use_registration_code_handler;
 use super::node_api_handlers::user_sheets_handler;
+use super::node_api_handlers::set_cell_value_handler;
 use super::node_api_handlers::NameToExternalProfileData;
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -902,6 +903,15 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| remove_sheet_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/set_cell_value
+    let set_cell_value = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "set_cell_value")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| set_cell_value_handler(node_commands_sender.clone(), message))
+    };
+
     // POST v1/update_default_embedding_model
     let api_update_default_embedding_model = {
         let node_commands_sender = node_commands_sender.clone();
@@ -997,6 +1007,9 @@ pub async fn run_api(
         .or(set_column)
         .or(remove_column)
         .or(user_sheets)
+        .or(create_sheet)
+        .or(remove_sheet)
+        .or(set_cell_value)
         .or(api_update_default_embedding_model)
         .or(api_update_supported_embedding_models)
         .recover(handle_rejection)

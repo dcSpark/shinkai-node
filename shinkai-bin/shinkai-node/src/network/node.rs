@@ -482,6 +482,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APISetCellValue {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIUpdateDefaultEmbeddingModel {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -1726,6 +1730,23 @@ impl Node {
                                                 ).await;
                                             });
                                         },
+                                        // NodeCommand::APISetCellValue { msg, res }
+                                        NodeCommand::APISetCellValue { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_set_cell_value(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
                                         // NodeCommand::APIScanOllamaModels { msg, res } => self.api_scan_ollama_models(msg, res).await,
                                         NodeCommand::APIScanOllamaModels { msg, res } => {
                                             let node_name_clone = self.node_name.clone();
@@ -2545,7 +2566,6 @@ impl Node {
                                         },
                                         // NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => self.api_update_default_embedding_model(msg, res).await,
                                         NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => {
-                                            let default_embedding_model = self.default_embedding_model.clone();
                                             let db = self.db.clone();
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
