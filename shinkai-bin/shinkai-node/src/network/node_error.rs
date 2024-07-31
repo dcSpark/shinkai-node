@@ -29,6 +29,14 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for NodeError {
     }
 }
 
+impl From<Box<dyn std::error::Error + Send>> for NodeError {
+    fn from(err: Box<dyn std::error::Error + Send>) -> NodeError {
+        NodeError {
+            message: format!("{}", err),
+        }
+    }
+}
+
 impl From<std::io::Error> for NodeError {
     fn from(err: std::io::Error) -> NodeError {
         NodeError {

@@ -148,6 +148,8 @@ impl ShinkaiMessageBuilder {
             parent: Some(parent_hash),
             workflow_code,
             workflow_name,
+            sheet_job_data: None,
+            callback: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -187,6 +189,8 @@ impl ShinkaiMessageBuilder {
             parent: None,
             workflow_code: None, // the agent wont be sending you a workflow
             workflow_name: None, // the agent wont be sending you a workflow
+            sheet_job_data: None,
+            callback: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

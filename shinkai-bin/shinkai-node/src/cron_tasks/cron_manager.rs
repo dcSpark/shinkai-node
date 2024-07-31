@@ -362,6 +362,8 @@ impl CronManager {
             parent: None,
             workflow_code: None,
             workflow_name: None,
+            callback: None,
+            sheet_job_data: None,
         };
 
         job_manager

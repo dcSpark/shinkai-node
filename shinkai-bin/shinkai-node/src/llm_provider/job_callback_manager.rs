@@ -1,25 +1,11 @@
-use std::sync::{Arc, Mutex};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
+use tokio::sync::Mutex;
+use std::sync::Arc;
 
 use crate::{cron_tasks::cron_manager::CronManager, managers::sheet_manager::SheetManager};
 
 use super::job_manager::JobManager;
-
-// Define the enum for manager types
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum CallbackManagerType {
-    Job,
-    Sheet,
-    Cron,
-}
-
-// Define the serialized struct for the request
-#[derive(Serialize, Deserialize)]
-pub struct CallbackJobRequest {
-    manager_type: CallbackManagerType,
-    payload: String,
-}
 
 /// The `JobCallbackManager` is responsible for handling incoming job requests
 /// and delegating them to the appropriate manager (JobManager, SheetManager, or CronManager).
@@ -53,42 +39,26 @@ impl JobCallbackManager {
         }
     }
 
-    fn handle_request(&self, request: CallbackJobRequest) {
-        match request.manager_type {
-            CallbackManagerType::Job => {
-                let mut manager = self.job_manager.lock().unwrap();
-                // manager.handle_job(request.payload);
+    pub async fn handle_request(&self, action: CallbackAction) {
+        match action {
+            CallbackAction::Job(job_message) => {
+                let mut manager = self.job_manager.lock().await;
+                // manager.handle_job(job_message);
             }
-            CallbackManagerType::Sheet => {
-                let mut manager = self.sheet_manager.lock().unwrap();
-                // manager.handle_sheet(request.payload);
+            CallbackAction::Sheet(sheet_action) => {
+                let mut manager = self.sheet_manager.lock().await;
+                // manager.handle_sheet(sheet_action);
             }
-            CallbackManagerType::Cron => {
-                let mut manager = self.cron_manager.lock().unwrap();
-                // manager.handle_cron(request.payload);
-            }
+            // Note: add later
+            // CallbackAction::Cron(cron_action) => {
+            //     let mut manager = self.cron_manager.lock().await;
+            //     // manager.handle_cron(cron_action);
+            // }
         }
+
+        // // Handle nested callbacks
+        // if let Some(callback) = action.get_callback() {
+        //     self.handle_request(*callback);
+        // }
     }
 }
-
-// // Assume these are defined elsewhere
-// struct JobManager;
-// impl JobManager {
-//     fn handle_job(&mut self, payload: String) {
-//         // Handle job
-//     }
-// }
-
-// struct SheetManager;
-// impl SheetManager {
-//     fn handle_sheet(&mut self, payload: String) {
-//         // Handle sheet
-//     }
-// }
-
-// struct CronManager;
-// impl CronManager {
-//     fn handle_cron(&mut self, payload: String) {
-//         // Handle cron
-//     }
-// }

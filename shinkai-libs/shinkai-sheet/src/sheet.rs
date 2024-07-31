@@ -39,18 +39,13 @@ pub enum ColumnBehavior {
     Number,
     Formula(String),
     LLMCall {
-        input: Formula, // Note: Maybe actually not needed?
+        input: Formula,
         workflow: Workflow,
         llm_provider_name: String, // Note: maybe we want a duality: specific model or some rules that pick a model e.g. Cheap + Private
         input_hash: Option<String>, // New parameter to store the hash of inputs (avoid recomputation)
     },
-    // TODO: merge single and multiple files into a single enum
-    SingleFile {
-        path: String,
-        name: String,
-    },
-    MultipleFiles {
-        files: Vec<(String, String)>, // (path, name)
+    MultipleVRFiles {
+        files: Vec<(FilePath, FileName)>,
     },
     // TODO: Add support for uploaded files. Specify String
     UploadedFiles {
@@ -116,10 +111,12 @@ impl Clone for Sheet {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowSheetJobData {
+    pub sheet_id: String,
     pub row: RowIndex,
     pub col: ColumnIndex,
     pub col_definition: ColumnDefinition,
     pub workflow: Workflow,
+    pub llm_provider_name: String,
     pub input_cells: Vec<(RowIndex, ColumnIndex, ColumnDefinition)>,
 }
 
@@ -187,9 +184,9 @@ impl Sheet {
         Ok(jobs)
     }
 
-    pub async fn remove_column(&mut self, col_index: ColumnIndex) -> Result<(), String> {
-        self.dispatch(SheetAction::RemoveColumn(col_index)).await;
-        Ok(())
+    pub async fn remove_column(&mut self, col_index: ColumnIndex) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let jobs = self.dispatch(SheetAction::RemoveColumn(col_index)).await;
+        Ok(jobs)
     }
 
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<ColumnIndex> {
@@ -276,7 +273,6 @@ impl Sheet {
     // then we should skip the workflow creation and set the cell to Pending
     // and then when A is defined, we should trigger the workflow
     // Same goes for A -> B -> C
-
     pub fn get_cell_value(&self, row: RowIndex, col: ColumnIndex) -> Option<String> {
         self.rows
             .get(&row)
@@ -309,6 +305,10 @@ impl Sheet {
         })
     }
 
+    /// This function retrieves the input cells for a given column in a specific row.
+    /// Inputs for a column are other cells that the column depends on, based on its behavior.
+    /// For example, if the column has a formula, the input cells are those referenced in the formula.
+    /// If the column is an LLMCall, the input cells are those referenced in the input string.
     fn get_input_cells_for_column(
         &self,
         row: RowIndex,
@@ -523,18 +523,21 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             }
                         }
                         ColumnBehavior::LLMCall {
-                            input,
+                            input: _, // used under the hood with get_input_cells_for_column
                             workflow,
                             llm_provider_name,
                             input_hash,
                         } => {
+                            // Check if input_hash is present and matches the blake3 hash of the current input cells values
                             let input_cells = state.get_input_cells_for_column(row, dependent_col);
                             let workflow_job_data = WorkflowSheetJobData {
+                                sheet_id: state.uuid.clone(),
                                 row,
                                 col: dependent_col,
                                 col_definition: column_definition.clone(),
                                 workflow: workflow.clone(),
                                 input_cells,
+                                llm_provider_name: llm_provider_name.clone(),
                             };
 
                             jobs.push(workflow_job_data);

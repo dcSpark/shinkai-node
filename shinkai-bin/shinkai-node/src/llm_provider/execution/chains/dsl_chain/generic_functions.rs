@@ -513,7 +513,6 @@ mod tests {
         },
         user_message_parser::ParsedUserMessage,
     };
-    use crate::llm_provider::job::Job;
     use crate::vector_fs::vector_fs::VectorFS;
 
     use super::{super::generic_functions::html_to_markdown, array_to_markdown_template, fill_variable_in_md_template};

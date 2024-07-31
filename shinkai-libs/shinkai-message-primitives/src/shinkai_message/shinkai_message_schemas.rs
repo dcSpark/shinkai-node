@@ -256,8 +256,14 @@ pub struct JobCreationInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum CallbackAction {
+    Job(JobMessage),
+    Sheet(SheetManagerAction),
+    // Cron(CronManagerAction),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct JobMessage {
-    // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
     pub files_inbox: String,
@@ -265,6 +271,8 @@ pub struct JobMessage {
     pub workflow_code: Option<String>,
     #[serde(deserialize_with = "deserialize_workflow_name")]
     pub workflow_name: Option<String>,
+    pub sheet_job_data: Option<String>,
+    pub callback: Option<Box<CallbackAction>>,
 }
 
 fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -278,6 +286,19 @@ where
         }
     }
     Ok(s)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SheetManagerAction {
+    pub job_message_next: Option<JobMessage>,
+    pub sheet_action: SheetJobAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SheetJobAction {
+    pub sheet_id: String,
+    pub row: usize,
+    pub col: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]

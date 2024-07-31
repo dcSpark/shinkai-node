@@ -836,34 +836,37 @@ impl Node {
             &format!("Starting node with name: {}", self.node_name),
         );
         let db_weak = Arc::downgrade(&self.db);
-        self.cron_manager = match &self.job_manager {
-            Some(job_manager) => Some(Arc::new(Mutex::new(
-                CronManager::new(
-                    db_weak,
-                    vector_fs_weak,
-                    clone_signature_secret_key(&self.identity_secret_key),
-                    self.node_name.clone(),
-                    Arc::clone(job_manager),
-                    self.ws_manager_trait.clone(),
-                )
-                .await,
-            ))),
-            None => None,
+
+        let cron_manager_result = CronManager::new(
+            db_weak.clone(),
+            vector_fs_weak,
+            clone_signature_secret_key(&self.identity_secret_key),
+            self.node_name.clone(),
+            job_manager.clone(),
+            self.ws_manager_trait.clone(),
+        ).await;
+        
+        let cron_manager = Arc::new(Mutex::new(cron_manager_result));
+
+        let sheet_manager_result = SheetManager::new(Arc::downgrade(&self.db), job_manager.clone(), self.node_name.clone()).await;
+        let sheet_manager = match sheet_manager_result {
+            Ok(manager) => Arc::new(Mutex::new(manager)),
+            Err(e) => {
+                eprintln!("Failed to create SheetManager: {:?}", e);
+                 return Err(NodeError {
+                    message: "InitializationError: Failed to create SheetManager".to_string(),
+                });
+            }
         };
-        // let workflow_job_creator =
-        // let sheet_manager = Arc::new(Mutex::new(SheetManager::new(
-        //     Arc::downgrade(&self.db),
-        //     self.job_manager.clone(),
-        //     self.node_name.clone(),
-        //     None,
-        // )));
 
-        // self.callback_manager = Arc::new(Mutex::new(JobCallbackManager::new(
-        //         job_manager,
-        //         self.sheet_manager.clone(),
-        //         self.cron_manager.clone(),
+        self.sheet_manager = Some(sheet_manager.clone());
+        self.cron_manager = Some(cron_manager.clone());
 
-        // )));
+        self.callback_manager = Some(Arc::new(Mutex::new(JobCallbackManager::new(
+            job_manager.clone(),
+            sheet_manager.clone(),
+            cron_manager,
+        ))));
 
         self.initialize_embedding_models().await?;
         {
@@ -2634,7 +2637,7 @@ impl Node {
     }
 
     // A function that initializes the embedding models from the database
-    async fn initialize_embedding_models(&self) -> Result<(), NodeError> {
+    async fn initialize_embedding_models(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Read the default embedding model from the database
         match self.db.get_default_embedding_model() {
             Ok(model) => {
@@ -2644,11 +2647,12 @@ impl Node {
             Err(ShinkaiDBError::DataNotFound) => {
                 // If not found, update the database with the current value
                 let default_model_guard = self.default_embedding_model.lock().await;
-                self.db.update_default_embedding_model(default_model_guard.clone())?;
+                self.db.update_default_embedding_model(default_model_guard.clone())
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
             }
-            Err(e) => return Err(NodeError::from(e)),
+            Err(e) => return Err(Box::new(NodeError::from(e)) as Box<dyn std::error::Error + Send>),
         }
-
+    
         // Read the supported embedding models from the database
         match self.db.get_supported_embedding_models() {
             Ok(models) => {
@@ -2658,12 +2662,12 @@ impl Node {
             Err(ShinkaiDBError::DataNotFound) => {
                 // If not found, update the database with the current value
                 let supported_models_guard = self.supported_embedding_models.lock().await;
-                self.db
-                    .update_supported_embedding_models(supported_models_guard.clone())?;
+                self.db.update_supported_embedding_models(supported_models_guard.clone())
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
             }
-            Err(e) => return Err(NodeError::from(e)),
+            Err(e) => return Err(Box::new(NodeError::from(e)) as Box<dyn std::error::Error + Send>),
         }
-
+    
         Ok(())
     }
 

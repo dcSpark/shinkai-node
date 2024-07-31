@@ -559,7 +559,7 @@ impl ExternalSubscriberManager {
                     // Attempt to retrieve vrkai and continue to the next iteration if it fails
                     let vrkai = match vector_fs_inst.retrieve_vrkai(&reader).await {
                         Ok(vrkai) => vrkai,
-                        Err(e) => {
+                        Err(_e) => {
                             // tries to create a folder with that name
                             if let Some(folder_name) = path.clone().pop() {
                                 let parent_path = path.parent_path();

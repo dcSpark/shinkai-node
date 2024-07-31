@@ -3,10 +3,25 @@ use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_sheet::sheet::{ColumnDefinition, Sheet, SheetUpdate};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction,
+};
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_sheet::sheet::{ColumnDefinition, Sheet, SheetUpdate, WorkflowSheetJobData};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
+
+#[derive(Debug)]
+pub struct SheetManagerError(String);
+
+impl std::fmt::Display for SheetManagerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for SheetManagerError {}
 
 #[derive(Clone)]
 pub struct SheetManager {
@@ -16,19 +31,25 @@ pub struct SheetManager {
     pub user_profile: ShinkaiName,
 }
 
+// TODO: add blacklist property so we can to stop chains (when user cancels a job, we should stop the chain)
+
 impl SheetManager {
     pub async fn new(
         db: Weak<ShinkaiDB>,
         job_manager: Arc<Mutex<JobManager>>,
         node_name: ShinkaiName,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, SheetManagerError> {
         // Only works for main right now
-        let user_profile = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())?;
+        let user_profile = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())
+            .map_err(|e| SheetManagerError(e.to_string()))?;
+
         let db_strong = db
             .upgrade()
-            .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
+            .ok_or_else(|| SheetManagerError("Couldn't convert to strong db".to_string()))?;
 
-        let sheets_vec = db_strong.list_all_sheets_for_user(&user_profile)?;
+        let sheets_vec = db_strong.list_all_sheets_for_user(&user_profile)
+            .map_err(|e| SheetManagerError(e.to_string()))?;
+
         let sheets = sheets_vec
             .into_iter()
             .map(|mut sheet| {
@@ -109,16 +130,80 @@ impl SheetManager {
         Ok(())
     }
 
+    async fn create_and_chain_job_messages(
+        jobs: Vec<WorkflowSheetJobData>,
+        job_manager: &Arc<Mutex<JobManager>>,
+        user_profile: &ShinkaiName,
+    ) -> Result<(), String> {
+        let mut job_messages: Vec<(JobMessage, WorkflowSheetJobData)> = Vec::new();
+
+        for job_data in jobs {
+            let job_creation_info = JobCreationInfo {
+                scope: JobScope::new_default(),
+                is_hidden: Some(true),
+            };
+
+            let mut job_manager = job_manager.lock().await;
+            let agent_name =
+                ShinkaiName::from_node_and_profile_names(user_profile.node_name.clone(), "main".to_string())?;
+            let agent_id = agent_name.get_agent_name_string().ok_or("LLMProviderNotFound")?;
+            let job_id = job_manager
+                .process_job_creation(job_creation_info, user_profile, &agent_id)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let job_message = JobMessage {
+                job_id: job_id.clone(),
+                content: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
+                files_inbox: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
+                parent: None,
+                workflow_code: None, // it could be in the sheet_job_data
+                workflow_name: None, // it could be in the sheet_job_data
+                sheet_job_data: Some(serde_json::to_string(&job_data).unwrap()),
+                callback: None,
+            };
+
+            job_messages.push((job_message, job_data));
+        }
+
+        // Chain the JobMessages with SheetManagerAction
+        for i in (1..job_messages.len()).rev() {
+            let (next_job_message, _next_job_data) = job_messages[i].clone();
+            let (current_job_message, current_job_data) = &mut job_messages[i - 1];
+            current_job_message.callback = Some(Box::new(CallbackAction::Sheet(SheetManagerAction {
+                job_message_next: Some(next_job_message),
+                sheet_action: SheetJobAction {
+                    sheet_id: current_job_data.sheet_id.clone(),
+                    row: current_job_data.row,
+                    col: current_job_data.col,
+                },
+            })));
+        }
+
+        // Add the first JobMessage to the job queue
+        if let Some((first_job_message, _)) = job_messages.first() {
+            let mut job_manager = job_manager.lock().await;
+            job_manager
+                .add_job_message_to_job_queue(first_job_message, user_profile)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
     pub async fn set_column(&mut self, sheet_id: &str, column: ColumnDefinition) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        let jobs = sheet.set_column(column.clone()).await;
-        // TODO: add cb to jobs and send them
+        let jobs = sheet.set_column(column.clone()).await.map_err(|e| e.to_string())?;
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
+
+        // Create and chain JobMessages, and add the first one to the job queue
+        Self::create_and_chain_job_messages(jobs, &self.job_manager, &self.user_profile).await?;
 
         Ok(())
     }
@@ -126,13 +211,15 @@ impl SheetManager {
     pub async fn remove_column(&mut self, sheet_id: &str, column_id: usize) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
         let jobs = sheet.remove_column(column_id).await.map_err(|e| e.to_string())?;
-        // TODO: add cb to jobs and send them
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
+
+        // Create and chain JobMessages, and add the first one to the job queue
+        Self::create_and_chain_job_messages(jobs, &self.job_manager, &self.user_profile).await?;
 
         Ok(())
     }
@@ -152,16 +239,16 @@ impl SheetManager {
         value: String,
     ) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        let jobs = sheet
-            .set_cell_value(row, col, value)
-            .await?;
-        // TODO: add cb to jobs and send them
+        let jobs = sheet.set_cell_value(row, col, value).await?;
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
+
+        // Create and chain JobMessages, and add the first one to the job queue
+        Self::create_and_chain_job_messages(jobs, &self.job_manager, &self.user_profile).await?;
 
         Ok(())
     }
