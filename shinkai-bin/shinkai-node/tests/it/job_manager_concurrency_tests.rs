@@ -15,10 +15,11 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_node::db::{ShinkaiDB, Topic};
+use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
-use shinkai_node::db::{ShinkaiDB, Topic};
-use shinkai_node::tools::tool_router::ToolRouter;
+use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
@@ -120,7 +121,9 @@ async fn test_process_job_queue_concurrency() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: UnstructuredAPI | {
+                              _: UnstructuredAPI,
+                              _: Option<Arc<Mutex<SheetManager>>>,
+                              _: Option<Arc<Mutex<JobCallbackManager>>>| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -171,7 +174,9 @@ async fn test_process_job_queue_concurrency() {
         UnstructuredAPI::new_default(),
         None,
         None,
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager, _tool_router| {
+        None,
+        None,
+        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager, _tool_router, _sheet_manager, _callback_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -180,6 +185,8 @@ async fn test_process_job_queue_concurrency() {
                 identity_sk,
                 generator,
                 unstructured_api,
+                None,
+                None,
             )
         },
     )
@@ -248,7 +255,9 @@ async fn test_sequential_process_for_same_job_id() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: UnstructuredAPI| {
+                              _: UnstructuredAPI,
+                              _: Option<Arc<Mutex<SheetManager>>>,
+                              _: Option<Arc<Mutex<JobCallbackManager>>>| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -299,7 +308,19 @@ async fn test_sequential_process_for_same_job_id() {
         UnstructuredAPI::new_default(),
         None,
         None,
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager, _tool_router | {
+        None,
+        None,
+        move |job,
+              _db,
+              _vector_fs,
+              node_name,
+              identity_sk,
+              generator,
+              unstructured_api,
+              _ws_manager,
+              _tool_router,
+              _sheet_manager,
+              _callback_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -308,6 +329,8 @@ async fn test_sequential_process_for_same_job_id() {
                 identity_sk,
                 generator,
                 unstructured_api,
+                None,
+                None,
             )
         },
     )

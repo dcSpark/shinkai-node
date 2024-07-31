@@ -27,18 +27,14 @@ impl std::error::Error for SheetManagerError {}
 pub struct SheetManager {
     pub sheets: HashMap<String, (Sheet, Sender<SheetUpdate>)>,
     pub db: Weak<ShinkaiDB>,
-    pub job_manager: Arc<Mutex<JobManager>>,
     pub user_profile: ShinkaiName,
+    pub job_manager: Option<Arc<Mutex<JobManager>>>,
 }
 
 // TODO: add blacklist property so we can to stop chains (when user cancels a job, we should stop the chain)
 
 impl SheetManager {
-    pub async fn new(
-        db: Weak<ShinkaiDB>,
-        job_manager: Arc<Mutex<JobManager>>,
-        node_name: ShinkaiName,
-    ) -> Result<Self, SheetManagerError> {
+    pub async fn new(db: Weak<ShinkaiDB>, node_name: ShinkaiName) -> Result<Self, SheetManagerError> {
         // Only works for main right now
         let user_profile = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())
             .map_err(|e| SheetManagerError(e.to_string()))?;
@@ -47,7 +43,8 @@ impl SheetManager {
             .upgrade()
             .ok_or_else(|| SheetManagerError("Couldn't convert to strong db".to_string()))?;
 
-        let sheets_vec = db_strong.list_all_sheets_for_user(&user_profile)
+        let sheets_vec = db_strong
+            .list_all_sheets_for_user(&user_profile)
             .map_err(|e| SheetManagerError(e.to_string()))?;
 
         let sheets = sheets_vec
@@ -64,9 +61,13 @@ impl SheetManager {
         Ok(Self {
             sheets,
             db,
-            job_manager,
+            job_manager: None,
             user_profile,
         })
+    }
+
+    pub fn set_job_manager(&mut self, job_manager: Arc<Mutex<JobManager>>) {
+        self.job_manager = Some(job_manager);
     }
 
     pub fn create_empty_sheet(&mut self) -> Result<(), ShinkaiDBError> {
@@ -203,7 +204,12 @@ impl SheetManager {
             .map_err(|e| e.to_string())?;
 
         // Create and chain JobMessages, and add the first one to the job queue
-        Self::create_and_chain_job_messages(jobs, &self.job_manager, &self.user_profile).await?;
+        // Create and chain JobMessages, and add the first one to the job queue
+        if let Some(job_manager) = &self.job_manager {
+            Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
+        } else {
+            return Err("JobManager not set".to_string());
+        }
 
         Ok(())
     }
@@ -219,7 +225,11 @@ impl SheetManager {
             .map_err(|e| e.to_string())?;
 
         // Create and chain JobMessages, and add the first one to the job queue
-        Self::create_and_chain_job_messages(jobs, &self.job_manager, &self.user_profile).await?;
+        if let Some(job_manager) = &self.job_manager {
+            Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
+        } else {
+            return Err("JobManager not set".to_string());
+        }
 
         Ok(())
     }
@@ -248,7 +258,11 @@ impl SheetManager {
             .map_err(|e| e.to_string())?;
 
         // Create and chain JobMessages, and add the first one to the job queue
-        Self::create_and_chain_job_messages(jobs, &self.job_manager, &self.user_profile).await?;
+        if let Some(job_manager) = &self.job_manager {
+            Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
+        } else {
+            return Err("JobManager not set".to_string());
+        }
 
         Ok(())
     }

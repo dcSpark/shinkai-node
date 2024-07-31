@@ -114,6 +114,8 @@ mod tests {
                 UnstructuredAPI::new_default(),
                 None,
                 None,
+                None,
+                None,
             )
             .await,
         ));

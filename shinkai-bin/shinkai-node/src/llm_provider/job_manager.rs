@@ -1,8 +1,10 @@
 use super::error::LLMProviderError;
+use super::job_callback_manager::JobCallbackManager;
 use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
-use crate::llm_provider::llm_provider::LLMProvider;
-use crate::llm_provider::job::JobLike;
 use crate::db::{ShinkaiDB, Topic};
+use crate::llm_provider::job::JobLike;
+use crate::llm_provider::llm_provider::LLMProvider;
+use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
@@ -49,6 +51,10 @@ pub struct JobManager {
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     // Tool router for managing installed tools
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    // Sheet manager for managing installed sheets
+    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+    // Job callback manager for handling job callbacks
+    pub callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
 }
 
 impl JobManager {
@@ -63,6 +69,8 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -112,7 +120,19 @@ impl JobManager {
             unstructured_api.clone(),
             ws_manager.clone(),
             tool_router.clone(),
-            |job, db, vector_fs, node_profile_name, identity_sk, generator, unstructured_api, ws_manager, tool_router| {
+            sheet_manager.clone(),
+            callback_manager.clone(),
+            |job,
+             db,
+             vector_fs,
+             node_profile_name,
+             identity_sk,
+             generator,
+             unstructured_api,
+             ws_manager,
+             tool_router,
+             sheet_manager,
+             callback_manager| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -123,6 +143,8 @@ impl JobManager {
                     unstructured_api,
                     ws_manager,
                     tool_router,
+                    sheet_manager,
+                    callback_manager,
                 ))
             },
         )
@@ -142,6 +164,8 @@ impl JobManager {
             unstructured_api,
             ws_manager,
             tool_router,
+            sheet_manager,
+            callback_manager,
         }
     }
 
@@ -157,6 +181,8 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -167,6 +193,8 @@ impl JobManager {
                 UnstructuredAPI,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
                 Option<Arc<Mutex<ToolRouter>>>,
+                Option<Arc<Mutex<SheetManager>>>,
+                Option<Arc<Mutex<JobCallbackManager>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -238,6 +266,8 @@ impl JobManager {
                     let node_profile_name = node_profile_name.clone();
                     let ws_manager = ws_manager.clone();
                     let tool_router = tool_router.clone();
+                    let sheet_manager = sheet_manager.clone();
+                    let callback_manager = callback_manager.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -245,7 +275,7 @@ impl JobManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            
+
                             job_queue_manager.peek(&job_id).await
                         };
 
@@ -263,6 +293,8 @@ impl JobManager {
                                         cloned_unstructured_api,
                                         ws_manager,
                                         tool_router,
+                                        sheet_manager,
+                                        callback_manager,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
@@ -326,8 +358,9 @@ impl JobManager {
                                 MessageSchemaType::JobCreationSchema => {
                                     let agent_name =
                                         ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
-                                    let agent_id =
-                                        agent_name.get_agent_name_string().ok_or(LLMProviderError::LLMProviderNotFound)?;
+                                    let agent_id = agent_name
+                                        .get_agent_name_string()
+                                        .ok_or(LLMProviderError::LLMProviderNotFound)?;
                                     let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
                                         .map_err(|_| LLMProviderError::ContentParseFailed)?;
                                     self.process_job_creation(job_creation, &profile, &agent_id).await
@@ -400,7 +433,10 @@ impl JobManager {
 
                     if llm_provider_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager.search_local_llm_provider(llm_provider_id, profile).await {
+                        if let Some(serialized_agent) = identity_manager
+                            .search_local_llm_provider(llm_provider_id, profile)
+                            .await
+                        {
                             let agent = LLMProvider::from_serialized_llm_provider(serialized_agent);
                             llm_provider_found = Some(Arc::new(Mutex::new(agent)));
                             if let Some(agent) = llm_provider_found.clone() {
@@ -451,7 +487,12 @@ impl JobManager {
         }
 
         db_arc
-            .add_message_to_job_inbox(&job_message.job_id.clone(), &message, job_message.parent.clone(), self.ws_manager.clone())
+            .add_message_to_job_inbox(
+                &job_message.job_id.clone(),
+                &message,
+                job_message.parent.clone(),
+                self.ws_manager.clone(),
+            )
             .await?;
         std::mem::drop(db_arc);
 
