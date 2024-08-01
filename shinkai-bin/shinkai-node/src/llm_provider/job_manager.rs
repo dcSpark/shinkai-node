@@ -393,16 +393,16 @@ impl JobManager {
     // From JobManager
     /// Checks that the provided ShinkaiMessage is an unencrypted job message
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
-        match &message.body {
-            MessageBody::Unencrypted(body) => match &body.message_data {
-                MessageData::Unencrypted(data) => match data.message_content_schema {
-                    MessageSchemaType::JobCreationSchema | MessageSchemaType::JobMessageSchema => true,
-                    _ => false,
-                },
-                _ => false,
-            },
-            _ => false,
-        }
+        matches!(
+            &message.body,
+            MessageBody::Unencrypted(body) if matches!(
+                &body.message_data,
+                MessageData::Unencrypted(data) if matches!(
+                    data.message_content_schema,
+                    MessageSchemaType::JobCreationSchema | MessageSchemaType::JobMessageSchema
+                )
+            )
+        )
     }
 
     /// Processes a job creation message
