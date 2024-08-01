@@ -14,7 +14,7 @@ mod tests {
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
     };
-    use shinkai_node::network::ws_manager::WSUpdateHandler;
+    use shinkai_node::{llm_provider::job_callback_manager::JobCallbackManager, managers::sheet_manager::SheetManager, network::ws_manager::WSUpdateHandler};
     use shinkai_node::{
         cron_tasks::cron_manager::{CronManager, CronManagerError},
         db::{db_cron_task::CronTask, ShinkaiDB},
@@ -103,6 +103,10 @@ mod tests {
         let vector_fs_weak = Arc::downgrade(&vector_fs);
         let db_weak = Arc::downgrade(&db);
 
+        let sheet_manager_result = SheetManager::new(db_weak.clone(), node_profile_name.extract_node().clone()).await;
+        let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
+        let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
                 db_weak.clone(),
@@ -114,8 +118,8 @@ mod tests {
                 UnstructuredAPI::new_default(),
                 None,
                 None,
-                None,
-                None,
+                sheet_manager.clone(),
+                callback_manager.clone(),
             )
             .await,
         ));

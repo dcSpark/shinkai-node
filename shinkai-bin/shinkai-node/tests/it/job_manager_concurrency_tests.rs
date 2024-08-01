@@ -122,8 +122,9 @@ async fn test_process_job_queue_concurrency() {
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI,
-                              _: Option<Arc<Mutex<SheetManager>>>,
-                              _: Option<Arc<Mutex<JobCallbackManager>>>| {
+                              _: Arc<Mutex<SheetManager>>,
+                              _: Arc<Mutex<JobCallbackManager>>,
+                              _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -162,9 +163,13 @@ async fn test_process_job_queue_concurrency() {
             .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
+    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone()).await;
+    let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
+    let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
-        job_queue_manager,
+        job_queue_manager.clone(),
         db_weak.clone(),
         vector_fs_weak.clone(),
         node_name.clone(),
@@ -174,9 +179,20 @@ async fn test_process_job_queue_concurrency() {
         UnstructuredAPI::new_default(),
         None,
         None,
-        None,
-        None,
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager, _tool_router, _sheet_manager, _callback_manager| {
+        sheet_manager.clone(),
+        callback_manager.clone(),
+        move |job,
+              _db,
+              _vector_fs,
+              node_name,
+              identity_sk,
+              generator,
+              unstructured_api,
+              _ws_manager,
+              _tool_router,
+              _sheet_manager,
+              _callback_manager,
+              _job_queue_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -185,8 +201,9 @@ async fn test_process_job_queue_concurrency() {
                 identity_sk,
                 generator,
                 unstructured_api,
-                None,
-                None,
+                sheet_manager.clone(),
+                callback_manager.clone(),
+                job_queue_manager.clone(),
             )
         },
     )
@@ -256,8 +273,9 @@ async fn test_sequential_process_for_same_job_id() {
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI,
-                              _: Option<Arc<Mutex<SheetManager>>>,
-                              _: Option<Arc<Mutex<JobCallbackManager>>>| {
+                              _: Arc<Mutex<SheetManager>>,
+                              _: Arc<Mutex<JobCallbackManager>>,
+                              _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -296,9 +314,13 @@ async fn test_sequential_process_for_same_job_id() {
             .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
+    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone()).await;
+    let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
+    let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
-        job_queue_manager,
+        job_queue_manager.clone(),
         db_weak.clone(),
         vector_fs_weak.clone(),
         node_name.clone(),
@@ -308,8 +330,8 @@ async fn test_sequential_process_for_same_job_id() {
         UnstructuredAPI::new_default(),
         None,
         None,
-        None,
-        None,
+        sheet_manager.clone(),
+        callback_manager.clone(),
         move |job,
               _db,
               _vector_fs,
@@ -320,7 +342,8 @@ async fn test_sequential_process_for_same_job_id() {
               _ws_manager,
               _tool_router,
               _sheet_manager,
-              _callback_manager| {
+              _callback_manager,
+              _job_queue_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -329,8 +352,9 @@ async fn test_sequential_process_for_same_job_id() {
                 identity_sk,
                 generator,
                 unstructured_api,
-                None,
-                None,
+                sheet_manager.clone(),
+                callback_manager.clone(),
+                job_queue_manager.clone(),
             )
         },
     )

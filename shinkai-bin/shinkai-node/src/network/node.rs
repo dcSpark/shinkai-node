@@ -576,9 +576,9 @@ pub struct Node {
     // Tool Router. Option so it is less painful to test
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
     // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
-    pub callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+    pub callback_manager: Arc<Mutex<JobCallbackManager>>,
     // Sheet Manager.
-    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+    pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Default embedding model for new profiles
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
@@ -772,6 +772,9 @@ impl Node {
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
+        let sheet_manager_result = SheetManager::new(Arc::downgrade(&db_arc.clone()), node_name.clone()).await;
+        let sheet_manager = sheet_manager_result.unwrap();
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -802,8 +805,8 @@ impl Node {
             ws_address,
             ws_manager_trait,
             ws_server: None,
-            callback_manager: None,
-            sheet_manager: None,
+            callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
+            sheet_manager: Arc::new(Mutex::new(sheet_manager)),
             tool_router: Some(Arc::new(Mutex::new(tool_router))),
             default_embedding_model,
             supported_embedding_models,
@@ -814,20 +817,6 @@ impl Node {
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let db_weak = Arc::downgrade(&self.db);
         let vector_fs_weak = Arc::downgrade(&self.vector_fs);
-
-        let sheet_manager_result = SheetManager::new(Arc::downgrade(&self.db), self.node_name.clone()).await;
-        let sheet_manager = match sheet_manager_result {
-            Ok(manager) => Arc::new(Mutex::new(manager)),
-            Err(e) => {
-                eprintln!("Failed to create SheetManager: {:?}", e);
-                return Err(NodeError {
-                    message: "InitializationError: Failed to create SheetManager".to_string(),
-                });
-            }
-        };
-
-        self.sheet_manager = Some(sheet_manager.clone());
-        self.callback_manager = Some(Arc::new(Mutex::new(JobCallbackManager::new())));
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
@@ -847,8 +836,8 @@ impl Node {
         ));
         self.job_manager = Some(job_manager.clone());
 
-        if let Some(sheet_manager) = &self.sheet_manager {
-            let mut sheet_manager = sheet_manager.lock().await;
+        {
+            let mut sheet_manager = self.sheet_manager.lock().await;
             sheet_manager.set_job_manager(job_manager.clone());
         }
 
@@ -872,10 +861,10 @@ impl Node {
         let cron_manager = Arc::new(Mutex::new(cron_manager_result));
         self.cron_manager = Some(cron_manager.clone());
 
-        if let Some(callback_manager) = &self.callback_manager {
-            let mut callback_manager = callback_manager.lock().await;
+        {
+            let mut callback_manager = self.callback_manager.lock().await;
             callback_manager.update_job_manager(job_manager.clone());
-            callback_manager.update_sheet_manager(sheet_manager.clone());
+            callback_manager.update_sheet_manager(self.sheet_manager.clone());
             callback_manager.update_cron_manager(cron_manager.clone());
         }
 
@@ -890,6 +879,7 @@ impl Node {
                 self.ws_server = Some(ws_server);
             }
         }
+        eprintln!(">> Node start set variables successfully");
 
         let listen_future = self.listen_and_reconnect(self.proxy_connection_info.clone()).fuse();
         pin_mut!(listen_future);

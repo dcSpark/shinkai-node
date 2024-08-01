@@ -67,8 +67,8 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
-        callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        callback_manager: Arc<Mutex<JobCallbackManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();

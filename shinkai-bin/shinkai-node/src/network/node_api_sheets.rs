@@ -20,7 +20,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
     pub async fn api_set_column(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -54,19 +54,6 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
@@ -89,7 +76,7 @@ impl Node {
     }
 
     pub async fn api_remove_column(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -123,19 +110,6 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
@@ -161,7 +135,7 @@ impl Node {
     }
 
     pub async fn api_user_sheets(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -195,19 +169,6 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
         // Lock the sheet_manager before using it
         let sheet_manager_guard = sheet_manager.lock().await;
 
@@ -231,7 +192,7 @@ impl Node {
     }
 
     pub async fn api_create_empty_sheet(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -265,19 +226,6 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
@@ -301,7 +249,7 @@ impl Node {
     }
 
     pub async fn api_remove_sheet(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -335,19 +283,6 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
@@ -370,7 +305,7 @@ impl Node {
     }
 
     pub async fn api_set_cell_value(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -404,19 +339,6 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
@@ -439,7 +361,7 @@ impl Node {
     }
 
     pub async fn api_get_sheet(
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -472,19 +394,6 @@ impl Node {
             let _ = res.send(Err(api_error)).await;
             return Ok(());
         }
-
-        let sheet_manager = match sheet_manager {
-            Some(manager) => manager,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "SheetManager is not available".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
 
         // Lock the sheet_manager before using it
         let sheet_manager_guard = sheet_manager.lock().await;

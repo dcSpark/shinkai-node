@@ -52,9 +52,9 @@ pub struct JobManager {
     // Tool router for managing installed tools
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
     // Sheet manager for managing installed sheets
-    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+    pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Job callback manager for handling job callbacks
-    pub callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+    pub callback_manager: Arc<Mutex<JobCallbackManager>>,
 }
 
 impl JobManager {
@@ -69,8 +69,8 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
-        callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        callback_manager: Arc<Mutex<JobCallbackManager>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -183,8 +183,8 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
-        callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        callback_manager: Arc<Mutex<JobCallbackManager>>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -195,8 +195,8 @@ impl JobManager {
                 UnstructuredAPI,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
                 Option<Arc<Mutex<ToolRouter>>>,
-                Option<Arc<Mutex<SheetManager>>>,
-                Option<Arc<Mutex<JobCallbackManager>>>,
+                Arc<Mutex<SheetManager>>,
+                Arc<Mutex<JobCallbackManager>>,
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send

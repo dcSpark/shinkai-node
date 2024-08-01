@@ -3,8 +3,6 @@ use shinkai_sheet::sheet::{ColumnBehavior, ColumnDefinition, Sheet};
 
 #[cfg(test)]
 mod tests {
-    use shinkai_sheet::sheet::SheetAction;
-
     use super::*;
 
     #[tokio::test]

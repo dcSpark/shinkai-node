@@ -96,14 +96,13 @@ impl SheetManager {
             .ok_or_else(|| "Sheet ID not found".to_string())
     }
 
-    // Note: is this really required?
-    pub fn add_sheet(&mut self, sheet: Sheet) -> Result<(), ShinkaiDBError> {
+    pub fn add_sheet(&mut self, sheet: Sheet) -> Result<String, ShinkaiDBError> {
         let (sender, _receiver) = async_channel::unbounded();
         let sheet_id = sheet.uuid.clone();
         let mut sheet_clone = sheet.clone();
         sheet_clone.set_update_sender(sender.clone());
 
-        self.sheets.insert(sheet_id, (sheet_clone, sender));
+        self.sheets.insert(sheet_id.clone(), (sheet_clone, sender));
 
         // Add the sheet to the database
         let db_strong = self
@@ -112,7 +111,7 @@ impl SheetManager {
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
         db_strong.save_sheet(sheet, self.user_profile.clone())?;
 
-        Ok(())
+        Ok(sheet_id)
     }
 
     pub fn remove_sheet(&mut self, sheet_id: &str) -> Result<(), ShinkaiDBError> {
