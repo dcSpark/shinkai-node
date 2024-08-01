@@ -291,6 +291,7 @@ where
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SheetManagerAction {
     pub job_message_next: Option<JobMessage>,
+    // TODO: should this be m0re complex and have the actual desired action?
     pub sheet_action: SheetJobAction,
 }
 

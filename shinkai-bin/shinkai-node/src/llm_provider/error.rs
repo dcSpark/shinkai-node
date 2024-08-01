@@ -73,6 +73,10 @@ pub enum LLMProviderError {
     InvalidFunctionResult(String),
     MaxIterationsReached(String),
     ToolRouterError(String),
+    SerializationError(String),
+    SheetManagerNotFound,
+    CallbackManagerNotFound,
+    SheetManagerError(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -152,6 +156,10 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::InvalidFunctionResult(s) => write!(f, "{}", s),
             LLMProviderError::MaxIterationsReached(s) => write!(f, "{}", s),
             LLMProviderError::ToolRouterError(s) => write!(f, "{}", s),
+            LLMProviderError::SerializationError(s) => write!(f, "{}", s),
+            LLMProviderError::SheetManagerNotFound => write!(f, "Sheet Manager not found"),
+            LLMProviderError::CallbackManagerNotFound => write!(f, "Callback Manager not found"),
+            LLMProviderError::SheetManagerError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -221,6 +229,10 @@ impl LLMProviderError {
             LLMProviderError::InvalidFunctionResult(_) => "InvalidFunctionResult",
             LLMProviderError::MaxIterationsReached(_) => "MaxIterationsReached",
             LLMProviderError::ToolRouterError(_) => "ToolRouterError",
+            LLMProviderError::SerializationError(_) => "SerializationError",
+            LLMProviderError::SheetManagerNotFound => "SheetManagerNotFound",
+            LLMProviderError::CallbackManagerNotFound => "CallbackManagerNotFound",
+            LLMProviderError::SheetManagerError(_) => "SheetManagerError",
         };
 
         let error_message = format!("{}", self);

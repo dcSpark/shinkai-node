@@ -132,7 +132,8 @@ impl JobManager {
              ws_manager,
              tool_router,
              sheet_manager,
-             callback_manager| {
+             callback_manager,
+             job_queue_manager| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -145,6 +146,7 @@ impl JobManager {
                     tool_router,
                     sheet_manager,
                     callback_manager,
+                    job_queue_manager,
                 ))
             },
         )
@@ -195,6 +197,7 @@ impl JobManager {
                 Option<Arc<Mutex<ToolRouter>>>,
                 Option<Arc<Mutex<SheetManager>>>,
                 Option<Arc<Mutex<JobCallbackManager>>>,
+                Arc<Mutex<JobQueueManager<JobForProcessing>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -295,6 +298,7 @@ impl JobManager {
                                         tool_router,
                                         sheet_manager,
                                         callback_manager,
+                                        job_queue_manager.clone(),
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {

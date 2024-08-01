@@ -5,15 +5,17 @@ use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
-use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
+use crate::llm_provider::queue::job_queue_manager::{self, JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
+use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -23,6 +25,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_sheet::sheet::WorkflowSheetJobData;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::FileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
@@ -37,7 +40,7 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 
 use super::chains::dsl_chain::dsl_inference_chain::DslChain;
-use super::chains::inference_chain_trait::InferenceChainContext;
+use super::chains::inference_chain_trait::{InferenceChainContext, InferenceChainResult};
 use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
@@ -66,6 +69,7 @@ impl JobManager {
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
+        job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -385,79 +389,87 @@ impl JobManager {
         );
 
         let job_id = full_job.job_id().to_string();
-        let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
-        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
-        let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
+        // let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
+        // let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+        // let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
-        // eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
+        // // eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
 
-        // Create the inference chain context
-        let mut chain_context = InferenceChainContext::new(
+        // // Create the inference chain context
+        // let mut chain_context = InferenceChainContext::new(
+        //     db.clone(),
+        //     vector_fs.clone(),
+        //     full_job,
+        //     parsed_user_message,
+        //     llm_provider,
+        //     prev_execution_context,
+        //     generator,
+        //     user_profile.clone(),
+        //     2,
+        //     max_tokens_in_prompt,
+        //     HashMap::new(),
+        //     ws_manager.clone(),
+        //     tool_router.clone(),
+        // );
+
+        // // Note: we do this once so we are not re-reading the files multiple times for each operation
+        // {
+        //     let files = {
+        //         let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
+        //         // Check if there was an error getting the files
+        //         match files_result {
+        //             Ok(files) => files,
+        //             Err(e) => return Err(LLMProviderError::VectorFS(e)),
+        //         }
+        //     };
+
+        //     chain_context.update_raw_files(Some(files.into()));
+        // }
+
+        // // Available functions for the workflow
+        // let functions = HashMap::new();
+
+        // // TODO: read from tooling storage what we may have available
+
+        // // Call the inference chain router to choose which chain to use, and call it
+        // let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
+
+        // // Add the inference function to the functions map
+        // dsl_inference.add_inference_function();
+        // dsl_inference.add_inference_no_ws_function();
+        // dsl_inference.add_opinionated_inference_function();
+        // dsl_inference.add_opinionated_inference_no_ws_function();
+        // dsl_inference.add_multi_inference_function();
+        // dsl_inference.add_all_generic_functions();
+        // dsl_inference.add_tools_from_router().await?;
+
+        // // Execute the workflow using run_chain
+        // let start = Instant::now();
+        // let inference_result = dsl_inference.run_chain().await?;
+
+        let inference_result = Self::execute_workflow(
             db.clone(),
             vector_fs.clone(),
-            full_job,
-            parsed_user_message,
-            llm_provider,
-            prev_execution_context,
+            job_message,
+            job_message.content.to_string(),
+            llm_provider_found,
+            full_job.clone(),
             generator,
             user_profile.clone(),
-            2,
-            max_tokens_in_prompt,
-            HashMap::new(),
             ws_manager.clone(),
             tool_router.clone(),
-        );
-
-        // Note: we do this once so we are not re-reading the files multiple times for each operation
-        {
-            let files = {
-                let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
-                // Check if there was an error getting the files
-                match files_result {
-                    Ok(files) => files,
-                    Err(e) => return Err(LLMProviderError::VectorFS(e)),
-                }
-            };
-
-            chain_context.update_raw_files(Some(files.into()));
-        }
-
-        // Available functions for the workflow
-        let functions = HashMap::new();
-
-        // TODO: read from tooling storage what we may have available
-
-        // Call the inference chain router to choose which chain to use, and call it
-        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
-
-        // Add the inference function to the functions map
-        dsl_inference.add_inference_function();
-        dsl_inference.add_inference_no_ws_function();
-        dsl_inference.add_opinionated_inference_function();
-        dsl_inference.add_opinionated_inference_no_ws_function();
-        dsl_inference.add_multi_inference_function();
-        dsl_inference.add_all_generic_functions();
-        dsl_inference.add_tools_from_router().await?;
-
-        // Execute the workflow using run_chain
-        let start = Instant::now();
-        let inference_result = dsl_inference.run_chain().await?;
-        let duration = start.elapsed();
+            workflow,
+        )
+        .await?;
 
         let response = inference_result.response;
         let new_execution_context = inference_result.new_job_execution_context;
-
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            &format!("Time elapsed for inference chain processing is: {:?}", duration),
-        );
 
         // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
         // TODO: can we extend it to add metadata somehow?
-        // TODO: What should be the structre of this metadata?
+        // TODO: What should be the structure of this metadata?
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id,
             response.to_string(),
@@ -486,6 +498,165 @@ impl JobManager {
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_workflow(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        job_message: &JobMessage,
+        message_content: String,
+        llm_provider_found: Option<SerializedLLMProvider>,
+        full_job: Job,
+        generator: RemoteEmbeddingGenerator,
+        user_profile: ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        workflow: Workflow,
+    ) -> Result<InferenceChainResult, LLMProviderError> {
+        let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+        let parsed_user_message = ParsedUserMessage::new(message_content);
+        let full_execution_context = full_job.execution_context.clone();
+
+        let mut chain_context = InferenceChainContext::new(
+            db.clone(),
+            vector_fs.clone(),
+            full_job,
+            parsed_user_message,
+            llm_provider,
+            full_execution_context,
+            generator,
+            user_profile.clone(),
+            2,
+            max_tokens_in_prompt,
+            HashMap::new(),
+            ws_manager.clone(),
+            tool_router.clone(),
+        );
+
+        // Process files
+        {
+            let files = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone())?;
+            chain_context.update_raw_files(Some(files.into()));
+        }
+
+        let functions = HashMap::new();
+        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
+
+        dsl_inference.add_inference_function();
+        dsl_inference.add_inference_no_ws_function();
+        dsl_inference.add_opinionated_inference_function();
+        dsl_inference.add_opinionated_inference_no_ws_function();
+        dsl_inference.add_multi_inference_function();
+        dsl_inference.add_all_generic_functions();
+        dsl_inference.add_tools_from_router().await?;
+
+        let start = Instant::now();
+        let inference_result = dsl_inference.run_chain().await?;
+        let duration = start.elapsed();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Time elapsed for inference chain processing is: {:?}", duration),
+        );
+
+        Ok(inference_result)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_sheet_job(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        job_message: &JobMessage,
+        llm_provider_found: Option<SerializedLLMProvider>,
+        full_job: Job,
+        user_profile: ShinkaiName,
+        generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+    ) -> Result<bool, LLMProviderError> {
+        // TODO: implement test
+
+        if let Some(sheet_job_data) = &job_message.sheet_job_data {
+            let sheet_job_data: WorkflowSheetJobData = serde_json::from_str(sheet_job_data)
+                .map_err(|e| LLMProviderError::SerializationError(e.to_string()))?;
+
+            // Check SheetManager for the latest inputs
+            let sheet_manager = sheet_manager.ok_or(LLMProviderError::SheetManagerNotFound)?;
+
+            // Get the input string within the lock scope
+            let input_string = {
+                let sheet_manager = sheet_manager.lock().await;
+                let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
+                let input_cells = sheet.get_input_values_for_cell(sheet_job_data.row, sheet_job_data.col);
+                input_cells
+                    .iter()
+                    .filter_map(|(_, cell)| cell.as_ref())
+                    .fold(String::new(), |mut acc, s| {
+                        if !acc.is_empty() {
+                            acc.push(' ');
+                        }
+                        acc.push_str(s);
+                        acc
+                    })
+            };
+
+            // Process the sheet job
+            let inference_result = Self::execute_workflow(
+                db.clone(),
+                vector_fs.clone(),
+                job_message,
+                input_string,
+                llm_provider_found,
+                full_job.clone(),
+                generator,
+                user_profile.clone(),
+                ws_manager.clone(),
+                tool_router.clone(),
+                sheet_job_data.workflow,
+            )
+            .await?;
+
+            let response = inference_result.response;
+
+            // Update the sheet using the callback manager. "sheet" is just a local copy
+            // In { } to avoid locking the mutex for too long
+            {
+                let mut sheet_manager = sheet_manager.lock().await;
+                sheet_manager
+                    .set_cell_value(
+                        &sheet_job_data.sheet_id,
+                        sheet_job_data.row,
+                        sheet_job_data.col,
+                        response.clone(),
+                    )
+                    .await
+                    .map_err(|e| LLMProviderError::SheetManagerError(e.to_string()))?;
+            }
+
+            // Check for callbacks and add them to the JobManagerQueue if required
+            if let Some(callback) = &job_message.callback {
+                if let CallbackAction::Sheet(sheet_action) = callback.as_ref() {
+                    if let Some(next_job_message) = &sheet_action.job_message_next {
+                        let mut job_queue_manager = job_queue_manager.lock().await;
+                        job_queue_manager
+                            .push(
+                                &next_job_message.job_id,
+                                JobForProcessing::new(next_job_message.clone(), user_profile),
+                            )
+                            .await?;
+                    }
+                }
+            }
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Temporary function to process the files in the job message for tasks

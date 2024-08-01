@@ -309,7 +309,7 @@ impl Sheet {
     /// Inputs for a column are other cells that the column depends on, based on its behavior.
     /// For example, if the column has a formula, the input cells are those referenced in the formula.
     /// If the column is an LLMCall, the input cells are those referenced in the input string.
-    fn get_input_cells_for_column(
+    pub fn get_input_cells_for_column(
         &self,
         row: RowIndex,
         col: ColumnIndex,
@@ -339,6 +339,22 @@ impl Sheet {
         }
 
         input_cells
+    }
+
+    /// Retrieves the input values for a given cell.
+    ///
+    /// # Arguments
+    /// * `row` - Row index of the target cell
+    /// * `col` - Column index of the target cell
+    ///
+    /// # Returns
+    /// Vec of (ColumnIndex, Option<String>) pairs representing input cells and their values.
+    pub fn get_input_values_for_cell(&self, row: RowIndex, col: ColumnIndex) -> Vec<(ColumnIndex, Option<String>)> {
+        let input_cells = self.get_input_cells_for_column(row, col);
+        input_cells
+            .into_iter()
+            .map(|(_, input_col, _)| (input_col, self.get_cell_value(row, input_col)))
+            .collect()
     }
 
     fn compute_input_hash(
