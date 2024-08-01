@@ -71,7 +71,7 @@ impl SheetManager {
         self.job_manager = Some(job_manager);
     }
 
-    pub fn create_empty_sheet(&mut self) -> Result<(), ShinkaiDBError> {
+    pub fn create_empty_sheet(&mut self) -> Result<String, ShinkaiDBError> {
         let sheet = Sheet::new();
         let sheet_id = sheet.uuid.clone();
         let (sender, _receiver) = async_channel::unbounded();
@@ -87,7 +87,7 @@ impl SheetManager {
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
         db_strong.save_sheet(sheet, self.user_profile.clone())?;
 
-        Ok(())
+        Ok(sheet_id)
     }
 
     pub fn get_sheet(&self, sheet_id: &str) -> Result<&Sheet, String> {
@@ -127,6 +127,19 @@ impl SheetManager {
             .upgrade()
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
         db_strong.remove_sheet(sheet_id, &self.user_profile)?;
+
+        Ok(())
+    }
+
+    pub async fn update_sheet_name(&mut self, sheet_id: &str, new_name: String) -> Result<(), String> {
+        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+        sheet.sheet_name = Some(new_name.clone());
+
+        // Update the sheet in the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .save_sheet(sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
 
         Ok(())
     }

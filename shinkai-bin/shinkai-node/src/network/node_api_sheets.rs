@@ -199,7 +199,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
-        let requester_name = match Self::validate_and_extract_payload::<String>(
+        let (sheet_name, requester_name) = match Self::validate_and_extract_payload::<String>(
             node_name.clone(),
             identity_manager.clone(),
             encryption_secret_key,
@@ -208,7 +208,7 @@ impl Node {
         )
         .await
         {
-            Ok((_, requester_name)) => requester_name,
+            Ok(data) => data,
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
@@ -232,9 +232,23 @@ impl Node {
         // Create an empty sheet using SheetManager
         match sheet_manager_guard.create_empty_sheet() {
             Ok(sheet_id) => {
-                let response = json!({"status": "success", "sheet_id": sheet_id});
-                let _ = res.send(Ok(response)).await;
-                Ok(())
+                // Update the sheet name
+                match sheet_manager_guard.update_sheet_name(&sheet_id, sheet_name).await {
+                    Ok(_) => {
+                        let response = json!({"status": "success", "sheet_id": sheet_id});
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to update sheet name: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
             Err(err) => {
                 let api_error = APIError {

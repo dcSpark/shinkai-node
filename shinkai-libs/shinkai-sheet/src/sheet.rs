@@ -1,9 +1,11 @@
 use async_channel::Sender;
 use async_recursion::async_recursion;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
-use shinkai_message_primitives::schemas::sheet::{Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, RowIndex, WorkflowSheetJobData};
+use shinkai_message_primitives::schemas::sheet::{
+    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, RowIndex, WorkflowSheetJobData,
+};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -30,6 +32,7 @@ pub trait SheetObserver {
 #[derive(Serialize, Deserialize)]
 pub struct Sheet {
     pub uuid: String,
+    pub sheet_name: Option<String>,
     pub columns: HashMap<usize, ColumnDefinition>,
     pub rows: HashMap<RowIndex, HashMap<ColumnIndex, Cell>>,
     pub column_dependency_manager: ColumnDependencyManager,
@@ -41,6 +44,7 @@ impl std::fmt::Debug for Sheet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Sheet")
             .field("uuid", &self.uuid)
+            .field("sheet_name", &self.sheet_name)
             .field("columns", &self.columns)
             .field("rows", &self.rows)
             .field("column_dependency_manager", &self.column_dependency_manager)
@@ -53,6 +57,7 @@ impl Clone for Sheet {
     fn clone(&self) -> Self {
         Self {
             uuid: self.uuid.clone(),
+            sheet_name: self.sheet_name.clone(),
             columns: self.columns.clone(),
             rows: self.rows.clone(),
             column_dependency_manager: self.column_dependency_manager.clone(),
@@ -71,6 +76,7 @@ impl Sheet {
     pub fn new() -> Self {
         Self {
             uuid: Uuid::new_v4().to_string(),
+            sheet_name: None,
             columns: HashMap::new(),
             rows: HashMap::new(),
             column_dependency_manager: ColumnDependencyManager::default(),
