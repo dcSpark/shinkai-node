@@ -26,7 +26,6 @@ shinkai_dsl = { path = "../shinkai-dsl" }
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
 rust_decimal = "1.17.0"
-uuid = { version = "1.6.1", features = ["v4"] } 
 
 [dependencies.tracing]
 version = "0.1.40"

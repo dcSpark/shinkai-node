@@ -7398,13 +7398,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dashmap",
- "futures",
  "pest",
  "pest_derive",
- "reqwest",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -7462,7 +7459,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
- "uuid 1.8.0",
  "x25519-dalek",
 ]
 
