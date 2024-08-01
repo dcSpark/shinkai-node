@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.86"
+async-openai = "0.23.4"
 async-trait = "0.1.74"
 futures = "0.3.30"
 polars = "0.41.3"
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.117"
-tiktoken = "1.0.1"
+tiktoken-rs = "0.5.9"
 tokio = { version = "1.36", features = ["full"] }

@@ -1,7 +1,11 @@
-use async_trait::async_trait;
+use std::collections::HashMap;
 
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone)]
 pub struct BaseLLMCallback {
-    response: Vec<String>,
+    pub response: Vec<String>,
 }
 
 impl BaseLLMCallback {
@@ -14,22 +18,25 @@ impl BaseLLMCallback {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageType {
+    String(String),
+    Strings(Vec<String>),
+    Dictionary(Vec<HashMap<String, String>>),
+}
+
 #[async_trait]
 pub trait BaseLLM {
-    async fn generate(&self, messages: Vec<String>, streaming: bool, callbacks: Option<Vec<BaseLLMCallback>>)
-        -> String;
-
     async fn agenerate(
         &self,
-        messages: Vec<String>,
+        messages: MessageType,
         streaming: bool,
         callbacks: Option<Vec<BaseLLMCallback>>,
-    ) -> String;
+        llm_params: HashMap<String, serde_json::Value>,
+    ) -> anyhow::Result<String>;
 }
 
 #[async_trait]
 pub trait BaseTextEmbedding {
-    async fn embed(&self, text: &str) -> Vec<f64>;
-
     async fn aembed(&self, text: &str) -> Vec<f64>;
 }
