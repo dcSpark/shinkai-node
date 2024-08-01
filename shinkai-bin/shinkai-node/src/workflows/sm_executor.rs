@@ -9,12 +9,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use dashmap::DashMap;
 use futures::Future;
+use shinkai_dsl::dsl_schemas::{Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, Workflow, WorkflowValue};
 use tokio::runtime::Runtime;
 use tokio::task;
-
-use crate::dsl_schemas::{
-    Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
-};
 
 /*
 TODOs:

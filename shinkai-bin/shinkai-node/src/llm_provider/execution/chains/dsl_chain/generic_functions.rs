@@ -2,14 +2,13 @@ use csv::ReaderBuilder;
 use futures::{future::join_all, StreamExt};
 use html2md::parse_html;
 use scraper::{Html, Selector};
-use shinkai_dsl::sm_executor::WorkflowError;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::{any::Any, collections::HashMap};
 
-use crate::llm_provider::{
+use crate::{llm_provider::{
     execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt},
     job_manager::JobManager,
-};
+}, workflows::sm_executor::WorkflowError};
 
 use super::split_text_for_llm::split_text_for_llm;
 

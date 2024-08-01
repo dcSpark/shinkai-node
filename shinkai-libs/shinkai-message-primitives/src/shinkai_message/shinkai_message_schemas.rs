@@ -1,9 +1,9 @@
+use crate::schemas::sheet::ColumnDefinition;
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use shinkai_sheet::sheet::ColumnDefinition;
 use std::collections::HashMap;
 use std::fmt;
 

@@ -1,5 +1,4 @@
-use crate::{llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait, managers::model_capabilities_manager::ModelCapabilitiesManager};
-use shinkai_dsl::sm_executor::WorkflowError;
+use crate::{llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait, managers::model_capabilities_manager::ModelCapabilitiesManager, workflows::sm_executor::WorkflowError};
 use std::any::Any;
 
 pub fn split_text_for_llm(

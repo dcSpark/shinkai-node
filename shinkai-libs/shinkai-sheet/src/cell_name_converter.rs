@@ -1,5 +1,5 @@
 use regex::Regex;
-use crate::sheet::CellId;
+use shinkai_message_primitives::schemas::sheet::CellId;
 
 pub struct CellNameConverter;
 

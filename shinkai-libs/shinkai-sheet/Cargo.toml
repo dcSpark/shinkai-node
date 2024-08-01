@@ -12,6 +12,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6.1", features = ["v4"] }
 regex = "1"
 shinkai_dsl = { path = "../shinkai-dsl" }
+shinkai_message_primitives = { path = "../shinkai-message-primitives" }
 async-channel = "1.6.1"
 async-recursion = "1.0.5"
 blake3 = "1.2.0"

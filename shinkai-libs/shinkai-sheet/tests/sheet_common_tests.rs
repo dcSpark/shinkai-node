@@ -1,8 +1,10 @@
 use chrono::Utc;
-use shinkai_sheet::sheet::{ColumnBehavior, ColumnDefinition, Sheet};
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
+    use shinkai_sheet::sheet::Sheet;
+
     use super::*;
 
     #[tokio::test]

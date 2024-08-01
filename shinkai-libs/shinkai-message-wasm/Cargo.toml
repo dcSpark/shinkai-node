@@ -16,7 +16,7 @@ chacha20poly1305 = "0.7.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
 rand = "0.8.4"
-wasm-bindgen = "0.2.87"
+wasm-bindgen = "0.2.92"
 chrono = "0.4"
 chrono-tz = "0.5"
 regex = "1"
