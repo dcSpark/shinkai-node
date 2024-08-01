@@ -2,12 +2,13 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use async_channel::{Receiver, Sender};
+use shinkai_message_primitives::schemas::sheet::{ColumnDefinition, WorkflowSheetJobData};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_sheet::sheet::{ColumnDefinition, Sheet, SheetUpdate, WorkflowSheetJobData};
+use shinkai_sheet::sheet::{Sheet, SheetUpdate};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;

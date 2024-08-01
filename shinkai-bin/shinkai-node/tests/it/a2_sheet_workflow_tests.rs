@@ -3,11 +3,11 @@ use shinkai_dsl::parser::parse_workflow;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
+use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_sheet::sheet::{ColumnBehavior, ColumnDefinition};
 
 use super::utils::node_test_api::{
     api_get_all_smart_inboxes_from_profile, api_initial_registration_with_no_code_for_device,

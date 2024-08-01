@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-
-use crate::sheet::ColumnIndex;
+use shinkai_message_primitives::schemas::sheet::ColumnIndex;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ColumnDependencyManager {

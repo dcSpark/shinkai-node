@@ -20,7 +20,7 @@ hex = "=0.4.3"
 chrono = "0.4"
 dotenv = "0.15.0"
 derivative = "2.2"
-uuid = { version = "0.8", features = ["v4"] }
+uuid = { version = "1.6.1", features = ["v4"] }
 
 [dependencies.serde]
 version = "1.0.188"

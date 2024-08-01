@@ -1,14 +1,12 @@
-use shinkai_sheet::sheet::{CellId, ColumnBehavior, ColumnDefinition, Sheet};
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use shinkai_dsl::parser::parse_workflow;
-    use shinkai_sheet::sheet::{CellStatus, WorkflowSheetJobData};
+    use shinkai_message_primitives::schemas::sheet::{CellStatus, ColumnBehavior, ColumnDefinition, WorkflowSheetJobData};
+    use shinkai_sheet::sheet::Sheet;
     use tokio::sync::Mutex;
-
-    use super::*;
 
     async fn process_jobs(sheet: Arc<Mutex<Sheet>>, jobs: Vec<WorkflowSheetJobData>) {
         for job in jobs {
