@@ -412,4 +412,79 @@ mod tests {
             _ => panic!("Expected Composite in step body"),
         }
     }
+
+    #[test]
+    fn test_parse_workflow_with_author_and_sticky() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            } @@nico.arb-sep-shinkai sticky
+        "#;
+        let result = parse_workflow(input);
+        eprintln!("{:?}", result);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        assert_eq!(workflow.name, "ExtensiveSummary");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 2);
+        assert_eq!(workflow.author, "@@nico.arb-sep-shinkai".to_string());
+        assert!(workflow.sticky);
+    }
+
+    #[test]
+    fn test_parse_workflow_with_author_no_sticky() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            } @@nico.arb-sep-shinkai
+        "#;
+        let result = parse_workflow(input);
+        eprintln!("{:?}", result);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        assert_eq!(workflow.name, "ExtensiveSummary");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 2);
+        assert_eq!(workflow.author, "@@nico.arb-sep-shinkai".to_string());
+        assert!(!workflow.sticky);
+    }
+
+    #[test]
+    fn test_parse_workflow_with_sticky_no_author() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            } sticky
+        "#;
+        let result = parse_workflow(input);
+        eprintln!("{:?}", result);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        assert_eq!(workflow.name, "ExtensiveSummary");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 2);
+        assert_eq!(workflow.author, "@@not_defined.shinkai".to_string());
+        assert!(workflow.sticky);
+    }
 }

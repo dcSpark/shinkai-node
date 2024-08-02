@@ -311,8 +311,9 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
                         Rule::step => {
                             steps.push(parse_step(inner_pair)?);
                         }
-                        Rule::author_tag => {
-                            author = inner_pair.as_str().to_string();
+                        Rule::identity => {
+                            let identity = inner_pair.as_str().to_string();
+                            author = format!("@@{}", identity);
                         }
                         Rule::sticky_tag => {
                             sticky = true;
