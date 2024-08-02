@@ -173,10 +173,23 @@ impl JobManager {
         }
 
         // 3.- *If* a sheet job is found, processing job message is taken over by this alternate logic
-        // TODO: implement logic
-        // TODO: logic should check SheetManager for the latest inputs
-        // TODO: logic should check for callbacks and add them to the JobManagerQueue if required
-        // TODO: implement test
+        let sheet_job_found = JobManager::process_sheet_job(
+            db.clone(),
+            vector_fs.clone(),
+            &job_message.job_message,
+            llm_provider_found.clone(),
+            full_job.clone(),
+            user_profile.clone(),
+            generator.clone(),
+            ws_manager.clone(),
+            Some(sheet_manager.clone()),
+            tool_router.clone(),
+            job_queue_manager.clone(),
+        )
+        .await?;
+        if sheet_job_found {
+            return Ok(job_id);
+        }
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
@@ -389,64 +402,6 @@ impl JobManager {
         );
 
         let job_id = full_job.job_id().to_string();
-        // let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
-        // let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
-        // let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
-
-        // // eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
-
-        // // Create the inference chain context
-        // let mut chain_context = InferenceChainContext::new(
-        //     db.clone(),
-        //     vector_fs.clone(),
-        //     full_job,
-        //     parsed_user_message,
-        //     llm_provider,
-        //     prev_execution_context,
-        //     generator,
-        //     user_profile.clone(),
-        //     2,
-        //     max_tokens_in_prompt,
-        //     HashMap::new(),
-        //     ws_manager.clone(),
-        //     tool_router.clone(),
-        // );
-
-        // // Note: we do this once so we are not re-reading the files multiple times for each operation
-        // {
-        //     let files = {
-        //         let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
-        //         // Check if there was an error getting the files
-        //         match files_result {
-        //             Ok(files) => files,
-        //             Err(e) => return Err(LLMProviderError::VectorFS(e)),
-        //         }
-        //     };
-
-        //     chain_context.update_raw_files(Some(files.into()));
-        // }
-
-        // // Available functions for the workflow
-        // let functions = HashMap::new();
-
-        // // TODO: read from tooling storage what we may have available
-
-        // // Call the inference chain router to choose which chain to use, and call it
-        // let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
-
-        // // Add the inference function to the functions map
-        // dsl_inference.add_inference_function();
-        // dsl_inference.add_inference_no_ws_function();
-        // dsl_inference.add_opinionated_inference_function();
-        // dsl_inference.add_opinionated_inference_no_ws_function();
-        // dsl_inference.add_multi_inference_function();
-        // dsl_inference.add_all_generic_functions();
-        // dsl_inference.add_tools_from_router().await?;
-
-        // // Execute the workflow using run_chain
-        // let start = Instant::now();
-        // let inference_result = dsl_inference.run_chain().await?;
-
         let inference_result = Self::execute_workflow(
             db.clone(),
             vector_fs.clone(),
@@ -579,8 +534,6 @@ impl JobManager {
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     ) -> Result<bool, LLMProviderError> {
-        // TODO: implement test
-
         if let Some(sheet_job_data) = &job_message.sheet_job_data {
             let sheet_job_data: WorkflowSheetJobData = serde_json::from_str(sheet_job_data)
                 .map_err(|e| LLMProviderError::SerializationError(e.to_string()))?;

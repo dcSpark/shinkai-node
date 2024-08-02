@@ -158,9 +158,7 @@ impl SheetManager {
             };
 
             let mut job_manager = job_manager.lock().await;
-            let agent_name =
-                ShinkaiName::from_node_and_profile_names(user_profile.node_name.clone(), "main".to_string())?;
-            let agent_id = agent_name.get_agent_name_string().ok_or("LLMProviderNotFound")?;
+            let agent_id = job_data.llm_provider_name.clone();
             let job_id = job_manager
                 .process_job_creation(job_creation_info, user_profile, &agent_id)
                 .await
