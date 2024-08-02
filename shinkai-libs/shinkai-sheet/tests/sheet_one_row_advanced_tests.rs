@@ -1,23 +1,13 @@
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use shinkai_dsl::parser::parse_workflow;
-    use shinkai_message_primitives::schemas::sheet::{CellStatus, ColumnBehavior, ColumnDefinition, WorkflowSheetJobData};
+    use shinkai_message_primitives::schemas::sheet::{
+        CellStatus, ColumnBehavior, ColumnDefinition, WorkflowSheetJobData,
+    };
     use shinkai_sheet::sheet::Sheet;
     use tokio::sync::Mutex;
-
-    async fn process_jobs(sheet: Arc<Mutex<Sheet>>, jobs: Vec<WorkflowSheetJobData>) {
-        for job in jobs {
-            let result = "Job Result".to_string(); // Mock result
-            let mut sheet = sheet.lock().await;
-            sheet
-                .set_cell_value(job.row, job.col, result)
-                .await
-                .expect("Failed to set cell value");
-        }
-    }
 
     #[tokio::test]
     async fn test_llm_call_column() {
@@ -161,9 +151,11 @@ mod tests {
             behavior: ColumnBehavior::Formula("=A + \" And Space\"".to_string()),
         };
 
-        let _ = sheet.set_column(column_text.clone()).await;
-        let _ = sheet.set_column(column_llm.clone()).await;
-        let _ = sheet.set_column(column_formula.clone()).await;
+        let _text_jobs = sheet.set_column(column_text.clone()).await;
+        let llm_jobs = sheet.set_column(column_llm.clone()).await;
+        let _formula_jobs = sheet.set_column(column_formula.clone()).await;
+
+        assert_eq!(llm_jobs.as_ref().unwrap().len(), 1);
 
         // Set value in Column A
         sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();

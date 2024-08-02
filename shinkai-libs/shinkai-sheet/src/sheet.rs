@@ -113,12 +113,12 @@ impl Sheet {
             self.rows.keys().cloned().collect()
         };
 
-        for row in active_rows {
+        for row in &active_rows {
             if let ColumnBehavior::Formula(formula) = &definition.behavior {
-                if let Some(value) = self.evaluate_formula(formula, row, definition.id) {
+                if let Some(value) = self.evaluate_formula(formula, *row, definition.id) {
                     let new_jobs = self
                         .dispatch(SheetAction::SetCellValue {
-                            row,
+                            row: *row,
                             col: definition.id,
                             value,
                         })
@@ -126,6 +126,14 @@ impl Sheet {
                     jobs.extend(new_jobs);
                 }
             }
+        }
+
+        // Trigger update for LLMCall columns only once
+        if let ColumnBehavior::LLMCall { .. } = definition.behavior {
+            let new_jobs = self
+                .dispatch(SheetAction::TriggerUpdateColumnValues(definition.id))
+                .await;
+            jobs.extend(new_jobs);
         }
 
         Ok(jobs)
@@ -137,16 +145,17 @@ impl Sheet {
     }
 
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<ColumnIndex> {
-        let parts: Vec<&str> = formula.split('+').collect();
         let mut dependencies = HashSet::new();
 
-        for part in parts {
-            let part = part.trim();
-            if part.starts_with('=') {
-                let col_name = &part[1..];
-                dependencies.insert(CellNameConverter::column_name_to_index(col_name));
-            } else if !part.starts_with('"') || !part.ends_with('"') {
-                dependencies.insert(CellNameConverter::column_name_to_index(part));
+        // Check if the formula starts with '='
+        if formula.starts_with('=') {
+            let parts: Vec<&str> = formula[1..].split('+').collect();
+
+            for part in parts {
+                let part = part.trim();
+                if !part.starts_with('"') || !part.ends_with('"') {
+                    dependencies.insert(CellNameConverter::column_name_to_index(part));
+                }
             }
         }
 
@@ -396,6 +405,7 @@ pub enum SheetAction {
         depth: usize,
     },
     RemoveColumn(ColumnIndex),
+    TriggerUpdateColumnValues(ColumnIndex),
     // Add other actions as needed
 }
 
@@ -584,6 +594,38 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                 jobs.append(&mut new_jobs);
                             }
                         }
+                    }
+                }
+            }
+        }
+        SheetAction::TriggerUpdateColumnValues(col_index) => {
+            let active_rows: Vec<RowIndex> = if state.rows.is_empty() {
+                vec![0] // Ensure at least the first row is active
+            } else {
+                state.rows.keys().cloned().collect()
+            };
+
+            for row_index in active_rows {
+                if let Some(column_definition) = state.columns.get(&col_index).cloned() {
+                    if let ColumnBehavior::LLMCall {
+                        input: _, // used under the hood with get_input_cells_for_column
+                        workflow,
+                        llm_provider_name,
+                        input_hash: _,
+                    } = &column_definition.behavior
+                    {
+                        let input_cells = state.get_input_cells_for_column(row_index, col_index);
+                        let workflow_job_data = WorkflowSheetJobData {
+                            sheet_id: state.uuid.clone(),
+                            row: row_index,
+                            col: col_index,
+                            col_definition: column_definition.clone(),
+                            workflow: workflow.clone(),
+                            input_cells,
+                            llm_provider_name: llm_provider_name.clone(),
+                        };
+
+                        jobs.push(workflow_job_data);
                     }
                 }
             }

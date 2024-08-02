@@ -2,8 +2,10 @@ use chrono::Utc;
 
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
-    use shinkai_sheet::sheet::Sheet;
+    use std::collections::HashSet;
+
+    use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition, ColumnIndex};
+    use shinkai_sheet::{cell_name_converter::CellNameConverter, sheet::Sheet};
 
     use super::*;
 
@@ -369,5 +371,24 @@ mod tests {
         sheet.remove_column(0).await.unwrap();
         assert_eq!(sheet.columns.len(), 2);
         sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_parse_formula_dependencies_text_input() {
+        let sheet = Sheet::new();
+        let formula = "Say Hello World";
+        let dependencies = sheet.parse_formula_dependencies(formula);
+        let expected: HashSet<ColumnIndex> = HashSet::new();
+        assert_eq!(dependencies, expected);
+    }
+
+    #[tokio::test]
+    async fn test_parse_formula_dependencies_with_column_reference() {
+        let sheet = Sheet::new();
+        let formula = "=A + \" And Space\"";
+        let dependencies = sheet.parse_formula_dependencies(formula);
+        let mut expected = HashSet::new();
+        expected.insert(CellNameConverter::column_name_to_index("A"));
+        assert_eq!(dependencies, expected);
     }
 }
