@@ -1,4 +1,4 @@
-workflow  = { "workflow" ~ identifier ~ version ~ "{" ~ step+ ~ "}" }
+workflow  = { "workflow" ~ identifier ~ version ~ "{" ~ step+ ~ "}" ~ author_tag? ~ sticky_tag? }
 step      = { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
 step_body = { (condition | register_operation | action | for_loop)+ }
 condition = { "if" ~ expression ~ "{" ~ step_body ~ "}" }
@@ -18,7 +18,10 @@ comparison_operator =  { "==" | "!=" | ">" | "<" | ">=" | "<=" }
 value               =  { string | number | boolean | identifier | register }
 split_expression    =  { (register | identifier | string) ~ ".split(" ~ delimiter ~ ")" }
 version             =  { "v" ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)* }
+author_tag          = _{ "@" ~ "@" ~ identity }
+sticky_tag          = @{ "sticky" }
 identifier          = @{ (ASCII_ALPHANUMERIC | "_")+ }
+identity            = @{ (ASCII_ALPHANUMERIC | "_" | "." | "-")* }
 string              = _{ "\"" ~ (("\\\"" | (!"\"" ~ ANY))*) ~ "\"" }
 delimiter           =  { "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 number              = _{ ASCII_DIGIT+ }
