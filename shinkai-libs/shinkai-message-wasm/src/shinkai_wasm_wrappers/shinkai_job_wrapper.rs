@@ -135,6 +135,8 @@ impl JobMessageWrapper {
             parent,
             workflow_code,
             workflow_name,
+            sheet_job_data: None,
+            callback: None,
         };
         Ok(JobMessageWrapper { inner: job_message })
     }
@@ -178,6 +180,8 @@ impl JobMessageWrapper {
             parent: Some(parent.to_string()),
             workflow_code,
             workflow_name,
+            sheet_job_data: None,
+            callback: None,
         };
         JobMessageWrapper { inner: job_message }
     }

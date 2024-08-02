@@ -1,3 +1,4 @@
+use crate::schemas::sheet::APIColumnDefinition;
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
@@ -74,6 +75,13 @@ pub enum MessageSchemaType {
     ListWorkflows,
     UpdateSupportedEmbeddingModels,
     UpdateDefaultEmbeddingModel,
+    UserSheets,
+    SetColumn,
+    RemoveColumn,
+    RemoveSheet,
+    CreateEmptySheet,
+    SetCellValue,
+    GetSheet,
 }
 
 impl MessageSchemaType {
@@ -143,6 +151,13 @@ impl MessageSchemaType {
             "ListWorkflows" => Some(Self::ListWorkflows),
             "UpdateSupportedEmbeddingModels" => Some(Self::UpdateSupportedEmbeddingModels),
             "UpdateDefaultEmbeddingModel" => Some(Self::UpdateDefaultEmbeddingModel),
+            "UserSheets" => Some(Self::UserSheets),
+            "SetColumn" => Some(Self::SetColumn),
+            "RemoveColumn" => Some(Self::RemoveColumn),
+            "RemoveSheet" => Some(Self::RemoveSheet),
+            "CreateEmptySheet" => Some(Self::CreateEmptySheet),
+            "SetCellValue" => Some(Self::SetCellValue),
+            "GetSheet" => Some(Self::GetSheet),
             _ => None,
         }
     }
@@ -212,6 +227,13 @@ impl MessageSchemaType {
             Self::ListWorkflows => "ListWorkflows",
             Self::UpdateSupportedEmbeddingModels => "UpdateSupportedEmbeddingModels",
             Self::UpdateDefaultEmbeddingModel => "UpdateDefaultEmbeddingModel",
+            Self::UserSheets => "UserSheets",
+            Self::SetColumn => "SetColumn",
+            Self::RemoveColumn => "RemoveColumn",
+            Self::RemoveSheet => "RemoveSheet",
+            Self::CreateEmptySheet => "CreateEmptySheet",
+            Self::SetCellValue => "SetCellValue",
+            Self::GetSheet => "GetSheet",
             Self::Empty => "",
         }
     }
@@ -234,8 +256,14 @@ pub struct JobCreationInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum CallbackAction {
+    Job(JobMessage),
+    Sheet(SheetManagerAction),
+    // Cron(CronManagerAction),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct JobMessage {
-    // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
     pub files_inbox: String,
@@ -243,6 +271,8 @@ pub struct JobMessage {
     pub workflow_code: Option<String>,
     #[serde(deserialize_with = "deserialize_workflow_name")]
     pub workflow_name: Option<String>,
+    pub sheet_job_data: Option<String>,
+    pub callback: Option<Box<CallbackAction>>,
 }
 
 fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -258,6 +288,19 @@ where
     Ok(s)
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SheetManagerAction {
+    pub job_message_next: Option<JobMessage>,
+    // TODO: should this be m0re complex and have the actual desired action?
+    pub sheet_action: SheetJobAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SheetJobAction {
+    pub sheet_id: String,
+    pub row: usize,
+    pub col: usize,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FileDestinationSourceType {
@@ -519,6 +562,26 @@ pub struct TopicSubscription {
 pub struct APIAddWorkflow {
     pub workflow_raw: String,
     pub description: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APISetColumnPayload {
+    pub sheet_id: String,
+    pub column: APIColumnDefinition,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APIRemoveColumnPayload {
+    pub sheet_id: String,
+    pub column_id: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APISetCellValuePayload {
+    pub sheet_id: String,
+    pub row: usize,
+    pub col: usize,
+    pub value: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

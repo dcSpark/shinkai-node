@@ -10,10 +10,11 @@ mod tests {
             Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, WorkflowValue,
         },
         parser::parse_workflow,
-        sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
     };
 
     use tokio::time::{sleep, Duration};
+
+    use crate::workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError};
     struct SumFunction;
 
     #[async_trait]

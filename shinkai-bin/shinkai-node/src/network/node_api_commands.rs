@@ -1821,7 +1821,7 @@ impl Node {
             Some(MessageSchemaType::JobMessageSchema),
         )
         .await;
-        let (msg, _) = match validation_result {
+        let (msg, sender_identity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1834,7 +1834,33 @@ impl Node {
             ShinkaiLogLevel::Debug,
             format!("api_job_message> msg: {:?}", msg).as_str(),
         );
-        // TODO: add permissions to check if the sender has the right permissions to send the job message
+
+        let sender_shinkai_name = sender_identity.get_full_identity_name();
+        let sender_node_name = match ShinkaiName::new(sender_shinkai_name) {
+            Ok(name) => name.get_node_name_string(),
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid sender identity name.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        // Check if the sender's node name matches the input node name
+        if sender_node_name != node_name.get_node_name_string() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::FORBIDDEN.as_u16(),
+                    error: "Don't have access".to_string(),
+                    message: "Permission denied. The sender identity does not belong to this node.".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
 
         match Self::internal_job_message(job_manager, msg.clone()).await {
             Ok(_) => {

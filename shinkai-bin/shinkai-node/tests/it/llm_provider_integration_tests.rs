@@ -1,8 +1,8 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
 };
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -37,7 +37,7 @@ fn setup() {
 
 #[test]
 fn node_llm_provider_registration() {
-    std::env::set_var("WELCOME_MESSAGE", "false");
+    unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     init_default_tracing();
     // WIP: need to find a way to test the agent registration
     setup();
@@ -462,6 +462,8 @@ fn node_llm_provider_registration() {
                     parent: None,
                     workflow_code: None,
                     workflow_name: None,
+                    sheet_job_data: None,
+                    callback: None,
                 };
                 let body = serde_json::to_string(&job_message)
                     .map_err(|_| "Failed to serialize job message to JSON")

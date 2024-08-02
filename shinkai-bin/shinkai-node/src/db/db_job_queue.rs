@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB};
 
-use rocksdb::{IteratorMode};
+use rocksdb::IteratorMode;
 use serde::{de::DeserializeOwned, Serialize};
 
 impl ShinkaiDB {

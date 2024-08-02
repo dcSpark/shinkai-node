@@ -11,8 +11,10 @@ use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
+use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::network::ws_manager::WSUpdateHandler;
@@ -460,6 +462,34 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APISetColumn {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIRemoveColumn {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIUserSheets {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APICreateSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIRemoveSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APISetCellValue {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIGetSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIUpdateDefaultEmbeddingModel {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -545,6 +575,10 @@ pub struct Node {
     pub ws_server: Option<tokio::task::JoinHandle<()>>,
     // Tool Router. Option so it is less painful to test
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
+    pub callback_manager: Arc<Mutex<JobCallbackManager>>,
+    // Sheet Manager.
+    pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Default embedding model for new profiles
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
@@ -738,6 +772,9 @@ impl Node {
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
+        let sheet_manager_result = SheetManager::new(Arc::downgrade(&db_arc.clone()), node_name.clone()).await;
+        let sheet_manager = sheet_manager_result.unwrap();
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -768,6 +805,8 @@ impl Node {
             ws_address,
             ws_manager_trait,
             ws_server: None,
+            callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
+            sheet_manager: Arc::new(Mutex::new(sheet_manager)),
             tool_router: Some(Arc::new(Mutex::new(tool_router))),
             default_embedding_model,
             supported_embedding_models,
@@ -778,7 +817,8 @@ impl Node {
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let db_weak = Arc::downgrade(&self.db);
         let vector_fs_weak = Arc::downgrade(&self.vector_fs);
-        self.job_manager = Some(Arc::new(Mutex::new(
+
+        let job_manager = Arc::new(Mutex::new(
             JobManager::new(
                 db_weak,
                 Arc::clone(&self.identity_manager),
@@ -789,9 +829,17 @@ impl Node {
                 self.unstructured_api.clone(),
                 self.ws_manager_trait.clone(),
                 self.tool_router.clone(),
+                self.sheet_manager.clone(),
+                self.callback_manager.clone(),
             )
             .await,
-        )));
+        ));
+        self.job_manager = Some(job_manager.clone());
+
+        {
+            let mut sheet_manager = self.sheet_manager.lock().await;
+            sheet_manager.set_job_manager(job_manager.clone());
+        }
 
         shinkai_log(
             ShinkaiLogOption::Node,
@@ -799,20 +847,27 @@ impl Node {
             &format!("Starting node with name: {}", self.node_name),
         );
         let db_weak = Arc::downgrade(&self.db);
-        self.cron_manager = match &self.job_manager {
-            Some(job_manager) => Some(Arc::new(Mutex::new(
-                CronManager::new(
-                    db_weak,
-                    vector_fs_weak,
-                    clone_signature_secret_key(&self.identity_secret_key),
-                    self.node_name.clone(),
-                    Arc::clone(job_manager),
-                    self.ws_manager_trait.clone(),
-                )
-                .await,
-            ))),
-            None => None,
-        };
+
+        let cron_manager_result = CronManager::new(
+            db_weak.clone(),
+            vector_fs_weak,
+            clone_signature_secret_key(&self.identity_secret_key),
+            self.node_name.clone(),
+            job_manager.clone(),
+            self.ws_manager_trait.clone(),
+        )
+        .await;
+
+        let cron_manager = Arc::new(Mutex::new(cron_manager_result));
+        self.cron_manager = Some(cron_manager.clone());
+
+        {
+            let mut callback_manager = self.callback_manager.lock().await;
+            callback_manager.update_job_manager(job_manager.clone());
+            callback_manager.update_sheet_manager(self.sheet_manager.clone());
+            callback_manager.update_cron_manager(cron_manager.clone());
+        }
+
         self.initialize_embedding_models().await?;
         {
             // Starting the WebSocket server
@@ -824,6 +879,7 @@ impl Node {
                 self.ws_server = Some(ws_server);
             }
         }
+        eprintln!(">> Node start set variables successfully");
 
         let listen_future = self.listen_and_reconnect(self.proxy_connection_info.clone()).fuse();
         pin_mut!(listen_future);
@@ -1589,6 +1645,125 @@ impl Node {
                                             tokio::spawn(async move {
                                                 let _ = Node::api_list_toolkits(
                                                     db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APISetColumn { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
+                                        NodeCommand::APISetColumn { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_set_column(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIRemoveColumn { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
+                                        NodeCommand::APIRemoveColumn { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_remove_column(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUserSheets { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
+                                        NodeCommand::APIUserSheets { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_user_sheets(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APICreateSheet { msg, res }
+                                        NodeCommand::APICreateSheet { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_create_empty_sheet(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIRemoveSheet { msg, res }
+                                        NodeCommand::APIRemoveSheet { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_remove_sheet(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APISetCellValue { msg, res }
+                                        NodeCommand::APISetCellValue { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_set_cell_value(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetSheet { msg, res }
+                                        NodeCommand::APIGetSheet { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_sheet(
+                                                    sheet_manager,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
@@ -2416,7 +2591,6 @@ impl Node {
                                         },
                                         // NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => self.api_update_default_embedding_model(msg, res).await,
                                         NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => {
-                                            let default_embedding_model = self.default_embedding_model.clone();
                                             let db = self.db.clone();
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
@@ -2464,7 +2638,7 @@ impl Node {
     }
 
     // A function that initializes the embedding models from the database
-    async fn initialize_embedding_models(&self) -> Result<(), NodeError> {
+    async fn initialize_embedding_models(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Read the default embedding model from the database
         match self.db.get_default_embedding_model() {
             Ok(model) => {
@@ -2474,9 +2648,11 @@ impl Node {
             Err(ShinkaiDBError::DataNotFound) => {
                 // If not found, update the database with the current value
                 let default_model_guard = self.default_embedding_model.lock().await;
-                self.db.update_default_embedding_model(default_model_guard.clone())?;
+                self.db
+                    .update_default_embedding_model(default_model_guard.clone())
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
             }
-            Err(e) => return Err(NodeError::from(e)),
+            Err(e) => return Err(Box::new(NodeError::from(e)) as Box<dyn std::error::Error + Send>),
         }
 
         // Read the supported embedding models from the database
@@ -2489,9 +2665,10 @@ impl Node {
                 // If not found, update the database with the current value
                 let supported_models_guard = self.supported_embedding_models.lock().await;
                 self.db
-                    .update_supported_embedding_models(supported_models_guard.clone())?;
+                    .update_supported_embedding_models(supported_models_guard.clone())
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
             }
-            Err(e) => return Err(NodeError::from(e)),
+            Err(e) => return Err(Box::new(NodeError::from(e)) as Box<dyn std::error::Error + Send>),
         }
 
         Ok(())
@@ -2942,7 +3119,10 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("Sending Message with Ext Metadata {:?} to {:?}", message.external_metadata, peer),
+            &format!(
+                "Sending Msg with External Metadata {:?} to {:?}",
+                message.external_metadata, peer
+            ),
         );
         let address = peer.0;
         let message = Arc::new(message);

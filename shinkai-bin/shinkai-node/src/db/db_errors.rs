@@ -57,7 +57,8 @@ pub enum ShinkaiDBError {
     DeserializationFailed(String),
     ToolkitNotFound(String),
     InvalidToolType(String),
-    WorkflowNotFound(String)
+    WorkflowNotFound(String),
+    SheetNotFound(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -124,6 +125,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::ToolkitNotFound(e) => write!(f, "Toolkit not found: {}", e),
             ShinkaiDBError::InvalidToolType(e) => write!(f, "Invalid tool type: {}", e),
             ShinkaiDBError::WorkflowNotFound(e) => write!(f, "Workflow not found: {}", e),
+            ShinkaiDBError::SheetNotFound(e) => write!(f, "Sheet not found: {}", e),
         }
     }
 }

@@ -6,14 +6,11 @@ use crate::{
         providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
+    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool}, workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
-use shinkai_dsl::{
-    dsl_schemas::Workflow,
-    sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
-};
+use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
     schemas::inbox_name::InboxName,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},

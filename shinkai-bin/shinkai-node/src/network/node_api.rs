@@ -30,6 +30,7 @@ use super::node_api_handlers::change_nodes_name_handler;
 use super::node_api_handlers::create_files_inbox_with_symmetric_key_handler;
 use super::node_api_handlers::create_job_handler;
 use super::node_api_handlers::create_registration_code_handler;
+use super::node_api_handlers::create_sheet_handler;
 use super::node_api_handlers::delete_workflow_handler;
 use super::node_api_handlers::get_all_inboxes_for_profile_handler;
 use super::node_api_handlers::get_all_smart_inboxes_for_profile_handler;
@@ -53,11 +54,15 @@ use super::node_api_handlers::mark_as_read_up_to_handler;
 use super::node_api_handlers::modify_agent_handler;
 use super::node_api_handlers::ping_all_handler;
 use super::node_api_handlers::remove_agent_handler;
+use super::node_api_handlers::remove_column_handler;
+use super::node_api_handlers::remove_sheet_handler;
+use super::node_api_handlers::get_sheet_handler;
 use super::node_api_handlers::retrieve_vrkai_handler;
 use super::node_api_handlers::retrieve_vrpack_handler;
 use super::node_api_handlers::scan_ollama_models_handler;
 use super::node_api_handlers::search_workflows_handler;
 use super::node_api_handlers::send_msg_handler;
+use super::node_api_handlers::set_column_handler;
 use super::node_api_handlers::shinkai_health_handler;
 use super::node_api_handlers::subscribe_to_shared_folder_handler;
 use super::node_api_handlers::unsubscribe_handler;
@@ -66,6 +71,8 @@ use super::node_api_handlers::update_local_processing_preference_handler;
 use super::node_api_handlers::update_smart_inbox_name_handler;
 use super::node_api_handlers::update_workflow_handler;
 use super::node_api_handlers::use_registration_code_handler;
+use super::node_api_handlers::user_sheets_handler;
+use super::node_api_handlers::set_cell_value_handler;
 use super::node_api_handlers::NameToExternalProfileData;
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -852,6 +859,69 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| list_all_workflows_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/set_column
+    let set_column = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "set_column")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| set_column_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/remove_column
+    let remove_column = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "remove_column")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| remove_column_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/user_sheets
+    let user_sheets = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "user_sheets")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| user_sheets_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/create_sheet
+    let create_sheet = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "create_sheet")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| create_sheet_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/remove_sheet
+    let remove_sheet = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "remove_sheet")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| remove_sheet_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/get_sheet
+    let get_sheet = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_sheet")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| get_sheet_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/set_cell_value
+    let set_cell_value = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "set_cell_value")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| set_cell_value_handler(node_commands_sender.clone(), message))
+    };
+
     // POST v1/update_default_embedding_model
     let api_update_default_embedding_model = {
         let node_commands_sender = node_commands_sender.clone();
@@ -944,6 +1014,13 @@ pub async fn run_api(
         .or(delete_workflow)
         .or(get_workflow_info)
         .or(list_all_workflows)
+        .or(set_column)
+        .or(remove_column)
+        .or(user_sheets)
+        .or(get_sheet)
+        .or(create_sheet)
+        .or(remove_sheet)
+        .or(set_cell_value)
         .or(api_update_default_embedding_model)
         .or(api_update_supported_embedding_models)
         .recover(handle_rejection)

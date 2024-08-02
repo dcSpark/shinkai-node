@@ -15,10 +15,11 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_node::db::{ShinkaiDB, Topic};
+use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
-use shinkai_node::db::{ShinkaiDB, Topic};
-use shinkai_node::tools::tool_router::ToolRouter;
+use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
@@ -120,7 +121,10 @@ async fn test_process_job_queue_concurrency() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: UnstructuredAPI | {
+                              _: UnstructuredAPI,
+                              _: Arc<Mutex<SheetManager>>,
+                              _: Arc<Mutex<JobCallbackManager>>,
+                              _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -159,9 +163,13 @@ async fn test_process_job_queue_concurrency() {
             .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
+    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone()).await;
+    let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
+    let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
-        job_queue_manager,
+        job_queue_manager.clone(),
         db_weak.clone(),
         vector_fs_weak.clone(),
         node_name.clone(),
@@ -171,7 +179,20 @@ async fn test_process_job_queue_concurrency() {
         UnstructuredAPI::new_default(),
         None,
         None,
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager, _tool_router| {
+        sheet_manager.clone(),
+        callback_manager.clone(),
+        move |job,
+              _db,
+              _vector_fs,
+              node_name,
+              identity_sk,
+              generator,
+              unstructured_api,
+              _ws_manager,
+              _tool_router,
+              _sheet_manager,
+              _callback_manager,
+              _job_queue_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -180,6 +201,9 @@ async fn test_process_job_queue_concurrency() {
                 identity_sk,
                 generator,
                 unstructured_api,
+                sheet_manager.clone(),
+                callback_manager.clone(),
+                job_queue_manager.clone(),
             )
         },
     )
@@ -195,6 +219,8 @@ async fn test_process_job_queue_concurrency() {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -246,7 +272,10 @@ async fn test_sequential_process_for_same_job_id() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: UnstructuredAPI| {
+                              _: UnstructuredAPI,
+                              _: Arc<Mutex<SheetManager>>,
+                              _: Arc<Mutex<JobCallbackManager>>,
+                              _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -285,9 +314,13 @@ async fn test_sequential_process_for_same_job_id() {
             .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
+    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone()).await;
+    let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
+    let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
-        job_queue_manager,
+        job_queue_manager.clone(),
         db_weak.clone(),
         vector_fs_weak.clone(),
         node_name.clone(),
@@ -297,7 +330,20 @@ async fn test_sequential_process_for_same_job_id() {
         UnstructuredAPI::new_default(),
         None,
         None,
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager, _tool_router | {
+        sheet_manager.clone(),
+        callback_manager.clone(),
+        move |job,
+              _db,
+              _vector_fs,
+              node_name,
+              identity_sk,
+              generator,
+              unstructured_api,
+              _ws_manager,
+              _tool_router,
+              _sheet_manager,
+              _callback_manager,
+              _job_queue_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -306,6 +352,9 @@ async fn test_sequential_process_for_same_job_id() {
                 identity_sk,
                 generator,
                 unstructured_api,
+                sheet_manager.clone(),
+                callback_manager.clone(),
+                job_queue_manager.clone(),
             )
         },
     )
@@ -320,6 +369,8 @@ async fn test_sequential_process_for_same_job_id() {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
