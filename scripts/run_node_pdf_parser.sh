@@ -30,22 +30,7 @@ export INITIAL_AGENT_API_KEYS=""
 export LOG_ALL=1
 
 # Run this script in the root of the project or adjust the path to the pdfium dynamic library
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    OS="linux"
-    ARCH="x64"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    OS="mac"
-    if [[ $(uname -m) == "arm64" ]]; then
-        ARCH="arm64"
-    else
-        ARCH="x64"
-    fi
-elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-    OS="win"
-    ARCH="x64"
-fi
-
-export PDFIUM_DYNAMIC_LIB_PATH=$(PWD)/target/release/pdfium/${OS}-${ARCH}
+export PDFIUM_DYNAMIC_LIB_PATH=$(PWD)/target/release
 
 # Don't use ocrs in debug mode since it is extremely slow
 cargo run --release --features dynamic-pdf-parser
