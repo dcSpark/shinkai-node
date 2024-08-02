@@ -12,10 +12,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tra
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use tokio::time::sleep;
 
-use super::utils::node_test_api::{
-    api_get_all_smart_inboxes_from_profile, api_initial_registration_with_no_code_for_device,
-    api_llm_provider_registration,
-};
+use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
 
 #[test]
@@ -188,22 +185,25 @@ fn create_a_sheet_and_check_workflows() {
                     .unwrap();
             }
             {
-                sleep(Duration::from_secs(1800)).await;
-                
-                // api_get_all_smart_inboxes_from_profile
-                eprintln!("\n\n Get All Smart Inboxes");
-                let inboxes = api_get_all_smart_inboxes_from_profile(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk,
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    node1_identity_name.clone().as_str(),
-                )
-                .await;
-                eprintln!("inboxes: {:?}", inboxes);
-                assert_eq!(inboxes.len(), 1);
+                let start_time = std::time::Instant::now();
+                let timeout = Duration::from_secs(10);
+                let mut value = None;
+
+                while start_time.elapsed() < timeout {
+                    {
+                        let sheet_manager = node1_sheet_manager.clone();
+                        let sheet_manager = sheet_manager.lock().await;
+                        value = sheet_manager.get_cell_value(&sheet_id, 0, 1).unwrap();
+                    }
+
+                    if value == Some("Hola Mundo".to_string()) {
+                        break;
+                    }
+
+                    sleep(Duration::from_millis(500)).await;
+                }
+
+                assert_eq!(value, Some("Hola Mundo".to_string()));
             }
             node1_abort_handler.abort();
         })

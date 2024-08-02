@@ -278,6 +278,11 @@ impl SheetManager {
         Ok(())
     }
 
+    pub fn get_cell_value(&self, sheet_id: &str, row: usize, col: usize) -> Result<Option<String>, String> {
+        let sheet = self.sheets.get(sheet_id).ok_or("Sheet ID not found")?.0.clone();
+        Ok(sheet.get_cell_value(row, col))
+    }
+
     pub fn set_update_sender(&mut self, id: &str, sender: Sender<SheetUpdate>) -> Result<(), String> {
         if let Some((sheet, _)) = self.sheets.get_mut(id) {
             sheet.set_update_sender(sender);
