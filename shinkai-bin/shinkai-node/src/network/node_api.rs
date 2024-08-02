@@ -1017,6 +1017,7 @@ pub async fn run_api(
         .or(set_column)
         .or(remove_column)
         .or(user_sheets)
+        .or(get_sheet)
         .or(create_sheet)
         .or(remove_sheet)
         .or(set_cell_value)
