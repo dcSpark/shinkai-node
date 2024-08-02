@@ -2,12 +2,13 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use async_channel::{Receiver, Sender};
-use shinkai_message_primitives::schemas::sheet::{ColumnDefinition, WorkflowSheetJobData};
+use shinkai_message_primitives::schemas::sheet::{APIColumnDefinition, ColumnDefinition, WorkflowSheetJobData};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_sheet::cell_name_converter::CellNameConverter;
 use shinkai_sheet::sheet::{Sheet, SheetUpdate};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
@@ -202,6 +203,22 @@ impl SheetManager {
         }
 
         Ok(())
+    }
+
+    pub async fn from_api_column_to_new_column(&self, sheet_id: &str, column: APIColumnDefinition) -> Result<ColumnDefinition, String> {
+        let sheet = self.sheets.get(sheet_id).ok_or("Sheet ID not found")?.0.clone();
+    
+        let id = column.id.unwrap_or_else(|| sheet.columns.len());
+        let name = column.name.unwrap_or_else(|| {
+            let col_name = CellNameConverter::column_index_to_name(id);
+            format!("Column {}", col_name)
+        });
+    
+        Ok(ColumnDefinition {
+            id,
+            name,
+            behavior: column.behavior,
+        })
     }
 
     pub async fn set_column(&mut self, sheet_id: &str, column: ColumnDefinition) -> Result<(), String> {

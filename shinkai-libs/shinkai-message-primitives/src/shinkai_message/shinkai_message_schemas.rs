@@ -1,4 +1,4 @@
-use crate::schemas::sheet::ColumnDefinition;
+use crate::schemas::sheet::APIColumnDefinition;
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
@@ -567,7 +567,7 @@ pub struct APIAddWorkflow {
 #[derive(Serialize, Deserialize)]
 pub struct APISetColumnPayload {
     pub sheet_id: String,
-    pub column: ColumnDefinition,
+    pub column: APIColumnDefinition,
 }
 
 #[derive(Serialize, Deserialize)]

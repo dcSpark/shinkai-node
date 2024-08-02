@@ -9,6 +9,13 @@ pub type FilePath = String;
 pub type FileName = String;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct APIColumnDefinition {
+    pub id: Option<usize>,
+    pub name: Option<String>,
+    pub behavior: ColumnBehavior,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ColumnDefinition {
     pub id: usize,
     pub name: String,

@@ -56,9 +56,24 @@ impl Node {
 
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
+        let column_result = sheet_manager_guard.from_api_column_to_new_column(&payload.sheet_id, payload.column).await;
+
+        // Handle the Result<ColumnDefinition, String>
+        let column = match column_result {
+            Ok(col) => col,
+            Err(err_msg) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert column: {}", err_msg),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         // Perform the logic to set the column using SheetManager
-        match sheet_manager_guard.set_column(&payload.sheet_id, payload.column).await {
+        match sheet_manager_guard.set_column(&payload.sheet_id, column).await {
             Ok(_) => {
                 let _ = res.send(Ok(json!({"status": "success"}))).await;
                 Ok(())
