@@ -52,9 +52,9 @@ impl ChatOpenAI {
     async fn _agenerate(
         &self,
         messages: MessageType,
-        streaming: bool,
-        callbacks: Option<Vec<BaseLLMCallback>>,
-        llm_params: HashMap<String, serde_json::Value>,
+        _streaming: bool,
+        _callbacks: Option<Vec<BaseLLMCallback>>,
+        _llm_params: HashMap<String, serde_json::Value>,
     ) -> anyhow::Result<String> {
         let client = match &self.api_key {
             Some(api_key) => Client::with_config(OpenAIConfig::new().with_api_key(api_key)),
