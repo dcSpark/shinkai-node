@@ -2994,7 +2994,9 @@ impl Node {
                     // Log the elapsed time if LOG_ALL is set to 1
                     if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                         let elapsed_time = start_time.elapsed();
+                        let result_count = workflows_json.as_array().map_or(0, |arr| arr.len());
                         println!("Time taken for workflow search: {:?}", elapsed_time);
+                        println!("Number of workflow results: {}", result_count);
                     }
                     let _ = res.send(Ok(workflows_json)).await;
                     Ok(())

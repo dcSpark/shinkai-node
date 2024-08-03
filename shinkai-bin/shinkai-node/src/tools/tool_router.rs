@@ -34,6 +34,7 @@ use super::shinkai_tool::ShinkaiTool;
 /// A top level struct which indexes Tools (Rust or JS or Workflows) installed in the Shinkai Node
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolRouter {
+    // TODO: Use LanceDB for this
     pub routing_resources: HashMap<String, MapVectorResource>,
     // pub workflows_for_search: RwLock<HashMap<ShinkaiName, ShinkaiTool>>,
     // We use started so we can defer the initialization of the routing_resources using a
@@ -752,12 +753,14 @@ impl ToolRouter {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Value;
+    use serde_json::{json, Value};
+    use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 
     use crate::tools::workflows_data;
 
     use super::*;
-    use std::time::Instant;
+    use std::io::Write;
+    use std::{fs::File, time::Instant};
 
     #[test]
     fn test_parse_workflows_json() {
@@ -776,6 +779,7 @@ mod tests {
         for item in json_array {
             // Parse the shinkai_tool field
             let shinkai_tool_value = &item["shinkai_tool"];
+            eprintln!("shinkai_tool_value: {:?}", shinkai_tool_value);
             let shinkai_tool: ShinkaiTool =
                 serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
 
@@ -795,5 +799,77 @@ mod tests {
         // Stop the timer and calculate the duration
         let duration = start_time.elapsed();
         println!("Time taken to parse workflows JSON: {:?}", duration);
+    }
+
+    // #[tokio::test]
+    /// Not really a test but rather a script. I should move it to a separate file soon (tm)
+    async fn test_generate_static_workflows() {
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        let mut workflows_json_testing = Vec::new();
+        let mut workflows_json = Vec::new();
+
+        // Generate workflows for testing
+        env::set_var("IS_TESTING", "1");
+        let workflows_testing = WorkflowTool::static_tools();
+        println!("Number of testing workflows: {}", workflows_testing.len());
+
+        for workflow_tool in workflows_testing {
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+
+            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
+                embedding
+            } else {
+                generator
+                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                    .await
+                    .unwrap()
+            };
+
+            workflows_json_testing.push(json!({
+                "embedding": embedding,
+                "shinkai_tool": shinkai_tool
+            }));
+        }
+
+        // Generate workflows for production
+        env::set_var("IS_TESTING", "0");
+        let workflows = WorkflowTool::static_tools();
+        println!("Number of production workflows: {}", workflows.len());
+
+        for workflow_tool in workflows {
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+
+            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
+                embedding
+            } else {
+                generator
+                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                    .await
+                    .unwrap()
+            };
+
+            workflows_json.push(json!({
+                "embedding": embedding,
+                "shinkai_tool": shinkai_tool
+            }));
+        }
+
+        let json_data_testing =
+            serde_json::to_string(&workflows_json_testing).expect("Failed to serialize testing workflows");
+        let json_data = serde_json::to_string(&workflows_json).expect("Failed to serialize production workflows");
+
+        // Print the current directory
+        let current_dir = env::current_dir().expect("Failed to get current directory");
+        println!("Current directory: {:?}", current_dir);
+
+        let mut file = File::create("../../tmp/workflows_data.rs").expect("Failed to create file");
+        writeln!(
+            file,
+            "pub static WORKFLOWS_JSON_TESTING: &str = r#\"{}\"#;",
+            json_data_testing
+        )
+        .expect("Failed to write to file");
+        writeln!(file, "pub static WORKFLOWS_JSON: &str = r#\"{}\"#;", json_data).expect("Failed to write to file");
     }
 }
