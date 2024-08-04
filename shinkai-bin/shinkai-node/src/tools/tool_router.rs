@@ -151,3 +151,129 @@ impl ToolRouter {
         shinkai_tools
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+    use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+
+    use crate::tools::tool_router_dep::workflows_data;
+    use crate::tools::workflow_tool::WorkflowTool;
+
+    use super::*;
+    use std::env;
+    use std::io::Write;
+    use std::{fs::File, time::Instant};
+
+    #[test]
+    fn test_parse_workflows_json() {
+        let data = workflows_data::WORKFLOWS_JSON;
+
+        // Start the timer
+        let start_time = Instant::now();
+
+        // Parse the JSON data into a generic JSON value
+        let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
+
+        // Ensure the JSON value is an array
+        let json_array = json_value.as_array().expect("Expected JSON data to be an array");
+
+        // Iterate over the JSON array and manually parse each element
+        for item in json_array {
+            // Parse the shinkai_tool field
+            let shinkai_tool_value = &item["shinkai_tool"];
+            eprintln!("shinkai_tool_value: {:?}", shinkai_tool_value);
+            let shinkai_tool: ShinkaiTool =
+                serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
+
+            // Parse the embedding field
+            let embedding_value = &item["embedding"];
+            let embedding: Embedding =
+                serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
+
+            // Check if embedding vector is not empty
+            assert!(!embedding.vector.is_empty(), "Embedding vector is empty");
+
+            // Check if tool name and description are not empty
+            assert!(!shinkai_tool.name().is_empty(), "Tool name is empty");
+            assert!(!shinkai_tool.description().is_empty(), "Tool description is empty");
+        }
+
+        // Stop the timer and calculate the duration
+        let duration = start_time.elapsed();
+        println!("Time taken to parse workflows JSON: {:?}", duration);
+    }
+
+    #[tokio::test]
+    /// Not really a test but rather a script. I should move it to a separate file soon (tm)
+    async fn test_generate_static_workflows() {
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        let mut workflows_json_testing = Vec::new();
+        let mut workflows_json = Vec::new();
+
+        // Generate workflows for testing
+        env::set_var("IS_TESTING", "1");
+        let workflows_testing = WorkflowTool::static_tools();
+        println!("Number of testing workflows: {}", workflows_testing.len());
+
+        for workflow_tool in workflows_testing {
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+
+            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
+                embedding
+            } else {
+                generator
+                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                    .await
+                    .unwrap()
+            };
+
+            workflows_json_testing.push(json!({
+                "embedding": embedding,
+                "shinkai_tool": shinkai_tool
+            }));
+        }
+
+        // Generate workflows for production
+        env::set_var("IS_TESTING", "0");
+        let workflows = WorkflowTool::static_tools();
+        println!("Number of production workflows: {}", workflows.len());
+
+        for workflow_tool in workflows {
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+
+            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
+                embedding
+            } else {
+                generator
+                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                    .await
+                    .unwrap()
+            };
+
+            workflows_json.push(json!({
+                "embedding": embedding,
+                "shinkai_tool": shinkai_tool
+            }));
+        }
+
+        let json_data_testing =
+            serde_json::to_string(&workflows_json_testing).expect("Failed to serialize testing workflows");
+        let json_data = serde_json::to_string(&workflows_json).expect("Failed to serialize production workflows");
+
+        // Print the current directory
+        let current_dir = env::current_dir().expect("Failed to get current directory");
+        println!("Current directory: {:?}", current_dir);
+
+        let mut file = File::create("../../tmp/workflows_data.rs").expect("Failed to create file");
+        writeln!(
+            file,
+            "pub static WORKFLOWS_JSON_TESTING: &str = r#\"{}\"#;",
+            json_data_testing
+        )
+        .expect("Failed to write to file");
+        writeln!(file, "pub static WORKFLOWS_JSON: &str = r#\"{}\"#;", json_data).expect("Failed to write to file");
+    }
+}

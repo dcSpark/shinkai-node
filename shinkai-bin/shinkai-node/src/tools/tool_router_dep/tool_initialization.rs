@@ -9,7 +9,6 @@ use crate::tools::rust_tools::RustTool;
 use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::tools::tool_router::ToolRouter;
 use crate::tools::workflow_tool::WorkflowTool;
-use crate::tools::workflows_data;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::built_in_tools;
@@ -18,6 +17,8 @@ use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::MapVectorResource;
+
+use super::workflows_data;
 
 pub async fn start(
     tool_router: &mut ToolRouter,

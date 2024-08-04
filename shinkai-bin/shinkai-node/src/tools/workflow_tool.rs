@@ -5,7 +5,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     argument::ToolArgument,
-    workflow_static_texts::{
+    tool_router_dep::workflow_static_texts::{
         AGILITY_STORY_SYSTEM, AI_SYSTEM, ANALYZE_ANSWERS_SYSTEM, ANALYZE_CLAIMS_SYSTEM, ANALYZE_DEBATE_SYSTEM,
         ANALYZE_INCIDENT_SYSTEM, ANALYZE_LOGS_SYSTEM, ANALYZE_MALWARE_SYSTEM, ANALYZE_PAPER_SYSTEM,
         ANALYZE_PATENT_SYSTEM, ANALYZE_PERSONALITY_SYSTEM, ANALYZE_PRESENTATION_SYSTEM, ANALYZE_PROSE_JSON_SYSTEM,
