@@ -14,6 +14,7 @@ mod utils;
 mod vector_fs;
 mod welcome_files;
 mod workflows;
+mod lance_db;
 
 use runner::{initialize_node, run_node_tasks};
 

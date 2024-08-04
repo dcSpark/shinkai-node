@@ -91,6 +91,16 @@ impl ShinkaiTool {
         }
     }
 
+    /// Returns the output arguments of the tool
+    pub fn tool_type(&self) -> &'static str {
+        match self {
+            ShinkaiTool::Rust(_) => "Rust",
+            ShinkaiTool::JS(_) => "JS",
+            ShinkaiTool::JSLite(_) => "JSLite",
+            ShinkaiTool::Workflow(_) => "Workflow",
+        }
+    }
+
     /// Returns a formatted summary of the tool
     pub fn formatted_tool_summary_for_ui(&self) -> String {
         format!(
