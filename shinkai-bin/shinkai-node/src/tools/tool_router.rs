@@ -205,7 +205,7 @@ mod tests {
         println!("Time taken to parse workflows JSON: {:?}", duration);
     }
 
-    #[tokio::test]
+    // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     async fn test_generate_static_workflows() {
         let generator = RemoteEmbeddingGenerator::new_default();
