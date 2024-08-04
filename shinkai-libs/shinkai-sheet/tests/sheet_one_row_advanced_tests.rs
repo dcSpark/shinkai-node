@@ -3,9 +3,7 @@ mod tests {
     use std::sync::Arc;
 
     use shinkai_dsl::parser::parse_workflow;
-    use shinkai_message_primitives::schemas::sheet::{
-        CellStatus, ColumnBehavior, ColumnDefinition, WorkflowSheetJobData,
-    };
+    use shinkai_message_primitives::schemas::sheet::{CellStatus, ColumnBehavior, ColumnDefinition};
     use shinkai_sheet::sheet::Sheet;
     use tokio::sync::Mutex;
 
@@ -256,6 +254,49 @@ mod tests {
         assert_eq!(sheet.get_cell_value(0, 2), Some("Summary of row 0".to_string()));
         assert_eq!(sheet.get_cell_value(1, 2), Some("Summary of row 1".to_string()));
         assert_eq!(sheet.get_cell_value(2, 2), Some("Summary of row 2".to_string()));
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_remove_row() {
+        let mut sheet = Sheet::new();
+        let column_a = ColumnDefinition {
+            id: 0,
+            name: "Column A".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        let column_b = ColumnDefinition {
+            id: 1,
+            name: "Column B".to_string(),
+            behavior: ColumnBehavior::Formula("=A + \" Processed\"".to_string()),
+        };
+
+        let _ = sheet.set_column(column_a.clone()).await;
+        let _ = sheet.set_column(column_b.clone()).await;
+
+        // Add data to multiple rows
+        sheet.set_cell_value(0, 0, "Hello".to_string()).await.unwrap();
+        sheet.set_cell_value(1, 0, "World".to_string()).await.unwrap();
+        sheet.set_cell_value(2, 0, "Test".to_string()).await.unwrap();
+
+        // Check initial values
+        assert_eq!(sheet.get_cell_value(0, 0), Some("Hello".to_string()));
+        assert_eq!(sheet.get_cell_value(1, 0), Some("World".to_string()));
+        assert_eq!(sheet.get_cell_value(2, 0), Some("Test".to_string()));
+
+        // Remove a row
+        let _ = sheet.remove_row(1).await.unwrap();
+
+        // Check values after row removal
+        assert_eq!(sheet.get_cell_value(0, 0), Some("Hello".to_string()));
+        assert_eq!(sheet.get_cell_value(1, 0), None);
+        assert_eq!(sheet.get_cell_value(2, 0), Some("Test".to_string()));
+        assert_eq!(sheet.get_cell_value(0, 1), Some("Hello Processed".to_string()));
+        assert_eq!(sheet.get_cell_value(1, 1), None);
+        assert_eq!(sheet.get_cell_value(2, 1), Some("Test Processed".to_string()));
 
         // Print final state of the sheet
         sheet.print_as_ascii_table();

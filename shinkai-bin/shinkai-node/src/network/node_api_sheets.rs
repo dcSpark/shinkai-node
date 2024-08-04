@@ -10,7 +10,9 @@ use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{APIRemoveColumnPayload, APISetCellValuePayload, APISetColumnPayload, MessageSchemaType},
+        shinkai_message_schemas::{
+            APIRemoveColumnPayload, APIRemoveRowsPayload, APISetCellValuePayload, APISetColumnPayload, MessageSchemaType
+        },
     },
 };
 
@@ -56,7 +58,9 @@ impl Node {
 
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
-        let column_result = sheet_manager_guard.from_api_column_to_new_column(&payload.sheet_id, payload.column).await;
+        let column_result = sheet_manager_guard
+            .from_api_column_to_new_column(&payload.sheet_id, payload.column)
+            .await;
 
         // Handle the Result<ColumnDefinition, String>
         let column = match column_result {
@@ -372,7 +376,10 @@ impl Node {
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
         // Perform the logic to set the cell value using SheetManager
-        match sheet_manager_guard.set_cell_value(&payload.sheet_id, payload.row, payload.col, payload.value).await {
+        match sheet_manager_guard
+            .set_cell_value(&payload.sheet_id, payload.row, payload.col, payload.value)
+            .await
+        {
             Ok(_) => {
                 let _ = res.send(Ok(json!({"status": "success"}))).await;
                 Ok(())
@@ -439,6 +446,65 @@ impl Node {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),
                     message: format!("Failed to get sheet: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_remove_rows(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (payload, requester_name) = match Self::validate_and_extract_payload::<APIRemoveRowsPayload>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::RemoveRows,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Lock the sheet_manager before using it
+        let mut sheet_manager_guard = sheet_manager.lock().await;
+
+        // Perform the logic to remove the rows using SheetManager
+        match sheet_manager_guard
+            .remove_rows(&payload.sheet_id, payload.row_indices)
+            .await
+        {
+            Ok(_) => {
+                let _ = res.send(Ok(json!({"status": "success"}))).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove rows: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

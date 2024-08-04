@@ -162,6 +162,11 @@ impl Sheet {
         dependencies
     }
 
+    pub async fn remove_row(&mut self, row_index: RowIndex) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let jobs = self.dispatch(SheetAction::RemoveRow(row_index)).await;
+        Ok(jobs)
+    }
+
     pub async fn set_cell_value(
         &mut self,
         row: RowIndex,
@@ -406,6 +411,7 @@ pub enum SheetAction {
     },
     RemoveColumn(ColumnIndex),
     TriggerUpdateColumnValues(ColumnIndex),
+    RemoveRow(RowIndex),
     // Add other actions as needed
 }
 
@@ -629,7 +635,11 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                     }
                 }
             }
-        } // Handle other actions
+        }
+        SheetAction::RemoveRow(row_index) => {
+            state.rows.remove(&row_index);
+            // Optionally, you can add logic to handle dependencies or other side effects
+        }
     }
     (state, jobs)
 }

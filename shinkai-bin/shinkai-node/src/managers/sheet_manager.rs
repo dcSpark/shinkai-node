@@ -262,6 +262,22 @@ impl SheetManager {
         Ok(())
     }
 
+    pub async fn remove_rows(&mut self, sheet_id: &str, row_indices: Vec<usize>) -> Result<(), String> {
+        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+        
+        for row_index in row_indices {
+            sheet.remove_row(row_index).await.map_err(|e| e.to_string())?;
+        }
+
+        // Update the sheet in the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .save_sheet(sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
     pub async fn get_user_sheets(&self) -> Result<Vec<Sheet>, String> {
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
