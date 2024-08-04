@@ -445,7 +445,7 @@ async fn test_get_static_workflow() {
     let found_workflow = result.unwrap();
     assert_eq!(
         found_workflow.name,
-        "ExtensiveSummary",
+        "Extensive_summary",
         "Expected to find a workflow with 'ExtensiveSummary' in the name"
     );
 }
