@@ -29,6 +29,8 @@ pub enum ToolError {
     ToolNotRunnable(String),
     ExecutionError(String),
     DatabaseError(String),
+    MissingEmbedding,
+    EmbeddingGenerationError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -60,6 +62,8 @@ impl fmt::Display for ToolError {
             ToolError::ToolNotRunnable(ref t) => write!(f, "Tool is not runnable: {}", t),
             ToolError::ExecutionError(ref e) => write!(f, "Execution error: {}", e),
             ToolError::DatabaseError(ref e) => write!(f, "Database error: {}", e),
+            ToolError::MissingEmbedding => write!(f, "Missing embedding."),
+            ToolError::EmbeddingGenerationError(ref e) => write!(f, "Embedding generation error: {}", e),
         }
     }
 }

@@ -79,6 +79,18 @@ impl EmbeddingModelType {
             },
         }
     }
+
+    pub fn vector_dimensions(&self) -> Result<usize, VRError> {
+        match self {
+            EmbeddingModelType::TextEmbeddingsInference(model) => {
+                Err(VRError::UnimplementedModelDimensions(format!("TextEmbeddingsInference: {}", model)))
+            },
+            EmbeddingModelType::OpenAI(model) => {
+                Err(VRError::UnimplementedModelDimensions(format!("OpenAI: {}", model)))
+            },
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.vector_dimensions(),
+        }
+    }
 }
 
 impl fmt::Display for EmbeddingModelType {
@@ -237,6 +249,20 @@ impl OllamaTextEmbeddingsInference {
             Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
             Self::JINA_EMBEDDINGS_V2_BASE_ES => Ok(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs),
             _ => Err(VRError::InvalidModelArchitecture),
+        }
+    }
+
+    /// Returns the vector dimensions for the embedding model
+    pub fn vector_dimensions(&self) -> Result<usize, VRError> {
+        match self {
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => Ok(384),
+            OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => Ok(768),
+            OllamaTextEmbeddingsInference::AllMiniLML6v2 => {
+                Err(VRError::UnimplementedModelDimensions(format!("{}", self)))
+            }
+            OllamaTextEmbeddingsInference::Other(model_name) => {
+                Err(VRError::UnimplementedModelDimensions(model_name.clone()))
+            }
         }
     }
 }

@@ -91,6 +91,16 @@ impl ShinkaiTool {
         }
     }
 
+    /// Returns the output arguments of the tool
+    pub fn tool_type(&self) -> &'static str {
+        match self {
+            ShinkaiTool::Rust(_) => "Rust",
+            ShinkaiTool::JS(_) => "JS",
+            ShinkaiTool::JSLite(_) => "JSLite",
+            ShinkaiTool::Workflow(_) => "Workflow",
+        }
+    }
+
     /// Returns a formatted summary of the tool
     pub fn formatted_tool_summary_for_ui(&self) -> String {
         format!(
@@ -141,17 +151,8 @@ impl ShinkaiTool {
     }
 
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
-    // TODO: improve the formatting so it's better for vector embeddings
     pub fn format_embedding_string(&self) -> String {
-        let mut embedding_string = format!("{} {}\n", self.name(), self.description());
-
-        embedding_string.push_str("Input Args:\n");
-
-        for arg in self.input_args() {
-            embedding_string.push_str(&format!("- {} : {}\n", arg.name, arg.description));
-        }
-
-        embedding_string
+        format!("{} {}", self.name(), self.description())
     }
 
     /// Returns the embedding if it exists

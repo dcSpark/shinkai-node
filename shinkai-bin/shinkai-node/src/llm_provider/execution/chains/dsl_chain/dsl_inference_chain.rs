@@ -6,7 +6,8 @@ use crate::{
         providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool}, workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
+    tools::{shinkai_tool::ShinkaiTool, tool_router_dep::tool_management::all_available_js_tools, workflow_tool::WorkflowTool},
+    workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -203,9 +204,12 @@ impl<'a> DslChain<'a> {
 
         let tool_router_locked = tool_router.lock().await;
 
-        let tools = tool_router_locked
-            .all_available_js_tools(self.context.user_profile(), self.context.db().clone())
-            .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
+        let tools = all_available_js_tools(
+            &tool_router_locked,
+            self.context.user_profile(),
+            self.context.db().clone(),
+        )
+        .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
 
         for tool in tools {
             let function_name = format!("{}_{}", tool.toolkit_name(), tool.name());

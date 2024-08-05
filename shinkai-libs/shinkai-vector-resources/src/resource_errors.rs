@@ -43,6 +43,7 @@ pub enum VRError {
     InvalidSimplifiedFSEntryType(String),
     VRPackEmbeddingModelError(String),
     UnsupportedFileType(String),
+    UnimplementedModelDimensions(String),
 }
 
 impl fmt::Display for VRError {
@@ -99,6 +100,7 @@ impl fmt::Display for VRError {
             VRError::InvalidSimplifiedFSEntryType(ref s) => write!(f, "Failed to convert SimplifiedFSEntry at path: {}", s),
             VRError::VRPackEmbeddingModelError(ref s) => write!(f, "Embedding Model Error: {}", s),
             VRError::UnsupportedFileType(ref s) => write!(f, "Unsupported file type: {}", s),
+            VRError::UnimplementedModelDimensions(ref s) => write!(f, "Model dimensions are not implemented: {}", s),
         }
     }
 }

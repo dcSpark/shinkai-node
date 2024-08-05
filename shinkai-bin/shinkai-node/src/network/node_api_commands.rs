@@ -2994,7 +2994,9 @@ impl Node {
                     // Log the elapsed time if LOG_ALL is set to 1
                     if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                         let elapsed_time = start_time.elapsed();
+                        let result_count = workflows_json.as_array().map_or(0, |arr| arr.len());
                         println!("Time taken for workflow search: {:?}", elapsed_time);
+                        println!("Number of workflow results: {}", result_count);
                     }
                     let _ = res.send(Ok(workflows_json)).await;
                     Ok(())
@@ -3273,7 +3275,10 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_list_all_workflows(
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        generator: Arc<RemoteEmbeddingGenerator>,
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -3306,6 +3311,29 @@ impl Node {
             };
             let _ = res.send(Err(api_error)).await;
             return Ok(());
+        }
+
+        // Check if tool_router is available and has started if not start it
+        if let Some(tool_router) = &tool_router {
+            let mut tool_router = tool_router.lock().await;
+            if !tool_router.is_started() {
+                if let Err(err) = tool_router
+                    .start(
+                        Box::new((*generator).clone()),
+                        Arc::downgrade(&db),
+                        requester_name.clone(),
+                    )
+                    .await
+                {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to start tool router: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
         }
 
         // List all workflows for the user

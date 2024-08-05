@@ -14,6 +14,8 @@ pub struct Workflow {
     pub steps: Vec<Step>,
     pub raw: String,
     pub description: Option<String>,
+    pub author: String,
+    pub sticky: bool,
 }
 
 impl Workflow {
@@ -23,10 +25,15 @@ impl Workflow {
     }
 
     /// Creates a Workflow from a JSON string and a description.
-    pub fn new(dsl_input: String, description: String) -> Result<Self, String> {
+    pub fn new(
+        dsl_input: String,
+        description: String,
+    ) -> Result<Self, String> {
         let workflow = parse_workflow(&dsl_input)?;
         Ok(Workflow {
             description: Some(description),
+            author: workflow.author,
+            sticky: workflow.sticky,
             ..workflow
         })
     }

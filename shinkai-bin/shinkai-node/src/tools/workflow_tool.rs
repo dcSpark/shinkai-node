@@ -5,7 +5,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     argument::ToolArgument,
-    workflow_static_texts::{
+    tool_router_dep::workflow_static_texts::{
         AGILITY_STORY_SYSTEM, AI_SYSTEM, ANALYZE_ANSWERS_SYSTEM, ANALYZE_CLAIMS_SYSTEM, ANALYZE_DEBATE_SYSTEM,
         ANALYZE_INCIDENT_SYSTEM, ANALYZE_LOGS_SYSTEM, ANALYZE_MALWARE_SYSTEM, ANALYZE_PAPER_SYSTEM,
         ANALYZE_PATENT_SYSTEM, ANALYZE_PERSONALITY_SYSTEM, ANALYZE_PRESENTATION_SYSTEM, ANALYZE_PROSE_JSON_SYSTEM,
@@ -253,7 +253,7 @@ impl WorkflowTool {
 
     fn get_extensive_summary_workflow() -> Self {
         let raw_workflow = r#"
-            workflow ExtensiveSummary v0.1 {
+            workflow Extensive_summary v0.1 {
                 step Initialize {
                     $PROMPT = "Summarize this: "
                     $EMBEDDINGS = call process_embeddings_in_job_scope()
@@ -261,7 +261,7 @@ impl WorkflowTool {
                 step Summarize {
                     $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
                 }
-            }
+            } @@official.shinkai sticky
         "#;
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
@@ -272,7 +272,7 @@ impl WorkflowTool {
 
     fn get_hyde_inference_workflow() -> Self {
         let raw_workflow = r#"
-            workflow HydeInference v0.1 {
+            workflow Hyde_inference v0.1 {
                 step Initialize {
                     $PROMPT = "write a passage to answer the question: "
                     $HYDE_PROMPT = call concat($PROMPT, $INPUT)
@@ -285,7 +285,7 @@ impl WorkflowTool {
                     $NEW_INPUT = call concat($INPUT, $CONNECTOR, $EMBEDDINGS) 
                     $RESULT = call inference($NEW_INPUT)
                 }
-            }
+            } @@official.shinkai sticky
         "#;
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
@@ -298,12 +298,12 @@ impl WorkflowTool {
     fn get_generate_quiz_workflow() -> Self {
         let raw_workflow = format!(
             r#"
-                workflow GenerateQuiz v0.1 {{
+                workflow Generate_quiz v0.1 {{
                     step Main {{
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}
+                }} @@official.shinkai sticky
             "#,
             GENERATE_QUIZ_SYSTEM.replace('"', "\\\"")
         );
@@ -349,7 +349,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             AGILITY_STORY_SYSTEM.replace('"', "\\\"")
         );
@@ -367,7 +367,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             AI_SYSTEM.replace('"', "\\\"")
         );
@@ -385,7 +385,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_ANSWERS_SYSTEM.replace('"', "\\\"")
         );
@@ -403,7 +403,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_CLAIMS_SYSTEM.replace('"', "\\\"")
         );
@@ -421,7 +421,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_DEBATE_SYSTEM.replace('"', "\\\"")
         );
@@ -439,7 +439,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_INCIDENT_SYSTEM.replace('"', "\\\"")
         );
@@ -457,7 +457,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_LOGS_SYSTEM.replace('"', "\\\"")
         );
@@ -475,7 +475,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_MALWARE_SYSTEM.replace('"', "\\\"")
         );
@@ -493,7 +493,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PAPER_SYSTEM.replace('"', "\\\"")
         );
@@ -511,7 +511,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PATENT_SYSTEM.replace('"', "\\\"")
         );
@@ -529,7 +529,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PERSONALITY_SYSTEM.replace('"', "\\\"")
         );
@@ -547,7 +547,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PRESENTATION_SYSTEM.replace('"', "\\\"")
         );
@@ -565,7 +565,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PROSE_JSON_SYSTEM.replace('"', "\\\"")
         );
@@ -583,7 +583,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PROSE_PINKER_SYSTEM.replace('"', "\\\"")
         );
@@ -601,7 +601,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_PROSE_SYSTEM.replace('"', "\\\"")
         );
@@ -619,7 +619,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_SPIRITUAL_TEXT_SYSTEM.replace('"', "\\\"")
         );
@@ -637,7 +637,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_TECH_IMPACT_SYSTEM.replace('"', "\\\"")
         );
@@ -656,7 +656,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_THREAT_REPORT_TRENDS_SYSTEM, ANALYZE_THREAT_REPORT_TRENDS_USER
         );
@@ -675,7 +675,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANALYZE_THREAT_REPORT_SYSTEM, ANALYZE_THREAT_REPORT_USER
         );
@@ -693,7 +693,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ANSWER_INTERVIEW_QUESTION_SYSTEM.replace('"', "\\\"")
         );
@@ -711,7 +711,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             ASK_SECURE_BY_DESIGN_QUESTIONS_SYSTEM.replace('"', "\\\"")
         );
@@ -729,7 +729,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CAPTURE_THINKERS_WORK_SYSTEM.replace('"', "\\\"")
         );
@@ -747,7 +747,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CHECK_AGREEMENT_SYSTEM.replace('"', "\\\"")
         );
@@ -765,7 +765,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CLEAN_TEXT_SYSTEM.replace('"', "\\\"")
         );
@@ -783,7 +783,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CODING_MASTER_SYSTEM.replace('"', "\\\"")
         );
@@ -801,7 +801,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             COMPARE_AND_CONTRAST_SYSTEM.replace('"', "\\\"")
         );
@@ -819,7 +819,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_5_SENTENCE_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
@@ -837,7 +837,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_ACADEMIC_PAPER_SYSTEM.replace('"', "\\\"")
         );
@@ -855,7 +855,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_AI_JOBS_ANALYSIS_SYSTEM.replace('"', "\\\"")
         );
@@ -873,7 +873,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_APHORISMS_SYSTEM.replace('"', "\\\"")
         );
@@ -891,7 +891,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_ART_PROMPT_SYSTEM.replace('"', "\\\"")
         );
@@ -909,7 +909,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_BETTER_FRAME_SYSTEM.replace('"', "\\\"")
         );
@@ -927,7 +927,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_CODING_PROJECT_SYSTEM.replace('"', "\\\"")
         );
@@ -945,7 +945,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_COMMAND_SYSTEM.replace('"', "\\\"")
         );
@@ -963,7 +963,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_CYBER_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
@@ -981,7 +981,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_GIT_DIFF_COMMIT_SYSTEM.replace('"', "\\\"")
         );
@@ -999,7 +999,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_GRAPH_FROM_INPUT_SYSTEM.replace('"', "\\\"")
         );
@@ -1017,7 +1017,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_HORMOZI_OFFER_SYSTEM.replace('"', "\\\"")
         );
@@ -1035,7 +1035,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_IDEA_COMPASS_SYSTEM.replace('"', "\\\"")
         );
@@ -1053,7 +1053,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_INVESTIGATION_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
@@ -1071,7 +1071,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_KEYNOTE_SYSTEM.replace('"', "\\\"")
         );
@@ -1089,7 +1089,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_LOGO_SYSTEM.replace('"', "\\\"")
         );
@@ -1107,7 +1107,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_MARKMAP_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
@@ -1125,7 +1125,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_MERMAID_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
@@ -1143,7 +1143,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_MICRO_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
@@ -1162,7 +1162,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_NETWORK_THREAT_LANDSCAPE_SYSTEM, CREATE_NETWORK_THREAT_LANDSCAPE_USER
         );
@@ -1180,7 +1180,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_NPC_SYSTEM.replace('"', "\\\"")
         );
@@ -1198,7 +1198,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_PATTERN_SYSTEM.replace('"', "\\\"")
         );
@@ -1216,7 +1216,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_QUIZ_SYSTEM.replace('"', "\\\"")
         );
@@ -1234,7 +1234,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_READING_PLAN_SYSTEM.replace('"', "\\\"")
         );
@@ -1253,7 +1253,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_REPORT_FINDING_SYSTEM, CREATE_REPORT_FINDING_USER
         );
@@ -1271,7 +1271,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_SECURITY_UPDATE_SYSTEM.replace('"', "\\\"")
         );
@@ -1289,7 +1289,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_SHOW_INTRO_SYSTEM.replace('"', "\\\"")
         );
@@ -1307,7 +1307,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_SIGMA_RULES_SYSTEM.replace('"', "\\\"")
         );
@@ -1325,7 +1325,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_STRIDE_THREAT_MODEL_SYSTEM.replace('"', "\\\"")
         );
@@ -1343,7 +1343,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_SUMMARY_SYSTEM.replace('"', "\\\"")
         );
@@ -1361,7 +1361,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_TAGS_SYSTEM.replace('"', "\\\"")
         );
@@ -1379,7 +1379,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_THREAT_SCENARIOS_SYSTEM.replace('"', "\\\"")
         );
@@ -1397,7 +1397,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_UPGRADE_PACK_SYSTEM.replace('"', "\\\"")
         );
@@ -1415,7 +1415,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_VIDEO_CHAPTERS_SYSTEM.replace('"', "\\\"")
         );
@@ -1433,7 +1433,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             CREATE_VISUALIZATION_SYSTEM.replace('"', "\\\"")
         );
@@ -1452,7 +1452,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXPLAIN_CODE_SYSTEM, EXPLAIN_CODE_USER
         );
@@ -1470,7 +1470,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXPLAIN_DOCS_SYSTEM.replace('"', "\\\"")
         );
@@ -1488,7 +1488,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXPLAIN_PROJECT_SYSTEM.replace('"', "\\\"")
         );
@@ -1506,7 +1506,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXPLAIN_TERMS_SYSTEM.replace('"', "\\\"")
         );
@@ -1524,7 +1524,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXPORT_DATA_AS_CSV_SYSTEM.replace('"', "\\\"")
         );
@@ -1542,7 +1542,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_ALGORITHM_UPDATE_RECOMMENDATIONS_SYSTEM.replace('"', "\\\"")
         );
@@ -1561,7 +1561,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_ARTICLE_WISDOM_SYSTEM, EXTRACT_ARTICLE_WISDOM_USER
         );
@@ -1579,7 +1579,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_BOOK_IDEAS_SYSTEM.replace('"', "\\\"")
         );
@@ -1597,7 +1597,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_BOOK_RECOMMENDATIONS_SYSTEM.replace('"', "\\\"")
         );
@@ -1615,7 +1615,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_BUSINESS_IDEAS_SYSTEM.replace('"', "\\\"")
         );
@@ -1633,7 +1633,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_CONTROVERSIAL_IDEAS_SYSTEM.replace('"', "\\\"")
         );
@@ -1651,7 +1651,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_EXTRAORDINARY_CLAIMS_SYSTEM.replace('"', "\\\"")
         );
@@ -1669,7 +1669,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_IDEAS_SYSTEM.replace('"', "\\\"")
         );
@@ -1687,7 +1687,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_INSIGHTS_SYSTEM.replace('"', "\\\"")
         );
@@ -1705,7 +1705,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_MAIN_IDEA_SYSTEM.replace('"', "\\\"")
         );
@@ -1723,7 +1723,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_PATTERNS_SYSTEM.replace('"', "\\\"")
         );
@@ -1741,7 +1741,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_POC_SYSTEM.replace('"', "\\\"")
         );
@@ -1759,7 +1759,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_PREDICTIONS_SYSTEM.replace('"', "\\\"")
         );
@@ -1777,7 +1777,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_QUESTIONS_SYSTEM.replace('"', "\\\"")
         );
@@ -1795,7 +1795,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_RECOMMENDATIONS_SYSTEM.replace('"', "\\\"")
         );
@@ -1813,7 +1813,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_REFERENCES_SYSTEM.replace('"', "\\\"")
         );
@@ -1831,7 +1831,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_SONG_MEANING_SYSTEM.replace('"', "\\\"")
         );
@@ -1849,7 +1849,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_SPONSORS_SYSTEM.replace('"', "\\\"")
         );
@@ -1867,7 +1867,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_VIDEOID_SYSTEM.replace('"', "\\\"")
         );
@@ -1885,7 +1885,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_WISDOM_AGENTS_SYSTEM.replace('"', "\\\"")
         );
@@ -1903,7 +1903,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_WISDOM_DM_SYSTEM.replace('"', "\\\"")
         );
@@ -1921,7 +1921,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_WISDOM_NOMETA_SYSTEM.replace('"', "\\\"")
         );
@@ -1939,7 +1939,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             EXTRACT_WISDOM_SYSTEM.replace('"', "\\\"")
         );
@@ -1957,7 +1957,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             FIND_HIDDEN_MESSAGE_SYSTEM.replace('"', "\\\"")
         );
@@ -1975,7 +1975,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             FIND_LOGICAL_FALLACIES_SYSTEM.replace('"', "\\\"")
         );
@@ -1993,7 +1993,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             GET_WOW_PER_MINUTE_SYSTEM.replace('"', "\\\"")
         );
@@ -2011,7 +2011,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             GET_YOUTUBE_RSS_SYSTEM.replace('"', "\\\"")
         );
@@ -2029,7 +2029,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             IMPROVE_ACADEMIC_WRITING_SYSTEM.replace('"', "\\\"")
         );
@@ -2047,7 +2047,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             IMPROVE_PROMPT_SYSTEM.replace('"', "\\\"")
         );
@@ -2066,7 +2066,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             IMPROVE_REPORT_FINDING_SYSTEM, IMPROVE_REPORT_FINDING_USER
         );
@@ -2084,7 +2084,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             IMPROVE_WRITING_SYSTEM.replace('"', "\\\"")
         );
@@ -2102,7 +2102,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             LABEL_AND_RATE_SYSTEM.replace('"', "\\\"")
         );
@@ -2120,7 +2120,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             OFFICIAL_PATTERN_TEMPLATE_SYSTEM.replace('"', "\\\"")
         );
@@ -2138,7 +2138,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             PROVIDE_GUIDANCE_SYSTEM.replace('"', "\\\"")
         );
@@ -2156,7 +2156,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             RATE_AI_RESPONSE_SYSTEM.replace('"', "\\\"")
         );
@@ -2174,7 +2174,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             RATE_AI_RESULT_SYSTEM.replace('"', "\\\"")
         );
@@ -2193,7 +2193,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             RATE_CONTENT_SYSTEM, RATE_CONTENT_USER
         );
@@ -2211,7 +2211,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             RATE_VALUE_SYSTEM.replace('"', "\\\"")
         );
@@ -2229,7 +2229,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             RAW_QUERY_SYSTEM.replace('"', "\\\"")
         );
@@ -2247,7 +2247,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             RECOMMEND_ARTISTS_SYSTEM.replace('"', "\\\"")
         );
@@ -2265,7 +2265,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SHOW_FABRIC_OPTIONS_MARKMAP_SYSTEM.replace('"', "\\\"")
         );
@@ -2284,7 +2284,7 @@ impl WorkflowTool {
                         $CUSTOM_USER = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM, $CUSTOM_USER)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUGGEST_PATTERN_SYSTEM.replace('"', "\\\""),
             SUGGEST_PATTERN_USER.replace('"', "\\\"")
@@ -2303,7 +2303,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_DEBATE_SYSTEM.replace('"', "\\\"")
         );
@@ -2321,7 +2321,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_GIT_CHANGES_SYSTEM.replace('"', "\\\"")
         );
@@ -2339,7 +2339,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_GIT_DIFF_SYSTEM.replace('"', "\\\"")
         );
@@ -2357,7 +2357,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_LECTURE_SYSTEM.replace('"', "\\\"")
         );
@@ -2375,7 +2375,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_LEGISLATION_SYSTEM.replace('"', "\\\"")
         );
@@ -2393,7 +2393,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_MICRO_SYSTEM.replace('"', "\\\"")
         );
@@ -2411,7 +2411,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_NEWSLETTER_SYSTEM.replace('"', "\\\"")
         );
@@ -2429,7 +2429,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_PAPER_SYSTEM.replace('"', "\\\"")
         );
@@ -2447,7 +2447,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_PROMPT_SYSTEM.replace('"', "\\\"")
         );
@@ -2465,7 +2465,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_PULL_REQUESTS_SYSTEM.replace('"', "\\\"")
         );
@@ -2483,7 +2483,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_RPG_SESSION_SYSTEM.replace('"', "\\\"")
         );
@@ -2501,7 +2501,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             SUMMARIZE_SYSTEM.replace('"', "\\\"")
         );
@@ -2519,7 +2519,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             TO_FLASHCARDS_SYSTEM.replace('"', "\\\"")
         );
@@ -2537,7 +2537,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             TWEET_SYSTEM.replace('"', "\\\"")
         );
@@ -2555,7 +2555,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             WRITE_ESSAY_SYSTEM.replace('"', "\\\"")
         );
@@ -2573,7 +2573,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             WRITE_HACKERONE_REPORT_SYSTEM.replace('"', "\\\"")
         );
@@ -2591,7 +2591,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             WRITE_MICRO_ESSAY_SYSTEM.replace('"', "\\\"")
         );
@@ -2609,7 +2609,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             WRITE_PULL_REQUEST_SYSTEM.replace('"', "\\\"")
         );
@@ -2627,7 +2627,7 @@ impl WorkflowTool {
                         $SYSTEM = "{}"
                         $RESULT = call opinionated_inference($INPUT, $SYSTEM)
                     }}
-                }}"
+                }} @@official.shinkai sticky
             "#,
             WRITE_SEMGREP_RULE_SYSTEM.replace('"', "\\\"")
         );
