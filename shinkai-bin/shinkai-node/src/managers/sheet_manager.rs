@@ -3,7 +3,7 @@ use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::sheet::{
-    APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, UuidString, WorkflowSheetJobData,
+    APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, WorkflowSheetJobData,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -12,10 +12,10 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
 use shinkai_sheet::sheet::{Sheet, SheetUpdate};
-use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct SheetManagerError(String);
@@ -267,6 +267,37 @@ impl SheetManager {
         }
 
         Ok(())
+    }
+
+    pub async fn add_row(&mut self, sheet_id: &str, position: Option<usize>) -> Result<RowUuid, String> {
+        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+        let row_id = Uuid::new_v4().to_string();
+        let mut jobs = sheet.add_row(row_id.clone()).await.map_err(|e| e.to_string())?;
+
+        if let Some(pos) = position {
+            if pos <= sheet.display_rows.len() {
+                sheet.display_rows.insert(pos, row_id.clone());
+            } else {
+                return Err("Position out of bounds".to_string());
+            }
+        } else {
+            sheet.display_rows.push(row_id.clone());
+        }
+
+        // Update the sheet in the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .save_sheet(sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
+
+        // Create and chain JobMessages, and add the first one to the job queue
+        if let Some(job_manager) = &self.job_manager {
+            Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
+        } else {
+            return Err("JobManager not set".to_string());
+        }
+
+        Ok(row_id)
     }
 
     pub async fn remove_rows(&mut self, sheet_id: &str, row_indices: Vec<RowUuid>) -> Result<(), String> {

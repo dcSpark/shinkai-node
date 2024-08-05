@@ -11,7 +11,7 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIRemoveColumnPayload, APIRemoveRowsPayload, APISetCellValuePayload, APISetColumnPayload, MessageSchemaType
+            APIAddRowsPayload, APIRemoveColumnPayload, APIRemoveRowsPayload, APISetCellValuePayload, APISetColumnPayload, MessageSchemaType
         },
     },
 };
@@ -511,5 +511,65 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn api_add_rows(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (payload, requester_name) = match Self::validate_and_extract_payload::<APIAddRowsPayload>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::AddRows,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Lock the sheet_manager before using it
+        let mut sheet_manager_guard = sheet_manager.lock().await;
+
+        // Perform the logic to add rows using SheetManager
+        let mut row_ids = Vec::new();
+        for _ in 0..payload.number_of_rows {
+            match sheet_manager_guard.add_row(&payload.sheet_id, payload.starting_row).await {
+                Ok(row_id) => row_ids.push(row_id),
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to add row: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        }
+
+        let response = json!({ "row_ids": row_ids });
+        let _ = res.send(Ok(response)).await;
+        Ok(())
     }
 }
