@@ -185,10 +185,6 @@ fn create_a_sheet_and_check_workflows() {
                     .await
                     .unwrap();
 
-                let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
-                eprintln!("Printing sheet 1");
-                sheet.print_as_ascii_table();
-
                 // Add a new row
                 row_id = sheet_manager.add_row(&sheet_id, None).await.unwrap();
 

@@ -107,11 +107,14 @@ impl Sheet {
         let column_uuid = definition.id.clone();
         let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
 
-        if let ColumnBehavior::Formula(formula) = &definition.behavior {
-            let dependencies = self.parse_formula_dependencies(formula);
-            for dep in dependencies {
-                self.column_dependency_manager.add_dependency(column_uuid.clone(), dep);
+        match &definition.behavior {
+            ColumnBehavior::Formula(formula) | ColumnBehavior::LLMCall { input: formula, .. } => {
+                let dependencies = self.parse_formula_dependencies(formula);
+                for dep in dependencies {
+                    self.column_dependency_manager.add_dependency(column_uuid.clone(), dep);
+                }
             }
+            _ => {}
         }
 
         self.display_columns.push(column_uuid.clone());
