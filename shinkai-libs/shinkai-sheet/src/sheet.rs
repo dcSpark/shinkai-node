@@ -4,7 +4,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::schemas::sheet::{
-    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, RowIndex, WorkflowSheetJobData,
+    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, ColumnUuid, RowIndex, RowUuid, UuidString,
+    WorkflowSheetJobData,
 };
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -15,7 +16,7 @@ const MAX_DEPENDENCY_DEPTH: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SheetUpdate {
-    CellUpdated(RowIndex, ColumnIndex),
+    CellUpdated(RowUuid, ColumnUuid),
     // Add other update types as needed
 }
 
@@ -33,9 +34,11 @@ pub trait SheetObserver {
 pub struct Sheet {
     pub uuid: String,
     pub sheet_name: Option<String>,
-    pub columns: HashMap<usize, ColumnDefinition>,
-    pub rows: HashMap<RowIndex, HashMap<ColumnIndex, Cell>>,
+    pub columns: HashMap<UuidString, ColumnDefinition>,
+    pub rows: HashMap<UuidString, HashMap<UuidString, Cell>>,
     pub column_dependency_manager: ColumnDependencyManager,
+    pub display_columns: Vec<UuidString>,
+    pub display_rows: Vec<UuidString>,
     #[serde(skip_serializing, skip_deserializing)]
     update_sender: Option<Sender<SheetUpdate>>,
 }
@@ -48,6 +51,8 @@ impl std::fmt::Debug for Sheet {
             .field("columns", &self.columns)
             .field("rows", &self.rows)
             .field("column_dependency_manager", &self.column_dependency_manager)
+            .field("display_columns", &self.display_columns)
+            .field("display_rows", &self.display_rows)
             .field("observer", &"Option<Arc<Mutex<dyn SheetObserver>>>")
             .finish()
     }
@@ -61,6 +66,8 @@ impl Clone for Sheet {
             columns: self.columns.clone(),
             rows: self.rows.clone(),
             column_dependency_manager: self.column_dependency_manager.clone(),
+            display_columns: self.display_columns.clone(),
+            display_rows: self.display_rows.clone(),
             update_sender: None, // Always set to None when cloning
         }
     }
@@ -80,6 +87,8 @@ impl Sheet {
             columns: HashMap::new(),
             rows: HashMap::new(),
             column_dependency_manager: ColumnDependencyManager::default(),
+            display_columns: Vec::new(),
+            display_rows: Vec::new(),
             update_sender: None,
         }
     }
@@ -95,31 +104,28 @@ impl Sheet {
     }
 
     pub async fn set_column(&mut self, definition: ColumnDefinition) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let column_uuid = definition.id.clone();
         let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
 
         if let ColumnBehavior::Formula(formula) = &definition.behavior {
             let dependencies = self.parse_formula_dependencies(formula);
             for dep in dependencies {
-                self.column_dependency_manager.add_dependency(definition.id, dep);
+                self.column_dependency_manager.add_dependency(column_uuid.clone(), dep);
             }
         }
 
-        // TODO: Add a on / off for pause. so we can add new columns without auto-populating
+        self.display_columns.push(column_uuid.clone());
 
-        // Auto-populate cells for the new column based on existing active rows
-        let active_rows: Vec<RowIndex> = if self.rows.is_empty() {
-            vec![0] // Ensure at least the first row is active
-        } else {
-            self.rows.keys().cloned().collect()
-        };
+        // Collect rows to avoid borrowing issues
+        let rows_to_update: Vec<UuidString> = self.display_rows.clone();
 
-        for row in &active_rows {
+        for row in rows_to_update {
             if let ColumnBehavior::Formula(formula) = &definition.behavior {
-                if let Some(value) = self.evaluate_formula(formula, *row, definition.id) {
+                if let Some(value) = self.evaluate_formula(formula, row.clone(), column_uuid.clone()) {
                     let new_jobs = self
                         .dispatch(SheetAction::SetCellValue {
-                            row: *row,
-                            col: definition.id,
+                            row: row.clone(),
+                            col: column_uuid.clone(),
                             value,
                         })
                         .await;
@@ -131,7 +137,7 @@ impl Sheet {
         // Trigger update for LLMCall columns only once
         if let ColumnBehavior::LLMCall { .. } = definition.behavior {
             let new_jobs = self
-                .dispatch(SheetAction::TriggerUpdateColumnValues(definition.id))
+                .dispatch(SheetAction::TriggerUpdateColumnValues(column_uuid.clone()))
                 .await;
             jobs.extend(new_jobs);
         }
@@ -139,12 +145,17 @@ impl Sheet {
         Ok(jobs)
     }
 
-    pub async fn remove_column(&mut self, col_index: ColumnIndex) -> Result<Vec<WorkflowSheetJobData>, String> {
-        let jobs = self.dispatch(SheetAction::RemoveColumn(col_index)).await;
+    pub async fn remove_column(&mut self, col_id: UuidString) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let jobs = self.dispatch(SheetAction::RemoveColumn(col_id)).await;
         Ok(jobs)
     }
 
-    pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<ColumnIndex> {
+    pub async fn add_row(&mut self, row_id: UuidString) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let jobs = self.dispatch(SheetAction::AddRow(row_id)).await;
+        Ok(jobs)
+    }
+
+    pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<UuidString> {
         let mut dependencies = HashSet::new();
 
         // Check if the formula starts with '='
@@ -154,7 +165,10 @@ impl Sheet {
             for part in parts {
                 let part = part.trim();
                 if !part.starts_with('"') || !part.ends_with('"') {
-                    dependencies.insert(CellNameConverter::column_name_to_index(part));
+                    let col_index = CellNameConverter::column_name_to_index(part);
+                    if let Some(col_uuid) = self.display_columns.get(col_index) {
+                        dependencies.insert(col_uuid.clone());
+                    }
                 }
             }
         }
@@ -162,23 +176,33 @@ impl Sheet {
         dependencies
     }
 
-    pub async fn remove_row(&mut self, row_index: RowIndex) -> Result<Vec<WorkflowSheetJobData>, String> {
-        let jobs = self.dispatch(SheetAction::RemoveRow(row_index)).await;
+    pub async fn remove_row(&mut self, row_id: UuidString) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let jobs = self.dispatch(SheetAction::RemoveRow(row_id)).await;
         Ok(jobs)
     }
 
     pub async fn set_cell_value(
         &mut self,
-        row: RowIndex,
-        col: ColumnIndex,
+        row: UuidString,
+        col: UuidString,
         value: String,
     ) -> Result<Vec<WorkflowSheetJobData>, String> {
         if !self.columns.contains_key(&col) {
             return Err("Column index out of bounds".to_string());
         }
 
+        if !self.rows.contains_key(&row) {
+            return Err("Row does not exist".to_string());
+        }
+
         // this jobs is expected to always be empty. we are inserting a value into a cell
-        let mut jobs = self.dispatch(SheetAction::SetCellValue { row, col, value }).await;
+        let mut jobs = self
+            .dispatch(SheetAction::SetCellValue {
+                row: row.clone(),
+                col: col.clone(),
+                value,
+            })
+            .await;
 
         let changed_cell_id = CellId(format!("{}:{}", row, col));
         // unlike the previous job, this one *may* have updates because some formulas or workflows may depend on us
@@ -195,7 +219,7 @@ impl Sheet {
         Ok(jobs)
     }
 
-    pub fn evaluate_formula(&mut self, formula: &str, row: RowIndex, col: ColumnIndex) -> Option<String> {
+    pub fn evaluate_formula(&mut self, formula: &str, row: UuidString, col: UuidString) -> Option<String> {
         println!("Evaluating formula: {}", formula);
         let parts: Vec<&str> = formula.split('+').collect();
         let mut result = String::new();
@@ -207,10 +231,15 @@ impl Sheet {
             if part.starts_with('=') {
                 let col_name = &part[1..];
                 let col_index = CellNameConverter::column_name_to_index(col_name);
-                println!("Column name: {}, Column: {}", col_name, col_index);
-                if let Some(value) = self.get_cell_value(row, col_index) {
-                    result.push_str(&value);
-                    dependencies.insert(col_index);
+                println!(
+                    "Column name: {}, Column index: {}, Column id: {}",
+                    col_name, col_index, col
+                );
+                if let Some(col_uuid) = self.display_columns.get(col_index) {
+                    if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
+                        result.push_str(&value);
+                        dependencies.insert(col_uuid.clone());
+                    }
                 }
             } else if part.starts_with('"') && part.ends_with('"') {
                 // Handle quoted strings
@@ -219,9 +248,11 @@ impl Sheet {
             } else {
                 let col_index = CellNameConverter::column_name_to_index(part);
                 println!("Column name: {}, Column: {}", part, col_index);
-                if let Some(value) = self.get_cell_value(row, col_index) {
-                    result.push_str(&value);
-                    dependencies.insert(col_index);
+                if let Some(col_uuid) = self.display_columns.get(col_index) {
+                    if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
+                        result.push_str(&value);
+                        dependencies.insert(col_uuid.clone());
+                    }
                 }
             }
         }
@@ -234,29 +265,28 @@ impl Sheet {
     // then we should skip the workflow creation and set the cell to Pending
     // and then when A is defined, we should trigger the workflow
     // Same goes for A -> B -> C
-    pub fn get_cell_value(&self, row: RowIndex, col: ColumnIndex) -> Option<String> {
+    pub fn get_cell_value(&self, row: UuidString, col: UuidString) -> Option<String> {
         self.rows
             .get(&row)
             .and_then(|row_cells| row_cells.get(&col))
             .and_then(|cell| cell.value.clone())
     }
 
-    pub fn cell_id_to_indices(&self, cell_id: &CellId) -> (usize, usize) {
+    pub fn cell_id_to_indices(&self, cell_id: &CellId) -> (UuidString, UuidString) {
         let parts: Vec<&str> = cell_id.0.split(':').collect();
         (parts[0].parse().unwrap(), parts[1].parse().unwrap())
     }
 
     // Additional helper methods
-    pub fn get_cell(&self, row: RowIndex, col: ColumnIndex) -> Option<&Cell> {
+    pub fn get_cell(&self, row: UuidString, col: UuidString) -> Option<&Cell> {
         self.rows.get(&row).and_then(|row_cells| row_cells.get(&col))
     }
 
-    pub fn get_column_definitions(&self) -> Vec<(ColumnIndex, &ColumnDefinition)> {
-        self.columns.iter().map(|(&index, def)| (index, def)).collect()
+    pub fn get_column_definitions(&self) -> Vec<(UuidString, &ColumnDefinition)> {
+        self.columns.iter().map(|(index, def)| (index.clone(), def)).collect()
     }
 
-    #[allow(dead_code)]
-    fn get_column_formula(&self, col: ColumnIndex) -> Option<String> {
+    fn get_column_formula(&self, col: UuidString) -> Option<String> {
         self.columns.get(&col).and_then(|col_def| {
             if let ColumnBehavior::Formula(formula) = &col_def.behavior {
                 Some(formula.clone())
@@ -272,9 +302,9 @@ impl Sheet {
     /// If the column is an LLMCall, the input cells are those referenced in the input string.
     pub fn get_input_cells_for_column(
         &self,
-        row: RowIndex,
-        col: ColumnIndex,
-    ) -> Vec<(RowIndex, ColumnIndex, ColumnDefinition)> {
+        row: UuidString,
+        col: UuidString,
+    ) -> Vec<(UuidString, UuidString, ColumnDefinition)> {
         let mut input_cells = Vec::new();
 
         if let Some(column_definition) = self.columns.get(&col) {
@@ -283,7 +313,7 @@ impl Sheet {
                     let dependencies = self.parse_formula_dependencies(formula);
                     for dep_col in dependencies {
                         if let Some(dep_col_def) = self.columns.get(&dep_col) {
-                            input_cells.push((row, dep_col, dep_col_def.clone()));
+                            input_cells.push((row.clone(), dep_col.clone(), dep_col_def.clone()));
                         }
                     }
                 }
@@ -291,7 +321,7 @@ impl Sheet {
                     let dependencies = self.parse_formula_dependencies(input);
                     for dep_col in dependencies {
                         if let Some(dep_col_def) = self.columns.get(&dep_col) {
-                            input_cells.push((row, dep_col, dep_col_def.clone()));
+                            input_cells.push((row.clone(), dep_col.clone(), dep_col_def.clone()));
                         }
                     }
                 }
@@ -310,11 +340,11 @@ impl Sheet {
     ///
     /// # Returns
     /// Vec of (ColumnIndex, Option<String>) pairs representing input cells and their values.
-    pub fn get_input_values_for_cell(&self, row: RowIndex, col: ColumnIndex) -> Vec<(ColumnIndex, Option<String>)> {
-        let input_cells = self.get_input_cells_for_column(row, col);
+    pub fn get_input_values_for_cell(&self, row: UuidString, col: UuidString) -> Vec<(UuidString, Option<String>)> {
+        let input_cells = self.get_input_cells_for_column(row.clone(), col.clone());
         input_cells
             .into_iter()
-            .map(|(_, input_col, _)| (input_col, self.get_cell_value(row, input_col)))
+            .map(|(_, input_col, _)| (input_col.clone(), self.get_cell_value(row.clone(), input_col)))
             .collect()
     }
 
@@ -343,21 +373,28 @@ impl Sheet {
 
     pub fn print_as_ascii_table(&self) {
         // Collect column headers in order
-        let mut headers: Vec<String> = (0..self.columns.len())
-            .filter_map(|i| self.columns.get(&i).map(|col_def| col_def.name.clone()))
+        let mut headers: Vec<String> = self
+            .display_columns
+            .iter()
+            .filter_map(|col_uuid| self.columns.get(col_uuid).map(|col_def| col_def.name.clone()))
             .collect();
         headers.insert(0, "Row".to_string());
 
         // Calculate the maximum width for each column
         let mut col_widths: Vec<usize> = headers.iter().map(|header| header.len()).collect();
-        let max_row = *self.rows.keys().max().unwrap_or(&0);
-        col_widths[0] = col_widths[0].max(max_row.to_string().len());
+        let max_row_len = self
+            .display_rows
+            .iter()
+            .map(|row_uuid| row_uuid.len())
+            .max()
+            .unwrap_or(0);
+        col_widths[0] = col_widths[0].max(max_row_len);
 
-        for row_index in 0..=max_row {
-            if let Some(row_cells) = self.rows.get(&row_index) {
-                for col_index in 0..self.columns.len() {
+        for row_uuid in &self.display_rows {
+            if let Some(row_cells) = self.rows.get(row_uuid) {
+                for (col_index, col_uuid) in self.display_columns.iter().enumerate() {
                     let cell_value_len = row_cells
-                        .get(&col_index)
+                        .get(col_uuid)
                         .and_then(|cell| cell.value.as_ref().map(|v| v.len()))
                         .unwrap_or(0);
                     col_widths[col_index + 1] = col_widths[col_index + 1].max(cell_value_len);
@@ -375,12 +412,13 @@ impl Sheet {
         println!("{}", "-".repeat(header_line.join(" | ").len()));
 
         // Print rows with padding
-        for row_index in 0..=max_row {
-            let mut row_data: Vec<String> = vec![format!("{:width$}", row_index, width = col_widths[0])];
-            if let Some(row_cells) = self.rows.get(&row_index) {
-                for col_index in 0..self.columns.len() {
+        for (index, row_uuid) in self.display_rows.iter().enumerate() {
+            let short_row_uuid = format!("{} ({:.8}...)", index + 1, row_uuid);
+            let mut row_data: Vec<String> = vec![format!("{:width$}", short_row_uuid, width = col_widths[0])];
+            if let Some(row_cells) = self.rows.get(row_uuid) {
+                for (col_index, col_uuid) in self.display_columns.iter().enumerate() {
                     let cell_value = row_cells
-                        .get(&col_index)
+                        .get(col_uuid)
                         .and_then(|cell| cell.value.clone())
                         .unwrap_or_else(|| "".to_string());
                     row_data.push(format!("{:width$}", cell_value, width = col_widths[col_index + 1]));
@@ -400,19 +438,19 @@ impl Sheet {
 pub enum SheetAction {
     SetColumn(ColumnDefinition),
     SetCellValue {
-        row: RowIndex,
-        col: ColumnIndex,
+        row: UuidString,
+        col: UuidString,
         value: String,
     },
     TriggerUpdateEvent {
         changed_cell_id: CellId,
-        visited: HashSet<(RowIndex, ColumnIndex)>,
+        visited: HashSet<(UuidString, UuidString)>,
         depth: usize,
     },
-    RemoveColumn(ColumnIndex),
-    TriggerUpdateColumnValues(ColumnIndex),
-    RemoveRow(RowIndex),
-    // Add other actions as needed
+    RemoveColumn(UuidString),
+    TriggerUpdateColumnValues(UuidString),
+    RemoveRow(UuidString),
+    AddRow(UuidString), // Add other actions as needed
 }
 
 // Implement the reducer function
@@ -431,10 +469,12 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             if let ColumnBehavior::Formula(ref formula) = definition.behavior {
                 let dependencies = state.parse_formula_dependencies(formula);
                 for dep in dependencies {
-                    state.column_dependency_manager.add_dependency(definition.id, dep);
+                    state
+                        .column_dependency_manager
+                        .add_dependency(definition.id.clone(), dep);
                 }
             }
-            state.columns.insert(definition.id, definition);
+            state.columns.insert(definition.id.clone(), definition);
         }
         SheetAction::SetCellValue { row, col, value } => {
             if !state.columns.contains_key(&col) {
@@ -462,24 +502,25 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
 
             let (row, col) = state.cell_id_to_indices(&changed_cell_id);
+            eprintln!("TriggerUpdateEvent: {:?}", changed_cell_id);
 
-            if !visited.insert((row, col)) {
+            if !visited.insert((row.clone(), col.clone())) {
                 eprintln!("Circular dependency detected at cell ({}, {})", row, col);
                 return (state, jobs);
             }
 
-            let dependents = state.column_dependency_manager.get_reverse_dependents(col);
+            let dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
             eprintln!("Col: {:?} Dependents: {:?}", col, dependents);
             for dependent_col in dependents {
                 if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
                     match &column_definition.behavior {
                         ColumnBehavior::Formula(formula) => {
-                            if let Some(value) = state.evaluate_formula(formula, row, dependent_col) {
+                            if let Some(value) = state.evaluate_formula(formula, row.clone(), dependent_col.clone()) {
                                 let (new_state, mut new_jobs) = sheet_reducer(
                                     state,
                                     SheetAction::SetCellValue {
-                                        row,
-                                        col: dependent_col,
+                                        row: row.clone(),
+                                        col: dependent_col.clone(),
                                         value,
                                     },
                                 )
@@ -508,11 +549,11 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             input_hash,
                         } => {
                             // Check if input_hash is present and matches the blake3 hash of the current input cells values
-                            let input_cells = state.get_input_cells_for_column(row, dependent_col);
+                            let input_cells = state.get_input_cells_for_column(row.clone(), dependent_col.clone());
                             let workflow_job_data = WorkflowSheetJobData {
                                 sheet_id: state.uuid.clone(),
-                                row,
-                                col: dependent_col,
+                                row: row.clone(),
+                                col: dependent_col.clone(),
                                 col_definition: column_definition.clone(),
                                 workflow: workflow.clone(),
                                 input_cells,
@@ -533,65 +574,33 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 });
             }
         }
-        SheetAction::RemoveColumn(col_index) => {
+        SheetAction::RemoveColumn(col_uuid) => {
             // Get dependents before removing the column
-            let dependents = state.column_dependency_manager.get_reverse_dependents(col_index);
+            let dependents = state.column_dependency_manager.get_reverse_dependents(col_uuid.clone());
 
             // Remove the column
-            state.columns.remove(&col_index);
+            state.columns.remove(&col_uuid);
             for row in state.rows.values_mut() {
-                row.remove(&col_index);
+                row.remove(&col_uuid);
             }
-            state.column_dependency_manager.remove_column(col_index);
+            state.column_dependency_manager.remove_column(col_uuid.clone());
 
-            // Re-order the columns
-            let mut new_columns = HashMap::new();
-            for (old_index, col_def) in state.columns.iter() {
-                let new_index = if *old_index > col_index {
-                    old_index - 1
-                } else {
-                    *old_index
-                };
-                new_columns.insert(
-                    new_index,
-                    ColumnDefinition {
-                        id: new_index,
-                        ..col_def.clone()
-                    },
-                );
-            }
-            state.columns = new_columns;
-
-            // Re-order the rows
-            for row in state.rows.values_mut() {
-                let mut new_row = HashMap::new();
-                for (old_index, cell) in row.iter() {
-                    let new_index = if *old_index > col_index {
-                        old_index - 1
-                    } else {
-                        *old_index
-                    };
-                    new_row.insert(new_index, cell.clone());
-                }
-                *row = new_row;
-            }
+            // Remove the column from display_columns
+            state.display_columns.retain(|uuid| uuid != &col_uuid);
 
             // Trigger updates for columns dependent on the removed column
             for dependent_col in dependents {
-                for row_index in state.rows.keys().cloned().collect::<Vec<_>>() {
-                    let new_col_index = if dependent_col > col_index {
-                        dependent_col - 1
-                    } else {
-                        dependent_col
-                    };
-                    if let Some(column_definition) = state.columns.get(&new_col_index).cloned() {
+                for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
+                    if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
                         if let ColumnBehavior::Formula(formula) = &column_definition.behavior {
-                            if let Some(value) = state.evaluate_formula(formula, row_index, new_col_index) {
+                            if let Some(value) =
+                                state.evaluate_formula(formula, row_uuid.clone(), dependent_col.clone())
+                            {
                                 let (new_state, mut new_jobs) = sheet_reducer(
                                     state,
                                     SheetAction::SetCellValue {
-                                        row: row_index,
-                                        col: new_col_index,
+                                        row: row_uuid.clone(),
+                                        col: dependent_col.clone(),
                                         value,
                                     },
                                 )
@@ -604,15 +613,9 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 }
             }
         }
-        SheetAction::TriggerUpdateColumnValues(col_index) => {
-            let active_rows: Vec<RowIndex> = if state.rows.is_empty() {
-                vec![0] // Ensure at least the first row is active
-            } else {
-                state.rows.keys().cloned().collect()
-            };
-
-            for row_index in active_rows {
-                if let Some(column_definition) = state.columns.get(&col_index).cloned() {
+        SheetAction::TriggerUpdateColumnValues(col_uuid) => {
+            for row_uuid in state.rows.keys() {
+                if let Some(column_definition) = state.columns.get(&col_uuid).cloned() {
                     if let ColumnBehavior::LLMCall {
                         input: _, // used under the hood with get_input_cells_for_column
                         workflow,
@@ -620,11 +623,11 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         input_hash: _,
                     } = &column_definition.behavior
                     {
-                        let input_cells = state.get_input_cells_for_column(row_index, col_index);
+                        let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
                         let workflow_job_data = WorkflowSheetJobData {
                             sheet_id: state.uuid.clone(),
-                            row: row_index,
-                            col: col_index,
+                            row: row_uuid.clone(),
+                            col: col_uuid.clone(),
                             col_definition: column_definition.clone(),
                             workflow: workflow.clone(),
                             input_cells,
@@ -636,9 +639,55 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 }
             }
         }
-        SheetAction::RemoveRow(row_index) => {
-            state.rows.remove(&row_index);
+        SheetAction::RemoveRow(row_uuid) => {
+            state.rows.remove(&row_uuid);
+            state.display_rows.retain(|uuid| uuid != &row_uuid);
             // Optionally, you can add logic to handle dependencies or other side effects
+        }
+        SheetAction::AddRow(row_uuid) => {
+            if state.rows.contains_key(&row_uuid) {
+                return (state, jobs); // Row already exists, return current state
+            }
+
+            let mut row_cells = HashMap::new();
+            for (col_uuid, col_def) in &state.columns {
+                if let ColumnBehavior::Text = col_def.behavior {
+                    row_cells.insert(
+                        col_uuid.clone(),
+                        Cell {
+                            value: Some("".to_string()), // Default empty value for text columns
+                            last_updated: Utc::now(),
+                            status: CellStatus::Ready,
+                        },
+                    );
+                }
+            }
+            state.rows.insert(row_uuid.clone(), row_cells);
+            state.display_rows.push(row_uuid.clone());
+
+            // Collect update events for non-text columns
+            let mut update_events = Vec::new();
+            for (col_uuid, col_def) in &state.columns {
+                if let ColumnBehavior::Text = col_def.behavior {
+                    continue; // Skip text columns
+                }
+
+                let changed_cell_id = CellId(format!("{}:{}", row_uuid, col_uuid));
+                eprintln!("AddRow TriggerUpdateEvent: {:?}", changed_cell_id);
+                update_events.push(SheetAction::TriggerUpdateEvent {
+                    changed_cell_id,
+                    visited: HashSet::new(),
+                    depth: 0,
+                });
+            }
+
+            // Apply update events
+            for event in update_events {
+                let (new_state, mut new_jobs) = sheet_reducer(state.clone(), event).await;
+                eprintln!("update_events New state: {:?}", new_state);
+                state = new_state;
+                jobs.append(&mut new_jobs);
+            }
         }
     }
     (state, jobs)
