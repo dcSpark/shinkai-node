@@ -94,11 +94,11 @@ impl SheetManager {
         Ok(sheet_id)
     }
 
-    pub fn get_sheet(&self, sheet_id: &str) -> Result<&Sheet, String> {
+    pub fn get_sheet(&self, sheet_id: &str) -> Result<Sheet, String> {
         self.sheets
             .get(sheet_id)
             .map(|(sheet, _)| sheet)
-            .ok_or_else(|| "Sheet ID not found".to_string())
+            .ok_or_else(|| "Sheet ID not found".to_string()).cloned()
     }
 
     pub fn add_sheet(&mut self, sheet: Sheet) -> Result<String, ShinkaiDBError> {
@@ -272,17 +272,7 @@ impl SheetManager {
     pub async fn add_row(&mut self, sheet_id: &str, position: Option<usize>) -> Result<RowUuid, String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
         let row_id = Uuid::new_v4().to_string();
-        let mut jobs = sheet.add_row(row_id.clone()).await.map_err(|e| e.to_string())?;
-
-        if let Some(pos) = position {
-            if pos <= sheet.display_rows.len() {
-                sheet.display_rows.insert(pos, row_id.clone());
-            } else {
-                return Err("Position out of bounds".to_string());
-            }
-        } else {
-            sheet.display_rows.push(row_id.clone());
-        }
+        let jobs = sheet.add_row(row_id.clone()).await.map_err(|e| e.to_string())?;
 
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;

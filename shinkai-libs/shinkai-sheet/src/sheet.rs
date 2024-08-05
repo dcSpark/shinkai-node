@@ -538,18 +538,22 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                 state = new_state;
                                 jobs.append(&mut new_jobs);
 
+                                eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, dependent_col, col);
                                 let new_cell_id = CellId(format!("{}:{}", row, dependent_col));
-                                let (new_state, mut new_jobs) = sheet_reducer(
-                                    state,
-                                    SheetAction::TriggerUpdateEvent {
-                                        changed_cell_id: new_cell_id,
-                                        visited: visited.clone(),
-                                        depth: depth + 1,
-                                    },
-                                )
-                                .await;
-                                state = new_state;
-                                jobs.append(&mut new_jobs);
+                                eprintln!("TriggerUpdateEvent newcellid: {:?}", new_cell_id);
+                                if changed_cell_id != new_cell_id {
+                                    let (new_state, mut new_jobs) = sheet_reducer(
+                                        state,
+                                        SheetAction::TriggerUpdateEvent {
+                                            changed_cell_id: new_cell_id,
+                                            visited: visited.clone(),
+                                            depth: depth + 1,
+                                        },
+                                    )
+                                    .await;
+                                    state = new_state;
+                                    jobs.append(&mut new_jobs);
+                                }
                             }
                         }
                         ColumnBehavior::LLMCall {
@@ -656,6 +660,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             // Optionally, you can add logic to handle dependencies or other side effects
         }
         SheetAction::AddRow(row_uuid) => {
+            eprintln!("SheetAction::AddRow: {:?}", row_uuid);
             if state.rows.contains_key(&row_uuid) {
                 return (state, jobs); // Row already exists, return current state
             }
@@ -685,7 +690,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 }
 
                 let changed_cell_id = CellId(format!("{}:{}", row_uuid, col_uuid));
-                eprintln!("AddRow TriggerUpdateEvent: {:?}", changed_cell_id);
+                eprintln!("\nAddRow TriggerUpdateEvent: {:?}", changed_cell_id);
                 update_events.push(SheetAction::TriggerUpdateEvent {
                     changed_cell_id,
                     visited: HashSet::new(),

@@ -131,7 +131,7 @@ fn create_a_sheet_and_check_workflows() {
 
             let mut sheet_id = "".to_string();
             // Create a new row UUID
-            let row_id = Uuid::new_v4().to_string();
+            let row_id;
             let column_llm;
             {
                 let sheet_manager = node1_sheet_manager.clone();
@@ -185,8 +185,17 @@ fn create_a_sheet_and_check_workflows() {
                     .await
                     .unwrap();
 
+                let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+                eprintln!("Printing sheet 1");
+                sheet.print_as_ascii_table();
+
                 // Add a new row
-                sheet_manager.add_row(&sheet_id, None).await.unwrap();
+                row_id = sheet_manager.add_row(&sheet_id, None).await.unwrap();
+
+                // Check sheet
+                let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+                eprintln!("Printing sheet 2");
+                sheet.print_as_ascii_table();
 
                 // Set value in Column A
                 sheet_manager
