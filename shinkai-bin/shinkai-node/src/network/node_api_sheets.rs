@@ -77,9 +77,9 @@ impl Node {
         };
 
         // Perform the logic to set the column using SheetManager
-        match sheet_manager_guard.set_column(&payload.sheet_id, column).await {
+        match sheet_manager_guard.set_column(&payload.sheet_id, column.clone()).await {
             Ok(_) => {
-                let _ = res.send(Ok(json!({"status": "success"}))).await;
+                let _ = res.send(Ok(json!({"data": column}))).await;
                 Ok(())
             }
             Err(err) => {
