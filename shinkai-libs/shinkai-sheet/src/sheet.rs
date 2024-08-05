@@ -127,6 +127,7 @@ impl Sheet {
                             row: row.clone(),
                             col: column_uuid.clone(),
                             value,
+                            input_hash: None,
                         })
                         .await;
                     jobs.extend(new_jobs);
@@ -195,12 +196,13 @@ impl Sheet {
             return Err("Row does not exist".to_string());
         }
 
-        // this jobs is expected to always be empty. we are inserting a value into a cell
+        // these jobs is expected to always be empty. we are inserting a value into a cell
         let mut jobs = self
             .dispatch(SheetAction::SetCellValue {
                 row: row.clone(),
                 col: col.clone(),
                 value,
+                input_hash: None,
             })
             .await;
 
@@ -529,6 +531,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                         row: row.clone(),
                                         col: dependent_col.clone(),
                                         value,
+                                        input_hash: None,
                                     },
                                 )
                                 .await;
@@ -609,6 +612,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                         row: row_uuid.clone(),
                                         col: dependent_col.clone(),
                                         value,
+                                        input_hash: None,
                                     },
                                 )
                                 .await;

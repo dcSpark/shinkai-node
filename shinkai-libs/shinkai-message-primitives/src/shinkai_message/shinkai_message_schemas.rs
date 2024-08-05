@@ -1,4 +1,4 @@
-use crate::schemas::sheet::APIColumnDefinition;
+use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
@@ -301,8 +301,8 @@ pub struct SheetManagerAction {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SheetJobAction {
     pub sheet_id: String,
-    pub row: usize,
-    pub col: usize,
+    pub row: RowUuid,
+    pub col: ColumnUuid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -576,21 +576,21 @@ pub struct APISetColumnPayload {
 #[derive(Serialize, Deserialize)]
 pub struct APIRemoveColumnPayload {
     pub sheet_id: String,
-    pub column_id: usize,
+    pub column_id: ColumnUuid,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct APISetCellValuePayload {
     pub sheet_id: String,
-    pub row: usize,
-    pub col: usize,
+    pub row: RowUuid,
+    pub col: ColumnUuid,
     pub value: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct APIRemoveRowsPayload {
     pub sheet_id: String,
-    pub row_indices: Vec<usize>,
+    pub row_indices: Vec<UuidString>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

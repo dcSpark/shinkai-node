@@ -2,7 +2,9 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use async_channel::{Receiver, Sender};
-use shinkai_message_primitives::schemas::sheet::{APIColumnDefinition, ColumnDefinition, WorkflowSheetJobData};
+use shinkai_message_primitives::schemas::sheet::{
+    APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, UuidString, WorkflowSheetJobData,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction,
@@ -10,6 +12,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
 use shinkai_sheet::sheet::{Sheet, SheetUpdate};
+use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
@@ -187,8 +190,8 @@ impl SheetManager {
                 job_message_next: Some(next_job_message),
                 sheet_action: SheetJobAction {
                     sheet_id: current_job_data.sheet_id.clone(),
-                    row: current_job_data.row,
-                    col: current_job_data.col,
+                    row: current_job_data.row.clone(),
+                    col: current_job_data.col.clone(),
                 },
             })));
         }
@@ -205,15 +208,19 @@ impl SheetManager {
         Ok(())
     }
 
-    pub async fn from_api_column_to_new_column(&self, sheet_id: &str, column: APIColumnDefinition) -> Result<ColumnDefinition, String> {
+    pub async fn from_api_column_to_new_column(
+        &self,
+        sheet_id: &str,
+        column: APIColumnDefinition,
+    ) -> Result<ColumnDefinition, String> {
         let sheet = self.sheets.get(sheet_id).ok_or("Sheet ID not found")?.0.clone();
-    
-        let id = column.id.unwrap_or_else(|| sheet.columns.len());
+
+        let id = column.id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let name = column.name.unwrap_or_else(|| {
-            let col_name = CellNameConverter::column_index_to_name(id);
+            let col_name = CellNameConverter::column_index_to_name(sheet.columns.len());
             format!("Column {}", col_name)
         });
-    
+
         Ok(ColumnDefinition {
             id,
             name,
@@ -242,7 +249,7 @@ impl SheetManager {
         Ok(())
     }
 
-    pub async fn remove_column(&mut self, sheet_id: &str, column_id: usize) -> Result<(), String> {
+    pub async fn remove_column(&mut self, sheet_id: &str, column_id: ColumnUuid) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
         let jobs = sheet.remove_column(column_id).await.map_err(|e| e.to_string())?;
 
@@ -262,9 +269,9 @@ impl SheetManager {
         Ok(())
     }
 
-    pub async fn remove_rows(&mut self, sheet_id: &str, row_indices: Vec<usize>) -> Result<(), String> {
+    pub async fn remove_rows(&mut self, sheet_id: &str, row_indices: Vec<RowUuid>) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
-        
+
         for row_index in row_indices {
             sheet.remove_row(row_index).await.map_err(|e| e.to_string())?;
         }
@@ -288,8 +295,8 @@ impl SheetManager {
     pub async fn set_cell_value(
         &mut self,
         sheet_id: &str,
-        row: usize,
-        col: usize,
+        row: RowUuid,
+        col: ColumnUuid,
         value: String,
     ) -> Result<(), String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
@@ -311,7 +318,7 @@ impl SheetManager {
         Ok(())
     }
 
-    pub fn get_cell_value(&self, sheet_id: &str, row: usize, col: usize) -> Result<Option<String>, String> {
+    pub fn get_cell_value(&self, sheet_id: &str, row: RowUuid, col: ColumnUuid) -> Result<Option<String>, String> {
         let sheet = self.sheets.get(sheet_id).ok_or("Sheet ID not found")?.0.clone();
         Ok(sheet.get_cell_value(row, col))
     }
