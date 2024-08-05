@@ -579,7 +579,7 @@ pub struct APIRemoveColumnPayload {
     pub column_id: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct APISetCellValuePayload {
     pub sheet_id: String,
     pub row: usize,

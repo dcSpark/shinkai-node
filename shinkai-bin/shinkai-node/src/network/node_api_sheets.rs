@@ -374,6 +374,7 @@ impl Node {
 
         // Lock the sheet_manager before using it
         let mut sheet_manager_guard = sheet_manager.lock().await;
+        let payload_clone = payload.clone();
 
         // Perform the logic to set the cell value using SheetManager
         match sheet_manager_guard
@@ -381,7 +382,7 @@ impl Node {
             .await
         {
             Ok(_) => {
-                let _ = res.send(Ok(json!(payload))).await;
+                let _ = res.send(Ok(json!(payload_clone))).await;
                 Ok(())
             }
             Err(err) => {
