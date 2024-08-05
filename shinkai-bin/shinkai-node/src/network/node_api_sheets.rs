@@ -79,7 +79,7 @@ impl Node {
         // Perform the logic to set the column using SheetManager
         match sheet_manager_guard.set_column(&payload.sheet_id, column.clone()).await {
             Ok(_) => {
-                let _ = res.send(Ok(json!({"data": column}))).await;
+                let _ = res.send(Ok(json!(column))).await;
                 Ok(())
             }
             Err(err) => {
@@ -138,7 +138,7 @@ impl Node {
             .await
         {
             Ok(_) => {
-                let _ = res.send(Ok(json!({"status": "success"}))).await;
+                let _ = res.send(Ok(json!(null))).await;
                 Ok(())
             }
             Err(err) => {
@@ -254,7 +254,7 @@ impl Node {
                 // Update the sheet name
                 match sheet_manager_guard.update_sheet_name(&sheet_id, sheet_name).await {
                     Ok(_) => {
-                        let response = json!({"status": "success", "sheet_id": sheet_id});
+                        let response = json!({"sheet_id": sheet_id});
                         let _ = res.send(Ok(response)).await;
                         Ok(())
                     }
@@ -322,7 +322,7 @@ impl Node {
         // Remove the sheet using SheetManager
         match sheet_manager_guard.remove_sheet(&sheet_id) {
             Ok(_) => {
-                let _ = res.send(Ok(json!({"status": "success"}))).await;
+                let _ = res.send(Ok(json!(null))).await;
                 Ok(())
             }
             Err(err) => {
@@ -381,7 +381,7 @@ impl Node {
             .await
         {
             Ok(_) => {
-                let _ = res.send(Ok(json!({"status": "success"}))).await;
+                let _ = res.send(Ok(json!(payload))).await;
                 Ok(())
             }
             Err(err) => {
@@ -497,7 +497,7 @@ impl Node {
             .await
         {
             Ok(_) => {
-                let _ = res.send(Ok(json!({"status": "success"}))).await;
+                let _ = res.send(Ok(json!(null))).await;
                 Ok(())
             }
             Err(err) => {
