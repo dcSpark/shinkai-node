@@ -96,6 +96,12 @@ pub async fn initialize_node() -> Result<
         .cloned()
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.arb-sep-shinkai".to_string()));
 
+    let global_identity_name = if global_identity_name.is_empty() {
+        "@@localhost.arb-sep-shinkai".to_string()
+    } else {
+        global_identity_name
+    };
+
     // Initialization, creating Tokio runtime and fetching needed startup data
     let initial_llm_providers = fetch_llm_provider_env(global_identity_name.clone());
     let identity_secret_key_string =
