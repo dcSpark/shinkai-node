@@ -105,17 +105,25 @@ impl Sheet {
 
     pub async fn set_column(&mut self, definition: ColumnDefinition) -> Result<Vec<WorkflowSheetJobData>, String> {
         let column_uuid = definition.id.clone();
-        let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
-
-        match &definition.behavior {
+        let dependencies = match &definition.behavior {
             ColumnBehavior::Formula(formula) | ColumnBehavior::LLMCall { input: formula, .. } => {
-                let dependencies = self.parse_formula_dependencies(formula);
-                for dep in dependencies {
-                    self.column_dependency_manager.add_dependency(column_uuid.clone(), dep);
-                }
+                self.parse_formula_dependencies(formula)
             }
-            _ => {}
+            _ => HashSet::new(),
+        };
+
+        // Check if the column already exists
+        if self.columns.contains_key(&column_uuid) {
+            self.column_dependency_manager
+                .update_dependencies(column_uuid.clone(), dependencies);
+        } else {
+            for dep in &dependencies {
+                self.column_dependency_manager
+                    .add_dependency(column_uuid.clone(), dep.clone());
+            }
         }
+
+        let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
 
         self.display_columns.push(column_uuid.clone());
 
@@ -262,7 +270,6 @@ impl Sheet {
             }
         }
 
-        self.column_dependency_manager.update_dependencies(col, dependencies);
         Some(result)
     }
 
@@ -385,6 +392,14 @@ impl Sheet {
             .collect();
         headers.insert(0, "Row".to_string());
 
+        // Collect column IDs in order
+        let mut column_ids: Vec<String> = self
+            .display_columns
+            .iter()
+            .map(|col_uuid| format!("{:.8}...", col_uuid))
+            .collect();
+        column_ids.insert(0, "".to_string());
+
         // Calculate the maximum width for each column
         let mut col_widths: Vec<usize> = headers.iter().map(|header| header.len()).collect();
         let max_row_len = self
@@ -414,6 +429,15 @@ impl Sheet {
             .map(|(i, header)| format!("{:width$}", header, width = col_widths[i]))
             .collect();
         println!("{}", header_line.join(" | "));
+
+        // Print column IDs with padding
+        let id_line: Vec<String> = column_ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| format!("{:width$}", id, width = col_widths[i]))
+            .collect();
+        println!("{}", id_line.join(" | "));
+
         println!("{}", "-".repeat(header_line.join(" | ").len()));
 
         // Print rows with padding

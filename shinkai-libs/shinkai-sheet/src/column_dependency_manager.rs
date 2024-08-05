@@ -48,8 +48,14 @@ impl ColumnDependencyManager {
     }
 
     pub fn update_dependencies(&mut self, col: UuidString, dependencies: HashSet<UuidString>) {
-        // Remove existing dependencies for the column
-        self.dependencies.remove(&col);
+        // Remove existing dependencies for the column without affecting reverse dependencies
+        if let Some(existing_deps) = self.dependencies.remove(&col) {
+            for dep in &existing_deps {
+                if let Some(rev_deps) = self.reverse_dependencies.get_mut(dep) {
+                    rev_deps.remove(&col);
+                }
+            }
+        }
         
         // Add new dependencies
         for dep in dependencies {

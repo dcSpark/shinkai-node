@@ -320,11 +320,7 @@ mod tests {
         for (i, row_id) in [&row_0_id, &row_1_id, &row_2_id].iter().enumerate() {
             // Simulate job completion for Column C
             sheet
-                .set_cell_value(
-                    row_id.to_string(),
-                    column_c_id.clone(),
-                    format!("Summary of row {}", i),
-                )
+                .set_cell_value(row_id.to_string(), column_c_id.clone(), format!("Summary of row {}", i))
                 .await
                 .unwrap();
         }
@@ -467,6 +463,139 @@ mod tests {
 
         // Print final state of the sheet
         sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_dependency_manager() {
+        let sheet = Arc::new(Mutex::new(Sheet::new()));
+        let row_id = Uuid::new_v4().to_string();
+        let column_text_id = Uuid::new_v4().to_string();
+        let column_llm_id = Uuid::new_v4().to_string();
+        let column_formula_id = Uuid::new_v4().to_string();
+
+        let column_text = ColumnDefinition {
+            id: column_text_id.clone(),
+            name: "Column A".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        let workflow_str = r#"
+        workflow WorkflowTest v0.1 {
+            step Main {
+                $RESULT = call opinionated_inference($INPUT)
+            }
+        }
+        "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        let column_llm = ColumnDefinition {
+            id: column_llm_id.clone(),
+            name: "Column B".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "=A".to_string(),
+                workflow,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let column_formula = ColumnDefinition {
+            id: column_formula_id.clone(),
+            name: "Column C".to_string(),
+            behavior: ColumnBehavior::Formula("=B + \" And Space\"".to_string()),
+        };
+
+        {
+            let mut sheet = sheet.lock().await;
+            let _ = sheet.set_column(column_text.clone()).await;
+            let _ = sheet.set_column(column_llm.clone()).await;
+            let _ = sheet.set_column(column_formula.clone()).await;
+        }
+
+        eprintln!("Checking initial state of the sheet");
+
+        assert_eq!(sheet.lock().await.columns.len(), 3);
+        assert_eq!(sheet.lock().await.columns[&column_text_id], column_text);
+        assert_eq!(sheet.lock().await.columns[&column_llm_id], column_llm);
+        assert_eq!(sheet.lock().await.columns[&column_formula_id], column_formula);
+
+        sheet.lock().await.add_row(row_id.clone()).await.unwrap();
+
+        // Set value in Column A
+        sheet
+            .lock()
+            .await
+            .set_cell_value(row_id.clone(), column_text_id.clone(), "Hello".to_string())
+            .await
+            .unwrap();
+
+        // Check initial state of Column C (formula depending on Column B)
+        let cell_value_formula = sheet
+            .lock()
+            .await
+            .get_cell_value(row_id.clone(), column_formula_id.clone());
+        assert_eq!(cell_value_formula, Some(" And Space".to_string()));
+
+        eprintln!("Checking initial state of the dependency manager");
+
+        // Simulate LLM call completion for Column B
+        sheet
+            .lock()
+            .await
+            .set_cell_value(row_id.clone(), column_llm_id.clone(), "Hola Mundo".to_string())
+            .await
+            .unwrap();
+
+        // Check the value of the LLM call cell (Column B) after the update
+        let cell_value_llm = sheet.lock().await.get_cell_value(row_id.clone(), column_llm_id.clone());
+        assert_eq!(cell_value_llm, Some("Hola Mundo".to_string()));
+
+        // Check if Column C reflects the updated value of Column B
+        let cell_value_formula = sheet
+            .lock()
+            .await
+            .get_cell_value(row_id.clone(), column_formula_id.clone());
+        assert_eq!(cell_value_formula, Some("Hola Mundo And Space".to_string()));
+
+        // Check dependency manager
+        {
+            let sheet_locked = sheet.lock().await;
+            let reverse_dependents_a = sheet_locked
+                .column_dependency_manager
+                .get_reverse_dependents(column_text_id.clone());
+            let reverse_dependents_b = sheet_locked
+                .column_dependency_manager
+                .get_reverse_dependents(column_llm_id.clone());
+            assert!(reverse_dependents_a.contains(&column_llm_id));
+            assert!(reverse_dependents_b.contains(&column_formula_id));
+        }
+
+        // Update Column C to be a text column
+        let new_column_text = ColumnDefinition {
+            id: column_formula_id.clone(),
+            name: "Column C".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        eprintln!("Updating Column C to be a text column");
+        let _ = sheet.lock().await.set_column(new_column_text.clone()).await;
+
+        // Check the dependencies after updating Column C
+        let sheet_locked = sheet.lock().await;
+        let dependencies_c = sheet_locked
+            .column_dependency_manager
+            .dependencies
+            .get(&column_formula_id);
+        let reverse_dependents_b = sheet_locked
+            .column_dependency_manager
+            .reverse_dependencies
+            .get(&column_llm_id);
+
+        eprintln!("Checking dependencies after updating Column C: {:?}", dependencies_c);
+        assert!(dependencies_c.is_none());
+        assert!(!reverse_dependents_b.unwrap().contains(&column_formula_id));
+
+        // Print final state of the sheet
+        sheet_locked.print_as_ascii_table();
     }
 }
 
