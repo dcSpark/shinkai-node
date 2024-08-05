@@ -441,6 +441,7 @@ pub enum SheetAction {
         row: UuidString,
         col: UuidString,
         value: String,
+        input_hash: Option<String>,
     },
     TriggerUpdateEvent {
         changed_cell_id: CellId,
@@ -476,7 +477,12 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
             state.columns.insert(definition.id.clone(), definition);
         }
-        SheetAction::SetCellValue { row, col, value } => {
+        SheetAction::SetCellValue {
+            row,
+            col,
+            value,
+            input_hash,
+        } => {
             if !state.columns.contains_key(&col) {
                 return (state, jobs); // Column index out of bounds
             }
@@ -488,6 +494,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                     value: Some(value),
                     last_updated: Utc::now(),
                     status: CellStatus::Ready,
+                    input_hash,
                 },
             );
         }
@@ -658,6 +665,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             value: Some("".to_string()), // Default empty value for text columns
                             last_updated: Utc::now(),
                             status: CellStatus::Ready,
+                            input_hash: None,
                         },
                     );
                 }

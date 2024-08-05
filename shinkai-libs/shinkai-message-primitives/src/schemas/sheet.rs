@@ -56,6 +56,7 @@ pub struct Cell {
     pub value: Option<String>,
     pub last_updated: DateTime<Utc>,
     pub status: CellStatus,
+    pub input_hash: Option<String>, // Used to store the hash of inputs (avoid recomputation)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]

@@ -321,7 +321,7 @@ mod tests {
             // Simulate job completion for Column C
             sheet
                 .set_cell_value(
-                    row_id.clone().to_string(),
+                    row_id.to_string(),
                     column_c_id.clone(),
                     format!("Summary of row {}", i),
                 )
