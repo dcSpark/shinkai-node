@@ -6,6 +6,7 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 use crate::network::ws_manager::{WSMetadata, WSUpdateHandler};
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
+use super::shared::ollama::ollama_conversation_prepare_messages_with_tooling;
 use super::LLMService;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -52,8 +53,8 @@ impl LLMService for Ollama {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");
 
-            let messages_result = ollama_conversation_prepare_messages(&model, prompt)?;
-            let messages_json = match messages_result.messages {
+            let result = ollama_conversation_prepare_messages_with_tooling(&model, prompt)?;
+            let messages_json = match result.messages {
                 PromptResultEnum::Value(v) => v,
                 _ => {
                     return Err(LLMProviderError::UnexpectedPromptResultVariant(
@@ -62,16 +63,25 @@ impl LLMService for Ollama {
                 }
             };
 
+            // Extract tools_json from the result
+            let tools_json = result.functions.unwrap_or_else(Vec::new);
+
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Info,
                 format!("Messages JSON: {:?}", messages_json).as_str(),
             );
+            
             // Print messages_json as a pretty JSON string
-            // match serde_json::to_string_pretty(&messages_json) {
-            //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-            //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-            // };
+            match serde_json::to_string_pretty(&messages_json) {
+                Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+                Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+            };
+
+            match serde_json::to_string_pretty(&tools_json) {
+                Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
+                Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+            };
 
             let mut payload = json!({
                 "model": self.model_type,
@@ -80,6 +90,11 @@ impl LLMService for Ollama {
                 // Include any other optional parameters as needed
                 // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
             });
+
+             // Conditionally add functions to the payload if tools_json is not empty
+             if !tools_json.is_empty() {
+                payload["tools"] = serde_json::Value::Array(tools_json);
+            }
 
             // Modify payload to add options if needed
             add_options_to_payload(&mut payload);
