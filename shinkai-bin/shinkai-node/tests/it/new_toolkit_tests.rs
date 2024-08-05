@@ -404,7 +404,7 @@ async fn test_workflow_search() {
     // Assert the results
     assert!(!results.is_empty(), "Expected to find workflows, but found none");
     assert!(
-        results.iter().any(|tool| tool.name().contains("ExtensiveSummary")),
+        results.iter().any(|tool| tool.name().contains("Extensive_summary")),
         "Expected to find a workflow with 'example' in the name"
     );
     // // Optionally, print out the found workflows
