@@ -34,6 +34,21 @@ jobs:
               target/
             key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+        - name: (MACOS) Install build deps
+          if: ${{ matrix.arch == 'aarch64-apple-darwin' }}
+          run: |
+            brew install protobuf
+
+        - name: (Windows) Install build deps
+          if: ${{ matrix.arch == 'x86_64-pc-windows-msvc' }}
+          run: |
+            choco install -y protoc
+
+        - name: (Linux) Install build deps
+          if: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' }}
+          run: |
+            apt install -y protobuf-compiler
+
         - name: Build
           run: cargo build --release
 
