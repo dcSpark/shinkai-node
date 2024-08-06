@@ -470,6 +470,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APIAddRows {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIRemoveRows {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIUserSheets {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
@@ -1678,6 +1686,40 @@ impl Node {
                                             let sheet_manager = self.sheet_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_remove_column(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAddRows { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
+                                        NodeCommand::APIAddRows { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_add_rows(
+                                                    sheet_manager,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIRemoveRows { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
+                                        NodeCommand::APIRemoveRows { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let sheet_manager = self.sheet_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_remove_rows(
                                                     sheet_manager,
                                                     node_name_clone,
                                                     identity_manager_clone,

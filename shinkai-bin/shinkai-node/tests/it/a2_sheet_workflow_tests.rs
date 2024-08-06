@@ -11,6 +11,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use tokio::time::sleep;
+use uuid::Uuid;
 
 use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
@@ -129,6 +130,9 @@ fn create_a_sheet_and_check_workflows() {
             //   0 | Hello        | Hola Mundo                 | Hola Mundo And Space
 
             let mut sheet_id = "".to_string();
+            // Create a new row UUID
+            let row_id;
+            let column_llm;
             {
                 let sheet_manager = node1_sheet_manager.clone();
                 let mut sheet_manager = sheet_manager.lock().await;
@@ -138,11 +142,11 @@ fn create_a_sheet_and_check_workflows() {
 
                 // Get the ID of the newly created sheet
                 let sheets = sheet_manager.get_user_sheets().await.unwrap();
-                sheet_id = sheets.last().unwrap().uuid.clone();
+                sheet_id.clone_from(&sheets.last().unwrap().uuid);
 
-                // Define columns
+                // Define columns with UUIDs
                 let column_text = ColumnDefinition {
-                    id: 0,
+                    id: Uuid::new_v4().to_string(),
                     name: "Column A".to_string(),
                     behavior: ColumnBehavior::Text,
                 };
@@ -156,8 +160,8 @@ fn create_a_sheet_and_check_workflows() {
                 "#;
                 let workflow = parse_workflow(workflow_str).unwrap();
 
-                let column_llm = ColumnDefinition {
-                    id: 1,
+                column_llm = ColumnDefinition {
+                    id: Uuid::new_v4().to_string(),
                     name: "Column B".to_string(),
                     behavior: ColumnBehavior::LLMCall {
                         input: "=A".to_string(),
@@ -168,19 +172,30 @@ fn create_a_sheet_and_check_workflows() {
                 };
 
                 let column_formula = ColumnDefinition {
-                    id: 2,
+                    id: Uuid::new_v4().to_string(),
                     name: "Column C".to_string(),
                     behavior: ColumnBehavior::Formula("=B + \" And Space\"".to_string()),
                 };
 
                 // Set columns
-                sheet_manager.set_column(&sheet_id, column_text).await.unwrap();
-                sheet_manager.set_column(&sheet_id, column_llm).await.unwrap();
-                sheet_manager.set_column(&sheet_id, column_formula).await.unwrap();
+                sheet_manager.set_column(&sheet_id, column_text.clone()).await.unwrap();
+                sheet_manager.set_column(&sheet_id, column_llm.clone()).await.unwrap();
+                sheet_manager
+                    .set_column(&sheet_id, column_formula.clone())
+                    .await
+                    .unwrap();
+
+                // Add a new row
+                row_id = sheet_manager.add_row(&sheet_id, None).await.unwrap();
+
+                // Check sheet
+                let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+                eprintln!("Printing sheet 2");
+                sheet.print_as_ascii_table();
 
                 // Set value in Column A
                 sheet_manager
-                    .set_cell_value(&sheet_id, 0, 0, "Hello".to_string())
+                    .set_cell_value(&sheet_id, row_id.clone(), column_text.id.clone(), "Hello".to_string())
                     .await
                     .unwrap();
             }
@@ -193,7 +208,10 @@ fn create_a_sheet_and_check_workflows() {
                     {
                         let sheet_manager = node1_sheet_manager.clone();
                         let sheet_manager = sheet_manager.lock().await;
-                        value = sheet_manager.get_cell_value(&sheet_id, 0, 1).unwrap();
+                        value = sheet_manager
+                            .get_cell_value(&sheet_id, row_id.clone(), column_llm.id.clone())
+                            .unwrap();
+                        eprintln!("Value: {:?}", value);
                     }
 
                     if value == Some("Hola Mundo".to_string()) {

@@ -4,20 +4,23 @@ use shinkai_dsl::dsl_schemas::Workflow;
 
 pub type RowIndex = usize;
 pub type ColumnIndex = usize;
+pub type RowUuid = String;
+pub type ColumnUuid = String;
 pub type Formula = String;
 pub type FilePath = String;
 pub type FileName = String;
+pub type UuidString = String;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct APIColumnDefinition {
-    pub id: Option<usize>,
+    pub id: Option<UuidString>,
     pub name: Option<String>,
     pub behavior: ColumnBehavior,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ColumnDefinition {
-    pub id: usize,
+    pub id: UuidString,
     pub name: String,
     pub behavior: ColumnBehavior,
 }
@@ -53,6 +56,7 @@ pub struct Cell {
     pub value: Option<String>,
     pub last_updated: DateTime<Utc>,
     pub status: CellStatus,
+    pub input_hash: Option<String>, // Used to store the hash of inputs (avoid recomputation)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -60,11 +64,11 @@ pub struct CellId(pub String);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowSheetJobData {
-    pub sheet_id: String,
-    pub row: RowIndex,
-    pub col: ColumnIndex,
+    pub sheet_id: UuidString,
+    pub row: UuidString,
+    pub col: UuidString,
     pub col_definition: ColumnDefinition,
     pub workflow: Workflow,
     pub llm_provider_name: String,
-    pub input_cells: Vec<(RowIndex, ColumnIndex, ColumnDefinition)>,
+    pub input_cells: Vec<(UuidString, UuidString, ColumnDefinition)>,
 }

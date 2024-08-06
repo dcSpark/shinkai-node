@@ -501,6 +501,36 @@ pub async fn remove_column_handler(
     .await
 }
 
+pub async fn add_row_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAddRows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn remove_row_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveRows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn user_sheets_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

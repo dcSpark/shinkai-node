@@ -545,7 +545,7 @@ impl JobManager {
             let input_string = {
                 let sheet_manager = sheet_manager.lock().await;
                 let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
-                let input_cells = sheet.get_input_values_for_cell(sheet_job_data.row, sheet_job_data.col);
+                let input_cells = sheet.get_input_values_for_cell(sheet_job_data.row.clone(), sheet_job_data.col.clone());
                 input_cells
                     .iter()
                     .filter_map(|(_, cell)| cell.as_ref())
@@ -583,8 +583,8 @@ impl JobManager {
                 sheet_manager
                     .set_cell_value(
                         &sheet_job_data.sheet_id,
-                        sheet_job_data.row,
-                        sheet_job_data.col,
+                        sheet_job_data.row.clone(),
+                        sheet_job_data.col.clone(),
                         response.clone(),
                     )
                     .await

@@ -1,4 +1,4 @@
-use crate::schemas::sheet::APIColumnDefinition;
+use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
@@ -82,6 +82,8 @@ pub enum MessageSchemaType {
     CreateEmptySheet,
     SetCellValue,
     GetSheet,
+    RemoveRows,
+    AddRows,
 }
 
 impl MessageSchemaType {
@@ -158,6 +160,8 @@ impl MessageSchemaType {
             "CreateEmptySheet" => Some(Self::CreateEmptySheet),
             "SetCellValue" => Some(Self::SetCellValue),
             "GetSheet" => Some(Self::GetSheet),
+            "RemoveRows" => Some(Self::RemoveRows),
+            "AddRows" => Some(Self::AddRows),
             _ => None,
         }
     }
@@ -234,6 +238,8 @@ impl MessageSchemaType {
             Self::CreateEmptySheet => "CreateEmptySheet",
             Self::SetCellValue => "SetCellValue",
             Self::GetSheet => "GetSheet",
+            Self::RemoveRows => "RemoveRows",
+            Self::AddRows => "AddRows",
             Self::Empty => "",
         }
     }
@@ -298,8 +304,8 @@ pub struct SheetManagerAction {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SheetJobAction {
     pub sheet_id: String,
-    pub row: usize,
-    pub col: usize,
+    pub row: RowUuid,
+    pub col: ColumnUuid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -573,15 +579,28 @@ pub struct APISetColumnPayload {
 #[derive(Serialize, Deserialize)]
 pub struct APIRemoveColumnPayload {
     pub sheet_id: String,
-    pub column_id: usize,
+    pub column_id: ColumnUuid,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct APISetCellValuePayload {
     pub sheet_id: String,
-    pub row: usize,
-    pub col: usize,
+    pub row: RowUuid,
+    pub col: ColumnUuid,
     pub value: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APIRemoveRowsPayload {
+    pub sheet_id: String,
+    pub row_indices: Vec<UuidString>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APIAddRowsPayload {
+    pub sheet_id: String,
+    pub number_of_rows: usize,
+    pub starting_row: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

@@ -1,6 +1,7 @@
 use super::node::NodeCommand;
 use super::node_api_handlers::add_agent_handler;
 use super::node_api_handlers::add_ollama_models_handler;
+use super::node_api_handlers::add_row_handler;
 use super::node_api_handlers::add_toolkit_handler;
 use super::node_api_handlers::add_workflow_handler;
 use super::node_api_handlers::api_convert_files_and_save_to_folder_handler;
@@ -44,6 +45,7 @@ use super::node_api_handlers::get_local_processing_preference_handler;
 use super::node_api_handlers::get_my_subscribers_handler;
 use super::node_api_handlers::get_notifications_before_timestamp_handler;
 use super::node_api_handlers::get_public_key_handler;
+use super::node_api_handlers::get_sheet_handler;
 use super::node_api_handlers::get_subscription_links_handler;
 use super::node_api_handlers::get_workflow_info_handler;
 use super::node_api_handlers::handle_file_upload;
@@ -55,13 +57,14 @@ use super::node_api_handlers::modify_agent_handler;
 use super::node_api_handlers::ping_all_handler;
 use super::node_api_handlers::remove_agent_handler;
 use super::node_api_handlers::remove_column_handler;
+use super::node_api_handlers::remove_row_handler;
 use super::node_api_handlers::remove_sheet_handler;
-use super::node_api_handlers::get_sheet_handler;
 use super::node_api_handlers::retrieve_vrkai_handler;
 use super::node_api_handlers::retrieve_vrpack_handler;
 use super::node_api_handlers::scan_ollama_models_handler;
 use super::node_api_handlers::search_workflows_handler;
 use super::node_api_handlers::send_msg_handler;
+use super::node_api_handlers::set_cell_value_handler;
 use super::node_api_handlers::set_column_handler;
 use super::node_api_handlers::shinkai_health_handler;
 use super::node_api_handlers::subscribe_to_shared_folder_handler;
@@ -72,7 +75,6 @@ use super::node_api_handlers::update_smart_inbox_name_handler;
 use super::node_api_handlers::update_workflow_handler;
 use super::node_api_handlers::use_registration_code_handler;
 use super::node_api_handlers::user_sheets_handler;
-use super::node_api_handlers::set_cell_value_handler;
 use super::node_api_handlers::NameToExternalProfileData;
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -877,6 +879,24 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| remove_column_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/add_column
+    let add_row = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_rows")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| add_row_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/remove_row
+    let remove_row = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "remove_rows")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| remove_row_handler(node_commands_sender.clone(), message))
+    };
+
     // POST v1/user_sheets
     let user_sheets = {
         let node_commands_sender = node_commands_sender.clone();
@@ -1016,6 +1036,8 @@ pub async fn run_api(
         .or(list_all_workflows)
         .or(set_column)
         .or(remove_column)
+        .or(add_row)
+        .or(remove_row)
         .or(user_sheets)
         .or(get_sheet)
         .or(create_sheet)
