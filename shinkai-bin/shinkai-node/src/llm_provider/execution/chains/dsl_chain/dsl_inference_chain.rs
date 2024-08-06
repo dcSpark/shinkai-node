@@ -560,8 +560,9 @@ impl AsyncFunction for ShinkaiToolFunction {
 
         let result = match &self.tool {
             ShinkaiTool::JS(js_tool) => {
+                let function_config = self.tool.get_config_from_env();
                 let result = js_tool
-                    .run(function_call.arguments)
+                    .run(function_call.arguments, function_config)
                     .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
                 let data = &result.data;
 

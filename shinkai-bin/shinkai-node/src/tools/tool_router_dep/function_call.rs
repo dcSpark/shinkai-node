@@ -1,6 +1,6 @@
 use std::any::Any;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
@@ -16,7 +16,7 @@ use crate::tools::tool_router::ToolRouter;
 use crate::workflows::sm_executor::AsyncFunction;
 
 pub async fn call_function(
-    tool_router: &ToolRouter,
+    _tool_router: &ToolRouter,
     function_call: FunctionCall,
     db: Arc<ShinkaiDB>,
     context: &dyn InferenceChainContextTrait,
@@ -34,9 +34,7 @@ pub async fn call_function(
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = result
                     .downcast_ref::<String>()
-                    .ok_or_else(|| {
-                        LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
-                    })?
+                    .ok_or_else(|| LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result)))?
                     .clone();
                 return Ok(FunctionCallResponse {
                     response: result_str,
@@ -45,26 +43,28 @@ pub async fn call_function(
             }
         }
         ShinkaiTool::JS(js_tool) => {
+            let function_config = shinkai_tool.get_config_from_env();
             let result = js_tool
-                .run(function_args)
+                .run(function_args, function_config)
                 .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-            let result_str = serde_json::to_string(&result)
-                .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+            let result_str =
+                serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
             return Ok(FunctionCallResponse {
                 response: result_str,
                 function_call,
             });
         }
         ShinkaiTool::JSLite(js_lite_tool) => {
-            let tool_key =
-                ShinkaiTool::gen_router_key(js_lite_tool.name.clone(), js_lite_tool.toolkit_name.clone());
+            let function_config = shinkai_tool.get_config_from_env();
+            let tool_key = ShinkaiTool::gen_router_key(js_lite_tool.name.clone(), js_lite_tool.toolkit_name.clone());
             let full_js_tool = db.get_shinkai_tool(&tool_key, user_profile).map_err(|e| {
                 LLMProviderError::FunctionExecutionError(format!("Failed to fetch tool from DB: {}", e))
             })?;
+            // If the tool needs a config, get it.
 
             if let ShinkaiTool::JS(js_tool) = full_js_tool {
                 let result = js_tool
-                    .run(function_args)
+                    .run(function_args, function_config)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
