@@ -18,7 +18,7 @@ use shinkai_message_primitives::shinkai_utils::{
         unsafe_deterministic_signature_keypair,
     },
 };
-use shinkai_node::network::{node::NodeCommand, node_api::APIError, Node};
+use shinkai_node::network::{node::NodeCommand, node_api_router::APIError, Node};
 use shinkai_tcp_relayer::TCPProxy;
 use shinkai_vector_resources::utils::hash_string;
 use tokio::{net::TcpListener, runtime::Runtime, time::sleep};

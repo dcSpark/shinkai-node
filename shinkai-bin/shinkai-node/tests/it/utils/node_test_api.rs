@@ -12,7 +12,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
+use shinkai_node::network::node_api_router::APIError;
 use shinkai_node::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use shinkai_node::schemas::smart_inbox::SmartInbox;
 use std::time::Duration;

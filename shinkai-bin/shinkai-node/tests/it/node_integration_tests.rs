@@ -14,7 +14,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::{APIError, SendResponseBodyData};
+use shinkai_node::network::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};

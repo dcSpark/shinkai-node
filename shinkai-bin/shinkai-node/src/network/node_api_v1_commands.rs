@@ -1,7 +1,6 @@
 use super::{
     node::ProxyConnectionInfo,
-    node_api::{APIError, SendResponseBodyData},
-    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
+    node_api_router::{APIError, SendResponseBodyData},
     node_error::NodeError,
     node_shareable_logic::validate_message_main_logic,
     ws_manager::WSUpdateHandler,
@@ -11,6 +10,7 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
+    network::v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,

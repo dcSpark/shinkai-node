@@ -14,10 +14,12 @@ use shinkai_message_primitives::{
 };
 use warp::Buf;
 
-use super::{
-    node::NodeCommand,
-    node_api::{handle_node_command, APIError, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData},
-};
+use crate::network::node::NodeCommand;
+use crate::network::node_api_router::handle_node_command;
+use crate::network::node_api_router::APIError;
+use crate::network::node_api_router::GetPublicKeysResponse;
+use crate::network::node_api_router::SendResponseBody;
+use crate::network::node_api_router::SendResponseBodyData;
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {

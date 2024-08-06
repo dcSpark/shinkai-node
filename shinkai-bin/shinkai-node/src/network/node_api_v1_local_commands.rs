@@ -7,7 +7,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::{
-    network::node_api::APIError,
+    network::node_api_router::APIError,
     schemas::{identity::Identity, inbox_permission::InboxPermission},
 };
 use async_channel::Sender;

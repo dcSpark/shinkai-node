@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::db::ShinkaiDB;
 
 use super::{
-    node_api::APIError,
+    node_api_router::APIError,
     node_error::NodeError,
     Node,
 };

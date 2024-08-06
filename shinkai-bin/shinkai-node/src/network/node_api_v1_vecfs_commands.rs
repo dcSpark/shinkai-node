@@ -1,7 +1,7 @@
 use std::{env, fs, path::Path, sync::Arc};
 
 use super::{
-    node_api::APIError, node_error::NodeError,
+    node_api_router::APIError, node_error::NodeError,
     subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
 };
 use crate::{

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{db::ShinkaiDB, managers::IdentityManager, vector_fs::vector_fs::VectorFS};
 
 use super::{
-    node_api::APIError,
+    node_api_router::APIError,
     node_error::NodeError,
     subscription_manager::{
         external_subscriber_manager::ExternalSubscriberManager,

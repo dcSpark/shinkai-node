@@ -325,8 +325,8 @@ fn subscription_http_upload() {
                         // Create a channel for sending results
                         #[allow(clippy::complexity)]
                         let (sender, receiver): (
-                            Sender<Result<serde_json::Value, shinkai_node::network::node_api::APIError>>,
-                            Receiver<Result<serde_json::Value, shinkai_node::network::node_api::APIError>>,
+                            Sender<Result<serde_json::Value, shinkai_node::network::node_api_router::APIError>>,
+                            Receiver<Result<serde_json::Value, shinkai_node::network::node_api_router::APIError>>,
                         ) = bounded(1);
 
                         let _ = Node::api_get_http_free_subscription_links(
