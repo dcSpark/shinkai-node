@@ -31,6 +31,7 @@ pub enum ToolError {
     DatabaseError(String),
     MissingEmbedding,
     EmbeddingGenerationError(String),
+    MissingConfigError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -64,6 +65,7 @@ impl fmt::Display for ToolError {
             ToolError::DatabaseError(ref e) => write!(f, "Database error: {}", e),
             ToolError::MissingEmbedding => write!(f, "Missing embedding."),
             ToolError::EmbeddingGenerationError(ref e) => write!(f, "Embedding generation error: {}", e),
+            ToolError::MissingConfigError(ref e) => write!(f, "Missing config error: {}", e),
         }
     }
 }

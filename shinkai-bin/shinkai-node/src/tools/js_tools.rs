@@ -27,13 +27,37 @@ pub struct JSTool {
 }
 
 impl JSTool {
-    pub fn run(&self, input_json: JsonValue) -> Result<RunResult, ToolError> {
+    pub fn run(&self, input_json: JsonValue, extra_config: Option<String>) -> Result<RunResult, ToolError> {
         eprintln!("Running JSTool named: {}", self.name);
         eprintln!("Running JSTool with input: {}", input_json);
+        eprintln!("Running JSTool with extra_config: {:?}", extra_config);
 
         let code = self.js_code.clone();
-        let config = serde_json::to_string(&self.config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
         let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+
+        // Validate extra_config against self.config
+        if let Some(extra) = &extra_config {
+            let extra_json: JsonValue =
+                serde_json::from_str(extra).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+            for config in &self.config {
+                if let ToolConfig::BasicConfig(basic_config) = config {
+                    if basic_config.required && !extra_json.get(&basic_config.name).is_some() {
+                        return Err(ToolError::MissingConfigError(basic_config.name.clone()));
+                    }
+                }
+            }
+        } else {
+            for config in &self.config {
+                if let ToolConfig::BasicConfig(basic_config) = config {
+                    if basic_config.required {
+                        return Err(ToolError::MissingConfigError(basic_config.name.clone()));
+                    }
+                }
+            }
+        }
+
+        // Use extra_config directly without serializing again
+        let config = extra_config.unwrap_or_else(|| "{}".to_string());
 
         // Create a new thread with its own Tokio runtime
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB

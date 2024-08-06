@@ -401,7 +401,11 @@ impl Sheet {
         column_ids.insert(0, "".to_string());
 
         // Calculate the maximum width for each column
-        let mut col_widths: Vec<usize> = headers.iter().map(|header| header.len()).collect();
+        let mut col_widths: Vec<usize> = headers
+            .iter()
+            .zip(&column_ids)
+            .map(|(header, id)| header.len().max(id.len()))
+            .collect();
         let max_row_len = self
             .display_rows
             .iter()

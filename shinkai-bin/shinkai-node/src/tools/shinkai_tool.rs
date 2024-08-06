@@ -1,3 +1,5 @@
+use std::env;
+
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
@@ -163,6 +165,13 @@ impl ShinkaiTool {
             ShinkaiTool::JSLite(j) => j.embedding.clone(),
             ShinkaiTool::Workflow(w) => w.embedding.clone(),
         }
+    }
+
+    /// Returns an Option<String> for a config based on an environment variable
+    pub fn get_config_from_env(&self) -> Option<String> {
+        let tool_key = self.tool_router_key().replace(":::", "___");
+        let env_var_key = format!("TOOLKIT_{}", tool_key);
+        env::var(env_var_key).ok()
     }
 
     /// Convert to json
