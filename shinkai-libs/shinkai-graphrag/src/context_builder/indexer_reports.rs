@@ -67,7 +67,7 @@ pub fn filter_under_community_level(df: &DataFrame, community_level: u32) -> any
     Ok(result)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CommunityReport {
     pub id: String,
     pub short_id: Option<String>,

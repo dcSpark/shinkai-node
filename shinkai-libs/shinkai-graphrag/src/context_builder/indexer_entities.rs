@@ -83,7 +83,7 @@ pub fn read_indexer_entities(
     Ok(entities)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Entity {
     pub id: String,
     pub short_id: Option<String>,

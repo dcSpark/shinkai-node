@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 use tiktoken_rs::tokenizer::Tokenizer;
 
-use crate::context_builder::context_builder::{ConversationHistory, GlobalContextBuilder};
+use crate::context_builder::community_context::GlobalCommunityContext;
+use crate::context_builder::context_builder::ConversationHistory;
 use crate::llm::llm::{BaseLLM, BaseLLMCallback, MessageType};
 use crate::llm::utils::num_tokens;
 
@@ -91,7 +92,7 @@ impl GlobalSearchLLMCallback {
 
 pub struct GlobalSearch {
     llm: Box<dyn BaseLLM>,
-    context_builder: Box<dyn GlobalContextBuilder>,
+    context_builder: GlobalCommunityContext,
     token_encoder: Option<Tokenizer>,
     context_builder_params: Option<HashMap<String, serde_json::Value>>,
     reduce_system_prompt: String,
@@ -107,7 +108,7 @@ pub struct GlobalSearch {
 impl GlobalSearch {
     pub fn new(
         llm: Box<dyn BaseLLM>,
-        context_builder: Box<dyn GlobalContextBuilder>,
+        context_builder: GlobalCommunityContext,
         token_encoder: Option<Tokenizer>,
         reduce_system_prompt: String,
         response_type: String,
