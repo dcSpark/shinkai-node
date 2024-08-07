@@ -128,10 +128,7 @@ pub async fn run_api(
     );
 
     // Combine all routes
-    let routes = v1_routes
-        .or(v2_routes)
-        .with(log)
-        .with(cors);
+    let routes = v1_routes.or(v2_routes).with(log).with(cors);
 
     println!("API server running on http://{}", address);
 
@@ -184,11 +181,11 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             "Please check your URL.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::NOT_FOUND))
-    } else if err.find::<warp::filters::body::BodyDeserializeError>().is_some() {
+    } else if let Some(body_err) = err.find::<warp::filters::body::BodyDeserializeError>() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::BAD_REQUEST,
             "Invalid Body",
-            "Please check your JSON body.",
+            &format!("Deserialization error: {}", body_err),
         ));
         Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST))
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {

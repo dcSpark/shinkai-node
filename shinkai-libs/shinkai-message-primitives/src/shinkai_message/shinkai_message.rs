@@ -38,7 +38,7 @@ pub struct ExternalMetadata {
     pub other: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeApiData {
     pub parent_hash: String,
     pub node_message_hash: String,

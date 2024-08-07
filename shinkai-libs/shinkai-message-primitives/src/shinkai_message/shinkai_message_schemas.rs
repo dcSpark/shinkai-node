@@ -7,13 +7,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 
-use super::shinkai_message::ShinkaiMessage;
+use super::shinkai_message::{NodeApiData, ShinkaiMessage};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
-    PreMessageSchema,
     CreateRegistrationCode,
     UseRegistrationCode,
     APIGetMessagesFromInboxRequest,
@@ -91,7 +90,6 @@ impl MessageSchemaType {
         match s {
             "JobCreationSchema" => Some(Self::JobCreationSchema),
             "JobMessageSchema" => Some(Self::JobMessageSchema),
-            "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "UseRegistrationCode" => Some(Self::UseRegistrationCode),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
@@ -170,7 +168,6 @@ impl MessageSchemaType {
         match self {
             Self::JobCreationSchema => "JobCreationSchema",
             Self::JobMessageSchema => "JobMessageSchema",
-            Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::UseRegistrationCode => "UseRegistrationCode",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
@@ -292,6 +289,17 @@ where
         }
     }
     Ok(s)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct V2ChatMessage {
+    pub job_message: JobMessage,
+    pub sender: String,
+    pub sender_subidentity: String,
+    pub receiver: String,
+    pub receiver_subidentity: String,
+    pub node_api_data: NodeApiData,
+    pub inbox: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

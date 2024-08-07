@@ -8,7 +8,7 @@ pub mod node_shareable_logic;
 pub mod network_limiter;
 pub mod subscription_manager;
 pub mod network_manager;
-pub mod api_commands;
+pub mod handle_commands_list;
 pub mod v1_api;
 pub mod v2_api;
 pub mod node_commands;
