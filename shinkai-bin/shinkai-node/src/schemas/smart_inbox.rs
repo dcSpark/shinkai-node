@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::{schemas::{llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName}, shinkai_message::shinkai_message::ShinkaiMessage};
+use shinkai_message_primitives::{schemas::{llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName}, shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::V2ChatMessage}};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LLMProviderSubset {
@@ -25,6 +25,17 @@ pub struct SmartInbox {
     pub custom_name: String,
     pub datetime_created: String,
     pub last_message: Option<ShinkaiMessage>,
+    pub is_finished: bool,
+    pub job_scope: Option<Value>,
+    pub agent: Option<LLMProviderSubset>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct V2SmartInbox {
+    pub inbox_id: String,
+    pub custom_name: String,
+    pub datetime_created: String,
+    pub last_message: Option<V2ChatMessage>,
     pub is_finished: bool,
     pub job_scope: Option<Value>,
     pub agent: Option<LLMProviderSubset>,
