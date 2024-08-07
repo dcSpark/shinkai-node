@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use tokio::sync::Mutex;
 
 use super::node_api_router::APIError;

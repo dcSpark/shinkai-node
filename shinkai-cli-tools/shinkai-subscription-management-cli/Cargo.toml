@@ -22,7 +22,7 @@ hex = "0.4.3"
 libsodium-sys-stable = "1.20.5"
 aes-gcm = "0.10.3"
 async-channel = "1.6.1"
-warp = "0.3.6"
+warp = "0.3.7"
 
 [dependencies.rocksdb]
 version = "0.22.0"

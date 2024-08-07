@@ -3,7 +3,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIAvailableSharedItems;
 use warp::Filter;
 
-use crate::network::node::NodeCommand;
+use crate::network::node_commands::NodeCommand;
 use super::api_v1_handlers::add_agent_handler;
 use super::api_v1_handlers::add_ollama_models_handler;
 use super::api_v1_handlers::add_row_handler;
@@ -88,23 +88,23 @@ pub fn v1_routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let ping_all = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "ping_all")
+        warp::path!("ping_all")
             .and(warp::post())
             .and_then(move || ping_all_handler(node_commands_sender.clone()))
     };
 
     let send_msg = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::post()
-            .and(warp::path("v1"))
-            .and(warp::path("send"))
+        warp::path!("send")
+            .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| send_msg_handler(node_commands_sender.clone(), message))
     };
 
+
     let identity_name_to_external_profile_data = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "identity_name_to_external_profile_data")
+        warp::path!("identity_name_to_external_profile_data")
             .and(warp::post())
             .and(warp::body::json())
             .and_then(move |body: NameToExternalProfileData| {
@@ -114,14 +114,14 @@ pub fn v1_routes(
 
     let get_public_key = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_public_keys")
+        warp::path!("get_public_keys")
             .and(warp::get())
             .and_then(move || get_public_key_handler(node_commands_sender.clone()))
     };
 
     let add_toolkit = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "add_toolkit")
+        warp::path!("add_toolkit")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| add_toolkit_handler(node_commands_sender.clone(), message))
@@ -129,7 +129,7 @@ pub fn v1_routes(
 
     let api_vec_fs_retrieve_path_simplified_json = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "retrieve_path_simplified_json")
+        warp::path!("vec_fs" / "retrieve_path_simplified_json")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -139,7 +139,7 @@ pub fn v1_routes(
 
     let api_vec_fs_retrieve_path_minimal_json = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "retrieve_path_minimal_json")
+        warp::path!("vec_fs" / "retrieve_path_minimal_json")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -149,7 +149,7 @@ pub fn v1_routes(
 
     let api_vec_fs_retrieve_vector_search_simplified_json = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "retrieve_vector_search_simplified_json")
+        warp::path!("vec_fs" / "retrieve_vector_search_simplified_json")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -159,7 +159,7 @@ pub fn v1_routes(
 
     let api_vec_fs_search_items = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "search_items")
+        warp::path!("vec_fs" / "search_items")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -169,7 +169,7 @@ pub fn v1_routes(
 
     let api_vec_fs_create_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "create_folder")
+        warp::path!("vec_fs" / "create_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -179,7 +179,7 @@ pub fn v1_routes(
 
     let api_vec_fs_move_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "move_folder")
+        warp::path!("vec_fs" / "move_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -189,7 +189,7 @@ pub fn v1_routes(
 
     let api_vec_fs_copy_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "copy_folder")
+        warp::path!("vec_fs" / "copy_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -199,7 +199,7 @@ pub fn v1_routes(
 
     let api_vec_fs_remove_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "remove_folder")
+        warp::path!("vec_fs" / "remove_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -209,7 +209,7 @@ pub fn v1_routes(
 
     let api_vec_fs_move_item = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "move_item")
+        warp::path!("vec_fs" / "move_item")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -219,7 +219,7 @@ pub fn v1_routes(
 
     let api_vec_fs_copy_item = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "copy_item")
+        warp::path!("vec_fs" / "copy_item")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -229,7 +229,7 @@ pub fn v1_routes(
 
     let api_vec_fs_remove_item = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "remove_item")
+        warp::path!("vec_fs" / "remove_item")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -239,7 +239,7 @@ pub fn v1_routes(
 
     let api_convert_files_and_save_to_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "convert_files_and_save_to_folder")
+        warp::path!("vec_fs" / "convert_files_and_save_to_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -249,7 +249,7 @@ pub fn v1_routes(
 
     let api_vec_fs_retrieve_vector_resource = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "vec_fs" / "retrieve_vector_resource")
+        warp::path!("vec_fs" / "retrieve_vector_resource")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -260,14 +260,14 @@ pub fn v1_routes(
     let shinkai_health = {
         let node_name = node_name.clone();
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "shinkai_health")
+        warp::path!("shinkai_health")
             .and(warp::get())
             .and_then(move || shinkai_health_handler(node_commands_sender.clone(), node_name.clone()))
     };
 
     let available_llm_providers = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "available_agents")
+        warp::path!("available_agents")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -277,7 +277,7 @@ pub fn v1_routes(
 
     let add_agent = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "add_agent")
+        warp::path!("add_agent")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| add_agent_handler(node_commands_sender.clone(), message))
@@ -285,7 +285,7 @@ pub fn v1_routes(
 
     let modify_agent = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "modify_agent")
+        warp::path!("modify_agent")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| modify_agent_handler(node_commands_sender.clone(), message))
@@ -293,7 +293,7 @@ pub fn v1_routes(
 
     let remove_agent = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "remove_agent")
+        warp::path!("remove_agent")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| remove_agent_handler(node_commands_sender.clone(), message))
@@ -301,7 +301,7 @@ pub fn v1_routes(
 
     let get_last_messages_from_inbox = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "last_messages_from_inbox")
+        warp::path!("last_messages_from_inbox")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -311,7 +311,7 @@ pub fn v1_routes(
 
     let get_last_unread_messages = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "last_unread_messages_from_inbox")
+        warp::path!("last_unread_messages_from_inbox")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -321,7 +321,7 @@ pub fn v1_routes(
 
     let get_all_inboxes_for_profile = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_all_inboxes_for_profile")
+        warp::path!("get_all_inboxes_for_profile")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -331,7 +331,7 @@ pub fn v1_routes(
 
     let get_all_smart_inboxes_for_profile = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_all_smart_inboxes_for_profile")
+        warp::path!("get_all_smart_inboxes_for_profile")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -341,7 +341,7 @@ pub fn v1_routes(
 
     let update_smart_inbox_name = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_smart_inbox_name")
+        warp::path!("update_smart_inbox_name")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -351,7 +351,7 @@ pub fn v1_routes(
 
     let create_job = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "create_job")
+        warp::path!("create_job")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| create_job_handler(node_commands_sender.clone(), message))
@@ -359,7 +359,7 @@ pub fn v1_routes(
 
     let job_message = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "job_message")
+        warp::path!("job_message")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| job_message_handler(node_commands_sender.clone(), message))
@@ -367,7 +367,7 @@ pub fn v1_routes(
 
     let get_filenames = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_filenames_for_file_inbox")
+        warp::path!("get_filenames_for_file_inbox")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -377,7 +377,7 @@ pub fn v1_routes(
 
     let mark_as_read_up_to = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "mark_as_read_up_to")
+        warp::path!("mark_as_read_up_to")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| mark_as_read_up_to_handler(node_commands_sender.clone(), message))
@@ -385,7 +385,7 @@ pub fn v1_routes(
 
     let create_registration_code = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "create_registration_code")
+        warp::path!("create_registration_code")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -395,7 +395,7 @@ pub fn v1_routes(
 
     let use_registration_code = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "use_registration_code")
+        warp::path!("use_registration_code")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -405,7 +405,7 @@ pub fn v1_routes(
 
     let change_nodes_name = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "change_nodes_name")
+        warp::path!("change_nodes_name")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| change_nodes_name_handler(node_commands_sender.clone(), message))
@@ -413,14 +413,14 @@ pub fn v1_routes(
 
     let get_all_subidentities = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_all_subidentities")
+        warp::path!("get_all_subidentities")
             .and(warp::get())
             .and_then(move || get_all_subidentities_handler(node_commands_sender.clone()))
     };
 
     let get_last_messages_from_inbox_with_branches = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "last_messages_from_inbox_with_branches")
+        warp::path!("last_messages_from_inbox_with_branches")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -430,7 +430,7 @@ pub fn v1_routes(
 
     let create_files_inbox_with_symmetric_key = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "create_files_inbox_with_symmetric_key")
+        warp::path!("create_files_inbox_with_symmetric_key")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -440,7 +440,7 @@ pub fn v1_routes(
 
     let add_file_to_inbox_with_symmetric_key = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "add_file_to_inbox_with_symmetric_key" / String / String)
+        warp::path!("add_file_to_inbox_with_symmetric_key" / String / String)
             .and(warp::post())
             .and(warp::body::content_length_limit(1024 * 1024 * 200)) // 200MB
             .and(warp::multipart::form().max_length(1024 * 1024 * 200))
@@ -453,7 +453,7 @@ pub fn v1_routes(
 
     let update_job_to_finished = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_job_to_finished")
+        warp::path!("update_job_to_finished")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -463,7 +463,7 @@ pub fn v1_routes(
 
     let api_available_shared_items = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "available_shared_items")
+        warp::path!("available_shared_items")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -473,7 +473,7 @@ pub fn v1_routes(
 
     let api_available_shared_items_open = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "available_shared_items_open")
+        warp::path!("available_shared_items_open")
             .and(warp::post())
             .and(warp::body::json::<APIAvailableSharedItems>())
             .and_then(move |message: APIAvailableSharedItems| {
@@ -483,7 +483,7 @@ pub fn v1_routes(
 
     let my_subscriptions = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "my_subscriptions")
+        warp::path!("my_subscriptions")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -493,7 +493,7 @@ pub fn v1_routes(
 
     let api_create_shareable_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "create_shareable_folder")
+        warp::path!("create_shareable_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -503,7 +503,7 @@ pub fn v1_routes(
 
     let subscribe_to_shared_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "subscribe_to_shared_folder")
+        warp::path!("subscribe_to_shared_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -513,7 +513,7 @@ pub fn v1_routes(
 
     let api_update_shareable_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_shareable_folder")
+        warp::path!("update_shareable_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -523,7 +523,7 @@ pub fn v1_routes(
 
     let api_unshare_folder = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "unshare_folder")
+        warp::path!("unshare_folder")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -533,7 +533,7 @@ pub fn v1_routes(
 
     let unsubscribe = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "unsubscribe")
+        warp::path!("unsubscribe")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| unsubscribe_handler(node_commands_sender.clone(), message))
@@ -541,7 +541,7 @@ pub fn v1_routes(
 
     let get_my_subscribers = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "my_subscribers")
+        warp::path!("my_subscribers")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| get_my_subscribers_handler(node_commands_sender.clone(), message))
@@ -549,7 +549,7 @@ pub fn v1_routes(
 
     let retrieve_vrkai = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "retrieve_vrkai")
+        warp::path!("retrieve_vrkai")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| retrieve_vrkai_handler(node_commands_sender.clone(), message))
@@ -557,7 +557,7 @@ pub fn v1_routes(
 
     let retrieve_vrpack = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "retrieve_vrpack")
+        warp::path!("retrieve_vrpack")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| retrieve_vrpack_handler(node_commands_sender.clone(), message))
@@ -565,7 +565,7 @@ pub fn v1_routes(
 
     let local_scan_ollama_models = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "scan_ollama_models")
+        warp::path!("scan_ollama_models")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| scan_ollama_models_handler(node_commands_sender.clone(), message))
@@ -573,7 +573,7 @@ pub fn v1_routes(
 
     let add_ollama_models = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "add_ollama_models")
+        warp::path!("add_ollama_models")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| add_ollama_models_handler(node_commands_sender.clone(), message))
@@ -581,7 +581,7 @@ pub fn v1_routes(
 
     let get_subscription_links = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "subscriptions" / String / "links")
+        warp::path!("subscriptions" / String / "links")
             .and(warp::get())
             .and_then(move |subscription_id: String| {
                 get_subscription_links_handler(node_commands_sender.clone(), subscription_id)
@@ -590,7 +590,7 @@ pub fn v1_routes(
 
     let change_job_agent = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "change_job_agent")
+        warp::path!("change_job_agent")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| change_job_agent_handler(node_commands_sender.clone(), message))
@@ -598,7 +598,7 @@ pub fn v1_routes(
 
     let get_last_notifications = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_last_notifications")
+        warp::path!("get_last_notifications")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -608,7 +608,7 @@ pub fn v1_routes(
 
     let get_notifications_before_timestamp = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_notifications_before_timestamp")
+        warp::path!("get_notifications_before_timestamp")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -618,7 +618,7 @@ pub fn v1_routes(
 
     let get_local_processing_preference = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_local_processing_preference")
+        warp::path!("get_local_processing_preference")
             .and(warp::get())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -628,7 +628,7 @@ pub fn v1_routes(
 
     let update_local_processing_preference = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_local_processing_preference")
+        warp::path!("update_local_processing_preference")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -638,7 +638,7 @@ pub fn v1_routes(
 
     let search_workflows = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "search_workflows")
+        warp::path!("search_workflows")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| search_workflows_handler(node_commands_sender.clone(), message))
@@ -646,7 +646,7 @@ pub fn v1_routes(
 
     let add_workflow = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "add_workflow")
+        warp::path!("add_workflow")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| add_workflow_handler(node_commands_sender.clone(), message))
@@ -654,7 +654,7 @@ pub fn v1_routes(
 
     let update_workflow = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_workflow")
+        warp::path!("update_workflow")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| update_workflow_handler(node_commands_sender.clone(), message))
@@ -662,7 +662,7 @@ pub fn v1_routes(
 
     let delete_workflow = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "delete_workflow")
+        warp::path!("delete_workflow")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| delete_workflow_handler(node_commands_sender.clone(), message))
@@ -670,7 +670,7 @@ pub fn v1_routes(
 
     let get_workflow_info = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_workflow_info")
+        warp::path!("get_workflow_info")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| get_workflow_info_handler(node_commands_sender.clone(), message))
@@ -678,7 +678,7 @@ pub fn v1_routes(
 
     let list_all_workflows = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "list_all_workflows")
+        warp::path!("list_all_workflows")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| list_all_workflows_handler(node_commands_sender.clone(), message))
@@ -686,7 +686,7 @@ pub fn v1_routes(
 
     let set_column = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "set_column")
+        warp::path!("set_column")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| set_column_handler(node_commands_sender.clone(), message))
@@ -694,7 +694,7 @@ pub fn v1_routes(
 
     let remove_column = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "remove_column")
+        warp::path!("remove_column")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| remove_column_handler(node_commands_sender.clone(), message))
@@ -702,7 +702,7 @@ pub fn v1_routes(
 
     let add_row = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "add_rows")
+        warp::path!("add_rows")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| add_row_handler(node_commands_sender.clone(), message))
@@ -710,7 +710,7 @@ pub fn v1_routes(
 
     let remove_row = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "remove_rows")
+        warp::path!("remove_rows")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| remove_row_handler(node_commands_sender.clone(), message))
@@ -718,7 +718,7 @@ pub fn v1_routes(
 
     let user_sheets = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "user_sheets")
+        warp::path!("user_sheets")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| user_sheets_handler(node_commands_sender.clone(), message))
@@ -726,7 +726,7 @@ pub fn v1_routes(
 
     let create_sheet = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "create_sheet")
+        warp::path!("create_sheet")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| create_sheet_handler(node_commands_sender.clone(), message))
@@ -734,7 +734,7 @@ pub fn v1_routes(
 
     let remove_sheet = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "remove_sheet")
+        warp::path!("remove_sheet")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| remove_sheet_handler(node_commands_sender.clone(), message))
@@ -742,7 +742,7 @@ pub fn v1_routes(
 
     let get_sheet = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_sheet")
+        warp::path!("get_sheet")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| get_sheet_handler(node_commands_sender.clone(), message))
@@ -750,7 +750,7 @@ pub fn v1_routes(
 
     let set_cell_value = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "set_cell_value")
+        warp::path!("set_cell_value")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| set_cell_value_handler(node_commands_sender.clone(), message))
@@ -758,7 +758,7 @@ pub fn v1_routes(
 
     let api_update_default_embedding_model = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_default_embedding_model")
+        warp::path!("update_default_embedding_model")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
@@ -768,7 +768,7 @@ pub fn v1_routes(
 
     let api_update_supported_embedding_models = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "update_supported_embedding_models")
+        warp::path!("update_supported_embedding_models")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {

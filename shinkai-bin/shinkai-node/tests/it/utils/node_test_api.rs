@@ -1,4 +1,5 @@
 use async_channel::Sender;
+use shinkai_node::network::node_commands::NodeCommand;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
@@ -11,7 +12,6 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api_router::APIError;
 use shinkai_node::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use shinkai_node::schemas::smart_inbox::SmartInbox;

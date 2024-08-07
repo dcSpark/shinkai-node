@@ -1,6 +1,5 @@
 pub mod node;
 pub use node::Node;
-pub mod node_internal_commands;
 pub mod node_api_router;
 pub mod node_error;
 pub mod ws_manager;
@@ -11,3 +10,5 @@ pub mod subscription_manager;
 pub mod network_manager;
 pub mod api_commands;
 pub mod v1_api;
+pub mod v2_api;
+pub mod node_commands;

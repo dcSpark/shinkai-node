@@ -1,8 +1,8 @@
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
 use super::utils::static_server::start_static_server;
-use crate::network::node::NodeCommand;
 use crate::network::node_api_router;
+use crate::network::node_commands::NodeCommand;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};

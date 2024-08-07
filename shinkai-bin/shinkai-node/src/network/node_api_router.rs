@@ -1,5 +1,6 @@
-use super::node::NodeCommand;
+use super::node_commands::NodeCommand;
 use super::v1_api::api_v1_router::v1_routes;
+use super::v2_api::api_v2_router::v2_routes;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Serialize;
@@ -8,10 +9,10 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
+use utoipa::ToSchema;
 use warp::Filter;
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct SendResponseBodyData {
     pub message_id: String,
     pub parent_message_id: Option<String>,
@@ -19,20 +20,20 @@ pub struct SendResponseBodyData {
     pub scheduled_time: String,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct SendResponseBody {
     pub status: String,
     pub message: String,
     pub data: Option<SendResponseBodyData>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct GetPublicKeysResponse {
     pub signature_public_key: String,
     pub encryption_public_key: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, ToSchema, Debug, Clone)]
 pub struct APIError {
     pub code: u16,
     pub error: String,
@@ -107,30 +108,36 @@ pub async fn run_api(
         );
     });
 
-    let cors = warp::cors() // build the CORS filter
-        .allow_any_origin() // allow requests from any origin
-        .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
-        .allow_headers(vec!["Content-Type", "Authorization"]); // allow the Content-Type and Authorization headers
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_headers(vec!["Content-Type", "Authorization"]);
 
-    let routes = v1_routes(node_commands_sender.clone(), node_name.clone())
-        .recover(handle_rejection)
+    let v1_routes = warp::path("v1").and(
+        v1_routes(node_commands_sender.clone(), node_name.clone())
+            .recover(handle_rejection)
+            .with(log)
+            .with(cors.clone()),
+    );
+
+    let v2_routes = warp::path("v2").and(
+        v2_routes(node_commands_sender.clone(), node_name.clone())
+            .recover(handle_rejection)
+            .with(log)
+            .with(cors.clone()),
+    );
+
+    // Combine all routes
+    let routes = v1_routes
+        .or(v2_routes)
         .with(log)
         .with(cors);
 
-    // Attempt to bind to the address before serving
-    let try_bind = TcpListener::bind(&address).await;
+    println!("API server running on http://{}", address);
 
-    match try_bind {
-        Ok(_) => {
-            drop(try_bind);
-            warp::serve(routes).run(address).await;
-            Ok(())
-        }
-        Err(e) => {
-            // If binding fails, return an error
-            Err(Box::new(e))
-        }
-    }
+    warp::serve(routes).run(address).await;
+
+    Ok(())
 }
 
 pub async fn handle_node_command<T, U, V>(

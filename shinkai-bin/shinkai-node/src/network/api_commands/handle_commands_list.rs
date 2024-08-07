@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::network::{node::NodeCommand, Node};
+use crate::network::{node_commands::NodeCommand, Node};
 
 impl Node {
     pub async fn handle_command(&self, command: NodeCommand) {
@@ -1765,6 +1765,82 @@ impl Node {
                         identity_manager_clone,
                         encryption_secret_key_clone,
                         msg,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            //
+            // V2 API
+            //
+            NodeCommand::V2ApiGetPublicKeys { res: sender } => {
+                let identity_public_key = self.identity_public_key;
+                let encryption_public_key = self.encryption_public_key;
+                tokio::spawn(async move {
+                    let _ = Node::v2_send_public_keys(identity_public_key, encryption_public_key, sender).await;
+                });
+            }
+            NodeCommand::V2ApiInitialRegistration { payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let node_name_clone = self.node_name.clone();
+                let first_device_needs_registration_code = self.first_device_needs_registration_code;
+                let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
+                let encryption_public_key_clone = self.encryption_public_key;
+                let identity_public_key_clone = self.identity_public_key;
+                let identity_secret_key_clone = self.identity_secret_key.clone();
+                let initial_llm_providers_clone = self.initial_llm_providers.clone();
+                let job_manager = self.job_manager.clone().unwrap();
+                let ws_manager_trait = self.ws_manager_trait.clone();
+                let supported_embedding_models = self.supported_embedding_models.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_handle_initial_registration(
+                        db_clone,
+                        identity_manager_clone,
+                        node_name_clone,
+                        payload,
+                        res,
+                        vector_fs_clone,
+                        first_device_needs_registration_code,
+                        embedding_generator_clone,
+                        job_manager,
+                        encryption_public_key_clone,
+                        identity_public_key_clone,
+                        identity_secret_key_clone,
+                        initial_llm_providers_clone,
+                        ws_manager_trait,
+                        supported_embedding_models,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiCreateJob {
+                bearer,
+                job_creation_info,
+                llm_provider,
+                res,
+            } => {
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let node_name_clone = self.node_name.clone();
+                let db_clone = self.db.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_create_new_job(
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        bearer,
+                        job_creation_info,
+                        llm_provider,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
                         res,
                     )
                     .await;
