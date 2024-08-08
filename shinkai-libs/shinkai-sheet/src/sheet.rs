@@ -113,7 +113,9 @@ impl Sheet {
         };
 
         // Check if the column already exists
+        let is_new_column;
         if self.columns.contains_key(&column_uuid) {
+            is_new_column = false;
             self.column_dependency_manager
                 .update_dependencies(column_uuid.clone(), dependencies);
         } else {
@@ -121,10 +123,14 @@ impl Sheet {
                 self.column_dependency_manager
                     .add_dependency(column_uuid.clone(), dep.clone());
             }
-            self.display_columns.push(column_uuid.clone()); // only add to display_columns if it's a new column
+            is_new_column = true;
         }
 
         let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
+
+        if is_new_column {
+            self.display_columns.push(column_uuid.clone()); // only add to display_columns if it's a new column
+        }
 
         // Collect rows to avoid borrowing issues
         let rows_to_update: Vec<UuidString> = self.display_rows.clone();
