@@ -1,8 +1,8 @@
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
 use super::utils::static_server::start_static_server;
-use crate::network::node::NodeCommand;
-use crate::network::node_api;
+use crate::network::node_api_router;
+use crate::network::node_commands::NodeCommand;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};
@@ -233,7 +233,7 @@ pub async fn initialize_node() -> Result<
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
     let api_server = tokio::spawn(async move {
-        if let Err(e) = node_api::run_api(
+        if let Err(e) = node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
             global_identity_name.clone().to_string(),

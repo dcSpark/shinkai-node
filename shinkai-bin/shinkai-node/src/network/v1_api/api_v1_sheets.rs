@@ -1,5 +1,6 @@
-use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::managers::sheet_manager::SheetManager;
+use crate::network::node_error::NodeError;
+use crate::network::Node;
+use crate::{managers::sheet_manager::SheetManager, network::node_api_router::APIError};
 use crate::managers::IdentityManager;
 
 use async_channel::Sender;

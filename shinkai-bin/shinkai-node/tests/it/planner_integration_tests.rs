@@ -21,7 +21,7 @@
 // use shinkai_node::llm_provider::error::LLMProviderError;
 // use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 // use shinkai_node::db::db_cron_task::CronTask;
-// use shinkai_node::network::node::NodeCommand;
+// use shinkai_node::network::node_commands::NodeCommand;
 // use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 // use std::collections::HashMap;
 // use std::env;

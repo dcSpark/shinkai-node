@@ -1,16 +1,20 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{db::ShinkaiDB, managers::IdentityManager, vector_fs::vector_fs::VectorFS};
-
-use super::{
-    node_api::APIError,
-    node_error::NodeError,
-    subscription_manager::{
-        external_subscriber_manager::ExternalSubscriberManager,
-        http_manager::http_upload_manager::FolderSubscriptionWithPath, my_subscription_manager::MySubscriptionsManager,
+use crate::{
+    db::ShinkaiDB,
+    managers::IdentityManager,
+    network::{
+        node_api_router::APIError,
+        node_error::NodeError,
+        subscription_manager::{
+            external_subscriber_manager::ExternalSubscriberManager,
+            http_manager::http_upload_manager::FolderSubscriptionWithPath,
+            my_subscription_manager::MySubscriptionsManager,
+        }, Node,
     },
-    Node,
+    vector_fs::vector_fs::VectorFS,
 };
+
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -742,9 +746,7 @@ impl Node {
             return Ok(());
         }
 
-        match db
-            .get_last_notifications(requester_name.clone(), input_payload.count, input_payload.timestamp)
-        {
+        match db.get_last_notifications(requester_name.clone(), input_payload.count, input_payload.timestamp) {
             Ok(notifications) => {
                 let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
             }

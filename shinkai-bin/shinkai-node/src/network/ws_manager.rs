@@ -28,7 +28,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use crate::db::ShinkaiDB;
 use crate::schemas::identity::Identity;
 
-use super::node_api::APIError;
+use super::node_api_router::APIError;
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;

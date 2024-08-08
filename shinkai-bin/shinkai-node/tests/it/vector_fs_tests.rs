@@ -20,7 +20,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tra
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_vector_resources::data_tags::DataTag;

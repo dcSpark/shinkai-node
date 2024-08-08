@@ -3,6 +3,7 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use shinkai_message_primitives::{
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::APIAvailableSharedItems},
@@ -12,12 +13,15 @@ use shinkai_message_primitives::{
         signatures::signature_public_key_to_string,
     },
 };
+use utoipa::ToSchema;
 use warp::Buf;
 
-use super::{
-    node::NodeCommand,
-    node_api::{handle_node_command, APIError, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData},
-};
+use crate::network::node_commands::NodeCommand;
+use crate::network::node_api_router::handle_node_command;
+use crate::network::node_api_router::APIError;
+use crate::network::node_api_router::GetPublicKeysResponse;
+use crate::network::node_api_router::SendResponseBody;
+use crate::network::node_api_router::SendResponseBodyData;
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {
@@ -1182,7 +1186,7 @@ pub async fn update_local_processing_preference_handler(
     .await
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 pub struct APIUseRegistrationCodeSuccessResponse {
     pub message: String,
     pub node_name: String,

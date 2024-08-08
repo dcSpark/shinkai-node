@@ -8,7 +8,7 @@ use shinkai_fs_mirror::synchronizer::{FilesystemSynchronizer, SyncInterval};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::network::node_api::{self, APIError};
+use shinkai_node::network::node_api_router::{self, APIError};
 use shinkai_node::schemas::identity::{Identity, IdentityType};
 use shinkai_vector_resources::utils::hash_string;
 use std::fs::File;
@@ -30,7 +30,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -271,7 +271,7 @@ fn mirror_sync_tests() {
         let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
         let node1_commands_sender_clone = node1_commands_sender.clone();
         let api_server = tokio::spawn(async move {
-            let _ = node_api::run_api(
+            let _ = node_api_router::run_api(
                 node1_commands_sender_clone.clone(),
                 api_listen_address,
                 node1_identity_name.to_string(),

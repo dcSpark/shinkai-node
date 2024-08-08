@@ -21,8 +21,8 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
+use shinkai_node::network::node_commands::NodeCommand;
+use shinkai_node::network::node_api_router::APIError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
 use std::time::Duration;

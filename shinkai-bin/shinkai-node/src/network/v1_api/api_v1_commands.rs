@@ -1,16 +1,16 @@
-use super::{
-    node::ProxyConnectionInfo,
-    node_api::{APIError, SendResponseBodyData},
-    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
-    node_error::NodeError,
-    node_shareable_logic::validate_message_main_logic,
-    ws_manager::WSUpdateHandler,
-    Node,
-};
 use crate::{
     db::db_errors::ShinkaiDBError,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
+    network::{
+        node::ProxyConnectionInfo,
+        node_api_router::{APIError, SendResponseBodyData},
+        node_error::NodeError,
+        node_shareable_logic::validate_message_main_logic,
+        v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
+        ws_manager::WSUpdateHandler,
+        Node,
+    },
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -692,6 +692,7 @@ impl Node {
             ShinkaiLogLevel::Debug,
             format!("Registration code usage content: {}", content).as_str(),
         );
+
         // let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
         let registration_code: Result<RegistrationCode, serde_json::Error> = serde_json::from_str(&content);
         let registration_code = match registration_code {
@@ -708,7 +709,46 @@ impl Node {
             }
         };
 
-        // Extract values from the ShinkaiMessage
+        Self::handle_registration_code_usage(
+            db,
+            vector_fs,
+            node_name,
+            first_device_needs_registration_code,
+            embedding_generator,
+            identity_manager,
+            job_manager,
+            encryption_public_key,
+            identity_public_key,
+            identity_secret_key,
+            initial_llm_providers,
+            registration_code,
+            ws_manager,
+            supported_embedding_models,
+            res,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn handle_registration_code_usage(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        first_device_needs_registration_code: bool,
+        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
+        identity_secret_key: SigningKey,
+        initial_llm_providers: Vec<SerializedLLMProvider>,
+        registration_code: RegistrationCode,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
+        res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        eprintln!("handle_registration_code_usage");
+
         let mut code = registration_code.code;
         let registration_name = registration_code.registration_name;
         let profile_identity_pk = registration_code.profile_identity_pk;

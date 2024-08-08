@@ -21,7 +21,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};

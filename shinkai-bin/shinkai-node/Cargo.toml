@@ -26,7 +26,9 @@ reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocki
 [dependencies]
 async-trait = "0.1.74"
 futures = "0.3.30"
-warp = "0.3.6"
+utoipa = "4.2.3"
+utoipa-swagger-ui = "7.1.0"
+warp = "0.3.7"
 chrono = "0.4"
 chrono-tz = "0.5"
 serde_json = "1.0.117"
@@ -87,6 +89,7 @@ lancedb = "0.8.0"
 arrow = "52.1"
 arrow-array = "52.1"
 arrow-schema = "52.1"
+bytes = "1.7.1"
 
 [dependencies.aws-sdk-s3]
 version = "1.24.0"
