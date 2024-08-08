@@ -541,22 +541,13 @@ impl JobManager {
             // Check SheetManager for the latest inputs
             let sheet_manager = sheet_manager.ok_or(LLMProviderError::SheetManagerNotFound)?;
 
-            // Get the input string within the lock scope
+            // Get the processed input string within the lock scope
             let input_string = {
                 let sheet_manager = sheet_manager.lock().await;
                 let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
-                let input_cells =
-                    sheet.get_input_values_for_cell(sheet_job_data.row.clone(), sheet_job_data.col.clone());
-                input_cells
-                    .iter()
-                    .filter_map(|(_, cell)| cell.as_ref())
-                    .fold(String::new(), |mut acc, s| {
-                        if !acc.is_empty() {
-                            acc.push(' ');
-                        }
-                        acc.push_str(s);
-                        acc
-                    })
+                sheet
+                    .get_processed_input(sheet_job_data.row.clone(), sheet_job_data.col.clone())
+                    .ok_or(LLMProviderError::InputProcessingError(format!("{:?}", sheet_job_data)))?
             };
 
             // Determine the workflow to use
@@ -588,6 +579,9 @@ impl JobManager {
                 )
                 .await?
             } else {
+                let mut job_message = job_message.clone();
+                job_message.content = input_string;
+
                 JobManager::inference_chain_router(
                     db.clone(),
                     vector_fs.clone(),

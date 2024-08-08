@@ -365,6 +365,51 @@ impl Sheet {
             .collect()
     }
 
+    /// Computes the processed input for a cell with ColumnBehavior::LLMCall.
+    /// This method evaluates the formula specified in the `input` field of the LLMCall behavior,
+    /// fetching the values of the dependent cells and concatenating them according to the formula.
+    ///
+    /// # Arguments
+    /// * `row` - The UUID of the row containing the cell.
+    /// * `col` - The UUID of the column containing the cell.
+    ///
+    /// # Returns
+    /// An `Option<String>` containing the processed input if successful, or `None` if the column behavior is not LLMCall.
+    pub fn get_processed_input(&self, row: UuidString, col: UuidString) -> Option<String> {
+        if let Some(column_definition) = self.columns.get(&col) {
+            if let ColumnBehavior::LLMCall { input, .. } = &column_definition.behavior {
+                if !input.starts_with('=') {
+                    // If the input does not start with '=', return it as is
+                    return Some(input.clone());
+                }
+
+                let formula = &input[1..]; // Remove the initial '='
+                let parts: Vec<&str> = formula.split('+').collect();
+                let mut result = String::new();
+
+                for part in parts {
+                    let part = part.trim();
+                    if part.starts_with('"') && part.ends_with('"') {
+                        // Handle quoted strings
+                        let literal = &part[1..part.len() - 1];
+                        result.push_str(literal);
+                    } else {
+                        // Handle cell references
+                        let col_index = CellNameConverter::column_name_to_index(part);
+                        if let Some(col_uuid) = self.display_columns.get(col_index) {
+                            if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
+                                result.push_str(&value);
+                            }
+                        }
+                    }
+                }
+
+                return Some(result);
+            }
+        }
+        None
+    }
+
     fn compute_input_hash(
         &self,
         input_cells: &[(RowIndex, ColumnIndex, ColumnDefinition)],
