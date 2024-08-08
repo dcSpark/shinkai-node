@@ -34,7 +34,8 @@ mod tests {
             name: "LLM Call Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -167,7 +168,8 @@ mod tests {
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -261,7 +263,8 @@ mod tests {
             name: "Column C".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Summarize: $INPUT".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -493,7 +496,8 @@ mod tests {
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "=A".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },

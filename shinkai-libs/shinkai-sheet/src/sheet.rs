@@ -121,11 +121,10 @@ impl Sheet {
                 self.column_dependency_manager
                     .add_dependency(column_uuid.clone(), dep.clone());
             }
+            self.display_columns.push(column_uuid.clone()); // only add to display_columns if it's a new column
         }
 
         let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
-
-        self.display_columns.push(column_uuid.clone());
 
         // Collect rows to avoid borrowing issues
         let rows_to_update: Vec<UuidString> = self.display_rows.clone();
@@ -590,6 +589,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         ColumnBehavior::LLMCall {
                             input: _, // used under the hood with get_input_cells_for_column
                             workflow,
+                            workflow_name,
                             llm_provider_name,
                             input_hash,
                         } => {
@@ -601,9 +601,17 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                 col: dependent_col.clone(),
                                 col_definition: column_definition.clone(),
                                 workflow: workflow.clone(),
+                                workflow_name: workflow_name.clone(),
                                 input_cells,
                                 llm_provider_name: llm_provider_name.clone(),
                             };
+
+                            // Update the cell status to Pending
+                            if let Some(row_cells) = state.rows.get_mut(&row) {
+                                if let Some(cell) = row_cells.get_mut(&dependent_col) {
+                                    cell.status = CellStatus::Pending;
+                                }
+                            }
 
                             jobs.push(workflow_job_data);
                         }
@@ -660,11 +668,13 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
         }
         SheetAction::TriggerUpdateColumnValues(col_uuid) => {
-            for row_uuid in state.rows.keys() {
+            let row_uuids: Vec<_> = state.rows.keys().cloned().collect();
+            for row_uuid in row_uuids {
                 if let Some(column_definition) = state.columns.get(&col_uuid).cloned() {
                     if let ColumnBehavior::LLMCall {
                         input: _, // used under the hood with get_input_cells_for_column
                         workflow,
+                        workflow_name,
                         llm_provider_name,
                         input_hash: _,
                     } = &column_definition.behavior
@@ -676,9 +686,17 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             col: col_uuid.clone(),
                             col_definition: column_definition.clone(),
                             workflow: workflow.clone(),
+                            workflow_name: workflow_name.clone(),
                             input_cells,
                             llm_provider_name: llm_provider_name.clone(),
                         };
+
+                        // Update the cell status to Pending
+                        if let Some(row_cells) = state.rows.get_mut(&row_uuid) {
+                            if let Some(cell) = row_cells.get_mut(&col_uuid) {
+                                cell.status = CellStatus::Pending;
+                            }
+                        }
 
                         jobs.push(workflow_job_data);
                     }

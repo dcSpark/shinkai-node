@@ -545,7 +545,8 @@ impl JobManager {
             let input_string = {
                 let sheet_manager = sheet_manager.lock().await;
                 let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
-                let input_cells = sheet.get_input_values_for_cell(sheet_job_data.row.clone(), sheet_job_data.col.clone());
+                let input_cells =
+                    sheet.get_input_values_for_cell(sheet_job_data.row.clone(), sheet_job_data.col.clone());
                 input_cells
                     .iter()
                     .filter_map(|(_, cell)| cell.as_ref())
@@ -558,21 +559,49 @@ impl JobManager {
                     })
             };
 
+            // Determine the workflow to use
+            let workflow = if let Some(workflow) = sheet_job_data.workflow {
+                Some(workflow)
+            } else if let Some(workflow_name) = sheet_job_data.workflow_name {
+                match db.get_workflow(&workflow_name, &user_profile) {
+                    Ok(workflow) => Some(workflow),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
             // Process the sheet job
-            let inference_result = Self::execute_workflow(
-                db.clone(),
-                vector_fs.clone(),
-                job_message,
-                input_string,
-                llm_provider_found,
-                full_job.clone(),
-                generator,
-                user_profile.clone(),
-                ws_manager.clone(),
-                tool_router.clone(),
-                sheet_job_data.workflow,
-            )
-            .await?;
+            let inference_result = if let Some(workflow) = workflow {
+                Self::execute_workflow(
+                    db.clone(),
+                    vector_fs.clone(),
+                    job_message,
+                    input_string,
+                    llm_provider_found,
+                    full_job.clone(),
+                    generator,
+                    user_profile.clone(),
+                    ws_manager.clone(),
+                    tool_router.clone(),
+                    workflow,
+                )
+                .await?
+            } else {
+                JobManager::inference_chain_router(
+                    db.clone(),
+                    vector_fs.clone(),
+                    llm_provider_found,
+                    full_job.clone(),
+                    job_message.clone(),
+                    HashMap::new(), // Assuming prev_execution_context is an empty HashMap
+                    generator,
+                    user_profile.clone(),
+                    ws_manager.clone(),
+                    tool_router.clone(),
+                )
+                .await?
+            };
 
             let response = inference_result.response;
 
