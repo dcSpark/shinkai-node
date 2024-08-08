@@ -61,7 +61,7 @@ pub fn read_indexer_reports(
 }
 
 pub fn filter_under_community_level(df: &DataFrame, community_level: u32) -> anyhow::Result<DataFrame> {
-    let mask = df.column("level")?.i32()?.lt_eq(community_level);
+    let mask = df.column("level")?.i64()?.lt_eq(community_level);
     let result = df.filter(&mask)?;
 
     Ok(result)
@@ -121,9 +121,9 @@ pub fn read_community_reports(
             short_id: Some(row.get(0).unwrap_or(&String::new()).to_string()),
             title: row.get(1).unwrap_or(&String::new()).to_string(),
             community_id: row.get(0).unwrap_or(&String::new()).to_string(),
-            summary: row.get(3).unwrap_or(&String::new()).to_string(),
-            full_content: row.get(4).unwrap_or(&String::new()).to_string(),
-            rank: Some(row.get(5).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0)),
+            summary: row.get(2).unwrap_or(&String::new()).to_string(),
+            full_content: row.get(3).unwrap_or(&String::new()).to_string(),
+            rank: Some(row.get(4).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0)),
             summary_embedding: None,
             full_content_embedding: None,
             attributes: None,

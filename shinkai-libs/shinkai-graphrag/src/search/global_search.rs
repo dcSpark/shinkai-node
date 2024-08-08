@@ -1,30 +1,26 @@
 use futures::future::join_all;
-//use polars::frame::DataFrame;
-use serde::{Deserialize, Serialize};
+use polars::frame::DataFrame;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Instant;
 use tiktoken_rs::tokenizer::Tokenizer;
 
 use crate::context_builder::community_context::GlobalCommunityContext;
-use crate::context_builder::context_builder::ConversationHistory;
-use crate::llm::llm::{BaseLLM, BaseLLMCallback, MessageType};
+use crate::context_builder::context_builder::{ContextBuilderParams, ConversationHistory};
+use crate::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
 use crate::llm::utils::num_tokens;
 
-// TODO: Serialize and Deserialize polars::frame::DataFrame
-type DataFrame = Vec<u8>;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SearchResult {
-    response: ResponseType,
-    context_data: ContextData,
-    context_text: ContextText,
-    completion_time: f64,
-    llm_calls: usize,
-    prompt_tokens: usize,
+    pub response: ResponseType,
+    pub context_data: ContextData,
+    pub context_text: ContextText,
+    pub completion_time: f64,
+    pub llm_calls: usize,
+    pub prompt_tokens: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum ResponseType {
     String(String),
     Dictionary(HashMap<String, serde_json::Value>),
@@ -32,37 +28,36 @@ pub enum ResponseType {
     KeyPoints(Vec<KeyPoint>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum ContextData {
     String(String),
     DataFrames(Vec<DataFrame>),
     Dictionary(HashMap<String, DataFrame>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum ContextText {
     String(String),
     Strings(Vec<String>),
     Dictionary(HashMap<String, String>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct KeyPoint {
-    answer: String,
-    score: i32,
+    pub answer: String,
+    pub score: i32,
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct GlobalSearchResult {
-    response: ResponseType,
-    context_data: ContextData,
-    context_text: ContextText,
-    completion_time: f64,
-    llm_calls: usize,
-    prompt_tokens: usize,
-    map_responses: Vec<SearchResult>,
-    reduce_context_data: ContextData,
-    reduce_context_text: ContextText,
+    pub response: ResponseType,
+    pub context_data: ContextData,
+    pub context_text: ContextText,
+    pub completion_time: f64,
+    pub llm_calls: usize,
+    pub prompt_tokens: usize,
+    pub map_responses: Vec<SearchResult>,
+    pub reduce_context_data: ContextData,
+    pub reduce_context_text: ContextText,
 }
 
 #[derive(Debug, Clone)]
@@ -94,15 +89,15 @@ pub struct GlobalSearch {
     llm: Box<dyn BaseLLM>,
     context_builder: GlobalCommunityContext,
     token_encoder: Option<Tokenizer>,
-    context_builder_params: Option<HashMap<String, serde_json::Value>>,
+    context_builder_params: ContextBuilderParams,
     reduce_system_prompt: String,
     response_type: String,
     allow_general_knowledge: bool,
     general_knowledge_inclusion_prompt: String,
     callbacks: Option<Vec<GlobalSearchLLMCallback>>,
     max_data_tokens: usize,
-    map_llm_params: HashMap<String, serde_json::Value>,
-    reduce_llm_params: HashMap<String, serde_json::Value>,
+    map_llm_params: LLMParams,
+    reduce_llm_params: LLMParams,
 }
 
 impl GlobalSearch {
@@ -117,19 +112,18 @@ impl GlobalSearch {
         json_mode: bool,
         callbacks: Option<Vec<GlobalSearchLLMCallback>>,
         max_data_tokens: usize,
-        map_llm_params: HashMap<String, serde_json::Value>,
-        reduce_llm_params: HashMap<String, serde_json::Value>,
-        context_builder_params: Option<HashMap<String, serde_json::Value>>,
+        map_llm_params: LLMParams,
+        reduce_llm_params: LLMParams,
+        context_builder_params: ContextBuilderParams,
     ) -> Self {
         let mut map_llm_params = map_llm_params;
 
         if json_mode {
-            map_llm_params.insert(
-                "response_format".to_string(),
-                serde_json::json!({"type": "json_object"}),
-            );
+            map_llm_params
+                .response_format
+                .insert("type".to_string(), "json_object".to_string());
         } else {
-            map_llm_params.remove("response_format");
+            map_llm_params.response_format.remove("response_format");
         }
 
         GlobalSearch {
@@ -151,14 +145,14 @@ impl GlobalSearch {
     pub async fn asearch(
         &self,
         query: String,
-        conversation_history: Option<ConversationHistory>,
+        _conversation_history: Option<ConversationHistory>,
     ) -> anyhow::Result<GlobalSearchResult> {
         // Step 1: Generate answers for each batch of community short summaries
         let start_time = Instant::now();
         let (context_chunks, context_records) = self
             .context_builder
-            .build_context(conversation_history, self.context_builder_params.clone())
-            .await;
+            .build_context(self.context_builder_params.clone())
+            .await?;
 
         let mut callbacks = match &self.callbacks {
             Some(callbacks) => {
@@ -221,7 +215,7 @@ impl GlobalSearch {
         &self,
         context_data: &str,
         query: &str,
-        llm_params: HashMap<String, serde_json::Value>,
+        llm_params: LLMParams,
     ) -> anyhow::Result<SearchResult> {
         let start_time = Instant::now();
         let search_prompt = String::new();
@@ -282,7 +276,7 @@ impl GlobalSearch {
         map_responses: Vec<SearchResult>,
         query: &str,
         callbacks: Option<Vec<GlobalSearchLLMCallback>>,
-        reduce_llm_params: HashMap<String, serde_json::Value>,
+        llm_params: LLMParams,
     ) -> anyhow::Result<SearchResult> {
         let start_time = Instant::now();
         let mut key_points: Vec<HashMap<String, String>> = Vec::new();
@@ -384,7 +378,7 @@ impl GlobalSearch {
                 MessageType::Dictionary(search_messages),
                 true,
                 llm_callbacks,
-                reduce_llm_params,
+                llm_params,
             )
             .await?;
 

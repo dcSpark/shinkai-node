@@ -117,19 +117,22 @@ pub fn read_entities(
     // attributes_cols: Option<Vec<&str>>,
 ) -> anyhow::Result<Vec<Entity>> {
     let column_names = [
-        id_col,
-        short_id_col.unwrap_or("short_id"),
-        title_col,
-        type_col.unwrap_or("type"),
-        description_col.unwrap_or("description"),
-        name_embedding_col.unwrap_or("name_embedding"),
-        description_embedding_col.unwrap_or("description_embedding"),
-        graph_embedding_col.unwrap_or("graph_embedding"),
-        community_col.unwrap_or("community_ids"),
-        text_unit_ids_col.unwrap_or("text_unit_ids"),
-        document_ids_col.unwrap_or("document_ids"),
-        rank_col.unwrap_or("degree"),
-    ];
+        Some(id_col),
+        short_id_col,
+        Some(title_col),
+        type_col,
+        description_col,
+        name_embedding_col,
+        description_embedding_col,
+        graph_embedding_col,
+        community_col,
+        text_unit_ids_col,
+        document_ids_col,
+        rank_col,
+    ]
+    .iter()
+    .filter_map(|&v| v.map(|v| v.to_string()))
+    .collect::<Vec<_>>();
 
     let mut df = df.clone();
     df.as_single_chunk_par();

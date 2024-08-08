@@ -1,12 +1,13 @@
-use std::collections::HashMap;
-
 use async_openai::{
     config::OpenAIConfig,
-    types::{ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, CreateChatCompletionRequestArgs},
+    types::{
+        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionResponseFormat,
+        ChatCompletionResponseFormatType, CreateChatCompletionRequestArgs,
+    },
     Client,
 };
-
-use super::llm::{BaseLLMCallback, MessageType};
+use async_trait::async_trait;
+use shinkai_graphrag::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
 
 pub struct ChatOpenAI {
     pub api_key: Option<String>,
@@ -28,7 +29,7 @@ impl ChatOpenAI {
         messages: MessageType,
         streaming: bool,
         callbacks: Option<Vec<BaseLLMCallback>>,
-        llm_params: HashMap<String, serde_json::Value>,
+        llm_params: LLMParams,
     ) -> anyhow::Result<String> {
         let mut retry_count = 0;
 
@@ -54,7 +55,7 @@ impl ChatOpenAI {
         messages: MessageType,
         _streaming: bool,
         _callbacks: Option<Vec<BaseLLMCallback>>,
-        _llm_params: HashMap<String, serde_json::Value>,
+        llm_params: LLMParams,
     ) -> anyhow::Result<String> {
         let client = match &self.api_key {
             Some(api_key) => Client::with_config(OpenAIConfig::new().with_api_key(api_key)),
@@ -91,7 +92,24 @@ impl ChatOpenAI {
             .map(|m| Into::<ChatCompletionRequestMessage>::into(m.clone()))
             .collect::<Vec<ChatCompletionRequestMessage>>();
 
+        let response_format = if llm_params
+            .response_format
+            .get_key_value("type")
+            .is_some_and(|(_k, v)| v == "json_object")
+        {
+            ChatCompletionResponseFormat {
+                r#type: ChatCompletionResponseFormatType::JsonObject,
+            }
+        } else {
+            ChatCompletionResponseFormat {
+                r#type: ChatCompletionResponseFormatType::Text,
+            }
+        };
+
         let request = CreateChatCompletionRequestArgs::default()
+            .max_tokens(llm_params.max_tokens)
+            .temperature(llm_params.temperature)
+            //.response_format(response_format)
             .model(self.model.clone())
             .messages(request_messages)
             .build()?;
@@ -103,5 +121,18 @@ impl ChatOpenAI {
         }
 
         return Ok(String::new());
+    }
+}
+
+#[async_trait]
+impl BaseLLM for ChatOpenAI {
+    async fn agenerate(
+        &self,
+        messages: MessageType,
+        streaming: bool,
+        callbacks: Option<Vec<BaseLLMCallback>>,
+        llm_params: LLMParams,
+    ) -> anyhow::Result<String> {
+        self.agenerate(messages, streaming, callbacks, llm_params).await
     }
 }
