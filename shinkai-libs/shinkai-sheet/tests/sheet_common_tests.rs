@@ -4,8 +4,8 @@ use chrono::Utc;
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition, ColumnIndex, UuidString};
-    use shinkai_sheet::{cell_name_converter::CellNameConverter, sheet::Sheet};
+    use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition, UuidString};
+    use shinkai_sheet::sheet::Sheet;
     use uuid::Uuid;
 
     use super::*;

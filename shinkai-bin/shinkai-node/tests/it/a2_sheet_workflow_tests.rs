@@ -165,7 +165,8 @@ fn create_a_sheet_and_check_workflows() {
                     name: "Column B".to_string(),
                     behavior: ColumnBehavior::LLMCall {
                         input: "=A".to_string(),
-                        workflow,
+                        workflow: Some(workflow),
+                        workflow_name: None,
                         llm_provider_name: node1_agent.clone(),
                         input_hash: None,
                     },

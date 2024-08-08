@@ -315,7 +315,7 @@ impl WorkflowTool {
     }
 
     // Auto-generated code
-    // The prompts are from the great folks at Fabric https://github.com/fabric/fabric
+    // The prompts are from the great folks at Fabric https://github.com/danielmiessler/fabric
     /*
     Copyright (c) 2020 Jeff Forcier.
     All rights reserved.

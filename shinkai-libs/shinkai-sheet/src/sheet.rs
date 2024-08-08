@@ -226,7 +226,7 @@ impl Sheet {
         // unlike the previous job, this one *may* have updates because some formulas or workflows may depend on us
         // so updating x,y cell may trigger workflow(s) that depends on x,y
         let new_jobs = self
-            .dispatch(SheetAction::TriggerUpdateEvent {
+            .dispatch(SheetAction::PropagateUpdateToDependents {
                 changed_cell_id,
                 visited: HashSet::new(),
                 depth: 0,
@@ -481,7 +481,11 @@ pub enum SheetAction {
         value: String,
         input_hash: Option<String>,
     },
-    TriggerUpdateEvent {
+    SetCellPending {
+        row: UuidString,
+        col: UuidString,
+    },
+    PropagateUpdateToDependents {
         changed_cell_id: CellId,
         visited: HashSet<(UuidString, UuidString)>,
         depth: usize,
@@ -525,9 +529,9 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 return (state, jobs); // Column index out of bounds
             }
 
-            let row_cells = state.rows.entry(row).or_default();
+            let row_cells = state.rows.entry(row.clone()).or_default();
             row_cells.insert(
-                col,
+                col.clone(),
                 Cell {
                     value: Some(value),
                     last_updated: Utc::now(),
@@ -535,8 +539,55 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                     input_hash,
                 },
             );
+
+            // Trigger updates for cells dependent on the updated cell
+            let changed_cell_id = CellId(format!("{}:{}", row, col));
+            let (new_state, mut new_jobs) = sheet_reducer(
+                state,
+                SheetAction::PropagateUpdateToDependents {
+                    changed_cell_id,
+                    visited: HashSet::new(),
+                    depth: 0,
+                },
+            )
+            .await;
+            state = new_state;
+            jobs.append(&mut new_jobs);
         }
-        SheetAction::TriggerUpdateEvent {
+        SheetAction::SetCellPending { row, col } => {
+            if !state.columns.contains_key(&col) {
+                return (state, jobs); // Column index out of bounds
+            }
+
+            if let Some(row_cells) = state.rows.get_mut(&row) {
+                if let Some(cell) = row_cells.get_mut(&col) {
+                    cell.status = CellStatus::Pending;
+                } else {
+                    row_cells.insert(
+                        col.clone(),
+                        Cell {
+                            value: None,
+                            last_updated: Utc::now(),
+                            status: CellStatus::Pending,
+                            input_hash: None,
+                        },
+                    );
+                }
+            } else {
+                let mut row_cells = HashMap::new();
+                row_cells.insert(
+                    col.clone(),
+                    Cell {
+                        value: None,
+                        last_updated: Utc::now(),
+                        status: CellStatus::Pending,
+                        input_hash: None,
+                    },
+                );
+                state.rows.insert(row.clone(), row_cells);
+            }
+        }
+        SheetAction::PropagateUpdateToDependents {
             changed_cell_id,
             mut visited,
             depth,
@@ -554,18 +605,20 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 return (state, jobs);
             }
 
-            let dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
-            eprintln!("Col: {:?} Dependents: {:?}", col, dependents);
-            for dependent_col in dependents {
-                if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
+            let reverse_dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
+            eprintln!("Col: {:?} Dependents: {:?}", col, reverse_dependents);
+            for reverse_dependent_col in reverse_dependents {
+                if let Some(column_definition) = state.columns.get(&reverse_dependent_col).cloned() {
                     match &column_definition.behavior {
                         ColumnBehavior::Formula(formula) => {
-                            if let Some(value) = state.evaluate_formula(formula, row.clone(), dependent_col.clone()) {
+                            if let Some(value) =
+                                state.evaluate_formula(formula, row.clone(), reverse_dependent_col.clone())
+                            {
                                 let (new_state, mut new_jobs) = sheet_reducer(
                                     state,
                                     SheetAction::SetCellValue {
                                         row: row.clone(),
-                                        col: dependent_col.clone(),
+                                        col: reverse_dependent_col.clone(),
                                         value,
                                         input_hash: None,
                                     },
@@ -574,13 +627,13 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                 state = new_state;
                                 jobs.append(&mut new_jobs);
 
-                                eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, dependent_col, col);
-                                let new_cell_id = CellId(format!("{}:{}", row, dependent_col));
+                                eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, reverse_dependent_col, col);
+                                let new_cell_id = CellId(format!("{}:{}", row, reverse_dependent_col));
                                 eprintln!("TriggerUpdateEvent newcellid: {:?}", new_cell_id);
                                 if changed_cell_id != new_cell_id {
                                     let (new_state, mut new_jobs) = sheet_reducer(
                                         state,
-                                        SheetAction::TriggerUpdateEvent {
+                                        SheetAction::PropagateUpdateToDependents {
                                             changed_cell_id: new_cell_id,
                                             visited: visited.clone(),
                                             depth: depth + 1,
@@ -600,11 +653,12 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             input_hash,
                         } => {
                             // Check if input_hash is present and matches the blake3 hash of the current input cells values
-                            let input_cells = state.get_input_cells_for_column(row.clone(), dependent_col.clone());
+                            let input_cells =
+                                state.get_input_cells_for_column(row.clone(), reverse_dependent_col.clone());
                             let workflow_job_data = WorkflowSheetJobData {
                                 sheet_id: state.uuid.clone(),
                                 row: row.clone(),
-                                col: dependent_col.clone(),
+                                col: reverse_dependent_col.clone(),
                                 col_definition: column_definition.clone(),
                                 workflow: workflow.clone(),
                                 workflow_name: workflow_name.clone(),
@@ -614,7 +668,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
 
                             // Update the cell status to Pending
                             if let Some(row_cells) = state.rows.get_mut(&row) {
-                                if let Some(cell) = row_cells.get_mut(&dependent_col) {
+                                if let Some(cell) = row_cells.get_mut(&reverse_dependent_col) {
                                     cell.status = CellStatus::Pending;
                                 }
                             }
@@ -732,6 +786,16 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             input_hash: None,
                         },
                     );
+                } else {
+                    row_cells.insert(
+                        col_uuid.clone(),
+                        Cell {
+                            value: None,
+                            last_updated: Utc::now(),
+                            status: CellStatus::Pending,
+                            input_hash: None,
+                        },
+                    );
                 }
             }
             state.rows.insert(row_uuid.clone(), row_cells);
@@ -746,7 +810,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
 
                 let changed_cell_id = CellId(format!("{}:{}", row_uuid, col_uuid));
                 eprintln!("\nAddRow TriggerUpdateEvent: {:?}", changed_cell_id);
-                update_events.push(SheetAction::TriggerUpdateEvent {
+                update_events.push(SheetAction::PropagateUpdateToDependents {
                     changed_cell_id,
                     visited: HashSet::new(),
                     depth: 0,

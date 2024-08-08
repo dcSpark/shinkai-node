@@ -601,6 +601,91 @@ mod tests {
         // Print final state of the sheet
         sheet_locked.print_as_ascii_table();
     }
+
+    // TODO: add a new test and feature to throw an error that gets scaled up to the user
+    //eg behavior: ColumnBehavior::Formula("=LLM Call Column + \" Copy\"".to_string()),
+
+    #[tokio::test]
+    async fn test_llm_call_and_formula_cell_status() {
+        let sheet = Arc::new(Mutex::new(Sheet::new()));
+        let row_id = Uuid::new_v4().to_string();
+        let column_llm_id = Uuid::new_v4().to_string();
+        let column_formula_id = Uuid::new_v4().to_string();
+
+        let workflow_str = r#"
+        workflow WorkflowTest v0.1 {
+            step Main {
+                $RESULT = call opinionated_inference($INPUT)
+            }
+        }
+        "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        let column_llm = ColumnDefinition {
+            id: column_llm_id.clone(),
+            name: "LLM Call Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "Say Hello World".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let column_formula = ColumnDefinition {
+            id: column_formula_id.clone(),
+            name: "Formula Column".to_string(),
+            behavior: ColumnBehavior::Formula("=A + \" Copy\"".to_string()),
+        };
+
+        {
+            let mut sheet = sheet.lock().await;
+            let _ = sheet.set_column(column_llm.clone()).await;
+            let _ = sheet.set_column(column_formula.clone()).await;
+        }
+
+        sheet.lock().await.add_row(row_id.clone()).await.unwrap();
+
+        // Check initial cell statuses
+        {
+            let sheet_locked = sheet.lock().await;
+            let llm_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+            let formula_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_formula_id.clone())
+                .map(|cell| &cell.status);
+
+            assert_eq!(llm_cell_status, Some(&CellStatus::Pending));
+            assert_eq!(formula_cell_status, Some(&CellStatus::Ready)); // TODO: eventually it should be "linked" so Pending
+        }
+
+        // Simulate LLM call completion
+        sheet
+            .lock()
+            .await
+            .set_cell_value(row_id.clone(), column_llm_id.clone(), "Hello World".to_string())
+            .await
+            .unwrap();
+
+        // Check cell statuses after LLM call completion
+        {
+            let sheet_locked = sheet.lock().await;
+            let llm_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+            let formula_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_formula_id.clone())
+                .map(|cell| &cell.status);
+
+            assert_eq!(llm_cell_status, Some(&CellStatus::Ready));
+            assert_eq!(formula_cell_status, Some(&CellStatus::Ready));
+        }
+
+        // Print final state of the sheet
+        sheet.lock().await.print_as_ascii_table();
+    }
 }
 
 // // TODO: add test that A (text missing) -> B (workflow depending on A) -> C (workflo depending on B)
