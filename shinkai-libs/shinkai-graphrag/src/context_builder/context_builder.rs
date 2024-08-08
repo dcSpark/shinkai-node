@@ -1,18 +1,19 @@
-use async_trait::async_trait;
-// use polars::prelude::*;
-use std::collections::HashMap;
-
-// TODO: Serialize and Deserialize polars::frame::DataFrame
-type DataFrame = Vec<u8>;
-
-#[async_trait]
-pub trait GlobalContextBuilder {
-    /// Build the context for the global search mode.
-    async fn build_context(
-        &self,
-        conversation_history: Option<ConversationHistory>,
-        context_builder_params: Option<HashMap<String, serde_json::Value>>,
-    ) -> (Vec<String>, HashMap<String, DataFrame>);
+#[derive(Debug, Clone)]
+pub struct ContextBuilderParams {
+    //conversation_history: Option<ConversationHistory>,
+    pub use_community_summary: bool,
+    pub column_delimiter: String,
+    pub shuffle_data: bool,
+    pub include_community_rank: bool,
+    pub min_community_rank: u32,
+    pub community_rank_name: String,
+    pub include_community_weight: bool,
+    pub community_weight_name: String,
+    pub normalize_community_weight: bool,
+    pub max_tokens: usize,
+    pub context_name: String,
+    // conversation_history_user_turns_only: bool,
+    // conversation_history_max_turns: Option<i32>,
 }
 
 pub struct ConversationHistory {}

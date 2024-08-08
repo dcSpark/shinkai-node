@@ -25,6 +25,13 @@ pub enum MessageType {
     Dictionary(Vec<HashMap<String, String>>),
 }
 
+#[derive(Debug, Clone)]
+pub struct LLMParams {
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub response_format: HashMap<String, String>,
+}
+
 #[async_trait]
 pub trait BaseLLM {
     async fn agenerate(
@@ -32,7 +39,7 @@ pub trait BaseLLM {
         messages: MessageType,
         streaming: bool,
         callbacks: Option<Vec<BaseLLMCallback>>,
-        llm_params: HashMap<String, serde_json::Value>,
+        llm_params: LLMParams,
     ) -> anyhow::Result<String>;
 }
 
