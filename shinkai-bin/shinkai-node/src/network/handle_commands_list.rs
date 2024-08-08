@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::network::{node_commands::NodeCommand, Node};
+use crate::{
+    network::{node_commands::NodeCommand, Node},
+    vector_fs,
+};
 
 impl Node {
     pub async fn handle_command(&self, command: NodeCommand) {
@@ -1914,6 +1917,125 @@ impl Node {
                         payload,
                         ext_subscription_manager_clone,
                         bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiConvertFilesAndSaveToFolder { payload, bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let embedding_generator_clone = self.embedding_generator.clone();
+                let unstructured_api_clone = self.unstructured_api.clone();
+                let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_convert_files_and_save_to_folder(
+                        db_clone,
+                        vector_fs_clone,
+                        identity_manager_clone,
+                        payload,
+                        Arc::new(embedding_generator_clone),
+                        Arc::new(unstructured_api_clone),
+                        ext_subscription_manager_clone,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiVecFSCreateFolder { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ =
+                        Node::v2_create_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
+                            .await;
+                });
+            }
+            NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_retrieve_vector_resource(
+                        db_clone,
+                        vector_fs_clone,
+                        identity_manager_clone,
+                        path,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiUpdateSmartInboxName {
+                bearer,
+                inbox_name,
+                custom_name,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_update_smart_inbox_name(db_clone, bearer, inbox_name, custom_name, res).await;
+                });
+            }
+            NodeCommand::V2ApiCreateFilesInbox { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_create_files_inbox(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiAddFileToInbox {
+                file_inbox_name,
+                filename,
+                file,
+                bearer,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_add_file_to_inbox(
+                        db_clone,
+                        vector_fs_clone,
+                        file_inbox_name,
+                        filename,
+                        file,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiUploadFileToFolder {
+                bearer,
+                filename,
+                file,
+                path,
+                file_datetime,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let embedding_generator_clone = self.embedding_generator.clone();
+                let unstructured_api_clone = self.unstructured_api.clone();
+                let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_upload_file_to_folder(
+                        db_clone,
+                        vector_fs_clone,
+                        identity_manager_clone,
+                        Arc::new(embedding_generator_clone),
+                        Arc::new(unstructured_api_clone),
+                        ext_subscription_manager_clone,
+                        bearer,
+                        filename,
+                        file,
+                        path,
+                        file_datetime,
                         res,
                     )
                     .await;

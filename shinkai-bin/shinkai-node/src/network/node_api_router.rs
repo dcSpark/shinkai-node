@@ -8,6 +8,7 @@ use serde_json::json;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use std::env;
 use std::net::SocketAddr;
 use utoipa::ToSchema;
 use warp::Filter;
@@ -119,20 +120,29 @@ pub async fn run_api(
             .with(log)
             .with(cors.clone()),
     );
-
-    let v2_routes = warp::path("v2").and(
-        v2_routes(node_commands_sender.clone(), node_name.clone())
-            .recover(handle_rejection)
-            .with(log)
-            .with(cors.clone()),
-    );
-
-    // Combine all routes
-    let routes = v1_routes.or(v2_routes).with(log).with(cors);
-
     println!("API server running on http://{}", address);
 
-    warp::serve(routes).run(address).await;
+    if env::var("ENABLE_API_V2")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        let v2_routes = warp::path("v2").and(
+            v2_routes(node_commands_sender.clone(), node_name.clone())
+                .recover(handle_rejection)
+                .with(log)
+                .with(cors.clone()),
+        );
+
+        // Combine all routes
+        let routes = v1_routes.or(v2_routes).with(log).with(cors);
+
+        warp::serve(routes).run(address).await;
+    } else {
+        // Combine all routes
+        let routes = v1_routes.with(log).with(cors);
+
+        warp::serve(routes).run(address).await;
+    }
 
     Ok(())
 }

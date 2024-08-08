@@ -89,6 +89,7 @@ lancedb = "0.8.0"
 arrow = "52.1"
 arrow-array = "52.1"
 arrow-schema = "52.1"
+bytes = "1.7.1"
 
 [dependencies.aws-sdk-s3]
 version = "1.24.0"

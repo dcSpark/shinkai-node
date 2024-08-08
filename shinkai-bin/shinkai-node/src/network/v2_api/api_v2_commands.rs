@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_channel::Sender;
+use chrono::{DateTime, Utc};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -12,7 +13,10 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage},
+        shinkai_message_schemas::{
+            APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson,
+            IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+        },
     },
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, EncryptionMethod},
@@ -21,13 +25,17 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime, vector_resource::VRPath,
+    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+    file_parser::unstructured_api::UnstructuredAPI,
+    model_type::EmbeddingModelType,
+    shinkai_time::ShinkaiStringTime,
+    vector_resource::VRPath,
 };
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    db::ShinkaiDB,
+    db::{self, ShinkaiDB},
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{
@@ -777,5 +785,439 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_convert_files_and_save_to_folder(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        input_payload: APIConvertFilesAndSaveToFolder,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+        unstructured_api: Arc<UnstructuredAPI>,
+        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        bearer: String,
+        res: Sender<Result<Vec<Value>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        Self::process_and_save_files(
+            db,
+            vector_fs,
+            input_payload,
+            requester_name,
+            embedding_generator,
+            unstructured_api,
+            external_subscriber_manager,
+            res,
+        )
+        .await
+    }
+
+    pub async fn v2_create_folder(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        input_payload: APIVecFsCreateFolder,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let vr_path = match VRPath::from_string(&input_payload.path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let writer = match vector_fs
+            .new_writer(requester_name.clone(), vr_path, requester_name.clone())
+            .await
+        {
+            Ok(writer) => writer,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create writer: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match vector_fs.create_new_folder(&writer, &input_payload.folder_name).await {
+            Ok(_) => {
+                let success_message = format!("Folder '{}' created successfully.", input_payload.folder_name);
+                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+                Ok(())
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create new folder: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_update_smart_inbox_name(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        inbox_name: String,
+        custom_name: String,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Update the smart inbox name
+        match db.update_smart_inbox_name(&inbox_name, &custom_name) {
+            Ok(_) => {
+                let _ = res.send(Ok(())).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update inbox name: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_retrieve_vector_resource(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        path: String,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let vr_path = match VRPath::from_string(&path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let reader = match vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await
+        {
+            Ok(reader) => reader,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create reader: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let result = vector_fs.retrieve_vector_resource(&reader).await;
+
+        match result {
+            Ok(result_value) => match result_value.to_json_value() {
+                Ok(json_value) => {
+                    let _ = res.send(Ok(json_value)).await.map_err(|_| ());
+                    Ok(())
+                }
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to convert result to JSON: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            },
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve vector resource: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_create_files_inbox(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), APIError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let hash_hex = uuid::Uuid::new_v4().to_string();
+
+        match db.create_files_message_inbox(hash_hex.clone()) {
+            Ok(_) => {
+                if let Err(_) = res.send(Ok(hash_hex)).await {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to send response".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                }
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to create files message inbox: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_add_file_to_inbox(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        file_inbox_name: String,
+        filename: String,
+        file: Vec<u8>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), APIError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match vector_fs
+            .db
+            .add_file_to_files_message_inbox(file_inbox_name, filename, file)
+        {
+            Ok(_) => {
+                let _ = res.send(Ok("File added successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to add file to inbox: {}", err),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_upload_file_to_folder(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+        unstructured_api: Arc<UnstructuredAPI>,
+        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        bearer: String,
+        filename: String,
+        file: Vec<u8>,
+        path: String,
+        file_datetime: Option<DateTime<Utc>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Step 1: Create a file inbox
+        let hash_hex = uuid::Uuid::new_v4().to_string();
+        if let Err(err) = db.create_files_message_inbox(hash_hex.clone()) {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Failed to create files message inbox: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let file_inbox_name = hash_hex;
+
+        // Step 2: Add the file to the inbox
+        let (add_file_res_sender, add_file_res_receiver) = async_channel::bounded(1);
+
+        match Self::v2_add_file_to_inbox(
+            db.clone(),
+            vector_fs.clone(),
+            file_inbox_name.clone(),
+            filename.clone(),
+            file.clone(),
+            bearer.clone(),
+            add_file_res_sender,
+        )
+        .await
+        {
+            Ok(_) => match add_file_res_receiver.recv().await {
+                Ok(Ok(_)) => {}
+                Ok(Err(api_error)) => {
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: "Failed to receive add file result".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            },
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Step 3: Convert the file and save it to the folder
+        let input_payload = APIConvertFilesAndSaveToFolder {
+            path,
+            file_inbox: file_inbox_name,
+            file_datetime,
+        };
+
+        let (convert_res_sender, convert_res_receiver) = async_channel::bounded(1);
+
+        match Self::v2_convert_files_and_save_to_folder(
+            db,
+            vector_fs,
+            identity_manager,
+            input_payload,
+            embedding_generator,
+            unstructured_api,
+            external_subscriber_manager,
+            bearer,
+            convert_res_sender,
+        )
+        .await
+        {
+            Ok(_) => match convert_res_receiver.recv().await {
+                Ok(Ok(result)) => {
+                    let first_element = match result.into_iter().next() {
+                        Some(element) => element,
+                        None => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: "Result array is empty".to_string(),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    };
+                    let _ = res.send(Ok(first_element)).await;
+                }
+                Ok(Err(api_error)) => {
+                    let _ = res.send(Err(api_error)).await;
+                }
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: "Failed to receive conversion result".to_string(),
+                        }))
+                        .await;
+                }
+            },
+            Err(node_error) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert files and save to folder: {}", node_error),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
     }
 }

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use async_channel::Sender;
+use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
@@ -10,7 +11,7 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{APIAvailableSharedItems, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage},
+        shinkai_message_schemas::{APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage},
     },
 };
 
@@ -523,15 +524,37 @@ pub enum NodeCommand {
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiVecFSRetrieveVectorResource {
-        msg: ShinkaiMessage,
+        bearer: String,
+        path: String, 
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiConvertFilesAndSaveToFolder {
-        msg: ShinkaiMessage,
+        bearer: String,
+        payload: APIConvertFilesAndSaveToFolder,
         res: Sender<Result<Vec<Value>, APIError>>,
     },
     V2ApiVecFSCreateFolder {
-        msg: ShinkaiMessage,
+        bearer: String,
+        payload: APIVecFsCreateFolder, 
         res: Sender<Result<String, APIError>>,
+    },
+    V2ApiCreateFilesInbox {
+        bearer: String, // 
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiAddFileToInbox {
+        bearer: String,
+        file_inbox_name: String,
+        filename: String,
+        file: Vec<u8>,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUploadFileToFolder {
+        bearer: String,
+        filename: String,
+        file: Vec<u8>,
+        path: String,
+        file_datetime: Option<DateTime<Utc>>,
+        res: Sender<Result<Value, APIError>>,
     },
 }

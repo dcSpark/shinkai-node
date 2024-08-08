@@ -2,13 +2,20 @@ use crate::network::{node_commands::NodeCommand, v1_api::api_v1_handlers::APIUse
 
 use super::super::node_api_router::{APIError, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData};
 use async_channel::Sender;
+use bytes::Buf;
+use chrono::DateTime;
+use chrono::Utc;
+use futures::StreamExt;
+use futures::TryStreamExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIVecFsRetrievePathSimplifiedJson, JobCreationInfo, JobMessage,
+    APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, JobCreationInfo,
+    JobMessage,
 };
 use utoipa::OpenApi;
+use warp::multipart::{FormData, Part};
 use warp::Filter;
 
 pub fn v2_routes(
@@ -69,8 +76,56 @@ pub fn v2_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<Option<APIVecFsRetrievePathSimplifiedJson>>())
+        .and(warp::query::<APIVecFsRetrievePathSimplifiedJson>())
         .and_then(retrieve_path_simplified_handler);
+
+    let retrieve_vector_resource_route = warp::path("retrieve_vector_resource")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<String>())
+        .and_then(retrieve_vector_resource_handler);
+
+    let convert_files_and_save_route = warp::path("convert_files_and_save")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(convert_files_and_save_handler);
+
+    let create_folder_route = warp::path("create_folder")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(create_folder_handler);
+
+    let update_smart_inbox_name_route = warp::path("update_smart_inbox_name")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_smart_inbox_name_handler);
+
+    let create_files_inbox_route = warp::path("create_files_inbox")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(create_files_inbox_handler);
+
+    let add_file_to_inbox_route = warp::path("add_file_to_inbox")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::multipart::form())
+        .and_then(add_file_to_inbox_handler);
+
+    let upload_file_to_folder_route = warp::path("upload_file_to_folder")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::multipart::form())
+        .and_then(upload_file_to_folder_handler);
 
     public_keys_route
         .or(health_check_route)
@@ -81,6 +136,13 @@ pub fn v2_routes(
         .or(get_all_smart_inboxes_route)
         .or(available_llm_providers_route)
         .or(retrieve_path_simplified_route)
+        .or(retrieve_vector_resource_route)
+        .or(convert_files_and_save_route)
+        .or(create_folder_route)
+        .or(update_smart_inbox_name_route)
+        .or(create_files_inbox_route)
+        .or(add_file_to_inbox_route)
+        .or(upload_file_to_folder_route)
 }
 
 fn with_sender(
@@ -94,10 +156,7 @@ fn with_node_name(node_name: String) -> impl Filter<Extract = (String,), Error =
 }
 
 fn create_success_response<T: Serialize>(data: T) -> Value {
-    json!({
-        "status": "success",
-        "data": data,
-    })
+    json!(data)
 }
 
 // Structs
@@ -124,6 +183,19 @@ pub struct GetLastMessagesRequest {
     pub inbox_name: String,
     pub limit: usize,
     pub offset_key: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateSmartInboxNameRequest {
+    pub inbox_name: String,
+    pub custom_name: String,
+}
+
+#[derive(Deserialize)]
+pub struct AddFileToInboxRequest {
+    pub file_inbox_name: String,
+    pub filename: String,
+    pub file: Vec<u8>,
 }
 
 // Code
@@ -420,12 +492,9 @@ pub async fn get_available_llm_providers_handler(
 }
 
 #[utoipa::path(
-    get,
+    post,
     path = "/v2/retrieve_path_simplified",
-    params(
-        ("authorization" = String, Header, description = "Bearer token"),
-        ("payload" = Option<APIVecFsRetrievePathSimplifiedJson>, Query, description = "Path retrieval parameters")
-    ),
+    request_body = APIVecFsRetrievePathSimplifiedJson,
     responses(
         (status = 200, description = "Successfully retrieved path", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -435,16 +504,11 @@ pub async fn get_available_llm_providers_handler(
 pub async fn retrieve_path_simplified_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    payload: Option<APIVecFsRetrievePathSimplifiedJson>,
+    payload: APIVecFsRetrievePathSimplifiedJson,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-
-    let payload = payload.unwrap_or(APIVecFsRetrievePathSimplifiedJson {
-        path: "/".to_string(),
-    });
-
     node_commands_sender
         .send(NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson {
             bearer,
@@ -454,6 +518,505 @@ pub async fn retrieve_path_simplified_handler(
         .await
         .map_err(|_| warp::reject::reject())?;
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/retrieve_vector_resource",
+    responses(
+        (status = 200, description = "Successfully retrieved vector resource", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn retrieve_vector_resource_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    path: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiVecFSRetrieveVectorResource {
+            bearer,
+            path,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/convert_files_and_save",
+    request_body = APIConvertFilesAndSaveToFolder,
+    responses(
+        (status = 200, description = "Successfully converted files and saved to folder", body = Vec<Value>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn convert_files_and_save_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APIConvertFilesAndSaveToFolder,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiConvertFilesAndSaveToFolder {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/create_folder",
+    request_body = APIVecFsCreateFolder,
+    responses(
+        (status = 200, description = "Successfully created folder", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn create_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APIVecFsCreateFolder,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiVecFSCreateFolder {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/update_smart_inbox_name",
+    request_body = UpdateSmartInboxNameRequest,
+    responses(
+        (status = 200, description = "Successfully updated smart inbox name", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_smart_inbox_name_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: UpdateSmartInboxNameRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUpdateSmartInboxName {
+            bearer,
+            inbox_name: payload.inbox_name,
+            custom_name: payload.custom_name,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/create_files_inbox",
+    responses(
+        (status = 200, description = "Successfully created files inbox", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn create_files_inbox_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiCreateFilesInbox {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_file_to_inbox",
+    request_body = AddFileToInboxRequest,
+    responses(
+        (status = 200, description = "Successfully added file to inbox", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_file_to_inbox_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    mut form: FormData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let mut file_inbox_name = String::new();
+    let mut filename = String::new();
+    let mut file_data = Vec::new();
+
+    while let Some(part) = form.next().await {
+        let mut part = part.map_err(|e| {
+            eprintln!("Error collecting form data: {:?}", e);
+            warp::reject::custom(APIError::new(
+                StatusCode::BAD_REQUEST,
+                "Bad Request",
+                format!("Failed to collect form data: {:?}", e).as_str(),
+            ))
+        })?;
+        match part.name() {
+            "file_inbox_name" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing file_inbox_name",
+                    ))
+                })?;
+                let mut content = content.map_err(|e| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        format!("Failed to read file_inbox_name: {:?}", e).as_str(),
+                    ))
+                })?;
+                file_inbox_name =
+                    String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                        warp::reject::custom(APIError::new(
+                            StatusCode::BAD_REQUEST,
+                            "Bad Request",
+                            "Invalid UTF-8 in file_inbox_name",
+                        ))
+                    })?;
+            }
+            "filename" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing filename",
+                    ))
+                })?;
+                let mut content = content.map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Failed to read filename",
+                    ))
+                })?;
+                filename = String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid UTF-8 in filename",
+                    ))
+                })?;
+            }
+            "file_data" => {
+                while let Some(content) = part.data().await {
+                    let mut content = content.map_err(|_| {
+                        warp::reject::custom(APIError::new(
+                            StatusCode::BAD_REQUEST,
+                            "Bad Request",
+                            "Failed to read file data",
+                        ))
+                    })?;
+                    file_data.extend_from_slice(&content.copy_to_bytes(content.remaining()));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if file_data.is_empty() {
+        return Err(warp::reject::custom(APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "No file data found. Check that the file is being uploaded correctly in the `field_data` field",
+        )));
+    }
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiAddFileToInbox {
+            bearer,
+            file_inbox_name,
+            filename,
+            file: file_data,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| {
+            warp::reject::custom(APIError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                "Failed to send command",
+            ))
+        })?;
+    let result = res_receiver.recv().await.map_err(|_| {
+        warp::reject::custom(APIError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "Failed to receive response",
+        ))
+    })?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/upload_file_to_folder",
+    request_body = AddFileToInboxRequest,
+    responses(
+        (status = 200, description = "Successfully uploaded file to folder", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn upload_file_to_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    mut form: FormData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let mut filename = String::new();
+    let mut file_data = Vec::new();
+    let mut path = String::new();
+    let mut file_datetime: Option<DateTime<Utc>> = None;
+
+    while let Some(part) = form.next().await {
+        let mut part = part.map_err(|e| {
+            eprintln!("Error collecting form data: {:?}", e);
+            warp::reject::custom(APIError::new(
+                StatusCode::BAD_REQUEST,
+                "Bad Request",
+                format!("Failed to collect form data: {:?}", e).as_str(),
+            ))
+        })?;
+        match part.name() {
+            "filename" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing filename",
+                    ))
+                })?;
+                let mut content = content.map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Failed to read filename",
+                    ))
+                })?;
+                filename = String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid UTF-8 in filename",
+                    ))
+                })?;
+            }
+            "file_data" => {
+                while let Some(content) = part.data().await {
+                    let mut content = content.map_err(|_| {
+                        warp::reject::custom(APIError::new(
+                            StatusCode::BAD_REQUEST,
+                            "Bad Request",
+                            "Failed to read file data",
+                        ))
+                    })?;
+                    file_data.extend_from_slice(&content.copy_to_bytes(content.remaining()));
+                }
+            }
+            "path" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing path",
+                    ))
+                })?;
+                let mut content = content.map_err(|e| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        format!("Failed to read path: {:?}", e).as_str(),
+                    ))
+                })?;
+                path = String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid UTF-8 in path",
+                    ))
+                })?;
+            }
+            "file_datetime" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing file_datetime",
+                    ))
+                })?;
+                let mut content = content.map_err(|e| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        format!("Failed to read file_datetime: {:?}", e).as_str(),
+                    ))
+                })?;
+                let datetime_str = String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid UTF-8 in file_datetime",
+                    ))
+                })?;
+                file_datetime = Some(DateTime::parse_from_rfc3339(&datetime_str).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid datetime format",
+                    ))
+                })?.with_timezone(&Utc));
+            }
+            _ => {}
+        }
+    }
+
+    if file_data.is_empty() {
+        return Err(warp::reject::custom(APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "No file data found. Check that the file is being uploaded correctly in the `file_data` field",
+        )));
+    }
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUploadFileToFolder {
+            bearer,
+            filename,
+            file: file_data,
+            path,
+            file_datetime,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| {
+            warp::reject::custom(APIError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                "Failed to send command",
+            ))
+        })?;
+    let result = res_receiver.recv().await.map_err(|_| {
+        warp::reject::custom(APIError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "Failed to receive response",
+        ))
+    })?;
 
     match result {
         Ok(response) => {
@@ -478,6 +1041,12 @@ pub async fn retrieve_path_simplified_handler(
         get_all_smart_inboxes_handler,
         get_available_llm_providers_handler,
         retrieve_path_simplified_handler,
+        retrieve_vector_resource_handler,
+        convert_files_and_save_handler,
+        create_folder_handler,
+        update_smart_inbox_name_handler,
+        create_files_inbox_handler,
+        add_file_to_inbox_handler,
     ),
     components(
         schemas(GetPublicKeysResponse, SendResponseBody, SendResponseBodyData, APIError, APIUseRegistrationCodeSuccessResponse)
