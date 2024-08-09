@@ -5,18 +5,19 @@ use shinkai_graphrag::{
         indexer_entities::read_indexer_entities, indexer_reports::read_indexer_reports,
     },
     llm::llm::LLMParams,
-    search::global_search::GlobalSearch,
+    search::global_search::global_search::{GlobalSearch, GlobalSearchParams},
 };
 use tiktoken_rs::tokenizer::Tokenizer;
+use utils::openai::ChatOpenAI;
 
-use crate::it::utils::openai::ChatOpenAI;
+mod utils;
 
 #[tokio::test]
 async fn global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("GRAPHRAG_API_KEY").unwrap();
     let llm_model = std::env::var("GRAPHRAG_LLM_MODEL").unwrap();
 
-    let llm = ChatOpenAI::new(Some(api_key), llm_model, 20);
+    let llm = ChatOpenAI::new(Some(api_key), llm_model, 5);
     let token_encoder = Tokenizer::Cl100kBase;
 
     // Load community reports
@@ -76,21 +77,22 @@ async fn global_search_test() -> Result<(), Box<dyn std::error::Error>> {
 
     // Perform global search
 
-    let search_engine = GlobalSearch::new(
-        Box::new(llm),
+    let search_engine = GlobalSearch::new(GlobalSearchParams {
+        llm: Box::new(llm),
         context_builder,
-        Some(token_encoder),
-        String::from(""),
-        String::from("multiple paragraphs"),
-        false,
-        String::from(""),
-        true,
-        None,
-        12_000,
+        token_encoder: Some(token_encoder),
+        map_system_prompt: None,
+        reduce_system_prompt: None,
+        response_type: String::from("multiple paragraphs"),
+        allow_general_knowledge: false,
+        general_knowledge_inclusion_prompt: None,
+        json_mode: true,
+        callbacks: None,
+        max_data_tokens: 12_000,
         map_llm_params,
         reduce_llm_params,
         context_builder_params,
-    );
+    });
 
     let result = search_engine
         .asearch(

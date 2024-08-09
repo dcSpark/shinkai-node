@@ -155,13 +155,13 @@ impl CommunityContext {
             (result, context)
         };
 
-        let compute_community_weights = entities.is_some()
+        let compute_community_weights = entities.as_ref().is_some_and(|e| !e.is_empty())
             && !community_reports.is_empty()
             && include_community_weight
             && (community_reports[0].attributes.is_none()
                 || !community_reports[0]
                     .attributes
-                    .clone()
+                    .as_ref()
                     .unwrap()
                     .contains_key(community_weight_name));
 
@@ -219,6 +219,7 @@ impl CommunityContext {
                     community_rank_name,
                     include_community_weight,
                     include_community_rank,
+                    column_delimiter,
                 )?;
 
                 if single_batch {
@@ -243,6 +244,7 @@ impl CommunityContext {
                 community_rank_name,
                 include_community_weight,
                 include_community_rank,
+                column_delimiter,
             )?;
         }
 
@@ -365,8 +367,9 @@ impl Batch {
         community_rank_name: &str,
         include_community_weight: bool,
         include_community_rank: bool,
+        column_delimiter: &str,
     ) -> anyhow::Result<()> {
-        let weight_column = if include_community_weight && entities.is_some_and(|e| !e.is_empty()) {
+        let weight_column = if include_community_weight && entities.as_ref().is_some_and(|e| !e.is_empty()) {
             Some(community_weight_name)
         } else {
             None
@@ -387,10 +390,20 @@ impl Batch {
             return Ok(());
         }
 
+        let column_delimiter = if column_delimiter.is_empty() {
+            b'|'
+        } else {
+            column_delimiter.as_bytes()[0]
+        };
+
         let mut buffer = Cursor::new(Vec::new());
-        CsvWriter::new(buffer.clone()).finish(&mut record_df).unwrap();
+        CsvWriter::new(&mut buffer)
+            .include_header(true)
+            .with_separator(column_delimiter)
+            .finish(&mut record_df)?;
 
         let mut current_context_text = String::new();
+        buffer.set_position(0);
         buffer.read_to_string(&mut current_context_text)?;
 
         all_context_text.push(current_context_text);
@@ -410,7 +423,11 @@ impl Batch {
         }
 
         let mut data_series = Vec::new();
-        for (header, records) in header.iter().zip(context_records.iter()) {
+        for (index, header) in header.iter().enumerate() {
+            let records = context_records
+                .iter()
+                .map(|r| r.get(index).unwrap_or(&String::new()).to_owned())
+                .collect::<Vec<_>>();
             let series = Series::new(header, records);
             data_series.push(series);
         }
