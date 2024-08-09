@@ -22,7 +22,7 @@ impl ShinkaiTool {
     pub fn tool_router_key(&self) -> String {
         match self {
             // so it generates name:::version
-            ShinkaiTool::Workflow(w) => Self::gen_router_key(w.workflow.version.clone(), self.name()),
+            ShinkaiTool::Workflow(w) => Self::gen_router_key(w.workflow.author.clone(), self.name()),
             _ => {
                 let (name, toolkit_name) = (
                     self.name(),

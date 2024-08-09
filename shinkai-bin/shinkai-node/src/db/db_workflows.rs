@@ -7,7 +7,7 @@ impl ShinkaiDB {
     pub fn save_workflow(&self, workflow: Workflow, profile: ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Generate the key for the workflow using the profile and workflow's generated key
         let key = format!(
-            "userworkflows_{}_{}",
+            "userworkflow2_{}_{}",
             Self::user_profile_to_half_hash(profile),
             workflow.generate_key()
         );
@@ -32,7 +32,7 @@ impl ShinkaiDB {
     pub fn remove_workflow(&self, workflow_key: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Generate the key for the workflow using the profile and workflow key
         let key = format!(
-            "userworkflows_{}_{}",
+            "userworkflow2_{}_{}",
             Self::user_profile_to_half_hash(profile.clone()),
             workflow_key
         );
@@ -53,7 +53,7 @@ impl ShinkaiDB {
     /// Lists all Workflows for a specific user profile.
     pub fn list_all_workflows_for_user(&self, profile: &ShinkaiName) -> Result<Vec<Workflow>, ShinkaiDBError> {
         let profile_hash = Self::user_profile_to_half_hash(profile.clone());
-        let prefix_search_key = format!("userworkflows_{}_", profile_hash);
+        let prefix_search_key = format!("userworkflow2_{}_", profile_hash);
         let cf_toolkits = self.get_cf_handle(Topic::Toolkits).unwrap();
 
         let mut workflows = Vec::new();
@@ -74,7 +74,7 @@ impl ShinkaiDB {
     pub fn get_workflow(&self, workflow_key: &str, profile: &ShinkaiName) -> Result<Workflow, ShinkaiDBError> {
         // Generate the key for the workflow using the profile and workflow key
         let key = format!(
-            "userworkflows_{}_{}",
+            "userworkflow2_{}_{}",
             Self::user_profile_to_half_hash(profile.clone()),
             workflow_key
         );

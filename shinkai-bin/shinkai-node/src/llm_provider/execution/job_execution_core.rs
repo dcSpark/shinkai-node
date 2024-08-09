@@ -541,38 +541,61 @@ impl JobManager {
             // Check SheetManager for the latest inputs
             let sheet_manager = sheet_manager.ok_or(LLMProviderError::SheetManagerNotFound)?;
 
-            // Get the input string within the lock scope
+            // Get the processed input string within the lock scope
             let input_string = {
                 let sheet_manager = sheet_manager.lock().await;
                 let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
-                let input_cells = sheet.get_input_values_for_cell(sheet_job_data.row.clone(), sheet_job_data.col.clone());
-                input_cells
-                    .iter()
-                    .filter_map(|(_, cell)| cell.as_ref())
-                    .fold(String::new(), |mut acc, s| {
-                        if !acc.is_empty() {
-                            acc.push(' ');
-                        }
-                        acc.push_str(s);
-                        acc
-                    })
+                sheet
+                    .get_processed_input(sheet_job_data.row.clone(), sheet_job_data.col.clone())
+                    .ok_or(LLMProviderError::InputProcessingError(format!("{:?}", sheet_job_data)))?
+            };
+
+            // Determine the workflow to use
+            let workflow = if let Some(workflow) = sheet_job_data.workflow {
+                Some(workflow)
+            } else if let Some(workflow_name) = sheet_job_data.workflow_name {
+                match db.get_workflow(&workflow_name, &user_profile) {
+                    Ok(workflow) => Some(workflow),
+                    Err(_) => None,
+                }
+            } else {
+                None
             };
 
             // Process the sheet job
-            let inference_result = Self::execute_workflow(
-                db.clone(),
-                vector_fs.clone(),
-                job_message,
-                input_string,
-                llm_provider_found,
-                full_job.clone(),
-                generator,
-                user_profile.clone(),
-                ws_manager.clone(),
-                tool_router.clone(),
-                sheet_job_data.workflow,
-            )
-            .await?;
+            let inference_result = if let Some(workflow) = workflow {
+                Self::execute_workflow(
+                    db.clone(),
+                    vector_fs.clone(),
+                    job_message,
+                    input_string,
+                    llm_provider_found,
+                    full_job.clone(),
+                    generator,
+                    user_profile.clone(),
+                    ws_manager.clone(),
+                    tool_router.clone(),
+                    workflow,
+                )
+                .await?
+            } else {
+                let mut job_message = job_message.clone();
+                job_message.content = input_string;
+
+                JobManager::inference_chain_router(
+                    db.clone(),
+                    vector_fs.clone(),
+                    llm_provider_found,
+                    full_job.clone(),
+                    job_message.clone(),
+                    HashMap::new(), // Assuming prev_execution_context is an empty HashMap
+                    generator,
+                    user_profile.clone(),
+                    ws_manager.clone(),
+                    tool_router.clone(),
+                )
+                .await?
+            };
 
             let response = inference_result.response;
 
