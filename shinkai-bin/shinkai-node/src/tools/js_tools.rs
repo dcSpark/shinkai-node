@@ -69,7 +69,7 @@ impl JSTool {
                     tool.load_from_code(&code, &config)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
-                    tool.run(&input)
+                    tool.run(&input, None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })

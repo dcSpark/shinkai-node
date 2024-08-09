@@ -14,6 +14,7 @@ use std::time::Duration;
 
 lazy_static! {
     pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
+    pub static ref DEFAULT_EMBEDDINGS_LOCAL_URL: &'static str = "http://localhost:11434/";
 }
 
 /// A trait for types that can generate embeddings from text.
@@ -231,6 +232,16 @@ impl RemoteEmbeddingGenerator {
         RemoteEmbeddingGenerator {
             model_type: model_architecture,
             api_url: DEFAULT_EMBEDDINGS_SERVER_URL.to_string(),
+            api_key: None,
+        }
+    }
+     /// Create a RemoteEmbeddingGenerator that uses the default model and server
+     pub fn new_default_local() -> RemoteEmbeddingGenerator {
+        let model_architecture =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+        RemoteEmbeddingGenerator {
+            model_type: model_architecture,
+            api_url: DEFAULT_EMBEDDINGS_LOCAL_URL.to_string(),
             api_key: None,
         }
     }

@@ -212,7 +212,7 @@ impl<'a> DslChain<'a> {
         .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
 
         for tool in tools {
-            let function_name = format!("{}_{}", tool.toolkit_name(), tool.name());
+            let function_name = format!("{}",tool.name()); // tool.toolkit_name(),
             eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
             self.functions.insert(
                 function_name.clone(),

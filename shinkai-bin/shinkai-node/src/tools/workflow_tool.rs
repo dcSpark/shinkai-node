@@ -112,12 +112,14 @@ impl WorkflowTool {
         if is_testing {
             vec![
                 Self::get_extensive_summary_workflow(),
+                Self::get_weather_workflow(),
                 Self::get_hyde_inference_workflow(),
                 Self::get_agility_story_workflow(),
             ]
         } else {
             vec![
                 Self::get_extensive_summary_workflow(),
+                Self::get_weather_workflow(),
                 Self::get_hyde_inference_workflow(),
                 Self::get_agility_story_workflow(),
                 Self::get_ai_workflow(),
@@ -266,6 +268,23 @@ impl WorkflowTool {
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Reviews in depth all the content to generate a summary.".to_string());
+
+        WorkflowTool::new(workflow)
+    }
+
+    fn get_weather_workflow() -> Self {
+        let raw_workflow = r#"
+            workflow Weather v0.1 {
+                    step Main {
+                        $OUTPUT = call shinkai__weather_by_city($INPUT)
+                        $PROMPT =  call concat("Format the following text in a very concise way, eg: it's currently clear and sunny with a temperature of 280.08°F (or 26°C). (that's it nothing more than that even if you have the extra information). Text: ", $OUTPUT)
+                        $RESULT = call opinionated_inference($PROMPT)
+                    }
+                } @@official.shinkai
+        "#;
+
+        let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
+        workflow.description = Some("Fetches weather information for a city and formats it in a friendly way. Takes the name of a place as input.".to_string());
 
         WorkflowTool::new(workflow)
     }

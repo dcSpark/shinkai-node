@@ -205,11 +205,11 @@ mod tests {
         println!("Time taken to parse workflows JSON: {:?}", duration);
     }
 
-    // #[tokio::test]
+    #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     /// It's just easier to have it here because it already has access to all the necessary dependencies
     async fn test_generate_static_workflows() {
-        let generator = RemoteEmbeddingGenerator::new_default();
+        let generator = RemoteEmbeddingGenerator::new_default_local();
 
         let mut workflows_json_testing = Vec::new();
         let mut workflows_json = Vec::new();

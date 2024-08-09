@@ -68,7 +68,7 @@ impl Clone for Sheet {
             column_dependency_manager: self.column_dependency_manager.clone(),
             display_columns: self.display_columns.clone(),
             display_rows: self.display_rows.clone(),
-            update_sender: None, // Always set to None when cloning
+            update_sender: self.update_sender.clone(),
         }
     }
 }
@@ -221,6 +221,19 @@ impl Sheet {
                 input_hash: None,
             })
             .await;
+
+        // Send update after setting the cell value
+        if let Some(sender) = &self.update_sender {
+            let sender_clone = sender.clone();
+            let row_clone = row.clone();
+            let col_clone = col.clone();
+            tokio::spawn(async move {
+                sender_clone
+                    .send(SheetUpdate::CellUpdated(row_clone, col_clone))
+                    .await
+                    .unwrap();
+            });
+        }
 
         let changed_cell_id = CellId(format!("{}:{}", row, col));
         // unlike the previous job, this one *may* have updates because some formulas or workflows may depend on us
@@ -656,6 +669,13 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 );
                 state.rows.insert(row.clone(), row_cells);
             }
+
+            if let Some(sender) = &state.update_sender {
+                let sender_clone = sender.clone();
+                tokio::spawn(async move {
+                    sender_clone.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
+                });
+            }
         }
         SheetAction::PropagateUpdateToDependents {
             changed_cell_id,
@@ -737,24 +757,21 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             };
 
                             // Update the cell status to Pending
-                            if let Some(row_cells) = state.rows.get_mut(&row) {
-                                if let Some(cell) = row_cells.get_mut(&reverse_dependent_col) {
-                                    cell.status = CellStatus::Pending;
-                                }
-                            }
-
+                            let (new_state, mut new_jobs) = sheet_reducer(
+                                state,
+                                SheetAction::SetCellPending {
+                                    row: row.clone(),
+                                    col: reverse_dependent_col.clone(),
+                                },
+                            )
+                            .await;
+                            state = new_state;
+                            jobs.append(&mut new_jobs);
                             jobs.push(workflow_job_data);
                         }
                         _ => {}
                     }
                 }
-            }
-
-            if let Some(sender) = &state.update_sender {
-                let sender_clone = sender.clone();
-                tokio::spawn(async move {
-                    sender_clone.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
-                });
             }
         }
         SheetAction::RemoveColumn(col_uuid) => {

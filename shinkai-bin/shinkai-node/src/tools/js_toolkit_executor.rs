@@ -27,7 +27,7 @@ impl JSToolkitExecutor {
     ) -> Result<ToolExecutionResult, ToolError> {
         let mut tool = Tool::new();
         tool.load_from_code(&code, &tool_arguments.to_string()).await.map_err(ToolError::from)?;
-        let result = tool.run(&fn_args.to_string()).await.map_err(ToolError::from)?;
+        let result = tool.run(&fn_args.to_string(), None).await.map_err(ToolError::from)?;
         Ok(ToolExecutionResult {
             tool: tool_name,
             result: result.data,

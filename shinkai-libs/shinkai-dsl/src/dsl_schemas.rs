@@ -14,6 +14,7 @@ pub struct Workflow {
     pub steps: Vec<Step>,
     pub raw: String,
     pub description: Option<String>,
+    // TODO: add input description to guide the LLMs
     pub author: String,
     pub sticky: bool,
 }
