@@ -92,7 +92,7 @@ impl ChatOpenAI {
             .map(|m| Into::<ChatCompletionRequestMessage>::into(m.clone()))
             .collect::<Vec<ChatCompletionRequestMessage>>();
 
-        let response_format = if llm_params
+        let _response_format = if llm_params
             .response_format
             .get_key_value("type")
             .is_some_and(|(_k, v)| v == "json_object")

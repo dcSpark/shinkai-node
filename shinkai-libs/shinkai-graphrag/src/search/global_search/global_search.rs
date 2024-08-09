@@ -9,6 +9,9 @@ use crate::context_builder::community_context::GlobalCommunityContext;
 use crate::context_builder::context_builder::{ContextBuilderParams, ConversationHistory};
 use crate::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
 use crate::llm::utils::num_tokens;
+use crate::search::global_search::prompts::NO_DATA_ANSWER;
+
+use super::prompts::{GENERAL_KNOWLEDGE_INSTRUCTION, MAP_SYSTEM_PROMPT, REDUCE_SYSTEM_PROMPT};
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -90,6 +93,7 @@ pub struct GlobalSearch {
     context_builder: GlobalCommunityContext,
     token_encoder: Option<Tokenizer>,
     context_builder_params: ContextBuilderParams,
+    map_system_prompt: String,
     reduce_system_prompt: String,
     response_type: String,
     allow_general_knowledge: bool,
@@ -100,22 +104,42 @@ pub struct GlobalSearch {
     reduce_llm_params: LLMParams,
 }
 
+pub struct GlobalSearchParams {
+    pub llm: Box<dyn BaseLLM>,
+    pub context_builder: GlobalCommunityContext,
+    pub token_encoder: Option<Tokenizer>,
+    pub map_system_prompt: Option<String>,
+    pub reduce_system_prompt: Option<String>,
+    pub response_type: String,
+    pub allow_general_knowledge: bool,
+    pub general_knowledge_inclusion_prompt: Option<String>,
+    pub json_mode: bool,
+    pub callbacks: Option<Vec<GlobalSearchLLMCallback>>,
+    pub max_data_tokens: usize,
+    pub map_llm_params: LLMParams,
+    pub reduce_llm_params: LLMParams,
+    pub context_builder_params: ContextBuilderParams,
+}
+
 impl GlobalSearch {
-    pub fn new(
-        llm: Box<dyn BaseLLM>,
-        context_builder: GlobalCommunityContext,
-        token_encoder: Option<Tokenizer>,
-        reduce_system_prompt: String,
-        response_type: String,
-        allow_general_knowledge: bool,
-        general_knowledge_inclusion_prompt: String,
-        json_mode: bool,
-        callbacks: Option<Vec<GlobalSearchLLMCallback>>,
-        max_data_tokens: usize,
-        map_llm_params: LLMParams,
-        reduce_llm_params: LLMParams,
-        context_builder_params: ContextBuilderParams,
-    ) -> Self {
+    pub fn new(global_search_params: GlobalSearchParams) -> Self {
+        let GlobalSearchParams {
+            llm,
+            context_builder,
+            token_encoder,
+            map_system_prompt,
+            reduce_system_prompt,
+            response_type,
+            allow_general_knowledge,
+            general_knowledge_inclusion_prompt,
+            json_mode,
+            callbacks,
+            max_data_tokens,
+            map_llm_params,
+            reduce_llm_params,
+            context_builder_params,
+        } = global_search_params;
+
         let mut map_llm_params = map_llm_params;
 
         if json_mode {
@@ -126,11 +150,17 @@ impl GlobalSearch {
             map_llm_params.response_format.remove("response_format");
         }
 
+        let map_system_prompt = map_system_prompt.unwrap_or(MAP_SYSTEM_PROMPT.to_string());
+        let reduce_system_prompt = reduce_system_prompt.unwrap_or(REDUCE_SYSTEM_PROMPT.to_string());
+        let general_knowledge_inclusion_prompt =
+            general_knowledge_inclusion_prompt.unwrap_or(GENERAL_KNOWLEDGE_INSTRUCTION.to_string());
+
         GlobalSearch {
             llm,
             context_builder,
             token_encoder,
             context_builder_params,
+            map_system_prompt,
             reduce_system_prompt,
             response_type,
             allow_general_knowledge,
@@ -218,7 +248,8 @@ impl GlobalSearch {
         llm_params: LLMParams,
     ) -> anyhow::Result<SearchResult> {
         let start_time = Instant::now();
-        let search_prompt = String::new();
+        let search_prompt = self.map_system_prompt.replace("{context_data}", context_data);
+
         let mut search_messages = Vec::new();
         search_messages.push(HashMap::from([
             ("role".to_string(), "system".to_string()),
@@ -253,6 +284,7 @@ impl GlobalSearch {
             if let Some(points) = points.as_array() {
                 return points
                     .iter()
+                    .filter(|element| element.get("description").is_some() && element.get("score").is_some())
                     .map(|element| KeyPoint {
                         answer: element
                             .get("description")
@@ -268,7 +300,10 @@ impl GlobalSearch {
             }
         }
 
-        Vec::new()
+        vec![KeyPoint {
+            answer: "".to_string(),
+            score: 0,
+        }]
     }
 
     async fn _reduce_response(
@@ -282,15 +317,13 @@ impl GlobalSearch {
         let mut key_points: Vec<HashMap<String, String>> = Vec::new();
 
         for (index, response) in map_responses.iter().enumerate() {
-            if let ResponseType::Dictionaries(response_list) = &response.response {
-                for element in response_list {
-                    if let (Some(answer), Some(score)) = (element.get("answer"), element.get("score")) {
-                        let mut point = HashMap::new();
-                        point.insert("analyst".to_string(), (index + 1).to_string());
-                        point.insert("answer".to_string(), answer.to_string());
-                        point.insert("score".to_string(), score.to_string());
-                        key_points.push(point);
-                    }
+            if let ResponseType::KeyPoints(response_list) = &response.response {
+                for key_point in response_list {
+                    let mut point = HashMap::new();
+                    point.insert("analyst".to_string(), (index + 1).to_string());
+                    point.insert("answer".to_string(), key_point.answer.clone());
+                    point.insert("score".to_string(), key_point.score.to_string());
+                    key_points.push(point);
                 }
             }
         }
@@ -301,8 +334,10 @@ impl GlobalSearch {
             .collect();
 
         if filtered_key_points.is_empty() && !self.allow_general_knowledge {
+            eprintln!("Warning: All map responses have score 0 (i.e., no relevant information found from the dataset), returning a canned 'I do not know' answer. You can try enabling `allow_general_knowledge` to encourage the LLM to incorporate relevant general knowledge, at the risk of increasing hallucinations.");
+
             return Ok(SearchResult {
-                response: ResponseType::String("NO_DATA_ANSWER".to_string()),
+                response: ResponseType::String(NO_DATA_ANSWER.to_string()),
                 context_data: ContextData::String("".to_string()),
                 context_text: ContextText::String("".to_string()),
                 completion_time: start_time.elapsed().as_secs_f64(),
@@ -328,9 +363,11 @@ impl GlobalSearch {
             formatted_response_data.push(format!("Importance Score: {}", point.get("score").unwrap()));
             formatted_response_data.push(point.get("answer").unwrap().to_string());
             let formatted_response_text = formatted_response_data.join("\n");
+
             if total_tokens + num_tokens(&formatted_response_text, self.token_encoder) > self.max_data_tokens {
                 break;
             }
+
             data.push(formatted_response_text.clone());
             total_tokens += num_tokens(&formatted_response_text, self.token_encoder);
         }
