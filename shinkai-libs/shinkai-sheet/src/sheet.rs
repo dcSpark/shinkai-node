@@ -562,7 +562,32 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         .add_dependency(definition.id.clone(), dep);
                 }
             }
-            state.columns.insert(definition.id.clone(), definition);
+            state.columns.insert(definition.clone().id, definition.clone());
+
+            // Create jobs for new cells in the added column
+            for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
+                let value = match &definition.clone().behavior {
+                    ColumnBehavior::Formula(formula) => {
+                        state.evaluate_formula(formula, row_uuid.clone(), definition.clone().id)
+                    }
+                    _ => None,
+                };
+
+                if let Some(value) = value {
+                    let (new_state, mut new_jobs) = sheet_reducer(
+                        state,
+                        SheetAction::SetCellValue {
+                            row: row_uuid.clone(),
+                            col: definition.clone().id,
+                            value,
+                            input_hash: None,
+                        },
+                    )
+                    .await;
+                    state = new_state;
+                    jobs.append(&mut new_jobs);
+                }
+            }
         }
         SheetAction::SetCellValue {
             row,

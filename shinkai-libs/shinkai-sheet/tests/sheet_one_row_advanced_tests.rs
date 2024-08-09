@@ -686,6 +686,64 @@ mod tests {
         // Print final state of the sheet
         sheet.lock().await.print_as_ascii_table();
     }
+
+    #[tokio::test]
+    async fn test_jobs_created_for_new_column() {
+        let mut sheet = Sheet::new();
+        let column_a_id = Uuid::new_v4().to_string();
+        let column_b_id = Uuid::new_v4().to_string();
+
+        let column_a = ColumnDefinition {
+            id: column_a_id.clone(),
+            name: "Column A".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        // Add Column A and a row
+        let _ = sheet.set_column(column_a.clone()).await;
+
+        // Add multiple rows
+        let mut row_ids = Vec::new();
+        for _ in 0..3 {
+            let row_id = Uuid::new_v4().to_string();
+            sheet.add_row(row_id.clone()).await.unwrap();
+            row_ids.push(row_id.clone());
+            // Set value in Column A
+            sheet
+                .set_cell_value(row_id.clone(), column_a_id.clone(), "Hello".to_string())
+                .await
+                .unwrap();
+        }
+
+        // Define the workflow for the LLMCall column
+        let workflow_str = r#"
+             workflow WorkflowTest v0.1 {
+                 step Main {
+                     $RESULT = call opinionated_inference($INPUT)
+                 }
+             }
+             "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Add Column B as LLMCall and check if jobs are created
+        let column_b = ColumnDefinition {
+            id: column_b_id.clone(),
+            name: "Column B".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "Say Hello World".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let jobs = sheet.set_column(column_b.clone()).await.unwrap();
+        assert_eq!(jobs.len(), 3, "The number of jobs should be equal to the number of rows created");
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
 }
 
 // // TODO: add test that A (text missing) -> B (workflow depending on A) -> C (workflo depending on B)
