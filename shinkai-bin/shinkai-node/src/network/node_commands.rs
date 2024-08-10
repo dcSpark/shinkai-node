@@ -12,10 +12,7 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem,
-            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, IdentityPermissions, JobCreationInfo, JobMessage,
-            RegistrationCodeType, V2ChatMessage,
+            APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
         },
     },
 };
@@ -594,6 +591,57 @@ pub enum NodeCommand {
         file: Vec<u8>,
         path: String,
         file_datetime: Option<DateTime<Utc>>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    // new
+    V2ApiAvailableSharedItems {
+        bearer: String,
+        msg: APIAvailableSharedItems,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAvailableSharedItemsOpen {
+        bearer: String,
+        msg: APIAvailableSharedItems,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCreateShareableFolder {
+        bearer: String,
+        msg: APICreateShareableFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateShareableFolder {
+        bearer: String,
+        msg: APIUpdateShareableFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUnshareFolder {
+        bearer: String,
+        msg: APIUnshareFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiSubscribeToSharedFolder {
+        bearer: String,
+        msg: APISubscribeToSharedFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUnsubscribe {
+        bearer: String,
+        msg: APIUnsubscribeToSharedFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiMySubscriptions {
+        bearer: String,
+        msg: ShinkaiMessage, // TODO: Fix me
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetMySubscribers {
+        bearer: String,
+        msg: APIGetMySubscribers,
+        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+    },
+    V2ApiGetHttpFreeSubscriptionLinks {
+        bearer: String,
+        subscription_profile_path: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

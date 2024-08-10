@@ -6,7 +6,6 @@ use super::api_v2_handlers_vecfs::vecfs_routes;
 use async_channel::Sender;
 use serde::Serialize;
 use serde_json::{json, Value};
-use utoipa::OpenApi;
 
 use warp::Filter;
 
