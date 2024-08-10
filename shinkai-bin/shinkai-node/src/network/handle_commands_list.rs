@@ -1954,6 +1954,68 @@ impl Node {
                             .await;
                 });
             }
+            NodeCommand::V2ApiMoveItem { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_move_item(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
+            
+            NodeCommand::V2ApiCopyItem { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_copy_item(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
+            
+            NodeCommand::V2ApiMoveFolder { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_move_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
+            
+            NodeCommand::V2ApiCopyFolder { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_copy_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
+            
+            NodeCommand::V2ApiDeleteFolder { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_delete_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
+            
+            NodeCommand::V2ApiDeleteItem { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_delete_item(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
+            
+            NodeCommand::V2ApiSearchItems { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_search_items(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();

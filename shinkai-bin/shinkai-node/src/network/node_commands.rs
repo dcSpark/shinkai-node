@@ -11,7 +11,12 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage},
+        shinkai_message_schemas::{
+            APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem,
+            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
+        },
     },
 };
 
@@ -23,8 +28,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
-    v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    v2_api::api_v2_router::InitialRegistrationRequest,
+    v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, v2_api::api_v2_handlers_general::InitialRegistrationRequest,
 };
 
 pub enum NodeCommand {
@@ -525,7 +529,7 @@ pub enum NodeCommand {
     },
     V2ApiVecFSRetrieveVectorResource {
         bearer: String,
-        path: String, 
+        path: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiConvertFilesAndSaveToFolder {
@@ -535,11 +539,46 @@ pub enum NodeCommand {
     },
     V2ApiVecFSCreateFolder {
         bearer: String,
-        payload: APIVecFsCreateFolder, 
+        payload: APIVecFsCreateFolder,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiMoveItem {
+        bearer: String,
+        payload: APIVecFsMoveItem,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiCopyItem {
+        bearer: String,
+        payload: APIVecFsCopyItem,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiMoveFolder {
+        bearer: String,
+        payload: APIVecFsMoveFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiCopyFolder {
+        bearer: String,
+        payload: APIVecFsCopyFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiDeleteFolder {
+        bearer: String,
+        payload: APIVecFsDeleteFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiDeleteItem {
+        bearer: String,
+        payload: APIVecFsDeleteItem,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiSearchItems {
+        bearer: String,
+        payload: APIVecFsSearchItems,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
     V2ApiCreateFilesInbox {
-        bearer: String, // 
+        bearer: String, //
         res: Sender<Result<String, APIError>>,
     },
     V2ApiAddFileToInbox {
