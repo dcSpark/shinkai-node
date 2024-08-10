@@ -1,16 +1,12 @@
 use async_channel::Sender;
-use bytes::Buf;
 use futures::StreamExt;
 use reqwest::StatusCode;
-use serde::Deserialize;
-use serde_json::json;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
     APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
     APIUpdateShareableFolder,
 };
 use utoipa::OpenApi;
-use warp::multipart::FormData;
 use warp::Filter;
 
 use crate::network::{
@@ -22,7 +18,6 @@ use super::api_v2_router::{create_success_response, with_sender};
 
 pub fn subscriptions_routes(
     node_commands_sender: Sender<NodeCommand>,
-    _node_name: String,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let available_shared_items_route = warp::path("available_shared_items")
         .and(warp::post())

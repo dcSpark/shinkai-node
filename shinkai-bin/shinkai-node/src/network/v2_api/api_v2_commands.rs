@@ -34,7 +34,7 @@ use crate::{
         ws_manager::WSUpdateHandler,
         Node,
     },
-    schemas::identity::{IdentityType, RegistrationCode},
+    schemas::identity::{Identity, IdentityType, RegistrationCode},
     vector_fs::vector_fs::VectorFS,
 };
 
@@ -239,6 +239,232 @@ impl Node {
                     message: format!("Failed to handle registration code usage: {}", err),
                 };
                 let _ = res.send(Err(error)).await;
+            }
+        }
+    }
+
+    pub async fn v2_api_get_local_processing_preference(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the local processing preference
+        match db.get_local_processing_preference() {
+            Ok(preference) => {
+                let _ = res.send(Ok(preference)).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get local processing preference: {}", err),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_update_local_processing_preference(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        preference: bool,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Update the local processing preference
+        match db.update_local_processing_preference(preference) {
+            Ok(_) => {
+                let _ = res.send(Ok("Preference updated successfully".to_string())).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update local processing preference: {}", err),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_default_embedding_model(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the default embedding model from the database
+        match db.get_default_embedding_model() {
+            Ok(model) => {
+                let _ = res.send(Ok(model.to_string())).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get default embedding model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_supported_embedding_models(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the supported embedding models from the database
+        match db.get_supported_embedding_models() {
+            Ok(models) => {
+                let model_names: Vec<String> = models.into_iter().map(|model| model.to_string()).collect();
+                let _ = res.send(Ok(model_names)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get supported embedding models: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_update_default_embedding_model(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        model_name: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Convert the string to EmbeddingModelType
+        let new_default_model = match EmbeddingModelType::from_string(&model_name) {
+            Ok(model) => model,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid embedding model provided".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Update the default embedding model in the database
+        match db.update_default_embedding_model(new_default_model) {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Default embedding model updated successfully".to_string()))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update default embedding model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_update_supported_embedding_models(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        bearer: String,
+        models: Vec<String>,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the strings to EmbeddingModelType
+        let new_supported_models: Vec<EmbeddingModelType> = models
+            .into_iter()
+            .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse embedding model"))
+            .collect();
+
+        // Update the supported embedding models in the database
+        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to update supported embedding models: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        match vector_fs
+            .set_profile_supported_models(&requester_name, &requester_name, new_supported_models)
+            .await
+        {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Supported embedding models updated successfully".to_string()))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update supported embedding models: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
             }
         }
     }

@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use utoipa::OpenApi;
 use warp::Filter;
@@ -30,7 +30,54 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(initial_registration_handler);
 
-    public_keys_route.or(health_check_route).or(initial_registration_route)
+    let get_local_processing_preference_route = warp::path("local_processing_preference")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_local_processing_preference_handler);
+
+    let update_local_processing_preference_route = warp::path("local_processing_preference")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_local_processing_preference_handler);
+
+    let get_default_embedding_model_route = warp::path("default_embedding_model")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_default_embedding_model_handler);
+
+    let get_supported_embedding_models_route = warp::path("supported_embedding_models")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_supported_embedding_models_handler);
+
+    let update_default_embedding_model_route = warp::path("default_embedding_model")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_default_embedding_model_handler);
+
+    let update_supported_embedding_models_route = warp::path("supported_embedding_models")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_supported_embedding_models_handler);
+
+    public_keys_route
+        .or(health_check_route)
+        .or(initial_registration_route)
+        .or(get_local_processing_preference_route)
+        .or(update_local_processing_preference_route)
+        .or(get_default_embedding_model_route)
+        .or(get_supported_embedding_models_route)
+        .or(update_default_embedding_model_route)
+        .or(update_supported_embedding_models_route)
 }
 
 #[derive(Deserialize)]
@@ -39,16 +86,14 @@ pub struct InitialRegistrationRequest {
     pub profile_identity_pk: String,
 }
 
-// Code
-
 #[utoipa::path(
-        get,
-        path = "/v2/public_keys",
-        responses(
-            (status = 200, description = "Successfully retrieved public keys", body = GetPublicKeysResponse),
-            (status = 500, description = "Internal server error", body = APIError)
-        )
-    )]
+    get,
+    path = "/v2/public_keys",
+    responses(
+        (status = 200, description = "Successfully retrieved public keys", body = GetPublicKeysResponse),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
 pub async fn get_public_keys(sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
@@ -65,34 +110,29 @@ pub async fn get_public_keys(sender: Sender<NodeCommand>) -> Result<impl warp::R
 }
 
 #[utoipa::path(
-        get,
-        path = "/v2/health_check",
-        responses(
-            (status = 200, description = "Health check successful", body = Value),
-            (status = 500, description = "Internal server error", body = APIError)
-        )
-    )]
+    get,
+    path = "/v2/health_check",
+    responses(
+        (status = 200, description = "Health check successful", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
 pub async fn health_check(sender: Sender<NodeCommand>, node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
     let version = env!("CARGO_PKG_VERSION");
 
-    // Create a channel to receive the result
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
-    // Send the command to the node
     sender
         .send(NodeCommand::APIIsPristine { res: res_sender })
         .await
         .map_err(|_| warp::reject::reject())?;
 
-    // Receive the result
     let pristine_state = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
-    // Check if there was an error
     if let Err(error) = pristine_state {
         return Ok(warp::reply::json(&json!({ "status": "error", "error": error })));
     }
 
-    // If there was no error, proceed as usual
     Ok(warp::reply::json(
         &json!({ "status": "ok", "version": version, "node_name": node_name, "is_pristine": pristine_state.unwrap() }),
     ))
@@ -135,12 +175,180 @@ pub async fn initial_registration_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/local_processing_preference",
+    responses(
+        (status = 200, description = "Successfully retrieved local processing preference", body = bool),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_local_processing_preference_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetLocalProcessingPreference { bearer, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/local_processing_preference",
+    request_body = bool,
+    responses(
+        (status = 200, description = "Successfully updated local processing preference", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_local_processing_preference_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    preference: bool,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiUpdateLocalProcessingPreference { bearer, preference, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/default_embedding_model",
+    responses(
+        (status = 200, description = "Successfully retrieved default embedding model", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_default_embedding_model_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetDefaultEmbeddingModel { bearer, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/supported_embedding_models",
+    responses(
+        (status = 200, description = "Successfully retrieved supported embedding models", body = Vec<String>),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_supported_embedding_models_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetSupportedEmbeddingModels { bearer, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/default_embedding_model",
+    request_body = String,
+    responses(
+        (status = 200, description = "Successfully updated default embedding model", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_default_embedding_model_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    model_name: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiUpdateDefaultEmbeddingModel { bearer, model_name, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/supported_embedding_models",
+    request_body = Vec<String>,
+    responses(
+        (status = 200, description = "Successfully updated supported embedding models", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_supported_embedding_models_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    models: Vec<String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiUpdateSupportedEmbeddingModels { bearer, models, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
         get_public_keys,
         health_check,
         initial_registration_handler,
+        get_local_processing_preference_handler,
+        update_local_processing_preference_handler,
+        get_default_embedding_model_handler,
+        get_supported_embedding_models_handler,
+        update_default_embedding_model_handler,
+        update_supported_embedding_models_handler,
     ),
     components(
         schemas(GetPublicKeysResponse, APIError)

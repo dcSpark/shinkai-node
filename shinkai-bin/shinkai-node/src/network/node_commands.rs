@@ -12,7 +12,7 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+            APISetWorkflow, APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
         },
     },
 };
@@ -651,5 +651,56 @@ pub enum NodeCommand {
         bearer: String,
         payload: APIGetNotificationsBeforeTimestamp,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSearchWorkflows {
+        bearer: String,
+        query: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetWorkflow {
+        bearer: String,
+        payload: APISetWorkflow,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemoveWorkflow {
+        bearer: String,
+        payload: APIWorkflowKeyname,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetWorkflowInfo {
+        bearer: String,
+        payload: APIWorkflowKeyname,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListAllWorkflows {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetLocalProcessingPreference {
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    },
+    V2ApiUpdateLocalProcessingPreference {
+        bearer: String,
+        preference: bool,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiGetDefaultEmbeddingModel {
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiGetSupportedEmbeddingModels {
+        bearer: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    V2ApiUpdateDefaultEmbeddingModel {
+        bearer: String,
+        model_name: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateSupportedEmbeddingModels {
+        bearer: String,
+        models: Vec<String>,
+        res: Sender<Result<String, APIError>>,
     },
 }

@@ -40,7 +40,7 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIAddWorkflow, APIChangeJobAgentRequest,
+            APIAddAgentRequest, APIAddOllamaModels, APISetWorkflow, APIChangeJobAgentRequest,
             APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, APIWorkflowKeyname, IdentityPermissions,
             MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
@@ -3073,7 +3073,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
-        let (api_add_workflow, requester_name) = match Self::validate_and_extract_payload::<APIAddWorkflow>(
+        let (api_add_workflow, requester_name) = match Self::validate_and_extract_payload::<APISetWorkflow>(
             node_name.clone(),
             identity_manager.clone(),
             encryption_secret_key,

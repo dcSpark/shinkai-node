@@ -28,8 +28,6 @@ use crate::{
     schemas::identity::Identity,
 };
 
-use x25519_dalek::StaticSecret as EncryptionStaticKey;
-
 impl Node {
     pub async fn v2_api_available_shared_items(
         db: Arc<ShinkaiDB>,

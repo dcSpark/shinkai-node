@@ -1,8 +1,9 @@
 use crate::network::node_commands::NodeCommand;
 
-use super::api_v2_handlers_general::general_routes;
 use super::api_v2_handlers_jobs::job_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
+use super::api_v2_handlers_workflows::workflows_routes;
+use super::{api_v2_handlers_general::general_routes, api_v2_handlers_subscriptions::subscriptions_routes};
 use async_channel::Sender;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -16,8 +17,14 @@ pub fn v2_routes(
     let general_routes = general_routes(node_commands_sender.clone(), node_name.clone());
     let vecfs_routes = vecfs_routes(node_commands_sender.clone(), node_name.clone());
     let job_routes = job_routes(node_commands_sender.clone(), node_name.clone());
+    let subscriptions_routes = subscriptions_routes(node_commands_sender.clone());
+    let workflows_routes = workflows_routes(node_commands_sender.clone());
 
-    general_routes.or(vecfs_routes).or(job_routes)
+    general_routes
+        .or(vecfs_routes)
+        .or(job_routes)
+        .or(subscriptions_routes)
+        .or(workflows_routes)
 }
 
 pub fn with_sender(
