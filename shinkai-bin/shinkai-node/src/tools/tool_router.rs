@@ -205,7 +205,7 @@ mod tests {
         println!("Time taken to parse workflows JSON: {:?}", duration);
     }
 
-    #[tokio::test]
+    // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     /// It's just easier to have it here because it already has access to all the necessary dependencies
     async fn test_generate_static_workflows() {
