@@ -2113,166 +2113,141 @@ impl Node {
                 });
             }
             // New Code
-            NodeCommand::V2ApiAvailableSharedItems { bearer, msg, res } => {
+            NodeCommand::V2ApiAvailableSharedItems { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_available_shared_items(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
-                        encryption_secret_key_clone,
                         ext_subscription_manager_clone,
                         my_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiAvailableSharedItemsOpen { bearer, msg, res } => {
+            NodeCommand::V2ApiAvailableSharedItemsOpen { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_available_shared_items_open(
+                        db_clone,
                         node_name_clone,
                         ext_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiCreateShareableFolder { bearer, msg, res } => {
+            NodeCommand::V2ApiCreateShareableFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
-                let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_create_shareable_folder(
                         db_clone,
-                        vector_fs_clone,
-                        node_name_clone,
                         identity_manager_clone,
-                        encryption_secret_key_clone,
                         ext_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiUpdateShareableFolder { bearer, msg, res } => {
+            NodeCommand::V2ApiUpdateShareableFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
-                let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_shareable_folder(
                         db_clone,
-                        vector_fs_clone,
-                        node_name_clone,
                         identity_manager_clone,
-                        encryption_secret_key_clone,
                         ext_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiUnshareFolder { bearer, msg, res } => {
+            NodeCommand::V2ApiUnshareFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
-                let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_unshare_folder(
                         db_clone,
-                        vector_fs_clone,
-                        node_name_clone,
                         identity_manager_clone,
-                        encryption_secret_key_clone,
                         ext_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiSubscribeToSharedFolder { bearer, msg, res } => {
+            NodeCommand::V2ApiSubscribeToSharedFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
-                let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_subscribe_to_shared_folder(
                         db_clone,
-                        vector_fs_clone,
-                        node_name_clone,
                         identity_manager_clone,
-                        encryption_secret_key_clone,
                         my_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiUnsubscribe { bearer, msg, res } => {
+            NodeCommand::V2ApiUnsubscribe { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_unsubscribe(
+                        db_clone,
                         node_name_clone,
                         identity_manager_clone,
-                        encryption_secret_key_clone,
                         my_subscription_manager_clone,
                         bearer,
-                        msg,
+                        payload,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiGetMySubscribers { bearer, msg, res } => {
+            NodeCommand::V2ApiMySubscriptions { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ =
+                        Node::v2_api_my_subscriptions(db_clone, node_name_clone, identity_manager_clone, bearer, res)
+                            .await;
+                });
+            }
+            NodeCommand::V2ApiGetMySubscribers { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_my_subscribers(
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        ext_subscription_manager_clone,
-                        bearer,
-                        msg,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_api_get_my_subscribers(db_clone, ext_subscription_manager_clone, bearer, payload, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiGetHttpFreeSubscriptionLinks {
@@ -2281,12 +2256,10 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let node_name_clone = self.node_name.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_http_free_subscription_links(
                         db_clone,
-                        node_name_clone,
                         ext_subscription_manager_clone,
                         bearer,
                         subscription_profile_path,
@@ -2295,7 +2268,38 @@ impl Node {
                     .await;
                 });
             }
-
+            NodeCommand::V2ApiGetLastNotifications { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_last_notifications(
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        bearer,
+                        payload,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiGetNotificationsBeforeTimestamp { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_notifications_before_timestamp(
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        bearer,
+                        payload,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }
