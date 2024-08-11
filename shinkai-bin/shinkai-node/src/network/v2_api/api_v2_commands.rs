@@ -478,7 +478,6 @@ impl Node {
         identity_secret_key: SigningKey,
         bearer: String,
         agent: SerializedLLMProvider,
-        profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -494,6 +493,19 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: "JobManager is required".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());

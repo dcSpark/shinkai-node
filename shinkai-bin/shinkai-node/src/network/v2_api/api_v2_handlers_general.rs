@@ -400,14 +400,12 @@ pub async fn add_llm_provider_handler(
     sender: Sender<NodeCommand>,
     bearer: String,
     agent: SerializedLLMProvider,
-    profile: ShinkaiName,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiAddLlmProvider {
             bearer,
             agent,
-            profile,
             res: res_sender,
         })
         .await

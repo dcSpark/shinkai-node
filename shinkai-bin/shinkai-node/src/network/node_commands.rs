@@ -701,7 +701,6 @@ pub enum NodeCommand {
     V2ApiAddLlmProvider {
         bearer: String,
         agent: SerializedLLMProvider,
-        profile: ShinkaiName,
         res: Sender<Result<String, APIError>>,
     },
     V2ApiChangeJobLlmProvider {

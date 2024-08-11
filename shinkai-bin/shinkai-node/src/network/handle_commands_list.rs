@@ -2456,7 +2456,7 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiAddLlmProvider { bearer, agent, profile, res } => {
+            NodeCommand::V2ApiAddLlmProvider { bearer, agent, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 let job_manager_clone = self.job_manager.clone();
@@ -2470,7 +2470,6 @@ impl Node {
                         identity_secret_key_clone,
                         bearer,
                         agent,
-                        profile,
                         ws_manager_trait,
                         res,
                     )
