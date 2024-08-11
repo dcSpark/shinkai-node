@@ -228,10 +228,9 @@ impl Sheet {
             let row_clone = row.clone();
             let col_clone = col.clone();
             tokio::spawn(async move {
-                sender_clone
-                    .send(SheetUpdate::CellUpdated(row_clone, col_clone))
-                    .await
-                    .unwrap();
+                if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(row_clone, col_clone)).await {
+                    eprintln!("Failed to send update: {:?}", e);
+                }
             });
         }
 
