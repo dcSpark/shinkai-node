@@ -11,7 +11,9 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage},
+        shinkai_message_schemas::{
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+        },
     },
 };
 
@@ -24,7 +26,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use super::{
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    v2_api::api_v2_router::InitialRegistrationRequest,
+    v2_api::api_v2_handlers_general::InitialRegistrationRequest,
 };
 
 pub enum NodeCommand {
@@ -480,12 +482,6 @@ pub enum NodeCommand {
         payload: InitialRegistrationRequest,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     },
-    V2ApiAddAgent {
-        bearer: String,
-        agent: SerializedLLMProvider,
-        profile: ShinkaiName,
-        res: Sender<String>,
-    },
     V2ApiAvailableLLMProviders {
         bearer: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
@@ -525,7 +521,7 @@ pub enum NodeCommand {
     },
     V2ApiVecFSRetrieveVectorResource {
         bearer: String,
-        path: String, 
+        path: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiConvertFilesAndSaveToFolder {
@@ -535,11 +531,46 @@ pub enum NodeCommand {
     },
     V2ApiVecFSCreateFolder {
         bearer: String,
-        payload: APIVecFsCreateFolder, 
+        payload: APIVecFsCreateFolder,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiMoveItem {
+        bearer: String,
+        payload: APIVecFsMoveItem,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiCopyItem {
+        bearer: String,
+        payload: APIVecFsCopyItem,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiMoveFolder {
+        bearer: String,
+        payload: APIVecFsMoveFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiCopyFolder {
+        bearer: String,
+        payload: APIVecFsCopyFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiDeleteFolder {
+        bearer: String,
+        payload: APIVecFsDeleteFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiDeleteItem {
+        bearer: String,
+        payload: APIVecFsDeleteItem,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiSearchItems {
+        bearer: String,
+        payload: APIVecFsSearchItems,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
     V2ApiCreateFilesInbox {
-        bearer: String, // 
+        bearer: String, //
         res: Sender<Result<String, APIError>>,
     },
     V2ApiAddFileToInbox {
@@ -556,5 +587,153 @@ pub enum NodeCommand {
         path: String,
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAvailableSharedItems {
+        bearer: String,
+        payload: APIAvailableSharedItems,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAvailableSharedItemsOpen {
+        bearer: String,
+        payload: APIAvailableSharedItems,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCreateShareableFolder {
+        bearer: String,
+        payload: APICreateShareableFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateShareableFolder {
+        bearer: String,
+        payload: APIUpdateShareableFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUnshareFolder {
+        bearer: String,
+        payload: APIUnshareFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiSubscribeToSharedFolder {
+        bearer: String,
+        payload: APISubscribeToSharedFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUnsubscribe {
+        bearer: String,
+        payload: APIUnsubscribeToSharedFolder,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiMySubscriptions {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetMySubscribers {
+        bearer: String,
+        payload: APIGetMySubscribers,
+        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+    },
+    V2ApiGetHttpFreeSubscriptionLinks {
+        bearer: String,
+        subscription_profile_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetLastNotifications {
+        bearer: String,
+        payload: APIGetLastNotifications,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetNotificationsBeforeTimestamp {
+        bearer: String,
+        payload: APIGetNotificationsBeforeTimestamp,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSearchWorkflows {
+        bearer: String,
+        query: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetWorkflow {
+        bearer: String,
+        payload: APISetWorkflow,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemoveWorkflow {
+        bearer: String,
+        payload: APIWorkflowKeyname,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetWorkflowInfo {
+        bearer: String,
+        payload: APIWorkflowKeyname,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListAllWorkflows {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetLocalProcessingPreference {
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    },
+    V2ApiUpdateLocalProcessingPreference {
+        bearer: String,
+        preference: bool,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiGetDefaultEmbeddingModel {
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiGetSupportedEmbeddingModels {
+        bearer: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    V2ApiUpdateDefaultEmbeddingModel {
+        bearer: String,
+        model_name: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateSupportedEmbeddingModels {
+        bearer: String,
+        models: Vec<String>,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiAddLlmProvider {
+        bearer: String,
+        agent: SerializedLLMProvider,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiChangeJobLlmProvider {
+        bearer: String,
+        payload: APIChangeJobAgentRequest,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiRemoveLlmProvider {
+        bearer: String,
+        llm_provider_id: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiModifyLlmProvider {
+        bearer: String,
+        agent: SerializedLLMProvider, 
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiChangeNodesName {
+        bearer: String,
+        new_name: String,
+        res: Sender<Result<(), APIError>>,
+    },
+    V2ApiIsPristine {
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    },
+    V2ApiScanOllamaModels {
+        bearer: String,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    },
+    V2ApiAddOllamaModels {
+        bearer: String,
+        payload: APIAddOllamaModels,
+        res: Sender<Result<(), APIError>>,
     },
 }

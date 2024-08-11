@@ -573,7 +573,7 @@ pub struct TopicSubscription {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct APIAddWorkflow {
+pub struct APISetWorkflow {
     pub workflow_raw: String,
     pub description: String,
 }

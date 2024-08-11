@@ -1,21 +1,17 @@
 use std::sync::Arc;
 
 use async_channel::Sender;
-use chrono::{DateTime, Utc};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
-use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson,
-            IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+            APIAddOllamaModels, APIChangeJobAgentRequest, IdentityPermissions, JobMessage, MessageSchemaType,
+            V2ChatMessage,
         },
     },
     shinkai_utils::{
@@ -25,41 +21,35 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::{
-    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
-    file_parser::unstructured_api::UnstructuredAPI,
-    model_type::EmbeddingModelType,
-    shinkai_time::ShinkaiStringTime,
-    vector_resource::VRPath,
+    embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
 };
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    db::{self, ShinkaiDB},
+    db::ShinkaiDB,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{
-        node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
+        node_api_router::{APIError, GetPublicKeysResponse},
         node_error::NodeError,
-        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
         v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
         ws_manager::WSUpdateHandler,
         Node,
     },
-    schemas::{
-        identity::{Identity, IdentityType, RegistrationCode},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-    },
+    schemas::identity::{Identity, IdentityType, RegistrationCode},
+    utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
 
-use super::api_v2_router::InitialRegistrationRequest;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+use super::api_v2_handlers_general::InitialRegistrationRequest;
+
 impl Node {
-    async fn validate_bearer_token<T>(
-        bearer: &str,
-        db: Arc<ShinkaiDB>,
+    pub async fn validate_bearer_token<T>(
+        _bearer: &str,
+        _db: Arc<ShinkaiDB>,
         res: &Sender<Result<T, APIError>>,
     ) -> Result<(), ()> {
         // Placeholder implementation that always returns true
@@ -77,7 +67,9 @@ impl Node {
         }
     }
 
-    fn convert_shinkai_message_to_v2_chat_message(shinkai_message: ShinkaiMessage) -> Result<V2ChatMessage, NodeError> {
+    pub fn convert_shinkai_message_to_v2_chat_message(
+        shinkai_message: ShinkaiMessage,
+    ) -> Result<V2ChatMessage, NodeError> {
         let internal_metadata = match &shinkai_message.body {
             MessageBody::Unencrypted(body) => Ok(&body.internal_metadata),
             _ => Err(NodeError {
@@ -119,7 +111,7 @@ impl Node {
         })
     }
 
-    fn convert_shinkai_messages_to_v2_chat_messages(
+    pub fn convert_shinkai_messages_to_v2_chat_messages(
         shinkai_messages: Vec<Vec<ShinkaiMessage>>,
     ) -> Result<Vec<Vec<V2ChatMessage>>, NodeError> {
         shinkai_messages
@@ -133,24 +125,7 @@ impl Node {
             .collect::<Result<Vec<Vec<V2ChatMessage>>, NodeError>>()
     }
 
-    fn convert_smart_inbox_to_v2_smart_inbox(smart_inbox: SmartInbox) -> Result<V2SmartInbox, NodeError> {
-        let last_message = match smart_inbox.last_message {
-            Some(msg) => Some(Node::convert_shinkai_message_to_v2_chat_message(msg)?),
-            None => None,
-        };
-
-        Ok(V2SmartInbox {
-            inbox_id: smart_inbox.inbox_id,
-            custom_name: smart_inbox.custom_name,
-            datetime_created: smart_inbox.datetime_created,
-            last_message,
-            is_finished: smart_inbox.is_finished,
-            job_scope: smart_inbox.job_scope,
-            agent: smart_inbox.agent,
-        })
-    }
-
-    fn api_v2_create_shinkai_message(
+    pub fn api_v2_create_shinkai_message(
         sender: ShinkaiName,
         receiver: ShinkaiName,
         payload: &str,
@@ -272,102 +247,291 @@ impl Node {
         }
     }
 
-    pub async fn v2_create_new_job(
+    pub async fn v2_api_get_local_processing_preference(
         db: Arc<ShinkaiDB>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        job_manager: Arc<Mutex<JobManager>>,
         bearer: String,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
-        node_encryption_sk: EncryptionStaticKey,
-        node_encryption_pk: EncryptionPublicKey,
-        node_signing_sk: SigningKey,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<bool, APIError>>,
     ) -> Result<(), NodeError> {
-        // Validate the bearer token and extract the sender identity
+        // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        // Get the main identity from the identity manager
-        let main_identity = {
-            let identity_manager = identity_manager.lock().await;
-            match identity_manager.get_main_identity() {
-                Some(identity) => identity.clone(),
-                None => {
-                    let api_error = APIError {
+        // Get the local processing preference
+        match db.get_local_processing_preference() {
+            Ok(preference) => {
+                let _ = res.send(Ok(preference)).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
-                        message: "Failed to get main identity".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
+                        message: format!("Failed to get local processing preference: {}", err),
+                    }))
+                    .await;
             }
-        };
+        }
 
-        // Create a new job message
-        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
-            Ok(name) => name,
+        Ok(())
+    }
+
+    pub async fn v2_api_update_local_processing_preference(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        preference: bool,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Update the local processing preference
+        match db.update_local_processing_preference(preference) {
+            Ok(_) => {
+                let _ = res.send(Ok("Preference updated successfully".to_string())).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update local processing preference: {}", err),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_default_embedding_model(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the default embedding model from the database
+        match db.get_default_embedding_model() {
+            Ok(model) => {
+                let _ = res.send(Ok(model.to_string())).await;
+            }
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create sender name: {}", err),
+                    message: format!("Failed to get default embedding model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_supported_embedding_models(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the supported embedding models from the database
+        match db.get_supported_embedding_models() {
+            Ok(models) => {
+                let model_names: Vec<String> = models.into_iter().map(|model| model.to_string()).collect();
+                let _ = res.send(Ok(model_names)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get supported embedding models: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_update_default_embedding_model(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        model_name: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Convert the string to EmbeddingModelType
+        let new_default_model = match EmbeddingModelType::from_string(&model_name) {
+            Ok(model) => model,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid embedding model provided".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
 
-        let recipient = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
-            node_name.node_name,
-            "main".to_string(),
-            ShinkaiSubidentityType::Agent,
-            llm_provider,
-        ) {
-            Ok(name) => name,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create recipient name: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let shinkai_message = match Self::api_v2_create_shinkai_message(
-            sender,
-            recipient,
-            &serde_json::to_string(&job_creation_info).unwrap(),
-            MessageSchemaType::JobCreationSchema,
-            node_encryption_sk,
-            node_signing_sk,
-            node_encryption_pk,
-            None,
-        ) {
-            Ok(message) => message,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create Shinkai message: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Process the job creation
-        match Self::internal_create_new_job(job_manager, db, shinkai_message, main_identity.clone()).await {
-            Ok(job_id) => {
-                let _ = res.send(Ok(job_id)).await;
+        // Update the default embedding model in the database
+        match db.update_default_embedding_model(new_default_model) {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Default embedding model updated successfully".to_string()))
+                    .await;
                 Ok(())
             }
             Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update default embedding model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_update_supported_embedding_models(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        bearer: String,
+        models: Vec<String>,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the strings to EmbeddingModelType
+        let new_supported_models: Vec<EmbeddingModelType> = models
+            .into_iter()
+            .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse embedding model"))
+            .collect();
+
+        // Update the supported embedding models in the database
+        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to update supported embedding models: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        match vector_fs
+            .set_profile_supported_models(&requester_name, &requester_name, new_supported_models)
+            .await
+        {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Supported embedding models updated successfully".to_string()))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update supported embedding models: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_add_llm_provider(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+        identity_secret_key: SigningKey,
+        bearer: String,
+        agent: SerializedLLMProvider,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let job_manager = match job_manager {
+            Some(manager) => manager,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "JobManager is required".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match Self::internal_add_llm_provider(
+            db.clone(),
+            identity_manager.clone(),
+            job_manager,
+            identity_secret_key.clone(),
+            agent,
+            &profile,
+            ws_manager,
+        )
+        .await
+        {
+            Ok(_) => {
+                // If everything went well, send the success message
+                let _ = res.send(Ok("Agent added successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                // If there was an error, send the error message
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
@@ -379,135 +543,228 @@ impl Node {
         }
     }
 
-    pub async fn v2_job_message(
+    pub async fn v2_api_remove_llm_provider(
         db: Arc<ShinkaiDB>,
-        node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        job_manager: Arc<Mutex<JobManager>>,
         bearer: String,
-        job_message: JobMessage,
-        node_encryption_sk: EncryptionStaticKey,
-        node_encryption_pk: EncryptionPublicKey,
-        node_signing_sk: SigningKey,
-        res: Sender<Result<SendResponseBodyData, APIError>>,
+        llm_provider_id: String,
+        res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        // Validate the bearer token and extract the sender identity
+        // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        // Get the main identity from the identity manager
-        let main_identity = {
-            let identity_manager = identity_manager.lock().await;
-            match identity_manager.get_main_identity() {
-                Some(identity) => identity.clone(),
-                None => {
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut identity_manager = identity_manager.lock().await;
+        match db.remove_llm_provider(&llm_provider_id, &requester_name) {
+            Ok(_) => match identity_manager.remove_agent_subidentity(&llm_provider_id).await {
+                Ok(_) => {
+                    let _ = res.send(Ok("Agent removed successfully".to_string())).await;
+                    Ok(())
+                }
+                Err(err) => {
                     let api_error = APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
-                        message: "Failed to get main identity".to_string(),
+                        message: format!("Failed to remove agent from identity manager: {}", err),
                     };
                     let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_modify_llm_provider(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        bearer: String,
+        agent: SerializedLLMProvider,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match db.update_llm_provider(agent.clone(), &requester_name) {
+            Ok(_) => {
+                let mut identity_manager = identity_manager.lock().await;
+                match identity_manager.modify_llm_provider_subidentity(agent).await {
+                    Ok(_) => {
+                        let _ = res.send(Ok("Agent modified successfully".to_string())).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to update agent in identity manager: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_change_nodes_name(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        secret_file_path: &str,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
+        new_name: String,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Validate the new node name
+        let new_node_name = match ShinkaiName::from_node_name(new_name) {
+            Ok(name) => name,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid node name".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        {
+            // Check if the new node name exists in the blockchain and the keys match
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager
+                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
+                .await
+            {
+                Ok(standard_identity) => {
+                    if standard_identity.node_encryption_public_key != encryption_public_key
+                        || standard_identity.node_signature_public_key != identity_public_key
+                    {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Forbidden".to_string(),
+                                message: "The keys do not match with the current node".to_string(),
+                            }))
+                            .await;
+                        return Ok(());
+                    }
+                }
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "The new node name does not exist in the blockchain".to_string(),
+                        }))
+                        .await;
                     return Ok(());
                 }
             }
-        };
+        }
 
-        // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job(&job_message.job_id) {
-            Ok(job) => job.parent_llm_provider_id.clone(),
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve job: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Create a new job message
-        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
-            Ok(name) => name,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create sender name: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let recipient = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
-            node_name.node_name,
-            "main".to_string(),
-            ShinkaiSubidentityType::Agent,
-            llm_provider,
-        ) {
-            Ok(name) => name,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create recipient name: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let shinkai_message = match Self::api_v2_create_shinkai_message(
-            sender,
-            recipient,
-            &serde_json::to_string(&job_message).unwrap(),
-            MessageSchemaType::JobMessageSchema,
-            node_encryption_sk,
-            node_signing_sk,
-            node_encryption_pk,
-            Some(job_message.job_id.clone()),
-        ) {
-            Ok(message) => message,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create Shinkai message: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Process the job message
-        match Self::internal_job_message(job_manager, shinkai_message.clone()).await {
+        // Write to .secret file
+        match update_global_identity_name(secret_file_path, new_node_name.get_node_name_string().as_str()) {
             Ok(_) => {
-                let inbox_name = match InboxName::get_job_inbox_name_from_params(job_message.job_id) {
-                    Ok(inbox) => inbox.to_string(),
-                    Err(_) => "".to_string(),
-                };
+                eprintln!("Node name changed successfully. Restarting server...");
+                let _ = res.send(Ok(())).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                panic!("Node name changed successfully. Restarting server...");
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+            }
+        };
+        Ok(())
+    }
 
-                let scheduled_time = shinkai_message.clone().external_metadata.scheduled_time;
-                let message_hash = shinkai_message.calculate_message_hash_for_pagination();
+    pub async fn v2_api_is_pristine(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
 
-                let parent_key = if !inbox_name.is_empty() {
-                    match db.get_parent_message_hash(&inbox_name, &message_hash) {
-                        Ok(result) => result,
-                        Err(_) => None,
-                    }
-                } else {
-                    None
-                };
+        let has_any_profile = db.has_any_profile().unwrap_or(false);
+        let _ = res.send(Ok(!has_any_profile)).await;
+        Ok(())
+    }
 
-                let response = SendResponseBodyData {
-                    message_id: message_hash,
-                    parent_message_id: parent_key,
-                    inbox: inbox_name,
-                    scheduled_time,
-                };
+    pub async fn v2_api_scan_ollama_models(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
 
+        match Self::internal_scan_ollama_models().await {
+            Ok(response) => {
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
@@ -523,390 +780,14 @@ impl Node {
         }
     }
 
-    pub async fn v2_get_last_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
-        bearer: String,
-        inbox_name: String,
-        limit: usize,
-        offset_key: Option<String>,
-        res: Sender<Result<Vec<V2ChatMessage>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Retrieve the last messages from the inbox
-        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), limit, offset_key.clone()) {
-            Ok(messages) => messages,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve messages: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Convert the retrieved messages to V2ChatMessage
-        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
-            Ok(v2_messages) => v2_messages.into_iter().filter_map(|msg| msg.first().cloned()).collect(),
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert messages: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Send the converted messages back to the requester
-        if let Err(_) = res.send(Ok(v2_chat_messages)).await {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: "Failed to send messages".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-        }
-
-        Ok(())
-    }
-
-    pub async fn v2_get_all_smart_inboxes(
+    pub async fn v2_api_add_ollama_models(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+        identity_secret_key: SigningKey,
         bearer: String,
-        res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Get the main identity from the identity manager
-        let main_identity = {
-            let identity_manager = identity_manager.lock().await;
-            match identity_manager.get_main_identity() {
-                Some(Identity::Standard(identity)) => identity.clone(),
-                _ => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: "Failed to get main identity".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        };
-
-        // Retrieve all smart inboxes for the profile
-        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
-            Ok(inboxes) => inboxes,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve smart inboxes: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
-            .into_iter()
-            .map(Self::convert_smart_inbox_to_v2_smart_inbox)
-            .collect();
-
-        match v2_smart_inboxes {
-            Ok(inboxes) => {
-                let _ = res.send(Ok(inboxes)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert smart inboxes: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn v2_get_available_llm_providers(
-        db: Arc<ShinkaiDB>,
-        node_name: ShinkaiName,
-        bearer: String,
-        res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Retrieve all LLM providers for the profile
-        match Self::internal_get_llm_providers_for_profile(db.clone(), node_name.node_name, "main".to_string()).await {
-            Ok(llm_providers) => {
-                let _ = res.send(Ok(llm_providers)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve LLM providers: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        input_payload: APIVecFsRetrievePathSimplifiedJson,
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        bearer: String,
-        res: Sender<Result<Value, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let requester_name = match identity_manager.lock().await.get_main_identity() {
-            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-            _ => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Wrong identity type. Expected Standard identity.".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let vr_path = match VRPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let reader = match vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await
-        {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let result = vector_fs.retrieve_fs_path_simplified_json_value(&reader).await;
-
-        fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
-            if let Some(path) = obj.get("path") {
-                if let Some(path_str) = path.as_str() {
-                    if let Some(shared_folder) = shared_folders.iter().find(|sf| sf.path == path_str) {
-                        let mut shared_folder_info = serde_json::to_value(shared_folder).unwrap();
-                        if let Some(obj) = shared_folder_info.as_object_mut() {
-                            obj.remove("tree");
-                        }
-                        obj.as_object_mut().unwrap().insert(
-                            "shared_folder_info".to_string(),
-                            serde_json::to_value(shared_folder).unwrap(),
-                        );
-                    }
-                }
-            }
-
-            if let Some(child_folders) = obj.get_mut("child_folders") {
-                if let Some(child_folders_array) = child_folders.as_array_mut() {
-                    for child_folder in child_folders_array {
-                        add_shared_folder_info(child_folder, shared_folders);
-                    }
-                }
-            }
-        }
-
-        match result {
-            Ok(mut result_value) => {
-                let mut subscription_manager = ext_subscription_manager.lock().await;
-                let shared_folders_result = subscription_manager
-                    .available_shared_folders(
-                        requester_name.extract_node(),
-                        requester_name.get_profile_name_string().unwrap_or_default(),
-                        requester_name.extract_node(),
-                        requester_name.get_profile_name_string().unwrap_or_default(),
-                        input_payload.path,
-                    )
-                    .await;
-                drop(subscription_manager);
-
-                if let Ok(shared_folders) = shared_folders_result {
-                    add_shared_folder_info(&mut result_value, &shared_folders);
-                }
-
-                let _ = res.send(Ok(result_value)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve fs path json: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_convert_files_and_save_to_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        input_payload: APIConvertFilesAndSaveToFolder,
-        embedding_generator: Arc<dyn EmbeddingGenerator>,
-        unstructured_api: Arc<UnstructuredAPI>,
-        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        bearer: String,
-        res: Sender<Result<Vec<Value>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let requester_name = match identity_manager.lock().await.get_main_identity() {
-            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-            _ => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Wrong identity type. Expected Standard identity.".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        Self::process_and_save_files(
-            db,
-            vector_fs,
-            input_payload,
-            requester_name,
-            embedding_generator,
-            unstructured_api,
-            external_subscriber_manager,
-            res,
-        )
-        .await
-    }
-
-    pub async fn v2_create_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        input_payload: APIVecFsCreateFolder,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let requester_name = match identity_manager.lock().await.get_main_identity() {
-            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-            _ => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Wrong identity type. Expected Standard identity.".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let vr_path = match VRPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let writer = match vector_fs
-            .new_writer(requester_name.clone(), vr_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        match vector_fs.create_new_folder(&writer, &input_payload.folder_name).await {
-            Ok(_) => {
-                let success_message = format!("Folder '{}' created successfully.", input_payload.folder_name);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create new folder: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_update_smart_inbox_name(
-        db: Arc<ShinkaiDB>,
-        bearer: String,
-        inbox_name: String,
-        custom_name: String,
+        payload: APIAddOllamaModels,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -914,37 +795,6 @@ impl Node {
             return Ok(());
         }
 
-        // Update the smart inbox name
-        match db.update_smart_inbox_name(&inbox_name, &custom_name) {
-            Ok(_) => {
-                let _ = res.send(Ok(())).await;
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to update inbox name: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn v2_retrieve_vector_resource(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        path: String,
-        bearer: String,
-        res: Sender<Result<Value, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
         let requester_name = match identity_manager.lock().await.get_main_identity() {
             Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
             _ => {
@@ -958,266 +808,43 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let reader = match vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await
-        {
-            Ok(reader) => reader,
-            Err(e) => {
+        let job_manager = match job_manager {
+            Some(manager) => manager,
+            None => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
+                    message: "JobManager is required".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
 
-        let result = vector_fs.retrieve_vector_resource(&reader).await;
-
-        match result {
-            Ok(result_value) => match result_value.to_json_value() {
-                Ok(json_value) => {
-                    let _ = res.send(Ok(json_value)).await.map_err(|_| ());
-                    Ok(())
-                }
-                Err(e) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to convert result to JSON: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    Ok(())
-                }
-            },
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve vector resource: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_create_files_inbox(
-        db: Arc<ShinkaiDB>,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), APIError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let hash_hex = uuid::Uuid::new_v4().to_string();
-
-        match db.create_files_message_inbox(hash_hex.clone()) {
-            Ok(_) => {
-                if let Err(_) = res.send(Ok(hash_hex)).await {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: "Failed to send response".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                }
-                Ok(())
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to create files message inbox: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_add_file_to_inbox(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        file_inbox_name: String,
-        filename: String,
-        file: Vec<u8>,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), APIError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        match vector_fs
-            .db
-            .add_file_to_files_message_inbox(file_inbox_name, filename, file)
-        {
-            Ok(_) => {
-                let _ = res.send(Ok("File added successfully".to_string())).await;
-                Ok(())
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to add file to inbox: {}", err),
-                    }))
-                    .await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_upload_file_to_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        embedding_generator: Arc<dyn EmbeddingGenerator>,
-        unstructured_api: Arc<UnstructuredAPI>,
-        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        bearer: String,
-        filename: String,
-        file: Vec<u8>,
-        path: String,
-        file_datetime: Option<DateTime<Utc>>,
-        res: Sender<Result<Value, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Step 1: Create a file inbox
-        let hash_hex = uuid::Uuid::new_v4().to_string();
-        if let Err(err) = db.create_files_message_inbox(hash_hex.clone()) {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: format!("Failed to create files message inbox: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-        let file_inbox_name = hash_hex;
-
-        // Step 2: Add the file to the inbox
-        let (add_file_res_sender, add_file_res_receiver) = async_channel::bounded(1);
-
-        match Self::v2_add_file_to_inbox(
-            db.clone(),
-            vector_fs.clone(),
-            file_inbox_name.clone(),
-            filename.clone(),
-            file.clone(),
-            bearer.clone(),
-            add_file_res_sender,
-        )
-        .await
-        {
-            Ok(_) => match add_file_res_receiver.recv().await {
-                Ok(Ok(_)) => {}
-                Ok(Err(api_error)) => {
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-                Err(_) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: "Failed to receive add file result".to_string(),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            },
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Step 3: Convert the file and save it to the folder
-        let input_payload = APIConvertFilesAndSaveToFolder {
-            path,
-            file_inbox: file_inbox_name,
-            file_datetime,
-        };
-
-        let (convert_res_sender, convert_res_receiver) = async_channel::bounded(1);
-
-        match Self::v2_convert_files_and_save_to_folder(
+        match Node::internal_add_ollama_models(
             db,
-            vector_fs,
             identity_manager,
-            input_payload,
-            embedding_generator,
-            unstructured_api,
-            external_subscriber_manager,
-            bearer,
-            convert_res_sender,
+            job_manager,
+            identity_secret_key,
+            payload.models,
+            requester_name,
+            ws_manager,
         )
         .await
         {
-            Ok(_) => match convert_res_receiver.recv().await {
-                Ok(Ok(result)) => {
-                    let first_element = match result.into_iter().next() {
-                        Some(element) => element,
-                        None => {
-                            let api_error = APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: "Result array is empty".to_string(),
-                            };
-                            let _ = res.send(Err(api_error)).await;
-                            return Ok(());
-                        }
-                    };
-                    let _ = res.send(Ok(first_element)).await;
-                }
-                Ok(Err(api_error)) => {
-                    let _ = res.send(Err(api_error)).await;
-                }
-                Err(_) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: "Failed to receive conversion result".to_string(),
-                        }))
-                        .await;
-                }
-            },
-            Err(node_error) => {
+            Ok(_) => {
+                let _ = res.send(Ok::<(), APIError>(())).await;
+                Ok(())
+            }
+            Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert files and save to folder: {}", node_error),
+                    message: format!("Failed to add model: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
+                Ok(())
             }
         }
-
-        Ok(())
     }
 }
