@@ -9,7 +9,7 @@ use shinkai_message_primitives::{
         llm_providers::serialized_llm_provider::SerializedLLMProvider,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
-    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage},
+    shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage},
 };
 
 use tokio::sync::Mutex;
@@ -546,6 +546,37 @@ impl Node {
                         message: format!("Failed to add file to inbox: {}", err),
                     }))
                     .await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_change_job_llm_provider(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        payload: APIChangeJobAgentRequest,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Extract job ID and new agent ID from the payload
+        let change_request = payload;
+
+        match db.change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id) {
+            Ok(_) => {
+                let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to change job agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
                 Ok(())
             }
         }

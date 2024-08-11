@@ -2456,6 +2456,67 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiAddLlmProvider { bearer, agent, profile, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone();
+                let identity_secret_key_clone = self.identity_secret_key.clone();
+                let ws_manager_trait = self.ws_manager_trait.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_llm_provider(
+                        db_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        identity_secret_key_clone,
+                        bearer,
+                        agent,
+                        profile,
+                        ws_manager_trait,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiChangeJobLlmProvider { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_change_job_llm_provider(
+                        db_clone,
+                        bearer,
+                        payload,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiRemoveLlmProvider { bearer, llm_provider_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_remove_llm_provider(
+                        db_clone,
+                        identity_manager_clone,
+                        bearer,
+                        llm_provider_id,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiModifyLlmProvider { bearer, agent, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_modify_llm_provider(
+                        db_clone,
+                        identity_manager_clone,
+                        bearer,
+                        agent,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

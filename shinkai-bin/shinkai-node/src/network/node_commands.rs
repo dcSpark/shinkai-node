@@ -12,7 +12,7 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APISetWorkflow, APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+            APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
         },
     },
 };
@@ -25,7 +25,8 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
-    v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, v2_api::api_v2_handlers_general::InitialRegistrationRequest,
+    v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
+    v2_api::api_v2_handlers_general::InitialRegistrationRequest,
 };
 
 pub enum NodeCommand {
@@ -481,12 +482,6 @@ pub enum NodeCommand {
         payload: InitialRegistrationRequest,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     },
-    V2ApiAddAgent {
-        bearer: String,
-        agent: SerializedLLMProvider,
-        profile: ShinkaiName,
-        res: Sender<String>,
-    },
     V2ApiAvailableLLMProviders {
         bearer: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
@@ -701,6 +696,27 @@ pub enum NodeCommand {
     V2ApiUpdateSupportedEmbeddingModels {
         bearer: String,
         models: Vec<String>,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiAddLlmProvider {
+        bearer: String,
+        agent: SerializedLLMProvider,
+        profile: ShinkaiName,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiChangeJobLlmProvider {
+        bearer: String,
+        payload: APIChangeJobAgentRequest,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiRemoveLlmProvider {
+        bearer: String,
+        llm_provider_id: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiModifyLlmProvider {
+        bearer: String,
+        agent: SerializedLLMProvider, 
         res: Sender<Result<String, APIError>>,
     },
 }

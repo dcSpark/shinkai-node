@@ -1,11 +1,15 @@
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use utoipa::OpenApi;
 use warp::Filter;
 
-use crate::network::{node_api_router::{APIError, GetPublicKeysResponse}, node_commands::NodeCommand};
+use crate::network::{
+    node_api_router::{APIError, GetPublicKeysResponse},
+    node_commands::NodeCommand,
+};
 
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
 
@@ -69,6 +73,27 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(update_supported_embedding_models_handler);
 
+    let add_llm_provider_route = warp::path("add_llm_provider")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_llm_provider_handler);
+
+    let remove_llm_provider_route = warp::path("remove_llm_provider")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(remove_llm_provider_handler);
+
+    let modify_llm_provider_route = warp::path("modify_llm_provider")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(modify_llm_provider_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -78,6 +103,9 @@ pub fn general_routes(
         .or(get_supported_embedding_models_route)
         .or(update_default_embedding_model_route)
         .or(update_supported_embedding_models_route)
+        .or(add_llm_provider_route)
+        .or(remove_llm_provider_route)
+        .or(modify_llm_provider_route)
 }
 
 #[derive(Deserialize)]
@@ -189,7 +217,10 @@ pub async fn get_local_processing_preference_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiGetLocalProcessingPreference { bearer, res: res_sender })
+        .send(NodeCommand::V2ApiGetLocalProcessingPreference {
+            bearer,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 
@@ -217,7 +248,11 @@ pub async fn update_local_processing_preference_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiUpdateLocalProcessingPreference { bearer, preference, res: res_sender })
+        .send(NodeCommand::V2ApiUpdateLocalProcessingPreference {
+            bearer,
+            preference,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 
@@ -243,7 +278,10 @@ pub async fn get_default_embedding_model_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiGetDefaultEmbeddingModel { bearer, res: res_sender })
+        .send(NodeCommand::V2ApiGetDefaultEmbeddingModel {
+            bearer,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 
@@ -269,7 +307,10 @@ pub async fn get_supported_embedding_models_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiGetSupportedEmbeddingModels { bearer, res: res_sender })
+        .send(NodeCommand::V2ApiGetSupportedEmbeddingModels {
+            bearer,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 
@@ -297,7 +338,11 @@ pub async fn update_default_embedding_model_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiUpdateDefaultEmbeddingModel { bearer, model_name, res: res_sender })
+        .send(NodeCommand::V2ApiUpdateDefaultEmbeddingModel {
+            bearer,
+            model_name,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 
@@ -325,7 +370,110 @@ pub async fn update_supported_embedding_models_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiUpdateSupportedEmbeddingModels { bearer, models, res: res_sender })
+        .send(NodeCommand::V2ApiUpdateSupportedEmbeddingModels {
+            bearer,
+            models,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_llm_provider",
+    request_body = SerializedLLMProvider,
+    responses(
+        (status = 200, description = "Successfully added LLM provider", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_llm_provider_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    agent: SerializedLLMProvider,
+    profile: ShinkaiName,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiAddLlmProvider {
+            bearer,
+            agent,
+            profile,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/remove_llm_provider",
+    request_body = String,
+    responses(
+        (status = 200, description = "Successfully removed LLM provider", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn remove_llm_provider_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    llm_provider_id: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRemoveLlmProvider {
+            bearer,
+            llm_provider_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/modify_llm_provider",
+    request_body = SerializedLLMProvider,
+    responses(
+        (status = 200, description = "Successfully modified LLM provider", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn modify_llm_provider_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    agent: SerializedLLMProvider,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiModifyLlmProvider {
+            bearer,
+            agent,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
 
@@ -349,6 +497,9 @@ pub async fn update_supported_embedding_models_handler(
         get_supported_embedding_models_handler,
         update_default_embedding_model_handler,
         update_supported_embedding_models_handler,
+        add_llm_provider_handler,
+        remove_llm_provider_handler,
+        modify_llm_provider_handler,
     ),
     components(
         schemas(GetPublicKeysResponse, APIError)
