@@ -12,7 +12,7 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
         },
     },
 };
@@ -717,5 +717,23 @@ pub enum NodeCommand {
         bearer: String,
         agent: SerializedLLMProvider, 
         res: Sender<Result<String, APIError>>,
+    },
+    V2ApiChangeNodesName {
+        bearer: String,
+        new_name: String,
+        res: Sender<Result<(), APIError>>,
+    },
+    V2ApiIsPristine {
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    },
+    V2ApiScanOllamaModels {
+        bearer: String,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    },
+    V2ApiAddOllamaModels {
+        bearer: String,
+        payload: APIAddOllamaModels,
+        res: Sender<Result<(), APIError>>,
     },
 }

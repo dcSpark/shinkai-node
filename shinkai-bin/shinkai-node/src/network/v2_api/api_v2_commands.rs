@@ -10,7 +10,8 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIChangeJobAgentRequest, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
+            APIAddOllamaModels, APIChangeJobAgentRequest, IdentityPermissions, JobMessage, MessageSchemaType,
+            V2ChatMessage,
         },
     },
     shinkai_utils::{
@@ -37,6 +38,7 @@ use crate::{
         Node,
     },
     schemas::identity::{Identity, IdentityType, RegistrationCode},
+    utils::update_global_identity::update_global_identity_name,
     vector_fs::vector_fs::VectorFS,
 };
 
@@ -644,6 +646,201 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_change_nodes_name(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        secret_file_path: &str,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
+        new_name: String,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Validate the new node name
+        let new_node_name = match ShinkaiName::from_node_name(new_name) {
+            Ok(name) => name,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid node name".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        {
+            // Check if the new node name exists in the blockchain and the keys match
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager
+                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
+                .await
+            {
+                Ok(standard_identity) => {
+                    if standard_identity.node_encryption_public_key != encryption_public_key
+                        || standard_identity.node_signature_public_key != identity_public_key
+                    {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Forbidden".to_string(),
+                                message: "The keys do not match with the current node".to_string(),
+                            }))
+                            .await;
+                        return Ok(());
+                    }
+                }
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "The new node name does not exist in the blockchain".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        }
+
+        // Write to .secret file
+        match update_global_identity_name(secret_file_path, new_node_name.get_node_name_string().as_str()) {
+            Ok(_) => {
+                eprintln!("Node name changed successfully. Restarting server...");
+                let _ = res.send(Ok(())).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                panic!("Node name changed successfully. Restarting server...");
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+            }
+        };
+        Ok(())
+    }
+
+    pub async fn v2_api_is_pristine(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let has_any_profile = db.has_any_profile().unwrap_or(false);
+        let _ = res.send(Ok(!has_any_profile)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_scan_ollama_models(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match Self::internal_scan_ollama_models().await {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_add_ollama_models(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+        identity_secret_key: SigningKey,
+        bearer: String,
+        payload: APIAddOllamaModels,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let job_manager = match job_manager {
+            Some(manager) => manager,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "JobManager is required".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match Node::internal_add_ollama_models(
+            db,
+            identity_manager,
+            job_manager,
+            identity_secret_key,
+            payload.models,
+            requester_name,
+            ws_manager,
+        )
+        .await
+        {
+            Ok(_) => {
+                let _ = res.send(Ok::<(), APIError>(())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add model: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

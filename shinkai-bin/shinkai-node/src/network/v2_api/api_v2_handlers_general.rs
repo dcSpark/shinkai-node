@@ -2,7 +2,7 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::{schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_message::shinkai_message_schemas::APIAddOllamaModels};
 use utoipa::OpenApi;
 use warp::Filter;
 
@@ -94,6 +94,32 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(modify_llm_provider_handler);
 
+    let change_node_name_route = warp::path("change_node_name")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(change_node_name_handler);
+
+    let is_pristine_route = warp::path("is_pristine")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(is_pristine_handler);
+
+    let scan_ollama_models_route = warp::path("scan_ollama_models")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(scan_ollama_models_handler);
+
+    let add_ollama_models_route = warp::path("add_ollama_models")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_ollama_models_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -106,6 +132,10 @@ pub fn general_routes(
         .or(add_llm_provider_route)
         .or(remove_llm_provider_route)
         .or(modify_llm_provider_route)
+        .or(change_node_name_route)
+        .or(is_pristine_route)
+        .or(scan_ollama_models_route)
+        .or(add_ollama_models_route)
 }
 
 #[derive(Deserialize)]
@@ -386,7 +416,6 @@ pub async fn update_supported_embedding_models_handler(
     }
 }
 
-
 #[utoipa::path(
     post,
     path = "/v2/add_llm_provider",
@@ -483,6 +512,128 @@ pub async fn modify_llm_provider_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/change_node_name",
+    request_body = String,
+    responses(
+        (status = 200, description = "Successfully changed node name", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn change_node_name_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    new_name: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiChangeNodesName {
+            bearer,
+            new_name,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/is_pristine",
+    responses(
+        (status = 200, description = "Successfully checked pristine state", body = bool),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn is_pristine_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiIsPristine {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/scan_ollama_models",
+    responses(
+        (status = 200, description = "Successfully scanned Ollama models", body = Vec<serde_json::Value>),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn scan_ollama_models_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiScanOllamaModels {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_ollama_models",
+    request_body = APIAddOllamaModels,
+    responses(
+        (status = 200, description = "Successfully added Ollama models", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_ollama_models_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+    payload: APIAddOllamaModels,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiAddOllamaModels {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -498,6 +649,10 @@ pub async fn modify_llm_provider_handler(
         add_llm_provider_handler,
         remove_llm_provider_handler,
         modify_llm_provider_handler,
+        change_node_name_handler,
+        is_pristine_handler,
+        scan_ollama_models_handler,
+        add_ollama_models_handler,
     ),
     components(
         schemas(GetPublicKeysResponse, APIError)

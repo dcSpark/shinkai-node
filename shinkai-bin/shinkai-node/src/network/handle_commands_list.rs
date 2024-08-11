@@ -2516,6 +2516,64 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiChangeNodesName { bearer, new_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let secret_file_path = self.secrets_file_path.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_public_key_clone = self.encryption_public_key.clone();
+                let identity_public_key_clone = self.identity_public_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_change_nodes_name(
+                        bearer,
+                        db_clone,
+                        &secret_file_path,
+                        identity_manager_clone,
+                        encryption_public_key_clone,
+                        identity_public_key_clone,
+                        new_name,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiIsPristine { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_is_pristine(bearer, db_clone, res).await;
+                });
+            }
+            NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_scan_ollama_models(
+                        db_clone,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiAddOllamaModels { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone();
+                let identity_secret_key_clone = self.identity_secret_key.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let ws_manager_trait = self.ws_manager_trait.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_ollama_models(
+                        db_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        identity_secret_key_clone,
+                        bearer,
+                        payload,
+                        ws_manager_trait,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }
