@@ -211,7 +211,7 @@ impl LanceShinkaiDb {
         Ok(workflows)
     }
 
-    pub async fn vector_search(&self, query: &str, num_results: u64) -> Result<Vec<RecordBatch>, ToolError> {
+    pub async fn vector_search(&self, query: &str, num_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         // Generate the embedding from the query string
         let embedding = self
             .embedding_function
@@ -222,6 +222,11 @@ impl LanceShinkaiDb {
         let query = self
             .table
             .query()
+            .select(Select::columns(&[
+                ShinkaiToolSchema::tool_key_field(),
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::tool_header_field(),
+            ]))
             .limit(num_results as usize)
             .nearest_to(embedding)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -231,14 +236,84 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        let tool_data: Vec<RecordBatch> = results
+        let mut tool_headers = Vec::new();
+        let batches = results
             .try_collect::<Vec<_>>()
             .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?
-            .into_iter()
-            .collect();
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        Ok(tool_data)
+        for batch in batches {
+            let tool_header_array = batch
+                .column_by_name(ShinkaiToolSchema::tool_header_field())
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..tool_header_array.len() {
+                let tool_header_json = tool_header_array.value(i).to_string();
+                let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
+                    .map_err(|e| ToolError::SerializationError(e.to_string()))?;
+                tool_headers.push(tool_header);
+            }
+        }
+
+        Ok(tool_headers)
+    }
+
+    pub async fn workflow_vector_search(
+        &self,
+        query: &str,
+        num_results: u64,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        // Generate the embedding from the query string
+        let embedding = self
+            .embedding_function
+            .request_embeddings(query)
+            .await
+            .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
+
+        let query = self
+            .table
+            .query()
+            .select(Select::columns(&[
+                ShinkaiToolSchema::tool_key_field(),
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::tool_header_field(),
+            ]))
+            .only_if(format!("{} = 'Workflow'", ShinkaiToolSchema::tool_type_field()))
+            .limit(num_results as usize)
+            .nearest_to(embedding)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        let results = query
+            .execute()
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        let mut tool_headers = Vec::new();
+        let batches = results
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        for batch in batches {
+            let tool_header_array = batch
+                .column_by_name(ShinkaiToolSchema::tool_header_field())
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..tool_header_array.len() {
+                let tool_header_json = tool_header_array.value(i).to_string();
+                let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
+                    .map_err(|e| ToolError::SerializationError(e.to_string()))?;
+                tool_headers.push(tool_header);
+            }
+        }
+
+        Ok(tool_headers)
     }
 
     // Add more methods as needed, e.g., delete_tool, get_tool, etc.
@@ -315,22 +390,13 @@ mod tests {
         let mut found_duckduckgo = false;
         let mut duckduckgo_tool_key = String::new();
 
-        for batch in results {
-            let tool_key_array = batch
-                .column_by_name(ShinkaiToolSchema::tool_key_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-
-            for i in 0..tool_key_array.len() {
-                let tool_key = tool_key_array.value(i);
-                println!("Tool key: {}", tool_key);
-                if tool_key.contains("duckduckgo") {
-                    found_duckduckgo = true;
-                    duckduckgo_tool_key = tool_key.to_string();
-                    eprintln!("Found duckduckgo tool key: {}", duckduckgo_tool_key);
-                }
+        for tool_header in results {
+            let tool_key = tool_header.tool_router_key.clone();
+            println!("Tool key: {}", tool_key);
+            if tool_key.contains("duckduckgo") {
+                found_duckduckgo = true;
+                duckduckgo_tool_key = tool_key;
+                eprintln!("Found duckduckgo tool key: {}", duckduckgo_tool_key);
             }
         }
 
@@ -534,7 +600,11 @@ mod tests {
         if let ShinkaiTool::JS(js_tool, _) = updated_tool {
             for config in &js_tool.config {
                 if let ToolConfig::BasicConfig(basic_config) = config {
-                    assert_eq!(basic_config.key_value, Some(new_config_value.clone()), "Config values do not match");
+                    assert_eq!(
+                        basic_config.key_value,
+                        Some(new_config_value.clone()),
+                        "Config values do not match"
+                    );
                 }
             }
         } else {

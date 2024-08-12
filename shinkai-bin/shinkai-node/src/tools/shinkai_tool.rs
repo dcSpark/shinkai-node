@@ -23,11 +23,11 @@ pub enum ShinkaiTool {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ShinkaiToolHeader {
-    name: String,
-    description: String,
-    tool_router_key: String,
-    tool_type: String,
-    formatted_tool_summary_for_ui: String,
+    pub name: String,
+    pub description: String,
+    pub tool_router_key: String,
+    pub tool_type: String,
+    pub formatted_tool_summary_for_ui: String,
 }
 
 impl ShinkaiTool {

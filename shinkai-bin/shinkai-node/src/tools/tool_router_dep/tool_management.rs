@@ -121,9 +121,9 @@ pub fn remove_js_toolkit(
         .extract_profile()
         .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
     for tool in toolkit {
-        if let ShinkaiTool::JS(js_tool, isEnabled) = tool {
+        if let ShinkaiTool::JS(js_tool, is_enabled) = tool {
             let js_lite_tool = js_tool.to_without_code();
-            let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool, isEnabled);
+            let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool, is_enabled);
             tool_router.delete_shinkai_tool(&profile, &shinkai_tool.name(), &shinkai_tool.toolkit_name())?;
         }
     }

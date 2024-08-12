@@ -1,6 +1,6 @@
+use std::env;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
-use std::env;
 
 use crate::db::ShinkaiDB;
 use crate::tools::error::ToolError;
@@ -43,11 +43,19 @@ pub async fn start(
     add_rust_tools(&mut routing_resource, generator.box_clone()).await;
 
     if let Some(db) = db.upgrade() {
-        add_static_workflows(&mut routing_resource, generator.box_clone(), db.clone(), profile.clone()).await;
+        add_static_workflows(
+            &mut routing_resource,
+            generator.box_clone(),
+            db.clone(),
+            profile.clone(),
+        )
+        .await;
         add_js_tools(&mut routing_resource, generator, db, profile.clone()).await;
     }
 
-    tool_router.routing_resources.insert(profile.to_string(), routing_resource);
+    tool_router
+        .routing_resources
+        .insert(profile.to_string(), routing_resource);
     tool_router.started = true;
     Ok(())
 }
@@ -76,22 +84,24 @@ async fn add_static_workflows(
     let model_type = generator.model_type();
     let start_time = Instant::now();
 
-    if let EmbeddingModelType::OllamaTextEmbeddingsInference(
-        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-    ) = model_type
+    if let EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M) =
+        model_type
     {
         let data = workflows_data::WORKFLOWS_JSON;
         let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
         let json_array = json_value.as_array().expect("Expected JSON data to be an array");
 
         for item in json_array {
-            let shinkai_tool_value = &item["shinkai_tool"];
-            let shinkai_tool: ShinkaiTool =
-                serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
+            let shinkai_tool: Result<ShinkaiTool, _> = serde_json::from_value(item.clone());
+            let shinkai_tool = match shinkai_tool {
+                Ok(tool) => tool,
+                Err(e) => {
+                    eprintln!("Failed to parse shinkai_tool: {}. JSON: {:?}", e, item);
+                    continue; // Skip this item and continue with the next one
+                }
+            };
 
-            let embedding_value = &item["embedding"];
-            let embedding: Embedding =
-                serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
+            let embedding = shinkai_tool.get_embedding().unwrap();
 
             let _ = routing_resource.insert_text_node(
                 shinkai_tool.tool_router_key(),
@@ -170,7 +180,9 @@ async fn add_js_tools(
                             .await
                             .unwrap();
                         js_tool.embedding = Some(new_embedding.clone());
-                        if let Err(e) = db.add_shinkai_tool(ShinkaiTool::JS(js_tool.clone(), isEnabled), profile.clone()) {
+                        if let Err(e) =
+                            db.add_shinkai_tool(ShinkaiTool::JS(js_tool.clone(), isEnabled), profile.clone())
+                        {
                             eprintln!("Error updating JS tool in DB: {:?}", e);
                         }
                         new_embedding
