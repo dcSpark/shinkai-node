@@ -9723,6 +9723,7 @@ dependencies = [
 [[package]]
 name = "shinkai_ocr"
 version = "0.1.0"
+source = "git+https://github.com/dcSpark/shinkai-ocr#56c65d2690b80bd0cb82f0615ea3add84e3e78ab"
 dependencies = [
  "anyhow",
  "image 0.25.1",
@@ -9731,7 +9732,6 @@ dependencies = [
  "regex",
  "reqwest 0.11.27",
  "rten",
- "tokio",
  "uuid 1.8.0",
 ]
 
