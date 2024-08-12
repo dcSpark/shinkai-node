@@ -873,12 +873,27 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         },
                     );
                 } else {
+                    // Check the states of dependent cells to determine the status of the new cell
+                    let status = if let ColumnBehavior::Formula(formula) | ColumnBehavior::LLMCall { input: formula, .. } = &col_def.behavior {
+                        let dependencies = state.parse_formula_dependencies(formula);
+                        let any_dependency_missing = dependencies.iter().any(|dep_col| {
+                            state.get_cell_value(row_uuid.clone(), dep_col.clone()).is_none()
+                        });
+                        if any_dependency_missing {
+                            CellStatus::Waiting
+                        } else {
+                            CellStatus::Pending
+                        }
+                    } else {
+                        CellStatus::Pending
+                    };
+
                     row_cells.insert(
                         col_uuid.clone(),
                         Cell {
                             value: None,
                             last_updated: Utc::now(),
-                            status: CellStatus::Pending,
+                            status,
                             input_hash: None,
                         },
                     );

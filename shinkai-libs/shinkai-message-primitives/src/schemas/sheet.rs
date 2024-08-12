@@ -48,6 +48,7 @@ pub enum ColumnBehavior {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum CellStatus {
+    Waiting,
     Pending,
     Ready,
 }

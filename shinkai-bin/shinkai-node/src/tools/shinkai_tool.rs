@@ -10,14 +10,35 @@ use shinkai_vector_resources::embeddings::Embedding;
 use super::{js_tools::JSToolWithoutCode, workflow_tool::WorkflowTool};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", content = "content")]
 pub enum ShinkaiTool {
     Rust(RustTool),
     JS(JSTool),
-    JSLite(JSToolWithoutCode),
+    JSLite(JSToolWithoutCode), // TODO: we can get rid of this after moving to lancedb
     Workflow(WorkflowTool),
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ShinkaiToolHeader {
+    name: String,
+    description: String,
+    tool_router_key: String,
+    tool_type: String,
+    formatted_tool_summary_for_ui: String,
+}
+
 impl ShinkaiTool {
+    /// Generate a ShinkaiToolHeader from a ShinkaiTool
+    pub fn to_header(&self) -> ShinkaiToolHeader {
+        ShinkaiToolHeader {
+            name: self.name(),
+            description: self.description(),
+            tool_router_key: self.tool_router_key(),
+            tool_type: self.tool_type().to_string(),
+            formatted_tool_summary_for_ui: self.formatted_tool_summary_for_ui(),
+        }
+    }
+
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
         match self {
@@ -111,6 +132,16 @@ impl ShinkaiTool {
             self.toolkit_type_name(),
             self.description(),
         )
+    }
+
+    /// Sets the embedding for the tool
+    pub fn set_embedding(&mut self, embedding: Embedding) {
+        match self {
+            ShinkaiTool::Rust(r) => r.tool_embedding = embedding,
+            ShinkaiTool::JS(j) => j.embedding = Some(embedding),
+            ShinkaiTool::JSLite(j) => j.embedding = Some(embedding),
+            ShinkaiTool::Workflow(w) => w.embedding = Some(embedding),
+        }
     }
 
     /// Returns the tool formatted as a JSON object for the function call format

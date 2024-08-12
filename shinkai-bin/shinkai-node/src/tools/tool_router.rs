@@ -76,11 +76,7 @@ impl ToolRouter {
         tool_management::add_js_toolkit(self, profile, toolkit, generator).await
     }
 
-    pub fn remove_js_toolkit(
-        &mut self,
-        profile: &ShinkaiName,
-        toolkit: Vec<ShinkaiTool>,
-    ) -> Result<(), ToolError> {
+    pub fn remove_js_toolkit(&mut self, profile: &ShinkaiName, toolkit: Vec<ShinkaiTool>) -> Result<(), ToolError> {
         tool_management::remove_js_toolkit(self, profile, toolkit)
     }
 
@@ -125,7 +121,16 @@ impl ToolRouter {
         name_query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiTool>, ToolError> {
-        tool_search::workflow_search(self, profile, embedding_generator, db, query, name_query, num_of_results).await
+        tool_search::workflow_search(
+            self,
+            profile,
+            embedding_generator,
+            db,
+            query,
+            name_query,
+            num_of_results,
+        )
+        .await
     }
 
     pub async fn call_function(
@@ -152,10 +157,10 @@ impl ToolRouter {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};
+    use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 
     use crate::tools::tool_router_dep::workflows_data;
@@ -208,6 +213,7 @@ mod tests {
     // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     /// It's just easier to have it here because it already has access to all the necessary dependencies
+    #[allow(dead_code)]
     async fn test_generate_static_workflows() {
         let generator = RemoteEmbeddingGenerator::new_default_local();
 
@@ -220,7 +226,7 @@ mod tests {
         println!("Number of testing workflows: {}", workflows_testing.len());
 
         for workflow_tool in workflows_testing {
-            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
@@ -231,10 +237,8 @@ mod tests {
                     .unwrap()
             };
 
-            workflows_json_testing.push(json!({
-                "embedding": embedding,
-                "shinkai_tool": shinkai_tool
-            }));
+            shinkai_tool.set_embedding(embedding);
+            workflows_json_testing.push(json!(shinkai_tool));
         }
 
         // Generate workflows for production
@@ -243,7 +247,7 @@ mod tests {
         println!("Number of production workflows: {}", workflows.len());
 
         for workflow_tool in workflows {
-            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
@@ -254,10 +258,8 @@ mod tests {
                     .unwrap()
             };
 
-            workflows_json.push(json!({
-                "embedding": embedding,
-                "shinkai_tool": shinkai_tool
-            }));
+            shinkai_tool.set_embedding(embedding);
+            workflows_json.push(json!(shinkai_tool));
         }
 
         let json_data_testing =
