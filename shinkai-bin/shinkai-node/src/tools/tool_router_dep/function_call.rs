@@ -27,7 +27,7 @@ pub async fn call_function(
     let function_args = function_call.arguments.clone();
 
     match shinkai_tool {
-        ShinkaiTool::Rust(_) => {
+        ShinkaiTool::Rust(_, _) => {
             if let Some(rust_function) = RustToolFunctions::get_tool_function(&function_name) {
                 let args: Vec<Box<dyn Any + Send>> = RustTool::convert_args_from_fn_call(function_args)?;
                 let result = rust_function(context, args)
@@ -42,7 +42,7 @@ pub async fn call_function(
                 });
             }
         }
-        ShinkaiTool::JS(js_tool) => {
+        ShinkaiTool::JS(js_tool, _) => {
             let function_config = shinkai_tool.get_config_from_env();
             let result = js_tool
                 .run(function_args, function_config)
@@ -54,7 +54,7 @@ pub async fn call_function(
                 function_call,
             });
         }
-        ShinkaiTool::JSLite(js_lite_tool) => {
+        ShinkaiTool::JSLite(js_lite_tool, _) => {
             let function_config = shinkai_tool.get_config_from_env();
             let tool_key = ShinkaiTool::gen_router_key(js_lite_tool.name.clone(), js_lite_tool.toolkit_name.clone());
             let full_js_tool = db.get_shinkai_tool(&tool_key, user_profile).map_err(|e| {
@@ -62,7 +62,7 @@ pub async fn call_function(
             })?;
             // If the tool needs a config, get it.
 
-            if let ShinkaiTool::JS(js_tool) = full_js_tool {
+            if let ShinkaiTool::JS(js_tool, _) = full_js_tool {
                 let result = js_tool
                     .run(function_args, function_config)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -76,7 +76,7 @@ pub async fn call_function(
                 return Err(LLMProviderError::FunctionNotFound(function_name));
             }
         }
-        ShinkaiTool::Workflow(workflow_tool) => {
+        ShinkaiTool::Workflow(workflow_tool, _) => {
             let functions: HashMap<String, Box<dyn AsyncFunction>> = HashMap::new();
 
             let mut dsl_inference =

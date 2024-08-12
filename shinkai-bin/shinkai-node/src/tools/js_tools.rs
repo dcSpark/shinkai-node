@@ -41,8 +41,8 @@ impl JSTool {
                 serde_json::from_str(extra).map_err(|e| ToolError::SerializationError(e.to_string()))?;
             for config in &self.config {
                 if let ToolConfig::BasicConfig(basic_config) = config {
-                    if basic_config.required && !extra_json.get(&basic_config.name).is_some() {
-                        return Err(ToolError::MissingConfigError(basic_config.name.clone()));
+                    if basic_config.required && !extra_json.get(&basic_config.key_name).is_some() {
+                        return Err(ToolError::MissingConfigError(basic_config.key_name.clone()));
                     }
                 }
             }
@@ -50,7 +50,7 @@ impl JSTool {
             for config in &self.config {
                 if let ToolConfig::BasicConfig(basic_config) = config {
                     if basic_config.required {
-                        return Err(ToolError::MissingConfigError(basic_config.name.clone()));
+                        return Err(ToolError::MissingConfigError(basic_config.key_name.clone()));
                     }
                 }
             }

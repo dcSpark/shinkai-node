@@ -3143,7 +3143,7 @@ impl Node {
                     workflow_tool.embedding = Some(embedding.clone());
 
                     // Create a ShinkaiTool::Workflow
-                    let shinkai_tool = ShinkaiTool::Workflow(workflow_tool);
+                    let shinkai_tool = ShinkaiTool::Workflow(workflow_tool, true);
 
                     // Add the tool to the ToolRouter
                     match tool_router.add_shinkai_tool(&requester_name, &shinkai_tool, embedding) {

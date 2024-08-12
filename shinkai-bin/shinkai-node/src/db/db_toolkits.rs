@@ -15,7 +15,7 @@ impl ShinkaiDB {
     pub fn add_shinkai_tool(&self, tool: ShinkaiTool, profile: ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Verify that the tool is of type JS
         match tool {
-            ShinkaiTool::JS(_) => {}
+            ShinkaiTool::JS(_, _) => {}
             _ => {
                 return Err(ShinkaiDBError::InvalidToolType(
                     "Only JS tools can be added".to_string(),
@@ -129,7 +129,7 @@ impl ShinkaiDB {
 
             // Remove each tool in the toolkit
             for tool in &toolkit.tools {
-                let shinkai_tool = ShinkaiTool::JS(tool.clone());
+                let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
                 let tool_key = format!("user_ts_tools_{}_{}", profile_hash, shinkai_tool.tool_router_key());
                 batch.delete_cf(cf_toolkits, tool_key.as_bytes());
             }
@@ -146,7 +146,7 @@ impl ShinkaiDB {
     /// Activates a JSTool for a given profile.
     pub fn activate_jstool(&self, tool_key: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         let mut tool = self.get_shinkai_tool(tool_key, profile)?;
-        if let ShinkaiTool::JS(ref mut js_tool) = tool {
+        if let ShinkaiTool::JS(ref mut js_tool, _) = tool {
             if !js_tool.activated {
                 js_tool.activated = true;
                 self.add_shinkai_tool(tool, profile.clone())?;
@@ -164,7 +164,7 @@ impl ShinkaiDB {
     /// Deactivates a JSTool for a given profile.
     pub fn deactivate_jstool(&self, tool_key: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         let mut tool = self.get_shinkai_tool(tool_key, profile)?;
-        if let ShinkaiTool::JS(ref mut js_tool) = tool {
+        if let ShinkaiTool::JS(ref mut js_tool, _) = tool {
             if js_tool.activated {
                 js_tool.activated = false;
                 self.add_shinkai_tool(tool, profile.clone())?;
@@ -183,7 +183,7 @@ impl ShinkaiDB {
     pub fn add_jstoolkit(&self, toolkit: JSToolkit, profile: ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Add each tool in the toolkit
         for tool in &toolkit.tools {
-            let shinkai_tool = ShinkaiTool::JS(tool.clone());
+            let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
             self.add_shinkai_tool(shinkai_tool, profile.clone())?;
         }
 
@@ -245,7 +245,7 @@ impl ShinkaiDB {
                 .tool_keys
                 .into_iter()
                 .map(|key| match self.get_shinkai_tool(&key, profile)? {
-                    ShinkaiTool::JS(full_tool) => Ok(full_tool),
+                    ShinkaiTool::JS(full_tool, _) => Ok(full_tool),
                     _ => Err(ShinkaiDBError::InvalidToolType("Expected JS tool".to_string())),
                 })
                 .collect::<Result<Vec<JSTool>, ShinkaiDBError>>()?;
@@ -285,7 +285,7 @@ impl ShinkaiDB {
             .tool_keys
             .into_iter()
             .map(|key| match self.get_shinkai_tool(&key, profile)? {
-                ShinkaiTool::JS(full_tool) => Ok(full_tool),
+                ShinkaiTool::JS(full_tool, _) => Ok(full_tool),
                 _ => Err(ShinkaiDBError::InvalidToolType("Expected JS tool".to_string())),
             })
             .collect::<Result<Vec<JSTool>, ShinkaiDBError>>()?;

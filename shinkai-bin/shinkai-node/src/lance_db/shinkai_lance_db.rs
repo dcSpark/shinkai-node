@@ -118,7 +118,6 @@ impl LanceShinkaiDb {
                 Arc::new(StringArray::from(tool_data)),
                 Arc::new(StringArray::from(tool_header)),
                 Arc::new(BooleanArray::from(vec![true])), // is_enabled is true by default
-                Arc::new(StringArray::from(vec![None as Option<&str>])), // config is null by default
             ],
         )
         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -212,60 +211,6 @@ impl LanceShinkaiDb {
         Ok(workflows)
     }
 
-    pub async fn set_config(&self, tool_key: &str, config: &Value) -> Result<(), ToolError> {
-        // Serialize the config to a JSON string
-        let config_str = serde_json::to_string(config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
-
-        // Update the tool in the database
-        let filter = format!("{} = '{}'", ShinkaiToolSchema::tool_key_field(), tool_key);
-        let update_builder = self
-            .table
-            .update()
-            .only_if(filter)
-            .column(ShinkaiToolSchema::config_field(), format!("'{}'", config_str));
-
-        update_builder
-            .execute()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-
-        Ok(())
-    }
-
-    pub async fn get_config(&self, tool_key: &str) -> Result<Option<Value>, ToolError> {
-        let query = self
-            .table
-            .query()
-            .select(Select::columns(&[ShinkaiToolSchema::config_field()]))
-            .only_if(format!("{} = '{}'", ShinkaiToolSchema::tool_key_field(), tool_key))
-            .limit(1)
-            .execute()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-
-        let results = query
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-
-        if let Some(batch) = results.first() {
-            let config_array = batch
-                .column_by_name(ShinkaiToolSchema::config_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-
-            if config_array.len() > 0 && config_array.is_valid(0) {
-                let config_str = config_array.value(0);
-                let config_value: Value =
-                    serde_json::from_str(config_str).map_err(|e| ToolError::SerializationError(e.to_string()))?;
-                return Ok(Some(config_value));
-            }
-        }
-        Ok(None)
-    }
-
     pub async fn vector_search(&self, query: &str, num_results: u64) -> Result<Vec<RecordBatch>, ToolError> {
         // Generate the embedding from the query string
         let embedding = self
@@ -302,6 +247,7 @@ impl LanceShinkaiDb {
 #[cfg(test)]
 mod tests {
     use crate::tools::js_toolkit::JSToolkit;
+    use crate::tools::js_toolkit_headers::ToolConfig;
     use crate::tools::tool_router_dep::workflows_data;
 
     use super::*;
@@ -342,7 +288,7 @@ mod tests {
         for (name, definition) in tools {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone());
+                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
                 let embedding = generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())
                     .await
@@ -401,12 +347,12 @@ mod tests {
         );
 
         // Print the author name before the change
-        if let ShinkaiTool::JS(ref js_tool) = fetched_tool {
+        if let ShinkaiTool::JS(ref js_tool, _) = fetched_tool {
             println!("Author before change: {}", js_tool.author);
         }
 
         // Update the author name of the tool
-        if let ShinkaiTool::JS(ref mut js_tool) = fetched_tool {
+        if let ShinkaiTool::JS(ref mut js_tool, _) = fetched_tool {
             js_tool.author = "New Author".to_string();
         }
 
@@ -419,7 +365,7 @@ mod tests {
         let updated_tool = db.get_tool(&duckduckgo_tool_key).await?;
         assert!(updated_tool.is_some(), "Failed to fetch the updated tool");
         let updated_tool = updated_tool.unwrap();
-        if let ShinkaiTool::JS(js_tool) = updated_tool {
+        if let ShinkaiTool::JS(js_tool, _) = updated_tool {
             assert_eq!(js_tool.author, "New Author", "Author name was not updated");
         }
 
@@ -452,7 +398,7 @@ mod tests {
         for (name, definition) in tools {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone());
+                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
                 let embedding = generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())
                     .await
@@ -535,10 +481,14 @@ mod tests {
         let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone()).await?;
 
         let tools = built_in_tools::get_tools();
-        let (name, definition) = tools.into_iter().next().unwrap();
+        let (name, definition) = tools
+            .into_iter()
+            .find(|(name, _)| name == "shinkai-tool-weather-by-city")
+            .unwrap();
+
         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
         let tool = toolkit.tools.into_iter().next().unwrap();
-        let mut shinkai_tool = ShinkaiTool::JS(tool.clone());
+        let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
         let embedding = generator
             .generate_embedding_default(&shinkai_tool.format_embedding_string())
             .await
@@ -551,26 +501,45 @@ mod tests {
 
         // Read the config (should be null)
         let tool_key = shinkai_tool.tool_router_key();
-        let config = db
-            .get_config(&tool_key)
-            .await
-            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-        println!("Initial config: {:?}", config);
-        assert!(config.is_none(), "Config should be null initially");
+        let fetched_tool = db.get_tool(&tool_key).await?;
+        assert!(fetched_tool.is_some(), "Failed to fetch the tool using get_tool");
+        let mut fetched_tool = fetched_tool.unwrap();
+        if let ShinkaiTool::JS(ref js_tool, _) = fetched_tool {
+            for config in &js_tool.config {
+                if let ToolConfig::BasicConfig(ref basic_config) = config {
+                    assert!(basic_config.key_value.is_none(), "Initial key_value should be None");
+                }
+            }
+        }
 
         // Update the config with a random JSON value
-        let new_config: Value = serde_json::json!({"key": "value"});
-        db.set_config(&tool_key, &new_config)
+        let new_config_value = "new_value".to_string();
+        if let ShinkaiTool::JS(ref mut js_tool, _) = fetched_tool {
+            for config in &mut js_tool.config {
+                if let ToolConfig::BasicConfig(ref mut basic_config) = config {
+                    basic_config.key_value = Some(new_config_value.clone());
+                }
+            }
+        }
+
+        // Update the tool in the database
+        db.set_tool(&fetched_tool)
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
-        // Read the config back and ensure it matches
-        let updated_config = db
-            .get_config(&tool_key)
-            .await
-            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-        println!("Updated config: {:?}", updated_config);
-        assert_eq!(updated_config, Some(new_config), "Config values do not match");
+        // Re-fetch the tool and ensure the config matches
+        let updated_tool = db.get_tool(&tool_key).await?;
+        assert!(updated_tool.is_some(), "Failed to fetch the updated tool");
+        let updated_tool = updated_tool.unwrap();
+        if let ShinkaiTool::JS(js_tool, _) = updated_tool {
+            for config in &js_tool.config {
+                if let ToolConfig::BasicConfig(basic_config) = config {
+                    assert_eq!(basic_config.key_value, Some(new_config_value.clone()), "Config values do not match");
+                }
+            }
+        } else {
+            assert!(false, "Updated tool is not of type JS");
+        }
 
         Ok(())
     }

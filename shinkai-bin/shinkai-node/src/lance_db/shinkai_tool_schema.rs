@@ -32,7 +32,6 @@ impl ShinkaiToolSchema {
             Field::new(Self::tool_data_field(), DataType::Utf8, false),
             Field::new(Self::tool_header_field(), DataType::Utf8, false),
             Field::new(Self::is_enabled_field(), DataType::Boolean, false),
-            Field::new(Self::config_field(), DataType::Utf8, true),
         ])))
     }
 
@@ -58,10 +57,6 @@ impl ShinkaiToolSchema {
 
     pub fn is_enabled_field() -> &'static str {
         "is_enabled"
-    }
-
-    pub fn config_field() -> &'static str {
-        "config"
     }
 
     pub fn vector_dimensions(embedding_model: &EmbeddingModelType) -> Result<usize, VRError> {

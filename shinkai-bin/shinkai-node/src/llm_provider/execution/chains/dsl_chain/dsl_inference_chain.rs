@@ -559,7 +559,7 @@ impl AsyncFunction for ShinkaiToolFunction {
         };
 
         let result = match &self.tool {
-            ShinkaiTool::JS(js_tool) => {
+            ShinkaiTool::JS(js_tool, _) => {
                 let function_config = self.tool.get_config_from_env();
                 let result = js_tool
                     .run(function_call.arguments, function_config)
@@ -585,17 +585,17 @@ impl AsyncFunction for ShinkaiToolFunction {
                         .map_err(|e| WorkflowError::ExecutionError(format!("Failed to stringify result: {}", e)))?,
                 }
             }
-            ShinkaiTool::JSLite(_) => {
+            ShinkaiTool::JSLite(_, _) => {
                 return Err(WorkflowError::ExecutionError(
                     "Simplified JS tools are not supported in this context".to_string(),
                 ));
             }
-            ShinkaiTool::Rust(_) => {
+            ShinkaiTool::Rust(_, _) => {
                 return Err(WorkflowError::ExecutionError(
                     "Rust tools are not supported in this context".to_string(),
                 ));
             }
-            ShinkaiTool::Workflow(_) => {
+            ShinkaiTool::Workflow(_, _) => {
                 // TODO: we should allow for a workflow to call another workflow
                 return Err(WorkflowError::ExecutionError(
                     "Workflows are not supported in this context".to_string(),

@@ -56,7 +56,7 @@ async fn add_rust_tools(routing_resource: &mut MapVectorResource, generator: Box
     let rust_tools = RustTool::static_tools(generator).await;
 
     for tool in rust_tools {
-        let shinkai_tool = ShinkaiTool::Rust(tool.clone());
+        let shinkai_tool = ShinkaiTool::Rust(tool.clone(), true);
         let _ = routing_resource.insert_text_node(
             shinkai_tool.tool_router_key(),
             shinkai_tool.to_json().unwrap(),
@@ -101,7 +101,7 @@ async fn add_static_workflows(
                 &vec![],
             );
 
-            if let ShinkaiTool::Workflow(workflow_tool) = &shinkai_tool {
+            if let ShinkaiTool::Workflow(workflow_tool, _) = &shinkai_tool {
                 if let Err(e) = db.save_workflow(workflow_tool.workflow.clone(), profile.clone()) {
                     eprintln!("Error saving workflow to DB: {:?}", e);
                 }
@@ -112,7 +112,7 @@ async fn add_static_workflows(
         println!("Number of static workflows: {}", workflows.len());
 
         for workflow_tool in workflows {
-            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
@@ -158,9 +158,9 @@ async fn add_js_tools(
     match db.all_tools_for_user(&profile) {
         Ok(tools) => {
             for tool in tools {
-                if let ShinkaiTool::JS(mut js_tool) = tool {
+                if let ShinkaiTool::JS(mut js_tool, isEnabled) = tool {
                     let js_lite_tool = js_tool.to_without_code();
-                    let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
+                    let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool, isEnabled);
 
                     let embedding = if let Some(embedding) = js_tool.embedding.clone() {
                         embedding
@@ -170,7 +170,7 @@ async fn add_js_tools(
                             .await
                             .unwrap();
                         js_tool.embedding = Some(new_embedding.clone());
-                        if let Err(e) = db.add_shinkai_tool(ShinkaiTool::JS(js_tool.clone()), profile.clone()) {
+                        if let Err(e) = db.add_shinkai_tool(ShinkaiTool::JS(js_tool.clone(), isEnabled), profile.clone()) {
                             eprintln!("Error updating JS tool in DB: {:?}", e);
                         }
                         new_embedding

@@ -7,7 +7,7 @@ use crate::tools::tool_router::ToolRouter;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource::{RetrievedNode, VectorResourceCore, VectorResourceSearch};
+use shinkai_vector_resources::vector_resource::{VectorResourceCore, VectorResourceSearch};
 
 pub fn syntactic_vector_search(
     tool_router: &ToolRouter,
@@ -90,7 +90,7 @@ pub async fn workflow_search(
     let mut name_similarity_results = vec![];
     for node in routing_resource.get_root_nodes() {
         if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.get_text_content()?) {
-            if let ShinkaiTool::Workflow(_) = shinkai_tool {
+            if let ShinkaiTool::Workflow(_, _) = shinkai_tool {
                 let name = shinkai_tool.name().to_lowercase();
                 let query = name_query.to_lowercase();
                 if name.contains(&query) {
@@ -106,7 +106,7 @@ pub async fn workflow_search(
 
     for node in vector_nodes {
         if let Ok(shinkai_tool) = ShinkaiTool::from_json(node.node.get_text_content()?) {
-            if let ShinkaiTool::Workflow(_) = shinkai_tool {
+            if let ShinkaiTool::Workflow(_, _) = shinkai_tool {
                 let key = shinkai_tool.tool_router_key();
                 if seen_keys.insert(key.clone()) {
                     combined_results.push((shinkai_tool, node.score));

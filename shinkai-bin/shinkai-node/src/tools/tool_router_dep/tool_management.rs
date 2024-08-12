@@ -87,9 +87,9 @@ pub async fn add_js_toolkit(
         .extract_profile()
         .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
     for tool in toolkit {
-        if let ShinkaiTool::JS(mut js_tool) = tool.clone() {
+        if let ShinkaiTool::JS(mut js_tool, _) = tool.clone() {
             let js_lite_tool = js_tool.to_without_code();
-            let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
+            let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool, true);
 
             let embedding = if let Some(embedding) = js_tool.embedding.clone() {
                 embedding
@@ -121,9 +121,9 @@ pub fn remove_js_toolkit(
         .extract_profile()
         .map_err(|e| ToolError::InvalidProfile(e.to_string()))?;
     for tool in toolkit {
-        if let ShinkaiTool::JS(js_tool) = tool {
+        if let ShinkaiTool::JS(js_tool, isEnabled) = tool {
             let js_lite_tool = js_tool.to_without_code();
-            let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool);
+            let shinkai_tool = ShinkaiTool::JSLite(js_lite_tool, isEnabled);
             tool_router.delete_shinkai_tool(&profile, &shinkai_tool.name(), &shinkai_tool.toolkit_name())?;
         }
     }
@@ -201,7 +201,7 @@ pub fn all_available_js_tools(
             let js_tools: Vec<ShinkaiTool> = tools
                 .into_iter()
                 .filter_map(|tool| match tool {
-                    ShinkaiTool::JS(_) | ShinkaiTool::JSLite(_) => Some(tool),
+                    ShinkaiTool::JS(_, _) | ShinkaiTool::JSLite(_, _) => Some(tool),
                     _ => None,
                 })
                 .collect();

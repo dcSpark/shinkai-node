@@ -60,7 +60,7 @@ async fn test_toolkit_installation_from_built_in_tools() {
     // Activate all installed toolkits
     for toolkit in &toolkit_list {
         for tool in &toolkit.tools {
-            let shinkai_tool = ShinkaiTool::JS(tool.clone());
+            let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
             shinkai_db
                 .activate_jstool(&shinkai_tool.tool_router_key(), &profile)
                 .unwrap();
@@ -134,7 +134,7 @@ async fn test_call_function_weather_by_city() {
     for toolkit in &toolkit_list {
         for tool in &toolkit.tools {
             if tool.name == function_call.name {
-                shinkai_tool = Some(ShinkaiTool::JS(tool.clone()));
+                shinkai_tool = Some(ShinkaiTool::JS(tool.clone(), true));
                 break;
             }
         }
@@ -187,7 +187,7 @@ async fn test_get_default_tools() {
     // Activate all installed toolkits
     for toolkit in &toolkit_list {
         for tool in &toolkit.tools {
-            let shinkai_tool = ShinkaiTool::JS(tool.clone());
+            let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
             shinkai_db
                 .activate_jstool(&shinkai_tool.tool_router_key(), &profile)
                 .unwrap();
@@ -255,7 +255,7 @@ async fn test_create_update_and_read_toolkit() {
     updated_tool.description = "Updated description".to_string();
     updated_tool.js_code = "function updatedTool() { return 'Updated function'; }".to_string();
 
-    let shinkai_tool = ShinkaiTool::JS(updated_tool.clone());
+    let shinkai_tool = ShinkaiTool::JS(updated_tool.clone(), true);
     shinkai_db.add_shinkai_tool(shinkai_tool, profile.clone()).unwrap();
 
     // Read the toolkit again
@@ -356,7 +356,7 @@ async fn test_create_toolkit_from_file() {
     );
 
     // Verify that the tool can be activated
-    let shinkai_tool = ShinkaiTool::JS(read_tool.clone());
+    let shinkai_tool = ShinkaiTool::JS(read_tool.clone(), true);
     shinkai_db
         .activate_jstool(&shinkai_tool.tool_router_key(), &profile)
         .unwrap();

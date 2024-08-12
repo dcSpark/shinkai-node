@@ -98,12 +98,12 @@ impl JSToolkit {
                     .iter()
                     .map(|(key, value)| {
                         ToolConfig::BasicConfig(BasicConfig {
-                            name: key.clone(),
+                            key_name: key.clone(),
                             description: value["description"].as_str().unwrap_or("").to_string(),
                             required: definition.configurations["required"]
                                 .as_array()
                                 .map_or(false, |req| req.iter().any(|r| r == key)),
-                            key: key.clone(),
+                            key_value: None,
                         })
                     })
                     .collect()
@@ -191,10 +191,10 @@ mod tests {
         assert_eq!(tool.config.len(), 1);
         let config = &tool.config[0];
         if let ToolConfig::BasicConfig(basic_config) = config {
-            assert_eq!(basic_config.name, "apiKey");
+            assert_eq!(basic_config.key_name, "apiKey");
             assert_eq!(basic_config.description, "");
             assert!(basic_config.required);
-            assert_eq!(basic_config.key, "apiKey");
+            assert_eq!(basic_config.key_value, None);
         } else {
             panic!("Expected BasicConfig");
         }

@@ -226,7 +226,7 @@ mod tests {
         println!("Number of testing workflows: {}", workflows_testing.len());
 
         for workflow_tool in workflows_testing {
-            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
@@ -247,7 +247,7 @@ mod tests {
         println!("Number of production workflows: {}", workflows.len());
 
         for workflow_tool in workflows {
-            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone());
+            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
