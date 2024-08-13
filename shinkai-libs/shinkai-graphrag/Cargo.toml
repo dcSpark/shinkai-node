@@ -17,4 +17,3 @@ tokio = { version = "1.36", features = ["full"] }
 
 [dev-dependencies]
 async-openai = "0.23.4"
-tokio = { version = "1.36", features = ["full"] }
