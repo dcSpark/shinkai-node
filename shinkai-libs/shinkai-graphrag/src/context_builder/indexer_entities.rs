@@ -26,7 +26,7 @@ pub fn read_indexer_entities(
         .agg([col("community").max()])
         .with_column(col("community").cast(DataType::String))
         .join(
-            entity_embedding_df.clone().lazy(),
+            entity_embedding_df.lazy(),
             [col("name")],
             [col("name")],
             JoinArgs::new(JoinType::Inner),
@@ -34,7 +34,7 @@ pub fn read_indexer_entities(
         .collect()?;
 
     let entities = read_entities(
-        &entity_df,
+        entity_df,
         "id",
         Some("human_readable_id"),
         "name",
@@ -70,7 +70,7 @@ pub struct Entity {
 }
 
 pub fn read_entities(
-    df: &DataFrame,
+    df: DataFrame,
     id_col: &str,
     short_id_col: Option<&str>,
     title_col: &str,
@@ -105,7 +105,7 @@ pub fn read_entities(
 
     let column_names = column_names.into_iter().collect::<HashSet<String>>().into_vec();
 
-    let mut df = df.clone();
+    let mut df = df;
     df.as_single_chunk_par();
     let mut iters = df
         .columns(column_names.clone())?
