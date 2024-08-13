@@ -4,7 +4,6 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::db::ShinkaiDB;
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
@@ -38,34 +37,19 @@ impl ToolRouter {
         ToolRouter { lance_db }
     }
 
-    pub async fn initialization(
-        &self,
-        generator: Box<dyn EmbeddingGenerator>,
-        db: Arc<ShinkaiDB>,
-    ) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.lock().await;
-
-        if lance_db.is_empty().await? {
-            // Add workflows
-            self.add_static_workflows(generator).await;
-
-            // Add JS tools
-            self.add_js_tools().await;
-
-            // Add Rust tools
-            self.add_rust_tools().await;
+    pub async fn initialization(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+        let is_empty;
+        {
+            let lance_db = self.lance_db.lock().await;
+            is_empty = lance_db.is_empty().await?;
         }
 
-        Ok(())
-    }
+        if is_empty {
+            // Add workflows
+            let _ = self.add_static_workflows(generator).await;
 
-    async fn add_rust_tools(&self) -> Result<(), ToolError> {
-        let rust_tools = RustTool::static_tools().await;
-        let lance_db = self.lance_db.lock().await;
-
-        for tool in rust_tools {
-            let shinkai_tool = ShinkaiTool::Rust(tool.clone(), true);
-            lance_db.set_tool(&shinkai_tool).await?;
+            // Add JS tools
+            let _ = self.add_js_tools().await;
         }
 
         Ok(())
@@ -114,6 +98,8 @@ impl ToolRouter {
     }
 
     async fn add_js_tools(&self) -> Result<(), ToolError> {
+        let start_time = Instant::now(); // Start the timer
+
         let tools = built_in_tools::get_tools();
         let lance_db = self.lance_db.lock().await;
 
@@ -124,6 +110,9 @@ impl ToolRouter {
                 lance_db.set_tool(&shinkai_tool).await?;
             }
         }
+
+        let duration = start_time.elapsed(); // Calculate the duration
+        println!("Time taken to add JS tools: {:?}", duration); // Print the duration
 
         Ok(())
     }

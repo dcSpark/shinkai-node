@@ -7,6 +7,7 @@ use futures::TryStreamExt;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
 use lancedb::table::AddDataMode;
+use lancedb::Error as LanceDbError;
 use lancedb::{connect, Connection, Table};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::sync::Arc;
@@ -52,11 +53,21 @@ impl LanceShinkaiDb {
         let schema = ShinkaiToolSchema::create_schema(embedding_model)
             .map_err(|e| ShinkaiLanceDBError::Schema(e.to_string()))?;
 
-        connection
-            .create_empty_table("tool_router", schema)
-            .execute()
-            .await
-            .map_err(ShinkaiLanceDBError::from)
+        match connection.create_empty_table("tool_router", schema).execute().await {
+            Ok(table) => Ok(table),
+            Err(e) => {
+                if let LanceDbError::TableAlreadyExists { .. } = e {
+                    // If the table already exists, retrieve and return it
+                    connection
+                        .open_table("tool_router")
+                        .execute()
+                        .await
+                        .map_err(ShinkaiLanceDBError::from)
+                } else {
+                    Err(ShinkaiLanceDBError::from(e))
+                }
+            }
+        }
     }
 
     /// Insert a tool into the database. It will overwrite the tool if it already exists.

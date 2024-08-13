@@ -13,9 +13,7 @@ use tokio::sync::Mutex;
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::{
     db::ShinkaiDB,
-    managers::IdentityManager,
     network::{node_api_router::APIError, node_error::NodeError, Node},
-    schemas::identity::Identity,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
 };
 

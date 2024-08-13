@@ -43,7 +43,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_tcp_relayer::NetworkMessage;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::convert::TryInto;
@@ -442,6 +442,18 @@ impl Node {
                 });
                 self.ws_server = Some(ws_server);
             }
+        }
+
+        // Call ToolRouter initialization in a new task
+        if let Some(tool_router) = &self.tool_router {
+            let tool_router = tool_router.clone();
+            let generator = Box::new(self.embedding_generator.clone()) as Box<dyn EmbeddingGenerator>;
+
+            tokio::spawn(async move {
+                if let Err(e) = tool_router.lock().await.initialization(generator).await {
+                    eprintln!("ToolRouter initialization failed: {:?}", e);
+                }
+            });
         }
         eprintln!(">> Node start set variables successfully");
 

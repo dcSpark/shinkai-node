@@ -1611,7 +1611,7 @@ impl Node {
 
         // Fetch all toolkits for the user
         let db = db.lock().await;
-        let toolkits = match db.get_all_workflows().await {
+        let toolkits = match db.get_all_workflows().await { // TODO: this is wrong
             Ok(t) => t,
             Err(err) => {
                 let _ = res
