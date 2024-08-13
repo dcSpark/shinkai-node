@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Cursor, Read},
 };
 
@@ -276,7 +276,7 @@ impl CommunityContext {
     ) -> Vec<CommunityReport> {
         // Calculate a community's weight as the count of text units associated with entities within the community.
         if let Some(entities) = entities {
-            let mut community_reports = community_reports.clone();
+            let mut community_reports = community_reports;
             let mut community_text_units = std::collections::HashMap::new();
             for entity in entities {
                 if let Some(community_ids) = entity.community_ids.clone() {
@@ -297,7 +297,7 @@ impl CommunityContext {
                         weight_attribute.to_string(),
                         community_text_units
                             .get(&report.community_id)
-                            .map(|text_units| text_units.len())
+                            .map(|text_units| text_units.iter().flatten().cloned().collect::<HashSet<String>>().len())
                             .unwrap_or(0)
                             .to_string(),
                     );
@@ -316,7 +316,7 @@ impl CommunityContext {
                     })
                     .collect();
                 if let Some(max_weight) = all_weights.iter().cloned().max_by(|a, b| a.partial_cmp(b).unwrap()) {
-                    for mut report in community_reports {
+                    for report in &mut community_reports {
                         if let Some(attributes) = &mut report.attributes {
                             if let Some(weight) = attributes.get_mut(weight_attribute) {
                                 *weight = (weight.parse::<f64>().unwrap_or(0.0) / max_weight).to_string();
@@ -325,6 +325,8 @@ impl CommunityContext {
                     }
                 }
             }
+
+            return community_reports;
         }
         community_reports
     }
