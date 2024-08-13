@@ -1,7 +1,7 @@
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -18,7 +18,6 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::fmt;
@@ -155,19 +154,18 @@ impl GenericInferenceChain {
             if let Some(tool_router) = &tool_router {
                 let tool_router = tool_router.lock().await;
 
-                // Get default tools
-                if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
-                    tools.extend(default_tools);
-                }
+                // TODO: enable back the default tools (must tools)
+                // // Get default tools
+                // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
+                //     tools.extend(default_tools);
+                // }
 
                 // Search in JS Tools
-                let query = generator
-                    .generate_embedding_default(&user_message.clone())
-                    .await
-                    .unwrap();
-                let results = tool_router.vector_search(&user_profile, query, 3).unwrap();
+                let results = tool_router.vector_search(&user_message.clone(), 3).await.unwrap();
                 for result in results {
-                    tools.push(result);
+                    if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
+                        tools.push(tool);
+                    }
                 }
             }
         }
@@ -248,13 +246,7 @@ impl GenericInferenceChain {
                     .unwrap()
                     .lock()
                     .await
-                    .call_function(
-                        function_call,
-                        db.clone(),
-                        &context,
-                        shinkai_tool.unwrap(),
-                        &user_profile,
-                    )
+                    .call_function(function_call, &context, shinkai_tool.unwrap())
                     .await?;
 
                 // 7) Call LLM again with the response (for formatting)

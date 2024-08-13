@@ -79,3 +79,4 @@ localhost_proxied.key
 run_local_ai.sh
 subscriber.key
 shinkai-bin/shinkai-node/lance_db_tests
+lancedb_storage_debug_my_local_ai

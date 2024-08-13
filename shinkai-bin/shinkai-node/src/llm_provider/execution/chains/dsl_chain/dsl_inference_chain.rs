@@ -6,7 +6,7 @@ use crate::{
         providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::{shinkai_tool::ShinkaiTool, tool_router_dep::tool_management::all_available_js_tools, workflow_tool::WorkflowTool},
+    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
@@ -204,29 +204,30 @@ impl<'a> DslChain<'a> {
 
         let tool_router_locked = tool_router.lock().await;
 
-        let tools = all_available_js_tools(
-            &tool_router_locked,
-            self.context.user_profile(),
-            self.context.db().clone(),
-        )
-        .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
+        // TODO: add back
+        // let tools = all_available_js_tools(
+        //     &tool_router_locked,
+        //     self.context.user_profile(),
+        //     self.context.db().clone(),
+        // )
+        // .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
 
-        for tool in tools {
-            let function_name = format!("{}",tool.name()); // tool.toolkit_name(),
-            eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
-            self.functions.insert(
-                function_name.clone(),
-                Box::new(ShinkaiToolFunction {
-                    tool: tool.clone(),
-                    context: self.context.clone_box(),
-                }),
-            );
-        }
+        // for tool in tools {
+        //     let function_name = format!("{}",tool.name()); // tool.toolkit_name(),
+        //     eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
+        //     self.functions.insert(
+        //         function_name.clone(),
+        //         Box::new(ShinkaiToolFunction {
+        //             tool: tool.clone(),
+        //             context: self.context.clone_box(),
+        //         }),
+        //     );
+        // }
 
-        let elapsed_time = start_time.elapsed(); // Measure elapsed time
-        if env::var("LOG_ALL").unwrap_or_default() == "1" {
-            eprintln!("Time taken to add tools: {:?}", elapsed_time);
-        }
+        // let elapsed_time = start_time.elapsed(); // Measure elapsed time
+        // if env::var("LOG_ALL").unwrap_or_default() == "1" {
+        //     eprintln!("Time taken to add tools: {:?}", elapsed_time);
+        // }
 
         Ok(())
     }
@@ -584,11 +585,6 @@ impl AsyncFunction for ShinkaiToolFunction {
                     _ => serde_json::to_string(&main_result)
                         .map_err(|e| WorkflowError::ExecutionError(format!("Failed to stringify result: {}", e)))?,
                 }
-            }
-            ShinkaiTool::JSLite(_, _) => {
-                return Err(WorkflowError::ExecutionError(
-                    "Simplified JS tools are not supported in this context".to_string(),
-                ));
             }
             ShinkaiTool::Rust(_, _) => {
                 return Err(WorkflowError::ExecutionError(

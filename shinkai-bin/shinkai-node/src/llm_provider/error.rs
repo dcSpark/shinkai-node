@@ -1,4 +1,4 @@
-use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError, vector_fs::vector_fs_error::VectorFSError, workflows::sm_executor::WorkflowError};
+use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError, tools::error::ToolError, vector_fs::vector_fs_error::VectorFSError, workflows::sm_executor::WorkflowError};
 use anyhow::Error as AnyhowError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -343,5 +343,11 @@ impl From<String> for LLMProviderError {
 impl From<WorkflowError> for LLMProviderError {
     fn from(err: WorkflowError) -> LLMProviderError {
         LLMProviderError::WorkflowExecutionError(err.to_string())
+    }
+}
+
+impl From<ToolError> for LLMProviderError {
+    fn from(err: ToolError) -> LLMProviderError {
+        LLMProviderError::ToolRouterError(err.to_string())
     }
 }

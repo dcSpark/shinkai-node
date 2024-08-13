@@ -8,7 +8,6 @@ use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
 use lancedb::table::AddDataMode;
 use lancedb::{connect, Connection, Table};
-use serde_json::Value;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::sync::Arc;
 
@@ -16,6 +15,7 @@ use super::ollama_embedding_fn::OllamaEmbeddingFunction;
 use super::shinkai_lancedb_error::ShinkaiLanceDBError;
 use super::shinkai_tool_schema::ShinkaiToolSchema;
 
+#[derive(Clone)]
 pub struct LanceShinkaiDb {
     #[allow(dead_code)]
     connection: Connection,
@@ -26,6 +26,12 @@ pub struct LanceShinkaiDb {
 
 impl LanceShinkaiDb {
     pub async fn new(db_path: &str, embedding_model: EmbeddingModelType) -> Result<Self, ShinkaiLanceDBError> {
+        if db_path.starts_with("db") {
+            return Err(ShinkaiLanceDBError::InvalidPath(
+                "db_path cannot start with 'db' as it will be read by lancedb as a cloud URL".to_string(),
+            ));
+        }
+
         let connection = connect(db_path).execute().await?;
         let table = Self::create_tool_router_table(&connection, &embedding_model).await?;
         let embedding_function =
@@ -53,6 +59,8 @@ impl LanceShinkaiDb {
             .map_err(ShinkaiLanceDBError::from)
     }
 
+    /// Insert a tool into the database. It will overwrite the tool if it already exists.
+    /// Also it auto-generates the embedding if it is not provided.
     pub async fn set_tool(&self, shinkai_tool: &ShinkaiTool) -> Result<(), ToolError> {
         let tool_key = shinkai_tool.tool_router_key();
         let tool_keys = vec![shinkai_tool.tool_router_key()];
@@ -316,6 +324,23 @@ impl LanceShinkaiDb {
         Ok(tool_headers)
     }
 
+    pub async fn is_empty(&self) -> Result<bool, ShinkaiLanceDBError> {
+        let query = self
+            .table
+            .query()
+            .limit(1)
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        let results = query
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        Ok(results.is_empty())
+    }
+
     // Add more methods as needed, e.g., delete_tool, get_tool, etc.
 }
 
@@ -326,7 +351,6 @@ mod tests {
     use crate::tools::tool_router_dep::workflows_data;
 
     use super::*;
-    use arrow_array::Array;
     use serde_json::Value;
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_tools_runner::built_in_tools;

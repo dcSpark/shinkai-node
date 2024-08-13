@@ -5,7 +5,7 @@ use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
-use crate::llm_provider::queue::job_queue_manager::{self, JobForProcessing, JobQueueManager};
+use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
@@ -108,27 +108,6 @@ impl JobManager {
             user_profile.profile_name.unwrap_or_default(),
         )
         .unwrap();
-
-        // Temporal
-        if let Some(tool_router_arc) = &tool_router {
-            let mut tool_router = tool_router_arc.lock().await;
-            if !tool_router.is_started() {
-                let start_time = Instant::now(); // Start time measurement
-
-                if let Err(e) = tool_router
-                    .start(Box::new(generator.clone()), Arc::downgrade(&db), user_profile.clone())
-                    .await
-                {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to start tool router: {}", e),
-                    );
-                }
-                let duration = start_time.elapsed();
-                eprintln!("ToolRouter start call duration: {:?}", duration);
-            }
-        }
 
         // 1.- Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(
@@ -381,7 +360,20 @@ impl JobManager {
         let workflow = if let Some(code) = &job_message.workflow_code {
             parse_workflow(code)?
         } else if let Some(name) = &job_message.workflow_name {
-            db.get_workflow(name, &user_profile)?
+            if let Some(tool_router) = tool_router.clone() {
+                let tool_router = tool_router.lock().await;
+                if let Some(workflow) = tool_router
+                    .get_workflow(name)
+                    .await
+                    .map_err(|e| LLMProviderError::from(e))?
+                {
+                    workflow
+                } else {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            }
         } else {
             return Ok(false);
         };
@@ -554,9 +546,14 @@ impl JobManager {
             let workflow = if let Some(workflow) = sheet_job_data.workflow {
                 Some(workflow)
             } else if let Some(workflow_name) = sheet_job_data.workflow_name {
-                match db.get_workflow(&workflow_name, &user_profile) {
-                    Ok(workflow) => Some(workflow),
-                    Err(_) => None,
+                if let Some(tool_router) = tool_router.clone() {
+                    let tool_router = tool_router.lock().await;
+                    tool_router
+                        .get_workflow(&workflow_name)
+                        .await
+                        .map_err(LLMProviderError::from)?
+                } else {
+                    None
                 }
             } else {
                 None

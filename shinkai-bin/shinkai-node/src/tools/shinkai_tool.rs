@@ -7,17 +7,16 @@ use crate::tools::rust_tools::RustTool;
 use serde_json::{self};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{js_tools::JSToolWithoutCode, workflow_tool::WorkflowTool};
+use super::workflow_tool::WorkflowTool;
 
 pub type IsEnabled = bool;
-
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "content")]
 pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
     JS(JSTool, IsEnabled),
-    JSLite(JSToolWithoutCode, IsEnabled), // TODO: we can get rid of this after moving to lancedb
+    // JSLite(JSToolWithoutCode, IsEnabled), // TODO: we can get rid of this after moving to lancedb
     Workflow(WorkflowTool, IsEnabled),
 }
 
@@ -53,7 +52,6 @@ impl ShinkaiTool {
                     match self {
                         ShinkaiTool::Rust(r, _) => r.toolkit_type_name(),
                         ShinkaiTool::JS(j, _) => j.toolkit_name.to_string(),
-                        ShinkaiTool::JSLite(j, _) => j.toolkit_name.to_string(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
@@ -73,7 +71,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
             ShinkaiTool::JS(j, _) => j.name.clone(),
-            ShinkaiTool::JSLite(j, _) => j.name.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_name(),
         }
     }
@@ -82,7 +79,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.description.clone(),
             ShinkaiTool::JS(j, _) => j.description.clone(),
-            ShinkaiTool::JSLite(j, _) => j.description.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_description(),
         }
     }
@@ -92,7 +88,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
             ShinkaiTool::JS(j, _) => j.name.clone(),
-            ShinkaiTool::JSLite(j, _) => j.name.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_name(),
         }
     }
@@ -102,7 +97,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.toolkit_type_name().clone(),
             ShinkaiTool::JS(j, _) => j.toolkit_name.clone(),
-            ShinkaiTool::JSLite(j, _) => j.toolkit_name.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_name(),
         }
     }
@@ -112,7 +106,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.input_args.clone(),
             ShinkaiTool::JS(j, _) => j.input_args.clone(),
-            ShinkaiTool::JSLite(j, _) => j.input_args.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_input_args(),
         }
     }
@@ -122,7 +115,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, _) => "Rust",
             ShinkaiTool::JS(_, _) => "JS",
-            ShinkaiTool::JSLite(_, _) => "JSLite",
             ShinkaiTool::Workflow(_, _) => "Workflow",
         }
     }
@@ -142,7 +134,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = embedding,
             ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
-            ShinkaiTool::JSLite(j, _) => j.embedding = Some(embedding),
             ShinkaiTool::Workflow(w, _) => w.embedding = Some(embedding),
         }
     }
@@ -196,7 +187,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => Some(r.tool_embedding.clone()),
             ShinkaiTool::JS(j, _) => j.embedding.clone(),
-            ShinkaiTool::JSLite(j, _) => j.embedding.clone(),
             ShinkaiTool::Workflow(w, _) => w.embedding.clone(),
         }
     }
@@ -213,7 +203,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled,
             ShinkaiTool::JS(_, enabled) => *enabled,
-            ShinkaiTool::JSLite(_, enabled) => *enabled,
             ShinkaiTool::Workflow(_, enabled) => *enabled,
         }
     }
@@ -223,7 +212,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = true,
             ShinkaiTool::JS(_, enabled) => *enabled = true,
-            ShinkaiTool::JSLite(_, enabled) => *enabled = true,
             ShinkaiTool::Workflow(_, enabled) => *enabled = true,
         }
     }
@@ -233,7 +221,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = false,
             ShinkaiTool::JS(_, enabled) => *enabled = false,
-            ShinkaiTool::JSLite(_, enabled) => *enabled = false,
             ShinkaiTool::Workflow(_, enabled) => *enabled = false,
         }
     }
@@ -259,11 +246,5 @@ impl From<RustTool> for ShinkaiTool {
 impl From<JSTool> for ShinkaiTool {
     fn from(tool: JSTool) -> Self {
         ShinkaiTool::JS(tool, true)
-    }
-}
-
-impl From<JSToolWithoutCode> for ShinkaiTool {
-    fn from(tool: JSToolWithoutCode) -> Self {
-        ShinkaiTool::JSLite(tool, true)
     }
 }

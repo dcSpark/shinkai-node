@@ -10,6 +10,7 @@ use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
+use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
@@ -102,6 +103,8 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
+    // The LanceDB
+    pub lance_db: Arc<Mutex<LanceShinkaiDb>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -319,8 +322,15 @@ impl Node {
         )
         .await;
 
+        let lance_db_path = format!("lancedb_{}", main_db_path);
+        // Note: do we need to push this to start bc of the default embedding model?
+        let lance_db = LanceShinkaiDb::new(&lance_db_path, default_embedding_model.clone())
+            .await
+            .unwrap();
+        let lance_db = Arc::new(Mutex::new(lance_db));
+
         // Initialize ToolRouter
-        let tool_router = ToolRouter::new();
+        let tool_router = ToolRouter::new(lance_db.clone());
 
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
@@ -346,6 +356,7 @@ impl Node {
             first_device_needs_registration_code,
             initial_llm_providers,
             vector_fs: vector_fs_arc.clone(),
+            lance_db,
             embedding_generator,
             unstructured_api,
             conn_limiter,

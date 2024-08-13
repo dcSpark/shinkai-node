@@ -9,7 +9,7 @@ use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OllamaEmbeddingFunction {
     client: Client,
     api_url: String,

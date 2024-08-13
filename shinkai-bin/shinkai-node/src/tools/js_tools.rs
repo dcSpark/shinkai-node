@@ -83,23 +83,6 @@ impl JSTool {
     pub fn to_json_string(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|e| ToolError::SerializationError(e.to_string()))
     }
-
-    /// Convert to JSToolWithoutCode
-    pub fn to_without_code(&self) -> JSToolWithoutCode {
-        JSToolWithoutCode {
-            toolkit_name: self.toolkit_name.clone(),
-            name: self.name.clone(),
-            author: self.author.clone(),
-            config: self.config.clone(),
-            description: self.description.clone(),
-            keywords: self.keywords.clone(),
-            input_args: self.input_args.clone(),
-            config_set: self.config_set,
-            activated: self.activated,
-            embedding: self.embedding.clone(),
-            result: self.result.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -155,39 +138,6 @@ impl JSToolResult {
             result_type,
             properties,
             required,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct JSToolWithoutCode {
-    pub toolkit_name: String,
-    pub name: String,
-    pub author: String,
-    pub config: Vec<ToolConfig>,
-    pub description: String,
-    pub keywords: Vec<String>,
-    pub input_args: Vec<ToolArgument>,
-    pub config_set: bool,
-    pub activated: bool,
-    pub embedding: Option<Embedding>,
-    pub result: JSToolResult,
-}
-
-impl JSToolWithoutCode {
-    pub fn from_jstool(tool: &JSTool) -> Self {
-        JSToolWithoutCode {
-            toolkit_name: tool.toolkit_name.clone(),
-            name: tool.name.clone(),
-            author: tool.author.clone(),
-            config: tool.config.clone(),
-            description: tool.description.clone(),
-            keywords: tool.keywords.clone(),
-            input_args: tool.input_args.clone(),
-            config_set: tool.config_set,
-            activated: tool.activated,
-            embedding: tool.embedding.clone(),
-            result: tool.result.clone(),
         }
     }
 }
