@@ -322,7 +322,7 @@ impl Node {
         )
         .await;
 
-        let lance_db_path = format!("lancedb_{}", main_db_path);
+        let lance_db_path = format!("{}", main_db_path);
         // Note: do we need to push this to start bc of the default embedding model?
         let lance_db = LanceShinkaiDb::new(&lance_db_path, default_embedding_model.clone())
             .await

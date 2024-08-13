@@ -145,6 +145,10 @@ impl ToolRouter {
         name_query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        if name_query.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let lance_db = self.lance_db.lock().await;
         let tool_headers = lance_db.workflow_vector_search(name_query, num_of_results).await?;
         Ok(tool_headers)
