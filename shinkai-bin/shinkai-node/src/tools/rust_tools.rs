@@ -12,11 +12,16 @@ pub struct RustTool {
     pub name: String,
     pub description: String,
     pub input_args: Vec<ToolArgument>,
-    pub tool_embedding: Embedding,
+    pub tool_embedding: Option<Embedding>,
 }
 
 impl RustTool {
-    pub fn new(name: String, description: String, input_args: Vec<ToolArgument>, tool_embedding: Embedding) -> Self {
+    pub fn new(
+        name: String,
+        description: String,
+        input_args: Vec<ToolArgument>,
+        tool_embedding: Option<Embedding>,
+    ) -> Self {
         Self {
             name: VRPath::clean_string(&name),
             description,
@@ -43,13 +48,12 @@ impl RustTool {
 }
 
 impl RustTool {
-    pub async fn static_tools(generator: Box<dyn EmbeddingGenerator>) -> Vec<Self> {
+    pub async fn static_tools() -> Vec<Self> {
         let mut tools = Vec::new();
 
-        let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
         tools.push(RustTool::new(
             "concat_strings".to_string(),
-            concat_strings_desc.clone(),
+            "Concatenates 2 to 4 strings.".to_string(),
             vec![
                 ToolArgument::new(
                     "first_string".to_string(),
@@ -76,16 +80,12 @@ impl RustTool {
                     false,
                 ),
             ],
-            generator
-                .generate_embedding_default(&concat_strings_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let search_and_replace_desc = "Searches for a substring and replaces it with another substring.".to_string();
         tools.push(RustTool::new(
             "search_and_replace".to_string(),
-            search_and_replace_desc.clone(),
+            "Searches for a substring and replaces it with another substring.".to_string(),
             vec![
                 ToolArgument::new(
                     "text".to_string(),
@@ -106,64 +106,48 @@ impl RustTool {
                     true,
                 ),
             ],
-            generator
-                .generate_embedding_default(&search_and_replace_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let download_webpage_desc = "Downloads the content of a webpage.".to_string();
         tools.push(RustTool::new(
             "download_webpage".to_string(),
-            download_webpage_desc.clone(),
+            "Downloads the content of a webpage.".to_string(),
             vec![ToolArgument::new(
                 "url".to_string(),
                 "string".to_string(),
                 "The URL of the webpage to download".to_string(),
                 true,
             )],
-            generator
-                .generate_embedding_default(&download_webpage_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let html_to_markdown_desc = "Converts HTML content to Markdown.".to_string();
         tools.push(RustTool::new(
             "html_to_markdown".to_string(),
-            html_to_markdown_desc.clone(),
+            "Converts HTML content to Markdown.".to_string(),
             vec![ToolArgument::new(
                 "html_content".to_string(),
                 "string".to_string(),
                 "The HTML content to convert".to_string(),
                 true,
             )],
-            generator
-                .generate_embedding_default(&html_to_markdown_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let array_to_markdown_template_desc = "Converts a comma-separated string to a Markdown template.".to_string();
         tools.push(RustTool::new(
             "array_to_markdown_template".to_string(),
-            array_to_markdown_template_desc.clone(),
+            "Converts a comma-separated string to a Markdown template.".to_string(),
             vec![ToolArgument::new(
                 "comma_separated_string".to_string(),
                 "string".to_string(),
                 "The comma-separated string to convert".to_string(),
                 true,
             )],
-            generator
-                .generate_embedding_default(&array_to_markdown_template_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let fill_variable_in_md_template_desc = "Fills a variable in a Markdown template.".to_string();
         tools.push(RustTool::new(
             "fill_variable_in_md_template".to_string(),
-            fill_variable_in_md_template_desc.clone(),
+            "Fills a variable in a Markdown template.".to_string(),
             vec![
                 ToolArgument::new(
                     "markdown_template".to_string(),
@@ -184,10 +168,7 @@ impl RustTool {
                     true,
                 ),
             ],
-            generator
-                .generate_embedding_default(&fill_variable_in_md_template_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
         // let print_arg_desc = "Prints a single argument.".to_string();
@@ -203,58 +184,45 @@ impl RustTool {
         //     generator.generate_embedding_default(&print_arg_desc).await.unwrap(),
         // ));
 
-        let return_error_message_desc = "The error message to return. Useful for debugging in workflows.".to_string();
         tools.push(RustTool::new(
             "return_error_message".to_string(),
-            return_error_message_desc.clone(),
+            "The error message to return. Useful for debugging in workflows.".to_string(),
             vec![ToolArgument::new(
                 "error_message".to_string(),
                 "string".to_string(),
                 "The error message to return. Useful for debugging in workflows.".to_string(),
                 true,
             )],
-            generator
-                .generate_embedding_default(&return_error_message_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let count_files_from_input_desc = "Counts files with a specific extension.".to_string();
         tools.push(RustTool::new(
             "count_files_from_input".to_string(),
-            count_files_from_input_desc.clone(),
+            "Counts files with a specific extension.".to_string(),
             vec![ToolArgument::new(
                 "file_extension".to_string(),
                 "string".to_string(),
                 "The file extension to count (optional)".to_string(),
                 false,
             )],
-            generator
-                .generate_embedding_default(&count_files_from_input_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let retrieve_file_from_input_desc = "Retrieves a file by name.".to_string();
         tools.push(RustTool::new(
             "retrieve_file_from_input".to_string(),
-            retrieve_file_from_input_desc.clone(),
+            "Retrieves a file by name.".to_string(),
             vec![ToolArgument::new(
                 "filename".to_string(),
                 "string".to_string(),
                 "The filename to retrieve".to_string(),
                 true,
             )],
-            generator
-                .generate_embedding_default(&retrieve_file_from_input_desc)
-                .await
-                .unwrap(),
+            None,
         ));
 
-        let extract_and_map_csv_column_desc = "Extracts and maps a CSV column.".to_string();
         tools.push(RustTool::new(
             "extract_and_map_csv_column".to_string(),
-            extract_and_map_csv_column_desc.clone(),
+            "Extracts and maps a CSV column.".to_string(),
             vec![
                 ToolArgument::new(
                     "csv_data".to_string(),
@@ -275,32 +243,27 @@ impl RustTool {
                     true,
                 ),
             ],
-            generator
-                .generate_embedding_default(&extract_and_map_csv_column_desc)
-                .await
-                .unwrap(),
+            None
         ));
 
-        let process_embeddings_in_job_scope_desc = "Processes embeddings in job scope.".to_string();
         tools.push(RustTool::new(
             "process_embeddings_in_job_scope".to_string(),
-            process_embeddings_in_job_scope_desc.clone(),
+            "Processes embeddings in job scope.".to_string(),
             vec![ToolArgument::new(
                 "map_function".to_string(),
                 "Box<dyn Fn(&str) -> String + Send + Sync>".to_string(),
                 "The map function".to_string(),
                 true,
             )],
-            generator
-                .generate_embedding_default(&process_embeddings_in_job_scope_desc)
-                .await
-                .unwrap(),
+            None
         ));
 
         tools
     }
 
-    pub fn convert_args_from_fn_call(function_args: serde_json::Value) -> Result<Vec<Box<dyn Any + Send>>, LLMProviderError> {
+    pub fn convert_args_from_fn_call(
+        function_args: serde_json::Value,
+    ) -> Result<Vec<Box<dyn Any + Send>>, LLMProviderError> {
         match function_args {
             serde_json::Value::Array(arr) => arr
                 .into_iter()

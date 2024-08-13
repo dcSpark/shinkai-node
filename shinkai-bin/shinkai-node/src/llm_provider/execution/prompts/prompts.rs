@@ -501,7 +501,7 @@ mod tests {
                     false,
                 ),
             ],
-            Embedding::new("", vec![]),
+            None,
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
@@ -636,7 +636,7 @@ mod tests {
                     false,
                 ),
             ],
-            Embedding::new("", vec![]),
+            None,
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 

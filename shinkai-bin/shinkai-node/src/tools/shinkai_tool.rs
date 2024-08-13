@@ -132,7 +132,7 @@ impl ShinkaiTool {
     /// Sets the embedding for the tool
     pub fn set_embedding(&mut self, embedding: Embedding) {
         match self {
-            ShinkaiTool::Rust(r, _) => r.tool_embedding = embedding,
+            ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
             ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
             ShinkaiTool::Workflow(w, _) => w.embedding = Some(embedding),
         }
@@ -185,7 +185,7 @@ impl ShinkaiTool {
     /// Returns the embedding if it exists
     pub fn get_embedding(&self) -> Option<Embedding> {
         match self {
-            ShinkaiTool::Rust(r, _) => Some(r.tool_embedding.clone()),
+            ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
             ShinkaiTool::JS(j, _) => j.embedding.clone(),
             ShinkaiTool::Workflow(w, _) => w.embedding.clone(),
         }

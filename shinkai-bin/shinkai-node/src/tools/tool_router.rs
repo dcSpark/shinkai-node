@@ -47,20 +47,20 @@ impl ToolRouter {
 
         if lance_db.is_empty().await? {
             // Add workflows
-            self.add_static_workflows(&generator).await;
+            self.add_static_workflows(generator).await;
 
             // Add JS tools
-            self.add_js_tools(&generator).await;
+            self.add_js_tools().await;
 
             // Add Rust tools
-            self.add_rust_tools(&generator).await;
+            self.add_rust_tools().await;
         }
 
         Ok(())
     }
 
-    async fn add_rust_tools(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        let rust_tools = RustTool::static_tools(generator).await;
+    async fn add_rust_tools(&self) -> Result<(), ToolError> {
+        let rust_tools = RustTool::static_tools().await;
         let lance_db = self.lance_db.lock().await;
 
         for tool in rust_tools {
@@ -113,20 +113,14 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn add_js_tools(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    async fn add_js_tools(&self) -> Result<(), ToolError> {
         let tools = built_in_tools::get_tools();
         let lance_db = self.lance_db.lock().await;
 
         for (name, definition) in tools {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
-                let embedding = generator
-                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
-                    .await
-                    .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
-                shinkai_tool.set_embedding(embedding);
-
+                let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
                 lance_db.set_tool(&shinkai_tool).await?;
             }
         }
