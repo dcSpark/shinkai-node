@@ -11,6 +11,8 @@ impl ShinkaiToolSchema {
     /// - tool_data: UTF-8 string (non-nullable)
     /// - tool_type: UTF-8 string (non-nullable)
     /// - tool_header: UTF-8 string (non-nullable)
+    /// - author: UTF-8 string (non-nullable)
+    /// - version: UTF-8 string (non-nullable)
     /// - is_enabled: Boolean (non-nullable)
     /// - config: UTF-8 string (nullable)
     ///
@@ -31,6 +33,8 @@ impl ShinkaiToolSchema {
             Field::new(Self::tool_type_field(), DataType::Utf8, false),
             Field::new(Self::tool_data_field(), DataType::Utf8, false),
             Field::new(Self::tool_header_field(), DataType::Utf8, false),
+            Field::new(Self::author_field(), DataType::Utf8, false),
+            Field::new(Self::version_field(), DataType::Utf8, false),
             Field::new(Self::is_enabled_field(), DataType::Boolean, false),
         ])))
     }
@@ -53,6 +57,14 @@ impl ShinkaiToolSchema {
 
     pub fn tool_header_field() -> &'static str {
         "tool_header"
+    }
+
+    pub fn author_field() -> &'static str {
+        "author"
+    }
+
+    pub fn version_field() -> &'static str {
+        "version"
     }
 
     pub fn is_enabled_field() -> &'static str {

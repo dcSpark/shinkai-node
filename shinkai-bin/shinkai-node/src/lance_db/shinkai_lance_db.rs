@@ -36,7 +36,7 @@ impl LanceShinkaiDb {
         let connection = connect(db_path).execute().await?;
         let table = Self::create_tool_router_table(&connection, &embedding_model).await?;
         let embedding_function =
-            OllamaEmbeddingFunction::new("http://localhost:11434/api/embeddings", embedding_model.clone());
+            OllamaEmbeddingFunction::new("http://localhost:11434/api/embeddings", embedding_model.clone()); // TODO: update
 
         Ok(LanceShinkaiDb {
             connection,
@@ -136,6 +136,8 @@ impl LanceShinkaiDb {
                 Arc::new(StringArray::from(tool_types)),
                 Arc::new(StringArray::from(tool_data)),
                 Arc::new(StringArray::from(tool_header)),
+                Arc::new(StringArray::from(vec![shinkai_tool.author().to_string()])),
+                Arc::new(StringArray::from(vec![shinkai_tool.version().to_string()])),
                 Arc::new(BooleanArray::from(vec![true])), // is_enabled is true by default
             ],
         )
@@ -230,6 +232,43 @@ impl LanceShinkaiDb {
         Ok(workflows)
     }
 
+    pub async fn get_all_tools(&self) -> Result<Vec<ShinkaiToolHeader>, ShinkaiLanceDBError> {
+        let query = self
+            .table
+            .query()
+            .select(Select::columns(&[
+                ShinkaiToolSchema::tool_key_field(),
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::tool_header_field(),
+            ]))
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        let results = query
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        let mut tools = Vec::new();
+        for batch in results {
+            let tool_header_array = batch
+                .column_by_name(ShinkaiToolSchema::tool_header_field())
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..tool_header_array.len() {
+                let tool_header_json = tool_header_array.value(i).to_string();
+                let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
+                    .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+                tools.push(tool_header);
+            }
+        }
+        Ok(tools)
+    }
+
     pub async fn vector_search(&self, query: &str, num_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         // Generate the embedding from the query string
         let embedding = self
@@ -246,6 +285,7 @@ impl LanceShinkaiDb {
                 ShinkaiToolSchema::tool_type_field(),
                 ShinkaiToolSchema::tool_header_field(),
             ]))
+            .only_if(format!("{} = true", ShinkaiToolSchema::is_enabled_field()))
             .limit(num_results as usize)
             .nearest_to(embedding)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -300,7 +340,11 @@ impl LanceShinkaiDb {
                 ShinkaiToolSchema::tool_type_field(),
                 ShinkaiToolSchema::tool_header_field(),
             ]))
-            .only_if(format!("{} = 'Workflow'", ShinkaiToolSchema::tool_type_field()))
+            .only_if(format!(
+                "{} = 'Workflow' AND {} = true",
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::is_enabled_field()
+            ))
             .limit(num_results as usize)
             .nearest_to(embedding)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -645,6 +689,74 @@ mod tests {
         } else {
             assert!(false, "Updated tool is not of type JS");
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_add_workflow_and_js_tool() -> Result<(), ShinkaiLanceDBError> {
+        init_default_tracing();
+        setup();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone()).await?;
+
+        // Add JS tool
+        let tools = built_in_tools::get_tools();
+        let (name, definition) = tools
+            .into_iter()
+            .find(|(name, _)| name == "shinkai-tool-weather-by-city")
+            .unwrap();
+
+        let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+        let tool = toolkit.tools.into_iter().next().unwrap();
+        let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+        let embedding = generator
+            .generate_embedding_default(&shinkai_tool.format_embedding_string())
+            .await
+            .unwrap();
+        shinkai_tool.set_embedding(embedding);
+
+        db.set_tool(&shinkai_tool)
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        // Add workflow
+        let data = workflows_data::WORKFLOWS_JSON_TESTING;
+        let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
+        let json_array = json_value.as_array().expect("Expected JSON data to be an array");
+
+        for item in json_array {
+            let shinkai_tool: Result<ShinkaiTool, _> = serde_json::from_value(item.clone());
+            let shinkai_tool = match shinkai_tool {
+                Ok(tool) => tool,
+                Err(e) => {
+                    eprintln!("Failed to parse shinkai_tool: {}. JSON: {:?}", e, item);
+                    continue; // Skip this item and continue with the next one
+                }
+            };
+
+            db.set_tool(&shinkai_tool)
+                .await
+                .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+        }
+
+        // Verify both tools are added
+        let all_tools = db.get_all_tools().await?;
+        let mut found_js_tool = false;
+        let mut found_workflow = false;
+
+        for tool_header in all_tools {
+            if tool_header.tool_type == "JS" {
+                found_js_tool = true;
+            } else if tool_header.tool_type == "Workflow" {
+                found_workflow = true;
+            }
+        }
+
+        assert!(found_js_tool, "JS tool not found");
+        assert!(found_workflow, "Workflow not found");
 
         Ok(())
     }

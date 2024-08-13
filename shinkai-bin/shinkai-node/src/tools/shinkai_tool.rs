@@ -27,6 +27,8 @@ pub struct ShinkaiToolHeader {
     pub tool_router_key: String,
     pub tool_type: String,
     pub formatted_tool_summary_for_ui: String,
+    pub author: String,
+    pub version: String,
 }
 
 impl ShinkaiTool {
@@ -38,6 +40,8 @@ impl ShinkaiTool {
             tool_router_key: self.tool_router_key(),
             tool_type: self.tool_type().to_string(),
             formatted_tool_summary_for_ui: self.formatted_tool_summary_for_ui(),
+            author: self.author(),
+            version: self.version(),
         }
     }
 
@@ -196,6 +200,24 @@ impl ShinkaiTool {
         let tool_key = self.tool_router_key().replace(":::", "___");
         let env_var_key = format!("TOOLKIT_{}", tool_key);
         env::var(env_var_key).ok()
+    }
+
+    /// Returns the author of the tool
+    pub fn author(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(r, _) => "@@official.shinkai".to_string(),
+            ShinkaiTool::JS(j, _) => j.author.clone(),
+            ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
+        }
+    }
+
+    /// Returns the version of the tool
+    pub fn version(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(r, _) => "v0.1".to_string(),
+            ShinkaiTool::JS(j, _) => "v0.1".to_string(),
+            ShinkaiTool::Workflow(w, _) => w.workflow.version.clone(),
+        }
     }
 
     /// Check if the tool is enabled
