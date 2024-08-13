@@ -17,10 +17,10 @@ use shinkai_message_primitives::{
     },
 };
 
-use crate::schemas::{
+use crate::{schemas::{
     identity::{Identity, StandardIdentity},
     smart_inbox::{SmartInbox, V2SmartInbox},
-};
+}, tools::shinkai_tool::ShinkaiTool};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
@@ -234,6 +234,18 @@ pub enum NodeCommand {
     },
     APIPrivateDevopsCronList {
         res: Sender<Result<String, APIError>>,
+    },
+    APIListAllShinkaiTools {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    },
+    APISetShinkaiTool {
+        msg: ShinkaiMessage,
+        res: Sender<Result<bool, APIError>>,
+    },
+    APIGetShinkaiTool {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
     },
     APIAddToolkit {
         msg: ShinkaiMessage,
@@ -659,16 +671,30 @@ pub enum NodeCommand {
     },
     V2ApiRemoveWorkflow {
         bearer: String,
-        payload: APIWorkflowKeyname,
+        payload: APIWorkflowKeyname, // TODO: needs to be updated
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetWorkflowInfo {
         bearer: String,
-        payload: APIWorkflowKeyname,
+        payload: APIWorkflowKeyname, // TODO: needs to be updated
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllWorkflows {
         bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListAllShinkaiTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetShinkaiTool {
+        bearer: String,
+        payload: ShinkaiTool,
+        res: Sender<Result<bool, APIError>>,
+    },
+    V2ApiGetShinkaiTool {
+        bearer: String,
+        payload: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetLocalProcessingPreference {

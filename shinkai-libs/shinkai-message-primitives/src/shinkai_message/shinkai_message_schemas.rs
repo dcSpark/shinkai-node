@@ -83,6 +83,9 @@ pub enum MessageSchemaType {
     GetSheet,
     RemoveRows,
     AddRows,
+    SetShinkaiTool,
+    ListAllShinkaiTools,
+    GetShinkaiTool,
 }
 
 impl MessageSchemaType {
@@ -160,6 +163,9 @@ impl MessageSchemaType {
             "GetSheet" => Some(Self::GetSheet),
             "RemoveRows" => Some(Self::RemoveRows),
             "AddRows" => Some(Self::AddRows),
+            "SetShinkaiTool" => Some(Self::SetShinkaiTool),
+            "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
+            "GetShinkaiTool" => Some(Self::GetShinkaiTool),
             _ => None,
         }
     }
@@ -237,6 +243,9 @@ impl MessageSchemaType {
             Self::GetSheet => "GetSheet",
             Self::RemoveRows => "RemoveRows",
             Self::AddRows => "AddRows",
+            Self::SetShinkaiTool => "SetShinkaiTool",
+            Self::ListAllShinkaiTools => "ListAllShinkaiTools",
+            Self::GetShinkaiTool => "GetShinkaiTool",
             Self::Empty => "",
         }
     }

@@ -7,7 +7,7 @@ use crate::tools::rust_tools::RustTool;
 use serde_json::{self};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::workflow_tool::WorkflowTool;
+use super::{js_toolkit_headers::ToolConfig, workflow_tool::WorkflowTool};
 
 pub type IsEnabled = bool;
 
@@ -29,6 +29,8 @@ pub struct ShinkaiToolHeader {
     pub formatted_tool_summary_for_ui: String,
     pub author: String,
     pub version: String,
+    pub enabled: bool,
+    pub config: Option<Vec<ToolConfig>>,
 }
 
 impl ShinkaiTool {
@@ -42,6 +44,8 @@ impl ShinkaiTool {
             formatted_tool_summary_for_ui: self.formatted_tool_summary_for_ui(),
             author: self.author(),
             version: self.version(),
+            enabled: self.is_enabled(),
+            config: self.get_js_tool_config().cloned(),
         }
     }
 
@@ -195,6 +199,7 @@ impl ShinkaiTool {
         }
     }
 
+    // TODO: refactor
     /// Returns an Option<String> for a config based on an environment variable
     pub fn get_config_from_env(&self) -> Option<String> {
         let tool_key = self.tool_router_key().replace(":::", "___");
@@ -205,7 +210,7 @@ impl ShinkaiTool {
     /// Returns the author of the tool
     pub fn author(&self) -> String {
         match self {
-            ShinkaiTool::Rust(r, _) => "@@official.shinkai".to_string(),
+            ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
             ShinkaiTool::JS(j, _) => j.author.clone(),
             ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
         }
@@ -214,8 +219,8 @@ impl ShinkaiTool {
     /// Returns the version of the tool
     pub fn version(&self) -> String {
         match self {
-            ShinkaiTool::Rust(r, _) => "v0.1".to_string(),
-            ShinkaiTool::JS(j, _) => "v0.1".to_string(),
+            ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
+            ShinkaiTool::JS(_j, _) => "v0.1".to_string(),
             ShinkaiTool::Workflow(w, _) => w.workflow.version.clone(),
         }
     }
@@ -244,6 +249,15 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_, enabled) => *enabled = false,
             ShinkaiTool::JS(_, enabled) => *enabled = false,
             ShinkaiTool::Workflow(_, enabled) => *enabled = false,
+        }
+    }
+
+    /// Get the config from a JSTool, return None if it's another type
+    pub fn get_js_tool_config(&self) -> Option<&Vec<ToolConfig>> {
+        if let ShinkaiTool::JS(js_tool, _) = self {
+            Some(&js_tool.config)
+        } else {
+            None
         }
     }
 

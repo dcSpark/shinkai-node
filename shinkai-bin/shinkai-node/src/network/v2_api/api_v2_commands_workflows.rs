@@ -218,4 +218,104 @@ impl Node {
             }
         }
     }
+
+    pub async fn v2_api_list_all_shinkai_tools(
+        db: Arc<ShinkaiDB>,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // List all tools
+        match lance_db.lock().await.get_all_tools().await {
+            Ok(tools) => {
+                let response = json!(tools);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_set_shinkai_tool(
+        db: Arc<ShinkaiDB>,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        bearer: String,
+        shinkai_tool: ShinkaiTool,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Save the tool to the LanceShinkaiDb
+        match lance_db.lock().await.set_tool(&shinkai_tool).await {
+            Ok(_) => {
+                let _ = res.send(Ok(true)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add tool to LanceShinkaiDb: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_get_shinkai_tool(
+        db: Arc<ShinkaiDB>,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        bearer: String,
+        payload: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the tool from the database
+        match lance_db.lock().await.get_tool(&payload).await {
+            Ok(Some(tool)) => {
+                let response = json!(tool);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Tool not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
 }

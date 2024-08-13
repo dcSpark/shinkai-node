@@ -1176,6 +1176,45 @@ pub async fn get_notifications_before_timestamp_handler(
     .await
 }
 
+pub async fn list_all_shinkai_tools_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIListAllShinkaiTools {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn set_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APISetShinkaiTool {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn get_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetShinkaiTool {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
 pub async fn update_local_processing_preference_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
