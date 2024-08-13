@@ -451,7 +451,6 @@ impl Batch {
         if let Some(weight_column) = weight_column {
             rank_attributes.push(weight_column);
             report_df = report_df
-                .clone()
                 .lazy()
                 .with_column(col(weight_column).cast(DataType::Float64))
                 .collect()?;
@@ -460,7 +459,6 @@ impl Batch {
         if let Some(rank_column) = rank_column {
             rank_attributes.push(rank_column);
             report_df = report_df
-                .clone()
                 .lazy()
                 .with_column(col(rank_column).cast(DataType::Float64))
                 .collect()?;
@@ -468,7 +466,6 @@ impl Batch {
 
         if !rank_attributes.is_empty() {
             report_df = report_df
-                .clone()
                 .lazy()
                 .sort(rank_attributes, SortMultipleOptions::new().with_order_descending(true))
                 .collect()?;

@@ -30,7 +30,7 @@ pub fn read_indexer_reports(
     let report_df = report_df
         .lazy()
         .join(
-            filtered_community_df.clone().lazy(),
+            filtered_community_df.lazy(),
             [col("community")],
             [col("community")],
             JoinArgs::new(JoinType::Inner),
@@ -38,7 +38,7 @@ pub fn read_indexer_reports(
         .collect()?;
 
     let reports = read_community_reports(
-        &report_df,
+        report_df,
         "community",
         Some("community"),
         "title",
@@ -74,7 +74,7 @@ pub struct CommunityReport {
 }
 
 pub fn read_community_reports(
-    df: &DataFrame,
+    df: DataFrame,
     id_col: &str,
     short_id_col: Option<&str>,
     title_col: &str,
@@ -101,7 +101,7 @@ pub fn read_community_reports(
 
     let column_names: Vec<String> = column_names.into_iter().collect::<HashSet<String>>().into_vec();
 
-    let mut df = df.clone();
+    let mut df = df;
     df.as_single_chunk_par();
     let mut iters = df
         .columns(column_names.clone())?

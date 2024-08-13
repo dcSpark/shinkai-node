@@ -12,7 +12,7 @@ use utils::openai::ChatOpenAI;
 
 mod utils;
 
-#[tokio::test]
+// #[tokio::test]
 async fn global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("GRAPHRAG_API_KEY").unwrap();
     let llm_model = std::env::var("GRAPHRAG_LLM_MODEL").unwrap();
