@@ -41,6 +41,8 @@ pub struct Sheet {
     pub display_rows: Vec<UuidString>,
     #[serde(skip_serializing, skip_deserializing)]
     update_sender: Option<Sender<SheetUpdate>>,
+    // TODO: add last updated. Intrinsic?
+    // TODO: add history? (only if a cell changed value)
 }
 
 impl std::fmt::Debug for Sheet {
@@ -935,5 +937,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
         }
     }
+    println!("After state: \n");
+    state.print_as_ascii_table();
     (state, jobs)
 }
