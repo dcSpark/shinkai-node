@@ -304,7 +304,7 @@ impl JobManager {
             job_message.clone(),
             prev_execution_context,
             generator,
-            user_profile,
+            user_profile.clone(),
             ws_manager.clone(),
             tool_router.clone(),
         )
@@ -326,8 +326,8 @@ impl JobManager {
             inference_response_content.to_string(),
             "".to_string(),
             identity_secret_key_clone,
-            profile_name.clone(),
-            profile_name.clone(),
+            user_profile.node_name.clone(),
+            user_profile.node_name.clone(),
         )
         .map_err(|e| LLMProviderError::ShinkaiMessageBuilderError(e.to_string()))?;
 

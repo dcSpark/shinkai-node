@@ -209,7 +209,7 @@ impl ShinkaiMessageBuilder {
         .message_raw_content(body)
         .internal_metadata_with_schema(
             "".to_string(),
-            "".to_string(),
+            "main".to_string(),
             inbox,
             MessageSchemaType::JobMessageSchema,
             EncryptionMethod::None,

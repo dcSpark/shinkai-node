@@ -81,3 +81,4 @@ subscriber.key
 shinkai-bin/shinkai-node/lance_db_tests
 lancedb_storage_debug_my_local_ai
 storage_debug_serve_mode
+shinkai-bin/shinkai-node/lancedb_tests
