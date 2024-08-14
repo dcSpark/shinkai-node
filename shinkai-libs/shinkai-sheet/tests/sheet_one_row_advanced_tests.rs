@@ -797,7 +797,7 @@ mod tests {
             id: column_b_id.clone(),
             name: "New Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
-                input: "Say Hello World".to_string(),
+                input: "=\"Say Hello World in \" + A".to_string(),
                 workflow: Some(workflow),
                 workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
