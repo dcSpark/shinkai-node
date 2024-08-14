@@ -98,7 +98,8 @@ impl SheetManager {
         self.sheets
             .get(sheet_id)
             .map(|(sheet, _)| sheet)
-            .ok_or_else(|| "Sheet ID not found".to_string()).cloned()
+            .ok_or_else(|| "Sheet ID not found".to_string())
+            .cloned()
     }
 
     pub fn add_sheet(&mut self, sheet: Sheet) -> Result<String, ShinkaiDBError> {
@@ -146,6 +147,34 @@ impl SheetManager {
             .map_err(|e| e.to_string())?;
 
         Ok(())
+    }
+
+    pub async fn duplicate_sheet(&mut self, sheet_id: &str, new_name: String) -> Result<String, String> {
+        // Get the original sheet
+        let (original_sheet, _) = self.sheets.get(sheet_id).ok_or("Sheet ID not found")?;
+
+        // Clone the original sheet and assign a new UUID
+        let mut new_sheet = original_sheet.clone();
+        new_sheet.uuid = Uuid::new_v4().to_string();
+        new_sheet.sheet_name = Some(new_name.clone());
+
+        // Create a new sender and receiver for the new sheet
+        let (sender, receiver) = async_channel::unbounded();
+        new_sheet.set_update_sender(sender.clone());
+
+        // Insert the new sheet into the HashMap
+        self.sheets.insert(new_sheet.uuid.clone(), (new_sheet.clone(), sender));
+
+        // Add the new sheet to the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .save_sheet(new_sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
+
+        // Start a task to handle updates for the new sheet
+        tokio::spawn(Self::handle_updates(receiver));
+
+        Ok(new_sheet.uuid)
     }
 
     async fn create_and_chain_job_messages(

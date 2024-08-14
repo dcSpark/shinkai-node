@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -48,22 +48,22 @@ use super::api_v2_handlers_general::InitialRegistrationRequest;
 
 impl Node {
     pub async fn validate_bearer_token<T>(
-        _bearer: &str,
+        bearer: &str,
         _db: Arc<ShinkaiDB>,
         res: &Sender<Result<T, APIError>>,
     ) -> Result<(), ()> {
-        // Placeholder implementation that always returns true
-        // In a real implementation, you would validate the token
-        if true {
-            Ok(())
-        } else {
-            let api_error = APIError {
-                code: StatusCode::UNAUTHORIZED.as_u16(),
-                error: "Unauthorized".to_string(),
-                message: "Invalid bearer token".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            Err(())
+        // Compare bearer token to the environment variable API_V2_KEY
+        match env::var("API_V2_KEY") {
+            Ok(api_key) if api_key == bearer => Ok(()),
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error: "Unauthorized".to_string(),
+                    message: "Invalid bearer token".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Err(())
+            }
         }
     }
 

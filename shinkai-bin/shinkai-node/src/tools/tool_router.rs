@@ -55,7 +55,7 @@ impl ToolRouter {
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_js_tools().await;
-        } 
+        }
 
         Ok(())
     }
@@ -239,45 +239,6 @@ mod tests {
     use std::env;
     use std::io::Write;
     use std::{fs::File, time::Instant};
-
-    #[test]
-    fn test_parse_workflows_json() {
-        let data = workflows_data::WORKFLOWS_JSON_TESTING;
-
-        // Start the timer
-        let start_time = Instant::now();
-
-        // Parse the JSON data into a generic JSON value
-        let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
-
-        // Ensure the JSON value is an array
-        let json_array = json_value.as_array().expect("Expected JSON data to be an array");
-
-        // Iterate over the JSON array and manually parse each element
-        for item in json_array {
-            // Parse the shinkai_tool field
-            let shinkai_tool_value = &item["shinkai_tool"];
-            eprintln!("shinkai_tool_value: {:?}", shinkai_tool_value);
-            let shinkai_tool: ShinkaiTool =
-                serde_json::from_value(shinkai_tool_value.clone()).expect("Failed to parse shinkai_tool");
-
-            // Parse the embedding field
-            let embedding_value = &item["embedding"];
-            let embedding: Embedding =
-                serde_json::from_value(embedding_value.clone()).expect("Failed to parse embedding");
-
-            // Check if embedding vector is not empty
-            assert!(!embedding.vector.is_empty(), "Embedding vector is empty");
-
-            // Check if tool name and description are not empty
-            assert!(!shinkai_tool.name().is_empty(), "Tool name is empty");
-            assert!(!shinkai_tool.description().is_empty(), "Tool description is empty");
-        }
-
-        // Stop the timer and calculate the duration
-        let duration = start_time.elapsed();
-        println!("Time taken to parse workflows JSON: {:?}", duration);
-    }
 
     // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)

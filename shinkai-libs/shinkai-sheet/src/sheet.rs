@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use async_recursion::async_recursion;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::schemas::sheet::{
@@ -39,6 +39,7 @@ pub struct Sheet {
     pub column_dependency_manager: ColumnDependencyManager,
     pub display_columns: Vec<UuidString>,
     pub display_rows: Vec<UuidString>,
+    pub last_updated: DateTime<Utc>,
     #[serde(skip_serializing, skip_deserializing)]
     update_sender: Option<Sender<SheetUpdate>>,
     // TODO: add last updated. Intrinsic?
@@ -56,6 +57,7 @@ impl std::fmt::Debug for Sheet {
             .field("display_columns", &self.display_columns)
             .field("display_rows", &self.display_rows)
             .field("observer", &"Option<Arc<Mutex<dyn SheetObserver>>>")
+            .field("last_updated", &self.last_updated)
             .finish()
     }
 }
@@ -71,6 +73,7 @@ impl Clone for Sheet {
             display_columns: self.display_columns.clone(),
             display_rows: self.display_rows.clone(),
             update_sender: self.update_sender.clone(),
+            last_updated: Utc::now(),
         }
     }
 }
@@ -92,6 +95,7 @@ impl Sheet {
             display_columns: Vec::new(),
             display_rows: Vec::new(),
             update_sender: None,
+            last_updated: Utc::now(),
         }
     }
 
@@ -100,7 +104,8 @@ impl Sheet {
     }
 
     pub async fn dispatch(&mut self, action: SheetAction) -> Vec<WorkflowSheetJobData> {
-        let (new_state, jobs) = sheet_reducer(self.clone(), action).await;
+        let (mut new_state, jobs) = sheet_reducer(self.clone(), action).await;
+        new_state.last_updated = Utc::now(); 
         *self = new_state;
         jobs
     }
