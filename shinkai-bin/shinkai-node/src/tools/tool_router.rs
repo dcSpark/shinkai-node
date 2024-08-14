@@ -39,9 +39,11 @@ impl ToolRouter {
 
     pub async fn initialization(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         let is_empty;
+        let has_any_js_tools;
         {
             let lance_db = self.lance_db.lock().await;
             is_empty = lance_db.is_empty().await?;
+            has_any_js_tools = lance_db.has_any_js_tools().await?;
         }
 
         if is_empty {
@@ -50,7 +52,10 @@ impl ToolRouter {
 
             // Add JS tools
             let _ = self.add_js_tools().await;
-        }
+        } else if !has_any_js_tools {
+            // Add JS tools
+            let _ = self.add_js_tools().await;
+        } 
 
         Ok(())
     }

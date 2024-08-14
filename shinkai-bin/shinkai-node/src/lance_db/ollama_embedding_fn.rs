@@ -28,7 +28,12 @@ impl OllamaEmbeddingFunction {
     pub async fn request_embeddings(&self, prompt: &str) -> Result<Vec<f32>> {
         let model_str = match &self.model_type {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
-            _ => return Err(lancedb::Error::Other { message: "Invalid model type for Ollama".to_string(), source: None }),
+            _ => {
+                return Err(lancedb::Error::Other {
+                    message: "Invalid model type for Ollama".to_string(),
+                    source: None,
+                })
+            }
         };
 
         let request_body = serde_json::json!({
@@ -36,9 +41,15 @@ impl OllamaEmbeddingFunction {
             "prompt": prompt
         });
 
+        let full_url = if self.api_url.ends_with('/') {
+            format!("{}api/embeddings", self.api_url)
+        } else {
+            format!("{}/api/embeddings", self.api_url)
+        };
+
         let response = self
             .client
-            .post(&self.api_url)
+            .post(&full_url)
             .json(&request_body)
             .send()
             .await

@@ -9,6 +9,7 @@ use lancedb::query::{ExecutableQuery, Select};
 use lancedb::table::AddDataMode;
 use lancedb::Error as LanceDbError;
 use lancedb::{connect, Connection, Table};
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::sync::Arc;
 
@@ -26,7 +27,11 @@ pub struct LanceShinkaiDb {
 }
 
 impl LanceShinkaiDb {
-    pub async fn new(db_path: &str, embedding_model: EmbeddingModelType) -> Result<Self, ShinkaiLanceDBError> {
+    pub async fn new(
+        db_path: &str,
+        embedding_model: EmbeddingModelType,
+        generator: RemoteEmbeddingGenerator,
+    ) -> Result<Self, ShinkaiLanceDBError> {
         if db_path.starts_with("db") {
             return Err(ShinkaiLanceDBError::InvalidPath(
                 "db_path cannot start with 'db' as it will be read by lancedb as a cloud URL".to_string(),
@@ -35,8 +40,8 @@ impl LanceShinkaiDb {
 
         let connection = connect(db_path).execute().await?;
         let table = Self::create_tool_router_table(&connection, &embedding_model).await?;
-        let embedding_function =
-            OllamaEmbeddingFunction::new("http://localhost:11434/api/embeddings", embedding_model.clone()); // TODO: update
+        let api_url = generator.api_url;
+        let embedding_function = OllamaEmbeddingFunction::new(&api_url, embedding_model.clone());
 
         Ok(LanceShinkaiDb {
             connection,
@@ -270,6 +275,10 @@ impl LanceShinkaiDb {
     }
 
     pub async fn vector_search(&self, query: &str, num_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+
         // Generate the embedding from the query string
         let embedding = self
             .embedding_function
@@ -325,6 +334,10 @@ impl LanceShinkaiDb {
         query: &str,
         num_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+
         // Generate the embedding from the query string
         let embedding = self
             .embedding_function
@@ -396,7 +409,23 @@ impl LanceShinkaiDb {
         Ok(results.is_empty())
     }
 
-    // Add more methods as needed, e.g., delete_tool, get_tool, etc.
+    pub async fn has_any_js_tools(&self) -> Result<bool, ShinkaiLanceDBError> {
+        let query = self
+            .table
+            .query()
+            .only_if(format!("{} = 'JS'", ShinkaiToolSchema::tool_type_field()))
+            .limit(1)
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        let results = query
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        Ok(!results.is_empty())
+    }
 }
 
 #[cfg(test)]
@@ -428,7 +457,7 @@ mod tests {
 
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
-        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone()).await?;
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
 
         let tools = built_in_tools::get_tools();
 
@@ -536,7 +565,7 @@ mod tests {
 
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
-        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone()).await?;
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
 
         let tools = built_in_tools::get_tools();
 
@@ -623,7 +652,7 @@ mod tests {
 
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
-        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone()).await?;
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
 
         let tools = built_in_tools::get_tools();
         let (name, definition) = tools
@@ -700,7 +729,7 @@ mod tests {
 
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
-        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone()).await?;
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
 
         // Add JS tool
         let tools = built_in_tools::get_tools();
@@ -757,6 +786,50 @@ mod tests {
 
         assert!(found_js_tool, "JS tool not found");
         assert!(found_workflow, "Workflow not found");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_has_any_js_tools() -> Result<(), ShinkaiLanceDBError> {
+        init_default_tracing();
+        setup();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
+
+        // Initially, the database should be empty for JS tools
+        assert!(
+            !db.has_any_js_tools().await?,
+            "Database should be empty for JS tools initially"
+        );
+
+        // Add a JS tool
+        let tools = built_in_tools::get_tools();
+        let (name, definition) = tools
+            .into_iter()
+            .find(|(name, _)| name == "shinkai-tool-weather-by-city")
+            .unwrap();
+
+        let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+        let tool = toolkit.tools.into_iter().next().unwrap();
+        let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+        let embedding = generator
+            .generate_embedding_default(&shinkai_tool.format_embedding_string())
+            .await
+            .unwrap();
+        shinkai_tool.set_embedding(embedding);
+
+        db.set_tool(&shinkai_tool)
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        // Now, the database should not be empty for JS tools
+        assert!(
+            db.has_any_js_tools().await?,
+            "Database should not be empty for JS tools after adding one"
+        );
 
         Ok(())
     }

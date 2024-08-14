@@ -109,6 +109,14 @@ impl JobManager {
         )
         .unwrap();
 
+        // Note: remove later on. This code is for the meantime only while we add embeddings to tools so they can get added at the first Shinkai start
+        {
+            if let Some(tool_router) = tool_router.clone() {
+                let tool_router = tool_router.lock().await;
+                let _ = tool_router.initialization(Box::new(generator.clone())).await;
+            }
+        }
+
         // 1.- Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(
             db.clone(),

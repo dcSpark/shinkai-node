@@ -739,7 +739,78 @@ mod tests {
         };
 
         let jobs = sheet.set_column(column_b.clone()).await.unwrap();
-        assert_eq!(jobs.len(), 3, "The number of jobs should be equal to the number of rows created");
+        assert_eq!(
+            jobs.len(),
+            3,
+            "The number of jobs should be equal to the number of rows created"
+        );
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_llm_call_shouldnt_include_empty_dependencies() {
+        let mut sheet = Sheet::new();
+        let column_a_id = Uuid::new_v4().to_string();
+        let column_b_id = Uuid::new_v4().to_string();
+
+        let column_a = ColumnDefinition {
+            id: column_a_id.clone(),
+            name: "Cities".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        // Add Column A and create 3 rows
+        let _ = sheet.set_column(column_a.clone()).await;
+
+        let row_0_id = Uuid::new_v4().to_string();
+        let row_1_id = Uuid::new_v4().to_string();
+        let row_2_id = Uuid::new_v4().to_string();
+
+        sheet.add_row(row_0_id.clone()).await.unwrap();
+        sheet.add_row(row_1_id.clone()).await.unwrap();
+        sheet.add_row(row_2_id.clone()).await.unwrap();
+
+        // Set values in Column A
+        sheet
+            .set_cell_value(row_0_id.clone(), column_a_id.clone(), "Santiago, Chile".to_string())
+            .await
+            .unwrap();
+        sheet
+            .set_cell_value(row_1_id.clone(), column_a_id.clone(), "Austin, Texas".to_string())
+            .await
+            .unwrap();
+
+        // Define the workflow for the LLMCall column
+        let workflow_str = r#"
+         workflow WorkflowTest v0.1 {
+             step Main {
+                 $RESULT = call opinionated_inference($INPUT)
+             }
+         }
+         "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Add Column B as LLMCall and check if jobs are created
+        let column_b = ColumnDefinition {
+            id: column_b_id.clone(),
+            name: "New Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "Say Hello World".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let jobs = sheet.set_column(column_b.clone()).await.unwrap();
+        assert_eq!(
+            jobs.len(),
+            2,
+            "The number of jobs should be equal to the number of rows with values set"
+        );
 
         // Print final state of the sheet
         sheet.print_as_ascii_table();

@@ -324,7 +324,7 @@ impl Node {
 
         let lance_db_path = format!("{}", main_db_path);
         // Note: do we need to push this to start bc of the default embedding model?
-        let lance_db = LanceShinkaiDb::new(&lance_db_path, default_embedding_model.clone())
+        let lance_db = LanceShinkaiDb::new(&lance_db_path, default_embedding_model.clone(), embedding_generator.clone())
             .await
             .unwrap();
         let lance_db = Arc::new(Mutex::new(lance_db));
