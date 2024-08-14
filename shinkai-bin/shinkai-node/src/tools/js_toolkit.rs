@@ -34,9 +34,6 @@ impl JSToolkit {
     }
 
     fn create_js_tool(toolkit_name: &str, definition: ToolDefinition) -> JSTool {
-        let config_set = definition.configurations.is_null()
-            || definition.configurations.as_object().map_or(true, |obj| obj.is_empty());
-
         let input_args = Self::extract_input_args(&definition);
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
@@ -60,7 +57,6 @@ impl JSToolkit {
             keywords: definition.keywords.clone(),
             input_args,
             activated: false,
-            config_set,
             embedding: None,
             result,
         }

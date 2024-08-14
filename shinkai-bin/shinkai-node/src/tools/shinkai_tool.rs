@@ -16,7 +16,6 @@ pub type IsEnabled = bool;
 pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
     JS(JSTool, IsEnabled),
-    // JSLite(JSToolWithoutCode, IsEnabled), // TODO: we can get rid of this after moving to lancedb
     Workflow(WorkflowTool, IsEnabled),
 }
 
@@ -258,6 +257,15 @@ impl ShinkaiTool {
             Some(&js_tool.config)
         } else {
             None
+        }
+    }
+
+    /// Check if the tool can be enabled
+    pub fn can_be_enabled(&self) -> bool {
+        match self {
+            ShinkaiTool::Rust(_, _) => true,
+            ShinkaiTool::Workflow(_, _) => true,
+            ShinkaiTool::JS(js_tool, _) => js_tool.check_required_config_fields(),
         }
     }
 

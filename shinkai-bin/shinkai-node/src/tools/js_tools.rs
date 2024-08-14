@@ -20,7 +20,6 @@ pub struct JSTool {
     pub description: String,
     pub keywords: Vec<String>,
     pub input_args: Vec<ToolArgument>,
-    pub config_set: bool,
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: JSToolResult,
@@ -77,6 +76,18 @@ impl JSTool {
             .unwrap()
             .join()
             .expect("Thread panicked")
+    }
+
+    /// Check if all required config fields are set
+    pub fn check_required_config_fields(&self) -> bool {
+        for config in &self.config {
+            if let ToolConfig::BasicConfig(basic_config) = config {
+                if basic_config.required && basic_config.key_value.is_none() {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// Convert to JSON string
@@ -139,5 +150,55 @@ impl JSToolResult {
             properties,
             required,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::js_toolkit_headers::BasicConfig;
+    use serde_json::json;
+
+    #[test]
+    fn test_check_required_config_fields() {
+        // Tool without config
+        let tool_without_config = JSTool {
+            toolkit_name: "test_toolkit".to_string(),
+            name: "test_tool".to_string(),
+            author: "author".to_string(),
+            js_code: "console.log('Hello, world!');".to_string(),
+            config: vec![],
+            description: "A test tool".to_string(),
+            keywords: vec![],
+            input_args: vec![],
+            activated: false,
+            embedding: None,
+            result: JSToolResult::new("object".to_string(), json!({}), vec![]),
+        };
+        assert!(tool_without_config.check_required_config_fields());
+
+        // Tool with config but without the required params
+        let tool_with_missing_config = JSTool {
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "apiKey".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                key_value: None,
+            })],
+            ..tool_without_config.clone()
+        };
+        assert!(!tool_with_missing_config.check_required_config_fields());
+
+        // Tool with config and with the required params
+        let tool_with_config = JSTool {
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "apiKey".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                key_value: Some("12345".to_string()),
+            })],
+            ..tool_without_config.clone()
+        };
+        assert!(tool_with_config.check_required_config_fields());
     }
 }

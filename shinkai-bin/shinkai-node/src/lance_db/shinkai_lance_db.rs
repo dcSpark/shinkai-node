@@ -126,6 +126,11 @@ impl LanceShinkaiDb {
 
         let vectors_normalized = Arc::new(Float32Array::from(vectors));
 
+        let is_enabled = match shinkai_tool.is_enabled() {
+            true => shinkai_tool.can_be_enabled(),
+            false => false,
+        };
+
         let batch = RecordBatch::try_new(
             schema.clone(),
             vec![
@@ -144,7 +149,7 @@ impl LanceShinkaiDb {
                 Arc::new(StringArray::from(tool_header)),
                 Arc::new(StringArray::from(vec![shinkai_tool.author().to_string()])),
                 Arc::new(StringArray::from(vec![shinkai_tool.version().to_string()])),
-                Arc::new(BooleanArray::from(vec![true])), // is_enabled is true by default
+                Arc::new(BooleanArray::from(vec![is_enabled])),
             ],
         )
         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
