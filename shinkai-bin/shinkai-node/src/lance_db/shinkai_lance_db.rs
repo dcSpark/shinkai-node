@@ -32,13 +32,14 @@ impl LanceShinkaiDb {
         embedding_model: EmbeddingModelType,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<Self, ShinkaiLanceDBError> {
-        if db_path.starts_with("db") {
-            return Err(ShinkaiLanceDBError::InvalidPath(
-                "db_path cannot start with 'db' as it will be read by lancedb as a cloud URL".to_string(),
-            ));
-        }
+        let db_path = if db_path.starts_with("db") {
+            eprintln!("Warning: db_path starts with 'db'. Prepending 'lance' to the path.");
+            format!("lance{}", db_path)
+        } else {
+            db_path.to_string()
+        };
 
-        let connection = connect(db_path).execute().await?;
+        let connection = connect(&db_path).execute().await?;
         let table = Self::create_tool_router_table(&connection, &embedding_model).await?;
         let api_url = generator.api_url;
         let embedding_function = OllamaEmbeddingFunction::new(&api_url, embedding_model.clone());

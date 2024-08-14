@@ -122,10 +122,7 @@ pub async fn run_api(
     );
     println!("API server running on http://{}", address);
 
-    if env::var("ENABLE_API_V2")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
+    if env::var("API_V2_KEY").is_ok() {
         let v2_routes = warp::path("v2").and(
             v2_routes(node_commands_sender.clone(), node_name.clone())
                 .recover(handle_rejection)
