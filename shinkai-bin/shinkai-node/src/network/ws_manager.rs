@@ -38,6 +38,7 @@ use crate::managers::identity_manager::IdentityManagerTrait;
 pub enum MessageType {
     ShinkaiMessage,
     Stream,
+    Sheet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -462,13 +463,21 @@ impl WebSocketManager {
             format!("Sending update to topic: {}", topic_subtopic).as_str(),
         );
 
+        // Determine the message type
+        let message_type = match metadata {
+            WSMessageType::Sheet(_) => MessageType::Sheet,
+            _ => {
+                if is_stream {
+                    MessageType::Stream
+                } else {
+                    MessageType::ShinkaiMessage
+                }
+            }
+        };
+
         // Create the WSMessagePayload
         let payload = WSMessagePayload {
-            message_type: if is_stream {
-                MessageType::Stream
-            } else {
-                MessageType::ShinkaiMessage
-            },
+            message_type,
             inbox: subtopic.clone(),
             message: Some(update.clone()),
             error_message: None,
@@ -491,10 +500,18 @@ impl WebSocketManager {
                 .get(&format!("{}:::{}", WSTopic::SmartInboxes, ""))
                 .is_some();
             let is_subscribed_to_topic = self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some();
-            
-            let is_subscribed_to_sheets = self.subscriptions.get(id).unwrap().get(&format!("{}:::{}", WSTopic::Sheet, "")).is_some();
 
-            if is_subscribed_to_smart_inboxes || is_subscribed_to_topic || is_subscribed_to_sheets {
+            let is_subscribed_to_sheets = self
+                .subscriptions
+                .get(id)
+                .unwrap()
+                .get(&format!("{}:::{}", WSTopic::Sheet, ""))
+                .is_some();
+
+            if is_subscribed_to_smart_inboxes
+                || is_subscribed_to_topic
+                || (is_subscribed_to_sheets && topic == WSTopic::Sheet)
+            {
                 // If the user is subscribed to SmartInboxes, check if they have access to the specific inbox
                 if is_subscribed_to_smart_inboxes {
                     match ShinkaiName::new(id.clone()) {
