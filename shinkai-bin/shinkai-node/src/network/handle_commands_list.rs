@@ -694,7 +694,7 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::APISetShinkaiTool { msg, res } => {
+            NodeCommand::APISetShinkaiTool { tool_router_key, msg, res } => {
                 let lance_db = self.lance_db.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
@@ -705,6 +705,7 @@ impl Node {
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
+                        tool_router_key,
                         msg,
                         res,
                     )
@@ -2589,7 +2590,7 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiSetShinkaiTool { bearer, payload, res } => {
+            NodeCommand::V2ApiSetShinkaiTool { bearer, tool_key, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
@@ -2597,6 +2598,7 @@ impl Node {
                         db_clone,
                         lance_db,
                         bearer,
+                        tool_key,
                         payload,
                         res,
                     )

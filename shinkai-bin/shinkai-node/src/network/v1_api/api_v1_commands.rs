@@ -3363,10 +3363,11 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
+        tool_router_key: String,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<bool, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
-        let (payload, requester_name) = match Self::validate_and_extract_payload::<ShinkaiTool>(
+        let (input_value, requester_name) = match Self::validate_and_extract_payload::<serde_json::Value>(
             node_name.clone(),
             identity_manager.clone(),
             encryption_secret_key,
@@ -3393,10 +3394,99 @@ impl Node {
             return Ok(());
         }
 
-        match lance_db.lock().await.set_tool(&payload).await {
+        // Get the full tool from lance_db
+        let existing_tool = match lance_db.lock().await.get_tool(&tool_router_key).await {
+            Ok(Some(tool)) => tool,
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Tool not found in LanceShinkaiDb".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert existing_tool to Value
+        let existing_tool_value = match serde_json::to_value(&existing_tool) {
+            Ok(value) => value,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert existing tool to Value: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Merge existing_tool_value with input_value
+        let merged_value = Self::merge_json(existing_tool_value, input_value);
+
+        // Convert merged_value to ShinkaiTool
+        let merged_tool: ShinkaiTool = match serde_json::from_value(merged_value) {
+            Ok(tool) => tool,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert merged Value to ShinkaiTool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Save the tool to the LanceShinkaiDb
+        let save_result = {
+            let lance_db_lock = lance_db.lock().await;
+            lance_db_lock.set_tool(&merged_tool).await
+        };
+
+        match save_result {
             Ok(_) => {
-                let _ = res.send(Ok(true)).await;
-                Ok(())
+                // Fetch the updated tool from the database
+                let updated_tool = {
+                    let lance_db_lock = lance_db.lock().await;
+                    lance_db_lock.get_tool(&tool_router_key).await
+                };
+
+                match updated_tool {
+                    Ok(Some(tool)) => {
+                        let response = serde_json::to_value(tool).unwrap_or_else(|_| json!({}));
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        let api_error = APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "Tool not found in LanceShinkaiDb".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
             Err(err) => {
                 let api_error = APIError {

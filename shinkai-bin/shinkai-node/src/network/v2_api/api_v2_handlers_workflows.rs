@@ -1,14 +1,14 @@
+use std::collections::HashMap;
+
 use async_channel::Sender;
 use reqwest::StatusCode;
 
+use serde_json::Value;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{APISetWorkflow, APIWorkflowKeyname};
 use utoipa::OpenApi;
 use warp::Filter;
 
-use crate::{
-    network::{node_api_router::APIError, node_commands::NodeCommand},
-    tools::shinkai_tool::ShinkaiTool,
-};
+use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -37,36 +37,37 @@ pub fn workflows_routes(
         .and_then(remove_workflow_handler);
 
     let get_workflow_info_route = warp::path("get_workflow_info")
-        .and(warp::post())
+        .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::body::json())
+        .and(warp::query::<APIWorkflowKeyname>())
         .and_then(get_workflow_info_handler);
 
     let list_all_workflows_route = warp::path("list_all_workflows")
-        .and(warp::post())
+        .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and_then(list_all_workflows_handler);
 
     let list_all_shinkai_tools_route = warp::path("list_all_shinkai_tools")
-        .and(warp::post())
+        .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and_then(list_all_shinkai_tools_handler);
 
-    let set_shinkai_tool_route = warp::path("set_shinkai_tool")
+        let set_shinkai_tool_route = warp::path("set_shinkai_tool")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
         .and(warp::body::json())
         .and_then(set_shinkai_tool_handler);
 
     let get_shinkai_tool_route = warp::path("get_shinkai_tool")
-        .and(warp::post())
+        .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::body::json())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(get_shinkai_tool_handler);
 
     search_workflows_route
@@ -197,9 +198,11 @@ pub async fn remove_workflow_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/get_workflow_info",
-    request_body = APIWorkflowKeyname,
+    params(
+        ("keyname" = String, Query, description = "Keyname of the workflow")
+    ),
     responses(
         (status = 200, description = "Successfully retrieved workflow info", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -209,14 +212,14 @@ pub async fn remove_workflow_handler(
 pub async fn get_workflow_info_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: APIWorkflowKeyname,
+    keyname: APIWorkflowKeyname,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetWorkflowInfo {
             bearer,
-            payload,
+            payload: keyname,
             res: res_sender,
         })
         .await
@@ -236,7 +239,7 @@ pub async fn get_workflow_info_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/list_all_workflows",
     responses(
         (status = 200, description = "Successfully listed all workflows", body = Value),
@@ -272,7 +275,7 @@ pub async fn list_all_workflows_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/list_all_shinkai_tools",
     responses(
         (status = 200, description = "Successfully listed all Shinkai tools", body = Value),
@@ -311,6 +314,9 @@ pub async fn list_all_shinkai_tools_handler(
     post,
     path = "/v2/set_shinkai_tool",
     request_body = Value,
+    params(
+        ("tool_name" = String, Query, description = "Key name of the Shinkai tool")
+    ),
     responses(
         (status = 200, description = "Successfully set Shinkai tool", body = bool),
         (status = 400, description = "Bad request", body = APIError),
@@ -320,13 +326,25 @@ pub async fn list_all_shinkai_tools_handler(
 pub async fn set_shinkai_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: ShinkaiTool,
+    query_params: HashMap<String, String>,
+    payload: Value,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_key = query_params
+        .get("tool_name")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSetShinkaiTool {
             bearer,
+            tool_key,
             payload,
             res: res_sender,
         })
@@ -344,9 +362,11 @@ pub async fn set_shinkai_tool_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/get_shinkai_tool",
-    request_body = String,
+    params(
+        ("tool_name" = String, Query, description = "Name of the Shinkai tool")
+    ),
     responses(
         (status = 200, description = "Successfully retrieved Shinkai tool", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -356,14 +376,24 @@ pub async fn set_shinkai_tool_handler(
 pub async fn get_shinkai_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_name = query_params
+        .get("tool_name")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetShinkaiTool {
             bearer,
-            payload,
+            payload: tool_name,
             res: res_sender,
         })
         .await

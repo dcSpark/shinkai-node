@@ -240,8 +240,9 @@ pub enum NodeCommand {
         res: Sender<Result<Vec<serde_json::Value>, APIError>>,
     },
     APISetShinkaiTool {
+        tool_router_key: String,
         msg: ShinkaiMessage,
-        res: Sender<Result<bool, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     },
     APIGetShinkaiTool {
         msg: ShinkaiMessage,
@@ -689,8 +690,9 @@ pub enum NodeCommand {
     },
     V2ApiSetShinkaiTool {
         bearer: String,
-        payload: ShinkaiTool,
-        res: Sender<Result<bool, APIError>>,
+        tool_key: String,
+        payload: Value,
+        res: Sender<Result<ShinkaiTool, APIError>>,
     },
     V2ApiGetShinkaiTool {
         bearer: String,

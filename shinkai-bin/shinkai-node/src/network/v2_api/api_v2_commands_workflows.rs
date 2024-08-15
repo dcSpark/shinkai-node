@@ -253,19 +253,110 @@ impl Node {
         db: Arc<ShinkaiDB>,
         lance_db: Arc<Mutex<LanceShinkaiDb>>,
         bearer: String,
-        shinkai_tool: ShinkaiTool,
-        res: Sender<Result<bool, APIError>>,
+        tool_router_key: String,
+        input_value: Value,
+        res: Sender<Result<ShinkaiTool, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
+        // Get the full tool from lance_db
+        let existing_tool = {
+            let lance_db_lock = lance_db.lock().await;
+            match lance_db_lock.get_tool(&tool_router_key).await {
+                Ok(Some(tool)) => tool.clone(),
+                Ok(None) => {
+                    let api_error = APIError {
+                        code: StatusCode::NOT_FOUND.as_u16(),
+                        error: "Not Found".to_string(),
+                        message: "Tool not found in LanceShinkaiDb".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Convert existing_tool to Value
+        let existing_tool_value = match serde_json::to_value(&existing_tool) {
+            Ok(value) => value,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert existing tool to Value: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Merge existing_tool_value with input_value
+        let merged_value = Self::merge_json(existing_tool_value, input_value);
+        
+        // Convert merged_value to ShinkaiTool
+        let merged_tool: ShinkaiTool = match serde_json::from_value(merged_value) {
+            Ok(tool) => tool,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert merged Value to ShinkaiTool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Save the tool to the LanceShinkaiDb
-        match lance_db.lock().await.set_tool(&shinkai_tool).await {
+        let save_result = {
+            let lance_db_lock = lance_db.lock().await;
+            lance_db_lock.set_tool(&merged_tool).await
+        };
+
+        match save_result {
             Ok(_) => {
-                let _ = res.send(Ok(true)).await;
-                Ok(())
+                // Fetch the updated tool from the database
+                let updated_tool = {
+                    let lance_db_lock = lance_db.lock().await;
+                    lance_db_lock.get_tool(&tool_router_key).await
+                };
+
+                match updated_tool {
+                    Ok(Some(tool)) => {
+                        let _ = res.send(Ok(tool)).await;
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        let api_error = APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "Tool not found in LanceShinkaiDb".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
             Err(err) => {
                 let api_error = APIError {
@@ -317,5 +408,173 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub fn merge_json(existing: Value, input: Value) -> Value {
+        match (existing, input) {
+            (Value::Object(mut existing_map), Value::Object(input_map)) => {
+                for (key, input_value) in input_map {
+                    let existing_value = existing_map.remove(&key).unwrap_or(Value::Null);
+                    existing_map.insert(key, Self::merge_json(existing_value, input_value));
+                }
+                Value::Object(existing_map)
+            }
+            (Value::Array(mut existing_array), Value::Array(input_array)) => {
+                for (i, input_value) in input_array.into_iter().enumerate() {
+                    if i < existing_array.len() {
+                        existing_array[i] = Self::merge_json(existing_array[i].take(), input_value);
+                    } else {
+                        existing_array.push(input_value);
+                    }
+                }
+                Value::Array(existing_array)
+            }
+            (_, input) => input,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_merge_json() {
+        let existing_tool_value = json!({
+            "content": [{
+                "embedding": {
+                    "id": "",
+                    "vector": [0.1, 0.2, 0.3]
+                },
+                "workflow": {
+                    "author": "@@official.shinkai",
+                    "description": "Reviews in depth all the content to generate a summary.",
+                    "name": "Extensive_summary",
+                    "raw": "workflow Extensive_summary v0.1 { ... }",
+                    "steps": [
+                        {
+                            "body": [
+                                {
+                                    "type": "composite",
+                                    "value": [
+                                        {
+                                            "type": "registeroperation",
+                                            "value": {
+                                                "register": "$PROMPT",
+                                                "value": "Summarize this: "
+                                            }
+                                        },
+                                        {
+                                            "type": "registeroperation",
+                                            "value": {
+                                                "register": "$EMBEDDINGS",
+                                                "value": {
+                                                    "args": [],
+                                                    "name": "process_embeddings_in_job_scope"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            "name": "Initialize"
+                        },
+                        {
+                            "body": [
+                                {
+                                    "type": "registeroperation",
+                                    "value": {
+                                        "register": "$RESULT",
+                                        "value": {
+                                            "args": ["$PROMPT", "$EMBEDDINGS"],
+                                            "name": "multi_inference"
+                                        }
+                                    }
+                                }
+                            ],
+                            "name": "Summarize"
+                        }
+                    ],
+                    "sticky": true,
+                    "version": "v0.1"
+                }
+            }],
+            "type": "Workflow"
+        });
+
+        let input_value = json!({
+            "content": [{
+                "workflow": {
+                    "description": "New description"
+                }
+            }],
+            "type": "Workflow"
+        });
+
+        let expected_merged_value = json!({
+            "content": [{
+                "embedding": {
+                    "id": "",
+                    "vector": [0.1, 0.2, 0.3]
+                },
+                "workflow": {
+                    "author": "@@official.shinkai",
+                    "description": "New description",
+                    "name": "Extensive_summary",
+                    "raw": "workflow Extensive_summary v0.1 { ... }",
+                    "steps": [
+                        {
+                            "body": [
+                                {
+                                    "type": "composite",
+                                    "value": [
+                                        {
+                                            "type": "registeroperation",
+                                            "value": {
+                                                "register": "$PROMPT",
+                                                "value": "Summarize this: "
+                                            }
+                                        },
+                                        {
+                                            "type": "registeroperation",
+                                            "value": {
+                                                "register": "$EMBEDDINGS",
+                                                "value": {
+                                                    "args": [],
+                                                    "name": "process_embeddings_in_job_scope"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            "name": "Initialize"
+                        },
+                        {
+                            "body": [
+                                {
+                                    "type": "registeroperation",
+                                    "value": {
+                                        "register": "$RESULT",
+                                        "value": {
+                                            "args": ["$PROMPT", "$EMBEDDINGS"],
+                                            "name": "multi_inference"
+                                        }
+                                    }
+                                }
+                            ],
+                            "name": "Summarize"
+                        }
+                    ],
+                    "sticky": true,
+                    "version": "v0.1"
+                }
+            }],
+            "type": "Workflow"
+        });
+
+        let merged_value = Node::merge_json(existing_tool_value, input_value);
+        assert_eq!(merged_value, expected_merged_value);
     }
 }

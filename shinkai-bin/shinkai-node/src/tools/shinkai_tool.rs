@@ -70,7 +70,7 @@ impl ShinkaiTool {
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(name: String, toolkit_name: String) -> String {
         // We replace any `/` in order to not have the names break VRPaths
-        format!("{}:::{}", toolkit_name, name).replace('/', "|")
+        format!("{}:::{}", toolkit_name, name).replace('/', "|").to_lowercase()
     }
 
     /// Tool name

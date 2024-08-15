@@ -4,6 +4,7 @@ use arrow_array::{Array, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::TryStreamExt;
+use lancedb::index::Index;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
 use lancedb::table::AddDataMode;
@@ -12,6 +13,7 @@ use lancedb::{connect, Connection, Table};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::ollama_embedding_fn::OllamaEmbeddingFunction;
 use super::shinkai_lancedb_error::ShinkaiLanceDBError;
@@ -59,8 +61,8 @@ impl LanceShinkaiDb {
         let schema = ShinkaiToolSchema::create_schema(embedding_model)
             .map_err(|e| ShinkaiLanceDBError::Schema(e.to_string()))?;
 
-        match connection.create_empty_table("tool_router", schema).execute().await {
-            Ok(table) => Ok(table),
+        let table = match connection.create_empty_table("tool_router", schema).execute().await {
+            Ok(table) => table,
             Err(e) => {
                 if let LanceDbError::TableAlreadyExists { .. } = e {
                     // If the table already exists, retrieve and return it
@@ -68,18 +70,29 @@ impl LanceShinkaiDb {
                         .open_table("tool_router")
                         .execute()
                         .await
-                        .map_err(ShinkaiLanceDBError::from)
+                        .map_err(ShinkaiLanceDBError::from)?
                 } else {
-                    Err(ShinkaiLanceDBError::from(e))
+                    return Err(ShinkaiLanceDBError::from(e));
                 }
             }
+        };
+
+        // Check if the index already exists
+        let indices = table.list_indices().await?;
+        let index_exists = indices.iter().any(|index| index.name == "tool_key_index");
+
+        // Create the index if it doesn't exist
+        if !index_exists {
+            table.create_index(&["tool_key"], Index::Auto).execute().await?;
         }
+
+        Ok(table)
     }
 
     /// Insert a tool into the database. It will overwrite the tool if it already exists.
     /// Also it auto-generates the embedding if it is not provided.
     pub async fn set_tool(&self, shinkai_tool: &ShinkaiTool) -> Result<(), ToolError> {
-        let tool_key = shinkai_tool.tool_router_key();
+        let tool_key = shinkai_tool.tool_router_key().to_lowercase();
         let tool_keys = vec![shinkai_tool.tool_router_key()];
         let tool_types = vec![shinkai_tool.tool_type().to_string()];
 
@@ -167,10 +180,16 @@ impl LanceShinkaiDb {
     }
 
     pub async fn get_tool(&self, tool_key: &str) -> Result<Option<ShinkaiTool>, ShinkaiLanceDBError> {
+        let start_time = Instant::now();
+
         let query = self
             .table
             .query()
-            .only_if(format!("{} = '{}'", ShinkaiToolSchema::tool_key_field(), tool_key))
+            .only_if(format!(
+                "{} = '{}'",
+                ShinkaiToolSchema::tool_key_field(),
+                tool_key.to_lowercase()
+            ))
             .limit(1)
             .execute()
             .await
@@ -192,6 +211,8 @@ impl LanceShinkaiDb {
                 let tool_data = tool_data_array.value(0).to_string();
                 let shinkai_tool: ShinkaiTool =
                     serde_json::from_str(&tool_data).map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+                let duration = start_time.elapsed();
+                println!("Time taken to fetch tool with key '{}': {:?}", tool_key, duration);
                 return Ok(Some(shinkai_tool));
             }
         }

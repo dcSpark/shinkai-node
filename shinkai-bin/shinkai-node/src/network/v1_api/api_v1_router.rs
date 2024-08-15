@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_channel::Sender;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIAvailableSharedItems;
@@ -50,6 +52,7 @@ use super::api_v1_handlers::get_my_subscribers_handler;
 use super::api_v1_handlers::get_notifications_before_timestamp_handler;
 use super::api_v1_handlers::get_public_key_handler;
 use super::api_v1_handlers::get_sheet_handler;
+use super::api_v1_handlers::get_shinkai_tool_handler;
 use super::api_v1_handlers::get_subscription_links_handler;
 use super::api_v1_handlers::get_workflow_info_handler;
 use super::api_v1_handlers::handle_file_upload;
@@ -72,7 +75,6 @@ use super::api_v1_handlers::send_msg_handler;
 use super::api_v1_handlers::set_cell_value_handler;
 use super::api_v1_handlers::set_column_handler;
 use super::api_v1_handlers::set_shinkai_tool_handler;
-use super::api_v1_handlers::get_shinkai_tool_handler;
 use super::api_v1_handlers::shinkai_health_handler;
 use super::api_v1_handlers::subscribe_to_shared_folder_handler;
 use super::api_v1_handlers::unsubscribe_handler;
@@ -792,8 +794,11 @@ pub fn v1_routes(
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("set_shinkai_tool")
             .and(warp::post())
+            .and(warp::query::<HashMap<String, String>>())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| set_shinkai_tool_handler(node_commands_sender.clone(), message))
+            .and_then(move |query_params: HashMap<String, String>, message: ShinkaiMessage| {
+                set_shinkai_tool_handler(node_commands_sender.clone(), query_params, message)
+            })
     };
 
     let api_get_shinkai_tool = {
