@@ -93,11 +93,16 @@ impl SheetManager {
     pub fn create_empty_sheet(&mut self) -> Result<String, ShinkaiDBError> {
         let sheet = Sheet::new();
         let sheet_id = sheet.uuid.clone();
-        let (sender, _receiver) = async_channel::unbounded();
+        let (sender, receiver) = async_channel::unbounded();
         let mut sheet_clone = sheet.clone();
         sheet_clone.set_update_sender(sender.clone());
 
         self.sheets.insert(sheet_id.clone(), (sheet_clone, sender));
+        self.receivers.insert(sheet_id.clone(), receiver.clone());
+
+        // Start a task to handle updates
+        let handle = tokio::spawn(Self::handle_updates(receiver, self.ws_manager.clone()));
+        self.update_handles.push(handle);
 
         // Add the sheet to the database
         let db_strong = self
@@ -118,12 +123,17 @@ impl SheetManager {
     }
 
     pub fn add_sheet(&mut self, sheet: Sheet) -> Result<String, ShinkaiDBError> {
-        let (sender, _receiver) = async_channel::unbounded();
+        let (sender, receiver) = async_channel::unbounded();
         let sheet_id = sheet.uuid.clone();
         let mut sheet_clone = sheet.clone();
         sheet_clone.set_update_sender(sender.clone());
 
         self.sheets.insert(sheet_id.clone(), (sheet_clone, sender));
+        self.receivers.insert(sheet_id.clone(), receiver.clone());
+
+        // Start a task to handle updates
+        let handle = tokio::spawn(Self::handle_updates(receiver, self.ws_manager.clone()));
+        self.update_handles.push(handle);
 
         // Add the sheet to the database
         let db_strong = self
