@@ -3045,6 +3045,87 @@ impl Node {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub async fn api_search_shinkai_tool(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        potentially_encrypted_msg: ShinkaiMessage,
+        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        res: Sender<Result<JsonValue, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let (search_query, requester_name) = match Self::validate_and_extract_payload::<String>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::SearchShinkaiTool,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Start the timer
+        let start_time = Instant::now();
+
+        // Perform the internal search using tool_router
+        if let Some(tool_router) = tool_router {
+            let tool_router = tool_router.lock().await;
+            match tool_router.vector_search_all_tools(&search_query, 5).await {
+                Ok(tools) => {
+                    let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
+                        message: format!("Failed to serialize tools: {}", err),
+                    })?;
+                    // Log the elapsed time if LOG_ALL is set to 1
+                    if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
+                        let elapsed_time = start_time.elapsed();
+                        let result_count = tools_json.as_array().map_or(0, |arr| arr.len());
+                        println!("Time taken for tool search: {:?}", elapsed_time);
+                        println!("Number of tool results: {}", result_count);
+                    }
+                    let _ = res.send(Ok(tools_json)).await;
+                    Ok(())
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to search tools: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Tool router is not available".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            Ok(())
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_workflow(
         lance_db: Arc<Mutex<LanceShinkaiDb>>,
         node_name: ShinkaiName,

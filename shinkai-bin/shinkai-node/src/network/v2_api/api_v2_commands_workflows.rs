@@ -61,6 +61,49 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_search_shinkai_tool(
+        db: Arc<ShinkaiDB>,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        bearer: String,
+        query: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Start the timer
+        let start_time = Instant::now();
+
+        // Perform the internal search using LanceShinkaiDb
+        match lance_db.lock().await.vector_search_all_tools(&query, 5).await {
+            Ok(tools) => {
+                let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
+                    message: format!("Failed to serialize tools: {}", err),
+                })?;
+                // Log the elapsed time if LOG_ALL is set to 1
+                if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
+                    let elapsed_time = start_time.elapsed();
+                    let result_count = tools_json.as_array().map_or(0, |arr| arr.len());
+                    println!("Time taken for tool search: {:?}", elapsed_time);
+                    println!("Number of tool results: {}", result_count);
+                }
+                let _ = res.send(Ok(tools_json)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to search tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn v2_api_set_workflow(
         db: Arc<ShinkaiDB>,
         lance_db: Arc<Mutex<LanceShinkaiDb>>,

@@ -139,9 +139,19 @@ impl ToolRouter {
         Ok(None)
     }
 
-    pub async fn vector_search(&self, query: &str, num_of_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+    pub async fn vector_search_enabled_tools(&self, query: &str, num_of_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let lance_db = self.lance_db.lock().await;
         let tool_headers = lance_db.vector_search_enabled_tools(query, num_of_results).await?;
+        Ok(tool_headers)
+    }
+
+    pub async fn vector_search_all_tools(
+        &self,
+        query: &str,
+        num_of_results: u64,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        let lance_db = self.lance_db.lock().await;
+        let tool_headers = lance_db.vector_search_all_tools(query, num_of_results).await?;
         Ok(tool_headers)
     }
 
@@ -227,18 +237,16 @@ impl ToolRouter {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{json, Value};
+    use serde_json::json;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-    use shinkai_vector_resources::embeddings::Embedding;
 
-    use crate::tools::tool_router_dep::workflows_data;
     use crate::tools::workflow_tool::WorkflowTool;
 
     use super::*;
     use std::env;
+    use std::fs::File;
     use std::io::Write;
-    use std::{fs::File, time::Instant};
 
     // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)

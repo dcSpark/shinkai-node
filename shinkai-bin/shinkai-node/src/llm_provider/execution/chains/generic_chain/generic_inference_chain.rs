@@ -161,7 +161,7 @@ impl GenericInferenceChain {
                 // }
 
                 // Search in JS Tools
-                let results = tool_router.vector_search(&user_message.clone(), 3).await.unwrap();
+                let results = tool_router.vector_search_enabled_tools(&user_message.clone(), 3).await.unwrap();
                 for result in results {
                     if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
                         tools.push(tool);

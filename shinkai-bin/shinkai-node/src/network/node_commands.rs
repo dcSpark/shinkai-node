@@ -423,6 +423,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APISearchShinkaiTool {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIAddWorkflow {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
@@ -661,6 +665,11 @@ pub enum NodeCommand {
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiSearchWorkflows {
+        bearer: String,
+        query: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
         res: Sender<Result<Value, APIError>>,

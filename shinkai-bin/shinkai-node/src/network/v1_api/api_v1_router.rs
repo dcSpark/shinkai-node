@@ -70,6 +70,7 @@ use super::api_v1_handlers::remove_sheet_handler;
 use super::api_v1_handlers::retrieve_vrkai_handler;
 use super::api_v1_handlers::retrieve_vrpack_handler;
 use super::api_v1_handlers::scan_ollama_models_handler;
+use super::api_v1_handlers::search_shinkai_tool_handler;
 use super::api_v1_handlers::search_workflows_handler;
 use super::api_v1_handlers::send_msg_handler;
 use super::api_v1_handlers::set_cell_value_handler;
@@ -648,6 +649,14 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| search_workflows_handler(node_commands_sender.clone(), message))
     };
 
+    let search_shinkai_tool = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("search_shinkai_tool")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| search_shinkai_tool_handler(node_commands_sender.clone(), message))
+    };
+
     let add_workflow = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("add_workflow")
@@ -888,4 +897,5 @@ pub fn v1_routes(
         .or(api_list_all_shinkai_tools)
         .or(api_set_shinkai_tool)
         .or(api_get_shinkai_tool)
+        .or(search_shinkai_tool)
 }

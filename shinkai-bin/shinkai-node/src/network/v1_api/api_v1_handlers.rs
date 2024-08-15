@@ -432,6 +432,21 @@ pub async fn search_workflows_handler(
     .await
 }
 
+pub async fn search_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISearchShinkaiTool {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn add_workflow_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

@@ -55,7 +55,7 @@ pub fn workflows_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(list_all_shinkai_tools_handler);
 
-        let set_shinkai_tool_route = warp::path("set_shinkai_tool")
+    let set_shinkai_tool_route = warp::path("set_shinkai_tool")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
@@ -70,6 +70,13 @@ pub fn workflows_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(get_shinkai_tool_handler);
 
+    let search_shinkai_tool_route = warp::path("search_shinkai_tool")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(search_shinkai_tool_handler);
+
     search_workflows_route
         .or(set_workflow_route)
         .or(remove_workflow_route)
@@ -78,6 +85,7 @@ pub fn workflows_routes(
         .or(list_all_shinkai_tools_route)
         .or(set_shinkai_tool_route)
         .or(get_shinkai_tool_route)
+        .or(search_shinkai_tool_route)
 }
 
 #[utoipa::path(
@@ -99,6 +107,45 @@ pub async fn search_workflows_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSearchWorkflows {
+            bearer,
+            query,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/search_shinkai_tool",
+    request_body = String,
+    responses(
+        (status = 200, description = "Successfully searched Shinkai tools", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn search_shinkai_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiSearchShinkaiTool {
             bearer,
             query,
             res: res_sender,
@@ -423,6 +470,7 @@ pub async fn get_shinkai_tool_handler(
         list_all_shinkai_tools_handler,
         set_shinkai_tool_handler,
         get_shinkai_tool_handler,
+        search_shinkai_tool_handler,
     ),
     components(
         schemas(APIError)
