@@ -815,6 +815,46 @@ mod tests {
         // Print final state of the sheet
         sheet.print_as_ascii_table();
     }
+
+    #[tokio::test]
+    async fn test_create_text_column_and_get_value() {
+        let mut sheet = Sheet::new();
+        let column_text_id = Uuid::new_v4().to_string();
+        let column_text_2_id = Uuid::new_v4().to_string();
+        let row_id = Uuid::new_v4().to_string();
+
+        // Create a text column
+        let column_text = ColumnDefinition {
+            id: column_text_id.clone(),
+            name: "Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let _ = sheet.set_column(column_text.clone()).await;
+
+        // Add a row
+        sheet.add_row(row_id.clone()).await.unwrap();
+
+        // Set the first item to some text
+        sheet
+            .set_cell_value(row_id.clone(), column_text_id.clone(), "Sample Text".to_string())
+            .await
+            .unwrap();
+
+        // Create a second text column
+        let column_text_2 = ColumnDefinition {
+            id: column_text_2_id.clone(),
+            name: "Second Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let _ = sheet.set_column(column_text_2.clone()).await;
+
+        // Try to get the value of the cell from the second column
+        let cell_value = sheet.get_cell_value(row_id.clone(), column_text_2_id.clone());
+        assert_eq!(cell_value, None);
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
 }
 
 // // TODO: add test that A (text missing) -> B (workflow depending on A) -> C (workflo depending on B)

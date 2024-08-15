@@ -661,6 +661,18 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 },
             );
 
+            // Send update after setting the cell value
+            if let Some(sender) = &state.update_sender {
+                if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
+                    let sender_clone = sender.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                            eprintln!("Failed to send update: {:?}", e);
+                        }
+                    });
+                }
+            }
+
             // Trigger updates for cells dependent on the updated cell
             let changed_cell_id = CellId(format!("{}:{}", row, col));
             let (new_state, mut new_jobs) = sheet_reducer(
