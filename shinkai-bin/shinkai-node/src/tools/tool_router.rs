@@ -141,7 +141,7 @@ impl ToolRouter {
 
     pub async fn vector_search(&self, query: &str, num_of_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let lance_db = self.lance_db.lock().await;
-        let tool_headers = lance_db.vector_search(query, num_of_results).await?;
+        let tool_headers = lance_db.vector_search_enabled_tools(query, num_of_results).await?;
         Ok(tool_headers)
     }
 

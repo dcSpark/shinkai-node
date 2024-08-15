@@ -77,9 +77,16 @@ impl LanceShinkaiDb {
             }
         };
 
+        // Check if the table is empty
+        let is_empty = Self::is_table_empty(&table).await?;
+        if is_empty {
+            println!("Table is empty, skipping index creation.");
+            return Ok(table);
+        }
+
         // Check if the index already exists
         let indices = table.list_indices().await?;
-        let index_exists = indices.iter().any(|index| index.name == "tool_key_index");
+        let index_exists = indices.iter().any(|index| index.name == "tool_key");
 
         // Create the index if it doesn't exist
         if !index_exists {
@@ -87,6 +94,12 @@ impl LanceShinkaiDb {
         }
 
         Ok(table)
+    }
+
+    async fn is_table_empty(table: &Table) -> Result<bool, ShinkaiLanceDBError> {
+        let query = table.query().limit(1).execute().await?;
+        let results = query.try_collect::<Vec<_>>().await?;
+        Ok(results.is_empty())
     }
 
     /// Insert a tool into the database. It will overwrite the tool if it already exists.
@@ -301,7 +314,33 @@ impl LanceShinkaiDb {
         Ok(tools)
     }
 
-    pub async fn vector_search(&self, query: &str, num_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+    pub async fn vector_search_enabled_tools(
+        &self,
+        query: &str,
+        num_results: u64,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        self.vector_search_tools(
+            query,
+            num_results,
+            Some(&format!("{} = true", ShinkaiToolSchema::is_enabled_field())),
+        )
+        .await
+    }
+
+    pub async fn vector_search_all_tools(
+        &self,
+        query: &str,
+        num_results: u64,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        self.vector_search_tools(query, num_results, None).await
+    }
+
+    async fn vector_search_tools(
+        &self,
+        query: &str,
+        num_results: u64,
+        filter: Option<&str>,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -313,7 +352,7 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
-        let query = self
+        let mut query_builder = self
             .table
             .query()
             .select(Select::columns(&[
@@ -321,12 +360,15 @@ impl LanceShinkaiDb {
                 ShinkaiToolSchema::tool_type_field(),
                 ShinkaiToolSchema::tool_header_field(),
             ]))
-            .only_if(format!("{} = true", ShinkaiToolSchema::is_enabled_field()))
             .limit(num_results as usize)
             .nearest_to(embedding)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        let results = query
+        if let Some(filter) = filter {
+            query_builder = query_builder.only_if(filter.to_string());
+        }
+
+        let results = query_builder
             .execute()
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -518,7 +560,7 @@ mod tests {
 
         let query = "search";
         let results = db
-            .vector_search(&query, 5)
+            .vector_search_enabled_tools(&query, 5)
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
@@ -647,7 +689,7 @@ mod tests {
         let search_start_time = Instant::now();
 
         let results = db
-            .vector_search(&query, 2)
+            .vector_search_enabled_tools(&query, 2)
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
