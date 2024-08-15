@@ -10,28 +10,25 @@ use polars::{
     series::Series,
 };
 use rand::prelude::SliceRandom;
-use tiktoken_rs::tokenizer::Tokenizer;
-
-use crate::llm::utils::num_tokens;
 
 use super::{context_builder::ContextBuilderParams, indexer_entities::Entity, indexer_reports::CommunityReport};
 
 pub struct GlobalCommunityContext {
     community_reports: Vec<CommunityReport>,
     entities: Option<Vec<Entity>>,
-    token_encoder: Option<Tokenizer>,
+    num_tokens_fn: fn(&str) -> usize,
 }
 
 impl GlobalCommunityContext {
     pub fn new(
         community_reports: Vec<CommunityReport>,
         entities: Option<Vec<Entity>>,
-        token_encoder: Option<Tokenizer>,
+        num_tokens_fn: fn(&str) -> usize,
     ) -> Self {
         Self {
             community_reports,
             entities,
-            token_encoder,
+            num_tokens_fn,
         }
     }
 
@@ -56,7 +53,7 @@ impl GlobalCommunityContext {
         let (community_context, community_context_data) = CommunityContext::build_community_context(
             self.community_reports.clone(),
             self.entities.clone(),
-            self.token_encoder.clone(),
+            self.num_tokens_fn,
             use_community_summary,
             &column_delimiter,
             shuffle_data,
@@ -84,7 +81,7 @@ impl CommunityContext {
     pub fn build_community_context(
         community_reports: Vec<CommunityReport>,
         entities: Option<Vec<Entity>>,
-        token_encoder: Option<Tokenizer>,
+        num_tokens_fn: fn(&str) -> usize,
         use_community_summary: bool,
         column_delimiter: &str,
         shuffle_data: bool,
@@ -202,11 +199,11 @@ impl CommunityContext {
 
         let mut batch = Batch::new();
 
-        batch.init_batch(context_name, &header, column_delimiter, token_encoder);
+        batch.init_batch(context_name, &header, column_delimiter, num_tokens_fn);
 
         for report in selected_reports {
             let (new_context_text, new_context) = _report_context_text(&report, &attributes);
-            let new_tokens = num_tokens(&new_context_text, token_encoder);
+            let new_tokens = num_tokens_fn(&new_context_text);
 
             // add the current batch to the context data and start a new batch if we are in multi-batch mode
             if batch.batch_tokens + new_tokens > max_tokens {
@@ -226,7 +223,7 @@ impl CommunityContext {
                     break;
                 }
 
-                batch.init_batch(context_name, &header, column_delimiter, token_encoder);
+                batch.init_batch(context_name, &header, column_delimiter, num_tokens_fn);
             }
 
             batch.batch_text.push_str(&new_context_text);
@@ -352,10 +349,10 @@ impl Batch {
         context_name: &str,
         header: &Vec<String>,
         column_delimiter: &str,
-        token_encoder: Option<Tokenizer>,
+        num_tokens_fn: fn(&str) -> usize,
     ) {
         self.batch_text = format!("-----{}-----\n{}\n", context_name, header.join(column_delimiter));
-        self.batch_tokens = num_tokens(&self.batch_text, token_encoder);
+        self.batch_tokens = num_tokens_fn(&self.batch_text);
         self.batch_records.clear();
     }
 

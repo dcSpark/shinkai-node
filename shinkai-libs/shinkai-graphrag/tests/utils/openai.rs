@@ -8,6 +8,7 @@ use async_openai::{
 };
 use async_trait::async_trait;
 use shinkai_graphrag::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
+use tiktoken_rs::{get_bpe_from_tokenizer, tokenizer::Tokenizer};
 
 pub struct ChatOpenAI {
     pub api_key: Option<String>,
@@ -135,4 +136,10 @@ impl BaseLLM for ChatOpenAI {
     ) -> anyhow::Result<String> {
         self.agenerate(messages, streaming, callbacks, llm_params).await
     }
+}
+
+pub fn num_tokens(text: &str) -> usize {
+    let token_encoder = Tokenizer::Cl100kBase;
+    let bpe = get_bpe_from_tokenizer(token_encoder).unwrap();
+    bpe.encode_with_special_tokens(text).len()
 }

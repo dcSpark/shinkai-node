@@ -3,12 +3,10 @@ use polars::frame::DataFrame;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Instant;
-use tiktoken_rs::tokenizer::Tokenizer;
 
 use crate::context_builder::community_context::GlobalCommunityContext;
 use crate::context_builder::context_builder::{ContextBuilderParams, ConversationHistory};
 use crate::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
-use crate::llm::utils::num_tokens;
 use crate::search::global_search::prompts::NO_DATA_ANSWER;
 
 use super::prompts::{GENERAL_KNOWLEDGE_INSTRUCTION, MAP_SYSTEM_PROMPT, REDUCE_SYSTEM_PROMPT};
@@ -26,8 +24,6 @@ pub struct SearchResult {
 #[derive(Debug, Clone)]
 pub enum ResponseType {
     String(String),
-    Dictionary(HashMap<String, serde_json::Value>),
-    Dictionaries(Vec<HashMap<String, serde_json::Value>>),
     KeyPoints(Vec<KeyPoint>),
 }
 
@@ -91,7 +87,7 @@ impl GlobalSearchLLMCallback {
 pub struct GlobalSearch {
     llm: Box<dyn BaseLLM>,
     context_builder: GlobalCommunityContext,
-    token_encoder: Option<Tokenizer>,
+    num_tokens_fn: fn(&str) -> usize,
     context_builder_params: ContextBuilderParams,
     map_system_prompt: String,
     reduce_system_prompt: String,
@@ -107,7 +103,7 @@ pub struct GlobalSearch {
 pub struct GlobalSearchParams {
     pub llm: Box<dyn BaseLLM>,
     pub context_builder: GlobalCommunityContext,
-    pub token_encoder: Option<Tokenizer>,
+    pub num_tokens_fn: fn(&str) -> usize,
     pub map_system_prompt: Option<String>,
     pub reduce_system_prompt: Option<String>,
     pub response_type: String,
@@ -126,7 +122,7 @@ impl GlobalSearch {
         let GlobalSearchParams {
             llm,
             context_builder,
-            token_encoder,
+            num_tokens_fn,
             map_system_prompt,
             reduce_system_prompt,
             response_type,
@@ -158,7 +154,7 @@ impl GlobalSearch {
         GlobalSearch {
             llm,
             context_builder,
-            token_encoder,
+            num_tokens_fn,
             context_builder_params,
             map_system_prompt,
             reduce_system_prompt,
@@ -273,7 +269,7 @@ impl GlobalSearch {
             context_text: ContextText::String(context_data.to_string()),
             completion_time: start_time.elapsed().as_secs_f64(),
             llm_calls: 1,
-            prompt_tokens: num_tokens(&search_prompt, self.token_encoder),
+            prompt_tokens: (self.num_tokens_fn)(&search_prompt),
         })
     }
 
@@ -364,12 +360,12 @@ impl GlobalSearch {
             formatted_response_data.push(point.get("answer").unwrap().to_string());
             let formatted_response_text = formatted_response_data.join("\n");
 
-            if total_tokens + num_tokens(&formatted_response_text, self.token_encoder) > self.max_data_tokens {
+            if total_tokens + (self.num_tokens_fn)(&formatted_response_text) > self.max_data_tokens {
                 break;
             }
 
             data.push(formatted_response_text.clone());
-            total_tokens += num_tokens(&formatted_response_text, self.token_encoder);
+            total_tokens += (self.num_tokens_fn)(&formatted_response_text);
         }
         let text_data = data.join("\n\n");
 
@@ -425,7 +421,7 @@ impl GlobalSearch {
             context_text: ContextText::String(text_data),
             completion_time: start_time.elapsed().as_secs_f64(),
             llm_calls: 1,
-            prompt_tokens: num_tokens(&search_prompt, self.token_encoder),
+            prompt_tokens: (self.num_tokens_fn)(&search_prompt),
         })
     }
 }
