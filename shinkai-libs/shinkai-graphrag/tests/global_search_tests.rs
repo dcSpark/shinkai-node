@@ -1,7 +1,7 @@
 use polars::{io::SerReader, prelude::ParquetReader};
 use shinkai_graphrag::{
     context_builder::{
-        community_context::GlobalCommunityContext, context_builder::ContextBuilderParams,
+        community_context::GlobalCommunityContext, context_builder::GlobalSearchContextBuilderParams,
         indexer_entities::read_indexer_entities, indexer_reports::read_indexer_reports,
     },
     llm::llm::LLMParams,
@@ -149,7 +149,7 @@ async fn openai_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
 
     let context_builder = GlobalCommunityContext::new(reports, Some(entities), num_tokens);
 
-    let context_builder_params = ContextBuilderParams {
+    let context_builder_params = GlobalSearchContextBuilderParams {
         use_community_summary: false, // False means using full community reports. True means using community short summaries.
         shuffle_data: true,
         include_community_rank: true,

@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use polars::prelude::*;
 use polars_lazy::dsl::col;
-use serde::{Deserialize, Serialize};
+
+use crate::models::CommunityReport;
 
 use super::indexer_entities::get_field;
 
@@ -57,20 +58,6 @@ pub fn filter_under_community_level(df: &DataFrame, community_level: u32) -> any
     let result = df.filter(&mask)?;
 
     Ok(result)
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CommunityReport {
-    pub id: String,
-    pub short_id: Option<String>,
-    pub title: String,
-    pub community_id: String,
-    pub summary: String,
-    pub full_content: String,
-    pub rank: Option<f64>,
-    pub summary_embedding: Option<Vec<f64>>,
-    pub full_content_embedding: Option<Vec<f64>>,
-    pub attributes: Option<HashMap<String, String>>,
 }
 
 pub fn read_community_reports(

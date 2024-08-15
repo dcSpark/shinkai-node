@@ -1,12 +1,12 @@
 use futures::future::join_all;
-use polars::frame::DataFrame;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::context_builder::community_context::GlobalCommunityContext;
-use crate::context_builder::context_builder::{ContextBuilderParams, ConversationHistory};
+use crate::context_builder::context_builder::{ConversationHistory, GlobalSearchContextBuilderParams};
 use crate::llm::llm::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
+use crate::search::base::{ContextData, ContextText, KeyPoint, ResponseType};
 use crate::search::global_search::prompts::NO_DATA_ANSWER;
 
 use super::prompts::{GENERAL_KNOWLEDGE_INSTRUCTION, MAP_SYSTEM_PROMPT, REDUCE_SYSTEM_PROMPT};
@@ -19,32 +19,6 @@ pub struct SearchResult {
     pub completion_time: f64,
     pub llm_calls: usize,
     pub prompt_tokens: usize,
-}
-
-#[derive(Debug, Clone)]
-pub enum ResponseType {
-    String(String),
-    KeyPoints(Vec<KeyPoint>),
-}
-
-#[derive(Debug, Clone)]
-pub enum ContextData {
-    String(String),
-    DataFrames(Vec<DataFrame>),
-    Dictionary(HashMap<String, DataFrame>),
-}
-
-#[derive(Debug, Clone)]
-pub enum ContextText {
-    String(String),
-    Strings(Vec<String>),
-    Dictionary(HashMap<String, String>),
-}
-
-#[derive(Debug, Clone)]
-pub struct KeyPoint {
-    pub answer: String,
-    pub score: i32,
 }
 
 pub struct GlobalSearchResult {
@@ -88,7 +62,7 @@ pub struct GlobalSearch {
     llm: Box<dyn BaseLLM>,
     context_builder: GlobalCommunityContext,
     num_tokens_fn: fn(&str) -> usize,
-    context_builder_params: ContextBuilderParams,
+    context_builder_params: GlobalSearchContextBuilderParams,
     map_system_prompt: String,
     reduce_system_prompt: String,
     response_type: String,
@@ -114,7 +88,7 @@ pub struct GlobalSearchParams {
     pub max_data_tokens: usize,
     pub map_llm_params: LLMParams,
     pub reduce_llm_params: LLMParams,
-    pub context_builder_params: ContextBuilderParams,
+    pub context_builder_params: GlobalSearchContextBuilderParams,
 }
 
 impl GlobalSearch {

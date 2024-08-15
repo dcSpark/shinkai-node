@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use polars::prelude::*;
 use polars_lazy::dsl::col;
-use serde::{Deserialize, Serialize};
+
+use crate::models::Entity;
 
 use super::indexer_reports::filter_under_community_level;
 
@@ -50,23 +51,6 @@ pub fn read_indexer_entities(
     )?;
 
     Ok(entities)
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Entity {
-    pub id: String,
-    pub short_id: Option<String>,
-    pub title: String,
-    pub entity_type: Option<String>,
-    pub description: Option<String>,
-    pub description_embedding: Option<Vec<f64>>,
-    pub name_embedding: Option<Vec<f64>>,
-    pub graph_embedding: Option<Vec<f64>>,
-    pub community_ids: Option<Vec<String>>,
-    pub text_unit_ids: Option<Vec<String>>,
-    pub document_ids: Option<Vec<String>>,
-    pub rank: Option<i32>,
-    pub attributes: Option<HashMap<String, String>>,
 }
 
 pub fn read_entities(

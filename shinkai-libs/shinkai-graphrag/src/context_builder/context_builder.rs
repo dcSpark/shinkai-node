@@ -1,6 +1,5 @@
 #[derive(Debug, Clone)]
-pub struct ContextBuilderParams {
-    //conversation_history: Option<ConversationHistory>,
+pub struct GlobalSearchContextBuilderParams {
     pub use_community_summary: bool,
     pub column_delimiter: String,
     pub shuffle_data: bool,
@@ -12,6 +11,7 @@ pub struct ContextBuilderParams {
     pub normalize_community_weight: bool,
     pub max_tokens: usize,
     pub context_name: String,
+    //conversation_history: Option<ConversationHistory>,
     // conversation_history_user_turns_only: bool,
     // conversation_history_max_turns: Option<i32>,
 }

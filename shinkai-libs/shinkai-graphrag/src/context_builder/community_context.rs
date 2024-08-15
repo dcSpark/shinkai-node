@@ -11,7 +11,9 @@ use polars::{
 };
 use rand::prelude::SliceRandom;
 
-use super::{context_builder::ContextBuilderParams, indexer_entities::Entity, indexer_reports::CommunityReport};
+use crate::models::{CommunityReport, Entity};
+
+use super::context_builder::GlobalSearchContextBuilderParams;
 
 pub struct GlobalCommunityContext {
     community_reports: Vec<CommunityReport>,
@@ -34,9 +36,9 @@ impl GlobalCommunityContext {
 
     pub async fn build_context(
         &self,
-        context_builder_params: ContextBuilderParams,
+        context_builder_params: GlobalSearchContextBuilderParams,
     ) -> anyhow::Result<(Vec<String>, HashMap<String, DataFrame>)> {
-        let ContextBuilderParams {
+        let GlobalSearchContextBuilderParams {
             use_community_summary,
             column_delimiter,
             shuffle_data,
