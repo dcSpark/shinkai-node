@@ -122,7 +122,6 @@ async fn process_shinkai_message(
             match e {
                 WebSocketManagerError::UserValidationFailed(_) => e,
                 WebSocketManagerError::AccessDenied(_) => e,
-                WebSocketManagerError::MissingSharedKey(_) => e,
                 _ => WebSocketManagerError::UserValidationFailed(format!("Failed to manage connections: {}", e)),
                 // Add additional error handling as needed
             }

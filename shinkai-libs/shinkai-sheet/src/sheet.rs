@@ -16,12 +16,25 @@ const MAX_DEPENDENCY_DEPTH: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SheetUpdate {
-    CellUpdated(RowUuid, ColumnUuid),
-    // Add other update types as needed
+    CellUpdated(CellUpdateInfo),
 }
 
-pub trait SheetObserver {
-    fn on_sheet_update(&self, update: SheetUpdate);
+// Define the new struct
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CellUpdateInfo {
+    pub sheet_id: String,
+    pub update_type: String,
+    pub data: CellUpdateData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CellUpdateData {
+    pub column_id: ColumnUuid,
+    pub input_hash: Option<String>,
+    pub last_updated: DateTime<Utc>,
+    pub row_id: RowUuid,
+    pub status: CellStatus,
+    pub value: Option<String>,
 }
 
 /// The `Sheet` struct represents the state of a spreadsheet.
@@ -41,8 +54,7 @@ pub struct Sheet {
     pub display_rows: Vec<UuidString>,
     pub last_updated: DateTime<Utc>,
     #[serde(skip_serializing, skip_deserializing)]
-    update_sender: Option<Sender<SheetUpdate>>,
-    // TODO: add last updated. Intrinsic?
+    pub update_sender: Option<Sender<SheetUpdate>>,
     // TODO: add history? (only if a cell changed value)
 }
 
@@ -105,7 +117,7 @@ impl Sheet {
 
     pub async fn dispatch(&mut self, action: SheetAction) -> Vec<WorkflowSheetJobData> {
         let (mut new_state, jobs) = sheet_reducer(self.clone(), action).await;
-        new_state.last_updated = Utc::now(); 
+        new_state.last_updated = Utc::now();
         *self = new_state;
         jobs
     }
@@ -231,14 +243,14 @@ impl Sheet {
 
         // Send update after setting the cell value
         if let Some(sender) = &self.update_sender {
-            let sender_clone = sender.clone();
-            let row_clone = row.clone();
-            let col_clone = col.clone();
-            tokio::spawn(async move {
-                if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(row_clone, col_clone)).await {
-                    eprintln!("Failed to send update: {:?}", e);
-                }
-            });
+            if let Some(update_info) = self.generate_cell_update_info(row.clone(), col.clone()) {
+                let sender_clone = sender.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                        eprintln!("Failed to send update: {:?}", e);
+                    }
+                });
+            }
         }
 
         let changed_cell_id = CellId(format!("{}:{}", row, col));
@@ -295,6 +307,26 @@ impl Sheet {
         }
 
         Some(result)
+    }
+
+    pub fn generate_cell_update_info(&self, row_id: RowUuid, column_id: ColumnUuid) -> Option<CellUpdateInfo> {
+        if let Some(row) = self.rows.get(&row_id) {
+            if let Some(cell) = row.get(&column_id) {
+                return Some(CellUpdateInfo {
+                    sheet_id: self.uuid.clone(),
+                    update_type: "CellUpdated".to_string(),
+                    data: CellUpdateData {
+                        column_id,
+                        input_hash: cell.input_hash.clone(),
+                        last_updated: cell.last_updated,
+                        row_id,
+                        status: cell.status.clone(),
+                        value: cell.value.clone(),
+                    },
+                });
+            }
+        }
+        None
     }
 
     // Note: if we create a workflow in B that depends on A (not defined)
@@ -677,10 +709,14 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
 
             if let Some(sender) = &state.update_sender {
-                let sender_clone = sender.clone();
-                tokio::spawn(async move {
-                    sender_clone.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
-                });
+                if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
+                    let sender_clone = sender.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                            eprintln!("Failed to send update: {:?}", e);
+                        }
+                    });
+                }
             }
         }
         SheetAction::PropagateUpdateToDependents {
@@ -889,11 +925,13 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                     );
                 } else {
                     // Check the states of dependent cells to determine the status of the new cell
-                    let status = if let ColumnBehavior::Formula(formula) | ColumnBehavior::LLMCall { input: formula, .. } = &col_def.behavior {
+                    let status = if let ColumnBehavior::Formula(formula)
+                    | ColumnBehavior::LLMCall { input: formula, .. } = &col_def.behavior
+                    {
                         let dependencies = state.parse_formula_dependencies(formula);
-                        let any_dependency_missing = dependencies.iter().any(|dep_col| {
-                            state.get_cell_value(row_uuid.clone(), dep_col.clone()).is_none()
-                        });
+                        let any_dependency_missing = dependencies
+                            .iter()
+                            .any(|dep_col| state.get_cell_value(row_uuid.clone(), dep_col.clone()).is_none());
                         if any_dependency_missing {
                             CellStatus::Waiting
                         } else {

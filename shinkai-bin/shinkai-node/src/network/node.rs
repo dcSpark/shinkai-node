@@ -324,9 +324,13 @@ impl Node {
 
         let lance_db_path = format!("{}", main_db_path);
         // Note: do we need to push this to start bc of the default embedding model?
-        let lance_db = LanceShinkaiDb::new(&lance_db_path, default_embedding_model.clone(), embedding_generator.clone())
-            .await
-            .unwrap();
+        let lance_db = LanceShinkaiDb::new(
+            &lance_db_path,
+            default_embedding_model.clone(),
+            embedding_generator.clone(),
+        )
+        .await
+        .unwrap();
         let lance_db = Arc::new(Mutex::new(lance_db));
 
         // Initialize ToolRouter
@@ -335,7 +339,12 @@ impl Node {
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
-        let sheet_manager_result = SheetManager::new(Arc::downgrade(&db_arc.clone()), node_name.clone()).await;
+        let sheet_manager_result = SheetManager::new(
+            Arc::downgrade(&db_arc.clone()),
+            node_name.clone(),
+            ws_manager_trait.clone(),
+        )
+        .await;
         let sheet_manager = sheet_manager_result.unwrap();
 
         Arc::new(Mutex::new(Node {

@@ -1,13 +1,14 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
+use crate::network::ws_manager::{WSMessageType, WSUpdateHandler};
 use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::sheet::{
     APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, WorkflowSheetJobData,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction,
+    CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
@@ -15,6 +16,7 @@ use shinkai_sheet::sheet::{Sheet, SheetUpdate};
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -28,19 +30,24 @@ impl std::fmt::Display for SheetManagerError {
 
 impl std::error::Error for SheetManagerError {}
 
-#[derive(Clone)]
 pub struct SheetManager {
     pub sheets: HashMap<String, (Sheet, Sender<SheetUpdate>)>,
     pub db: Weak<ShinkaiDB>,
     pub user_profile: ShinkaiName,
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
+    pub update_handles: Vec<JoinHandle<()>>,
+    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    pub receivers: HashMap<String, Receiver<SheetUpdate>>, // to avoid premature drops
 }
 
 // TODO: add blacklist property so we can to stop chains (when user cancels a job, we should stop the chain)
 
 impl SheetManager {
-    pub async fn new(db: Weak<ShinkaiDB>, node_name: ShinkaiName) -> Result<Self, SheetManagerError> {
-        // Only works for main right now
+    pub async fn new(
+        db: Weak<ShinkaiDB>,
+        node_name: ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    ) -> Result<Self, SheetManagerError> {
         let user_profile = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())
             .map_err(|e| SheetManagerError(e.to_string()))?;
 
@@ -52,13 +59,18 @@ impl SheetManager {
             .list_all_sheets_for_user(&user_profile)
             .map_err(|e| SheetManagerError(e.to_string()))?;
 
+        let mut update_handles = Vec::new();
+        let mut receivers = HashMap::new();
+
         let sheets = sheets_vec
             .into_iter()
             .map(|mut sheet| {
                 let (sender, receiver) = async_channel::unbounded();
                 sheet.set_update_sender(sender.clone());
                 // Start a task to handle updates
-                tokio::spawn(Self::handle_updates(receiver));
+                let handle = tokio::spawn(Self::handle_updates(receiver.clone(), ws_manager.clone()));
+                update_handles.push(handle);
+                receivers.insert(sheet.uuid.clone(), receiver);
                 (sheet.uuid.clone(), (sheet, sender))
             })
             .collect();
@@ -68,6 +80,9 @@ impl SheetManager {
             db,
             job_manager: None,
             user_profile,
+            update_handles,
+            ws_manager,
+            receivers,
         })
     }
 
@@ -172,7 +187,8 @@ impl SheetManager {
             .map_err(|e| e.to_string())?;
 
         // Start a task to handle updates for the new sheet
-        tokio::spawn(Self::handle_updates(receiver));
+        let handle = tokio::spawn(Self::handle_updates(receiver, self.ws_manager.clone()));
+        self.update_handles.push(handle);
 
         Ok(new_sheet.uuid)
     }
@@ -298,7 +314,7 @@ impl SheetManager {
         Ok(())
     }
 
-    pub async fn add_row(&mut self, sheet_id: &str, position: Option<usize>) -> Result<RowUuid, String> {
+    pub async fn add_row(&mut self, sheet_id: &str, _position: Option<usize>) -> Result<RowUuid, String> {
         let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
         let row_id = Uuid::new_v4().to_string();
         let jobs = sheet.add_row(row_id.clone()).await.map_err(|e| e.to_string())?;
@@ -382,11 +398,28 @@ impl SheetManager {
         }
     }
 
-    async fn handle_updates(receiver: Receiver<SheetUpdate>) {
+    async fn handle_updates(
+        receiver: Receiver<SheetUpdate>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    ) {
         while let Ok(update) = receiver.recv().await {
             // Handle the update (e.g., log it, process it, etc.)
             // TODO: check from which sheet the update came from
             println!("Received update: {:?}", update);
+
+            if let Some(ws_manager) = &ws_manager {
+                let ws_manager = ws_manager.lock().await;
+
+                match update {
+                    SheetUpdate::CellUpdated(cell_update_info) => {
+                        let topic = WSTopic::Sheet;
+                        let subtopic = cell_update_info.sheet_id.clone();
+                        let update = serde_json::to_string(&cell_update_info).unwrap();
+                        let metadata = WSMessageType::Sheet(cell_update_info);
+                        ws_manager.queue_message(topic, subtopic, update, metadata, false).await;
+                    }
+                }
+            }
         }
     }
 }

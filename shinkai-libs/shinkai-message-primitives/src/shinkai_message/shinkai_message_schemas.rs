@@ -651,6 +651,8 @@ pub struct WSMessageResponse {
 pub enum WSTopic {
     Inbox,
     SmartInboxes,
+    Sheet,
+    SheetList,
 }
 
 impl fmt::Display for WSTopic {
@@ -658,6 +660,8 @@ impl fmt::Display for WSTopic {
         match self {
             WSTopic::Inbox => write!(f, "inbox"),
             WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
+            WSTopic::Sheet => write!(f, "sheet"),
+            WSTopic::SheetList => write!(f, "sheet_list"),
         }
     }
 }

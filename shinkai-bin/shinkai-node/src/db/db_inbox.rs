@@ -13,6 +13,7 @@ use shinkai_message_primitives::{
 };
 use tokio::sync::Mutex;
 
+use crate::network::ws_manager::WSMessageType;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::schemas::smart_inbox::LLMProviderSubset;
 use crate::schemas::{identity::StandardIdentity, inbox_permission::InboxPermission, smart_inbox::SmartInbox};
@@ -185,7 +186,7 @@ impl ShinkaiDB {
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
                 if let Ok(msg_string) = message.to_string() {
-                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, None, false).await;
+                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, WSMessageType::None, false).await;
                 }
             }
         }

@@ -3,7 +3,7 @@ use crate::llm_provider::providers::shared::ollama::{
     ollama_conversation_prepare_messages, OllamaAPIStreamingResponse,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use crate::network::ws_manager::{WSMetadata, WSUpdateHandler};
+use crate::network::ws_manager::{WSMessageType, WSMetadata, WSUpdateHandler};
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::LLMService;
@@ -139,12 +139,14 @@ impl LLMService for Ollama {
                                             },
                                         };
 
+                                        let ws_message_type = WSMessageType::Metadata(metadata);
+
                                         let _ = m
                                             .queue_message(
                                                 WSTopic::Inbox,
                                                 inbox_name_string,
                                                 data.message.content,
-                                                Some(metadata),
+                                                ws_message_type,
                                                 true,
                                             )
                                             .await;
