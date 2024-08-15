@@ -6,7 +6,10 @@ use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
 use futures::SinkExt;
 use futures::StreamExt;
+use shinkai_dsl::parser::parse_workflow;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::sheet::ColumnBehavior;
+use shinkai_message_primitives::schemas::sheet::ColumnDefinition;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
@@ -25,7 +28,9 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
+use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::network::ws_manager::WSMessagePayload;
+use shinkai_node::network::ws_manager::WSMessageType;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_node::schemas::identity::Identity;
 use shinkai_node::schemas::identity::StandardIdentity;
@@ -37,6 +42,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite;
+use uuid::Uuid;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // Mock struct for testing
@@ -170,7 +176,7 @@ async fn test_websocket() {
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-    let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> = 
+    let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
         Arc::new(Mutex::new(MockIdentityManager::new()));
 
     let inbox_name1 = InboxName::get_job_inbox_name_from_params(job_id1.to_string()).unwrap();
@@ -294,7 +300,7 @@ async fn test_websocket() {
             WSTopic::Inbox,
             "job_inbox::test_job::false".to_string(),
             "Hello, world!".to_string(),
-            None,
+            WSMessageType::None,
             false,
         )
         .await;
@@ -483,7 +489,7 @@ async fn test_websocket_smart_inbox() {
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-    let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> = 
+    let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
         Arc::new(Mutex::new(MockIdentityManager::new()));
 
     let inbox_name1 = InboxName::get_job_inbox_name_from_params(job_id1.to_string()).unwrap();
@@ -654,3 +660,198 @@ async fn test_websocket_smart_inbox() {
 
     std::mem::drop(shinkai_db);
 }
+
+// Note: We need to mock up JobManager and change the depencency of SheetManager to a trait so we can swap between JobManager or the MockJobManager
+// #[tokio::test]
+// async fn test_websocket_sheet_update() {
+//     init_default_tracing();
+//     // Setup
+//     let agent_id = "agent".to_string();
+//     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
+//     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+//     let shinkai_db = Arc::new(shinkai_db);
+//     let shinkai_db_weak = Arc::downgrade(&shinkai_db);
+
+//     let node1_identity_name = "@@node1.shinkai";
+//     let node1_subidentity_name = "main_profile_node1";
+//     let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+//     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+//     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
+//     let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
+//         Arc::new(Mutex::new(MockIdentityManager::new()));
+
+//     // Start the WebSocket server
+//     let ws_manager = WebSocketManager::new(
+//         shinkai_db_weak.clone(),
+//         node_name.clone(),
+//         identity_manager_trait.clone(),
+//         clone_static_secret_key(&node1_encryption_sk),
+//     )
+//     .await;
+//     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
+//     tokio::spawn(run_ws_api(ws_address, Arc::clone(&ws_manager)));
+
+//     // Give the server a little time to start
+//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+//     let sheet_manager = SheetManager::new(shinkai_db_weak.clone(), node_name.clone(), Some(ws_manager.clone()))
+//         .await
+//         .unwrap();
+//     let node1_sheet_manager = Arc::new(Mutex::new(sheet_manager));
+
+//     // Connect to the server
+//     let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
+
+//     // Check if the connection was successful
+//     assert!(connection_result.is_ok(), "Failed to connect");
+
+//     let (mut ws_stream, _) = connection_result.expect("Failed to connect");
+
+//     // Create a shared encryption key Aes256Gcm
+//     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
+//     let shared_enc_string = aes_encryption_key_to_string(symmetrical_sk);
+
+//     // Create a Sheet
+//     let mut sheet_id = "".to_string();
+//     let row_id;
+//     let column_llm;
+//     // Define columns with UUIDs
+//     let column_text = ColumnDefinition {
+//         id: Uuid::new_v4().to_string(),
+//         name: "Column A".to_string(),
+//         behavior: ColumnBehavior::Text,
+//     };
+
+//     {
+//         let sheet_manager = node1_sheet_manager.clone();
+//         let mut sheet_manager = sheet_manager.lock().await;
+
+//         // Create a new empty sheet
+//         sheet_manager.create_empty_sheet().unwrap();
+
+//         // Get the ID of the newly created sheet
+//         let sheets = sheet_manager.get_user_sheets().await.unwrap();
+//         sheet_id.clone_from(&sheets.last().unwrap().uuid);
+
+//         let workflow_str = r#"
+//         workflow WorkflowTest v0.1 {
+//             step Main {
+//                 $RESULT = call opinionated_inference($INPUT)
+//             }
+//         }
+//         "#;
+//         let workflow = parse_workflow(workflow_str).unwrap();
+
+//         column_llm = ColumnDefinition {
+//             id: Uuid::new_v4().to_string(),
+//             name: "Column B".to_string(),
+//             behavior: ColumnBehavior::LLMCall {
+//                 input: "=A".to_string(),
+//                 workflow: Some(workflow),
+//                 workflow_name: None,
+//                 llm_provider_name: agent_id.clone(),
+//                 input_hash: None,
+//             },
+//         };
+
+//         let column_formula = ColumnDefinition {
+//             id: Uuid::new_v4().to_string(),
+//             name: "Column C".to_string(),
+//             behavior: ColumnBehavior::Formula("=B + \" And Space\"".to_string()),
+//         };
+
+//         // Set columns
+//         sheet_manager.set_column(&sheet_id, column_text.clone()).await.unwrap();
+//         sheet_manager.set_column(&sheet_id, column_llm.clone()).await.unwrap();
+//         sheet_manager
+//             .set_column(&sheet_id, column_formula.clone())
+//             .await
+//             .unwrap();
+
+//         // Add a new row
+//         row_id = sheet_manager.add_row(&sheet_id, None).await.unwrap();
+
+//         // Set value in Column A
+//         sheet_manager
+//             .set_cell_value(&sheet_id, row_id.clone(), column_text.id.clone(), "Hello".to_string())
+//             .await
+//             .unwrap();
+//     }
+
+//     // Send a message to the server to establish the connection and subscribe to the sheet updates
+//     let ws_message = WSMessage {
+//         subscriptions: vec![TopicSubscription {
+//             topic: WSTopic::Sheet,
+//             subtopic: Some(sheet_id.clone()),
+//         }],
+//         unsubscriptions: vec![],
+//         shared_key: Some(shared_enc_string.to_string()),
+//     };
+
+//     // Serialize WSMessage to a JSON string
+//     let ws_message_json = serde_json::to_string(&ws_message).unwrap();
+
+//     // Generate a ShinkaiMessage
+//     let shinkai_message = generate_message_with_text(
+//         ws_message_json,
+//         "".to_string(),
+//         node1_encryption_sk.clone(),
+//         node1_identity_sk.clone(),
+//         node1_encryption_pk,
+//         node1_subidentity_name.to_string(),
+//         node1_identity_name.to_string(),
+//         "2023-07-02T20:53:34.810Z".to_string(),
+//     );
+
+//     // Convert ShinkaiMessage to String
+//     let message_string = shinkai_message.to_string().unwrap();
+
+//     ws_stream
+//         .send(tungstenite::Message::Text(message_string))
+//         .await
+//         .expect("Failed to send message");
+
+//     // Wait for the server to process the subscription message
+//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+//     // Update the sheet
+//     {
+//         let sheet_manager = node1_sheet_manager.clone();
+//         let mut sheet_manager = sheet_manager.lock().await;
+
+//         // Set value in Column A
+//         sheet_manager
+//             .set_cell_value(
+//                 &sheet_id,
+//                 row_id.clone(),
+//                 column_text.id.clone(),
+//                 "Updated Hello".to_string(),
+//             )
+//             .await
+//             .unwrap();
+//     }
+
+//     // Check the response
+//     let msg = ws_stream
+//         .next()
+//         .await
+//         .expect("Failed to read message")
+//         .expect("Failed to read message");
+
+//     let encrypted_message = msg.to_text().unwrap();
+//     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
+//     let ws_message_payload: WSMessagePayload =
+//         serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
+//     let recovered_shinkai = ShinkaiMessage::from_string(ws_message_payload.message.unwrap()).unwrap();
+//     let recovered_content = recovered_shinkai.get_message_content().unwrap();
+//     assert_eq!(recovered_content, "Updated Hello");
+
+//     // Send a close message
+//     ws_stream
+//         .send(tungstenite::Message::Close(None))
+//         .await
+//         .expect("Failed to send close message");
+
+//     std::mem::drop(shinkai_db);
+// }
