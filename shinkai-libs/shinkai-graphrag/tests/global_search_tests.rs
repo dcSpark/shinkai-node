@@ -7,8 +7,7 @@ use shinkai_graphrag::{
     llm::llm::LLMParams,
     search::global_search::global_search::{GlobalSearch, GlobalSearchParams},
 };
-use tiktoken_rs::tokenizer::Tokenizer;
-use utils::openai::ChatOpenAI;
+use utils::openai::{num_tokens, ChatOpenAI};
 
 mod utils;
 
@@ -18,7 +17,6 @@ async fn global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let llm_model = std::env::var("GRAPHRAG_LLM_MODEL").unwrap();
 
     let llm = ChatOpenAI::new(Some(api_key), llm_model, 5);
-    let token_encoder = Tokenizer::Cl100kBase;
 
     // Load community reports
     // Download dataset: https://microsoft.github.io/graphrag/data/operation_dulce/dataset.zip
@@ -47,7 +45,7 @@ async fn global_search_test() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build global context based on community reports
 
-    let context_builder = GlobalCommunityContext::new(reports, Some(entities), Some(token_encoder));
+    let context_builder = GlobalCommunityContext::new(reports, Some(entities), num_tokens);
 
     let context_builder_params = ContextBuilderParams {
         use_community_summary: false, // False means using full community reports. True means using community short summaries.
@@ -80,7 +78,7 @@ async fn global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let search_engine = GlobalSearch::new(GlobalSearchParams {
         llm: Box::new(llm),
         context_builder,
-        token_encoder: Some(token_encoder),
+        num_tokens_fn: num_tokens,
         map_system_prompt: None,
         reduce_system_prompt: None,
         response_type: String::from("multiple paragraphs"),
