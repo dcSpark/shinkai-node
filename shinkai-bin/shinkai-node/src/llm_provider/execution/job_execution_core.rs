@@ -54,7 +54,7 @@ impl JobManager {
         ws_manager,
         tool_router,
         sheet_manager,
-        callback_manager
+        _callback_manager
     ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
@@ -68,7 +68,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
-        callback_manager: Arc<Mutex<JobCallbackManager>>,
+        _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -505,13 +505,23 @@ impl JobManager {
             .filter(|name| name.starts_with("shinkai__"))
             .collect::<Vec<_>>();
 
+        let tools = {
+            // get tool_router and then call get_tools_by_names
+            if let Some(tool_router) = tool_router.clone() {
+                let tool_router = tool_router.lock().await;
+                tool_router.get_tools_by_names(js_functions_used).await?
+            } else {
+                return Err(LLMProviderError::ToolRouterNotFound);
+            }
+        };
+
         dsl_inference.add_inference_function();
         dsl_inference.add_inference_no_ws_function();
         dsl_inference.add_opinionated_inference_function();
         dsl_inference.add_opinionated_inference_no_ws_function();
         dsl_inference.add_multi_inference_function();
         dsl_inference.add_all_generic_functions();
-        dsl_inference.add_tools_from_router(js_functions_used).await?;
+        dsl_inference.add_tools_from_router(tools).await?;
 
         let start = Instant::now();
         let inference_result = dsl_inference.run_chain().await?;

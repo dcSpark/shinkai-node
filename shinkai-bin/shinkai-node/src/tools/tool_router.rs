@@ -130,6 +130,21 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
+    pub async fn get_tools_by_names(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
+        let lance_db = self.lance_db.lock().await;
+        let mut tools = Vec::new();
+
+        for name in names {
+            match lance_db.get_tool(&name).await {
+                Ok(Some(tool)) => tools.push(tool),
+                Ok(None) => return Err(ToolError::ToolNotFound(name)),
+                Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
+            }
+        }
+
+        Ok(tools)
+    }
+
     pub async fn get_workflow(&self, name: &str) -> Result<Option<Workflow>, ToolError> {
         if let Some(tool) = self.get_tool_by_name(name).await? {
             if let ShinkaiTool::Workflow(workflow, _) = tool {
@@ -224,6 +239,7 @@ impl ToolRouter {
                     .into_iter()
                     .filter(|name| name.starts_with("shinkai__"))
                     .collect::<Vec<_>>();
+                let tools = self.get_tools_by_names(functions_used).await?;
 
                 dsl_inference.add_inference_function();
                 dsl_inference.add_inference_no_ws_function();
@@ -231,7 +247,7 @@ impl ToolRouter {
                 dsl_inference.add_opinionated_inference_no_ws_function();
                 dsl_inference.add_multi_inference_function();
                 dsl_inference.add_all_generic_functions();
-                dsl_inference.add_tools_from_router(functions_used).await?;
+                dsl_inference.add_tools_from_router(tools).await?;
 
                 let inference_result = dsl_inference.run_chain().await?;
 

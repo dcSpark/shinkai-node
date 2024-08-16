@@ -193,36 +193,19 @@ impl<'a> DslChain<'a> {
         );
     }
 
-    pub async fn add_tools_from_router(&mut self, js_functions: Vec<String>) -> Result<(), WorkflowError> {
+    pub async fn add_tools_from_router(&mut self, js_tools: Vec<ShinkaiTool>) -> Result<(), WorkflowError> {
         let start_time = Instant::now();
-        let tool_router = self
-            .context
-            .tool_router()
-            .as_ref()
-            .ok_or_else(|| WorkflowError::ExecutionError("ToolRouter not available".to_string()))?
-            .clone();
 
-        let tool_router_locked = tool_router.lock().await;
-
-        for function_name in js_functions {
-            match tool_router_locked.get_tool_by_name(&function_name).await {
-                Ok(Some(tool)) => {
-                    eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
-                    self.functions.insert(
-                        function_name.clone(),
-                        Box::new(ShinkaiToolFunction {
-                            tool: tool.clone(),
-                            context: self.context.clone_box(),
-                        }),
-                    );
-                }
-                Ok(None) => {
-                    return Err(WorkflowError::ExecutionError(format!("Tool not found: {}", function_name)));
-                }
-                Err(e) => {
-                    return Err(WorkflowError::ExecutionError(format!("Failed to get tool: {}", e)));
-                }
-            }
+        for tool in js_tools {
+            let function_name = tool.name();
+            eprintln!("add_tools_from_router> Adding function: {}", function_name);
+            self.functions.insert(
+                function_name,
+                Box::new(ShinkaiToolFunction {
+                    tool: tool.clone(),
+                    context: self.context.clone_box(),
+                }),
+            );
         }
 
         let elapsed_time = start_time.elapsed(); // Measure elapsed time

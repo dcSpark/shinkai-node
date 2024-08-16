@@ -77,7 +77,8 @@ pub enum LLMProviderError {
     SheetManagerNotFound,
     CallbackManagerNotFound,
     SheetManagerError(String),
-    InputProcessingError(String)
+    InputProcessingError(String),
+    ToolRouterNotFound
 }
 
 impl fmt::Display for LLMProviderError {
@@ -162,6 +163,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::CallbackManagerNotFound => write!(f, "Callback Manager not found"),
             LLMProviderError::SheetManagerError(s) => write!(f, "{}", s),
             LLMProviderError::InputProcessingError(s) => write!(f, "{}", s),
+            LLMProviderError::ToolRouterNotFound => write!(f, "Tool Router not found"),
         }
     }
 }
@@ -236,6 +238,7 @@ impl LLMProviderError {
             LLMProviderError::CallbackManagerNotFound => "CallbackManagerNotFound",
             LLMProviderError::SheetManagerError(_) => "SheetManagerError",
             LLMProviderError::InputProcessingError(_) => "InputProcessingError",
+            LLMProviderError::ToolRouterNotFound => "ToolRouterNotFound",
         };
 
         let error_message = format!("{}", self);
