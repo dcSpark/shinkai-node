@@ -193,7 +193,7 @@ impl<'a> DslChain<'a> {
         );
     }
 
-    pub async fn add_tools_from_router(&mut self) -> Result<(), WorkflowError> {
+    pub async fn add_tools_from_router(&mut self, js_functions: Vec<String>) -> Result<(), WorkflowError> {
         let start_time = Instant::now();
         let tool_router = self
             .context
@@ -204,30 +204,31 @@ impl<'a> DslChain<'a> {
 
         let tool_router_locked = tool_router.lock().await;
 
-        // TODO: add back
-        // let tools = all_available_js_tools(
-        //     &tool_router_locked,
-        //     self.context.user_profile(),
-        //     self.context.db().clone(),
-        // )
-        // .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
+        for function_name in js_functions {
+            match tool_router_locked.get_tool_by_name(&function_name).await {
+                Ok(Some(tool)) => {
+                    eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
+                    self.functions.insert(
+                        function_name.clone(),
+                        Box::new(ShinkaiToolFunction {
+                            tool: tool.clone(),
+                            context: self.context.clone_box(),
+                        }),
+                    );
+                }
+                Ok(None) => {
+                    return Err(WorkflowError::ExecutionError(format!("Tool not found: {}", function_name)));
+                }
+                Err(e) => {
+                    return Err(WorkflowError::ExecutionError(format!("Failed to get tool: {}", e)));
+                }
+            }
+        }
 
-        // for tool in tools {
-        //     let function_name = format!("{}",tool.name()); // tool.toolkit_name(),
-        //     eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
-        //     self.functions.insert(
-        //         function_name.clone(),
-        //         Box::new(ShinkaiToolFunction {
-        //             tool: tool.clone(),
-        //             context: self.context.clone_box(),
-        //         }),
-        //     );
-        // }
-
-        // let elapsed_time = start_time.elapsed(); // Measure elapsed time
-        // if env::var("LOG_ALL").unwrap_or_default() == "1" {
-        //     eprintln!("Time taken to add tools: {:?}", elapsed_time);
-        // }
+        let elapsed_time = start_time.elapsed(); // Measure elapsed time
+        if env::var("LOG_ALL").unwrap_or_default() == "1" {
+            eprintln!("Time taken to add tools: {:?}", elapsed_time);
+        }
 
         Ok(())
     }

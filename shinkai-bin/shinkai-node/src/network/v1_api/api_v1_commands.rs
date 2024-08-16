@@ -2965,13 +2965,13 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_search_workflows(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         potentially_encrypted_msg: ShinkaiMessage,
-        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        _embedding_generator: Arc<RemoteEmbeddingGenerator>,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message
@@ -3046,13 +3046,13 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_search_shinkai_tool(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         potentially_encrypted_msg: ShinkaiMessage,
-        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        _embedding_generator: Arc<RemoteEmbeddingGenerator>,
         res: Sender<Result<JsonValue, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message

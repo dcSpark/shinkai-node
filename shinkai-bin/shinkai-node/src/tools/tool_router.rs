@@ -139,7 +139,11 @@ impl ToolRouter {
         Ok(None)
     }
 
-    pub async fn vector_search_enabled_tools(&self, query: &str, num_of_results: u64) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+    pub async fn vector_search_enabled_tools(
+        &self,
+        query: &str,
+        num_of_results: u64,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let lance_db = self.lance_db.lock().await;
         let tool_headers = lance_db.vector_search_enabled_tools(query, num_of_results).await?;
         Ok(tool_headers)
@@ -214,13 +218,20 @@ impl ToolRouter {
                 let mut dsl_inference =
                     DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
 
+                let functions_used = workflow_tool
+                    .workflow
+                    .extract_function_names()
+                    .into_iter()
+                    .filter(|name| name.starts_with("shinkai__"))
+                    .collect::<Vec<_>>();
+
                 dsl_inference.add_inference_function();
                 dsl_inference.add_inference_no_ws_function();
                 dsl_inference.add_opinionated_inference_function();
                 dsl_inference.add_opinionated_inference_no_ws_function();
                 dsl_inference.add_multi_inference_function();
                 dsl_inference.add_all_generic_functions();
-                dsl_inference.add_tools_from_router().await?;
+                dsl_inference.add_tools_from_router(functions_used).await?;
 
                 let inference_result = dsl_inference.run_chain().await?;
 

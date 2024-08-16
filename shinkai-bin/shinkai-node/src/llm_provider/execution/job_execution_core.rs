@@ -497,7 +497,13 @@ impl JobManager {
         }
 
         let functions = HashMap::new();
-        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
+        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow.clone(), functions);
+
+        let js_functions_used = workflow
+            .extract_function_names()
+            .into_iter()
+            .filter(|name| name.starts_with("shinkai__"))
+            .collect::<Vec<_>>();
 
         dsl_inference.add_inference_function();
         dsl_inference.add_inference_no_ws_function();
@@ -505,7 +511,7 @@ impl JobManager {
         dsl_inference.add_opinionated_inference_no_ws_function();
         dsl_inference.add_multi_inference_function();
         dsl_inference.add_all_generic_functions();
-        dsl_inference.add_tools_from_router().await?;
+        dsl_inference.add_tools_from_router(js_functions_used).await?;
 
         let start = Instant::now();
         let inference_result = dsl_inference.run_chain().await?;

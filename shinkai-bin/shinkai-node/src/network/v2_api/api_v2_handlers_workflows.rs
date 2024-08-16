@@ -16,10 +16,10 @@ pub fn workflows_routes(
     node_commands_sender: Sender<NodeCommand>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let search_workflows_route = warp::path("search_workflows")
-        .and(warp::post())
+        .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::body::json())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(search_workflows_handler);
 
     let set_workflow_route = warp::path("set_workflow")
@@ -71,10 +71,10 @@ pub fn workflows_routes(
         .and_then(get_shinkai_tool_handler);
 
     let search_shinkai_tool_route = warp::path("search_shinkai_tool")
-        .and(warp::post())
+        .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::body::json())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(search_shinkai_tool_handler);
 
     search_workflows_route
@@ -89,9 +89,11 @@ pub fn workflows_routes(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/search_workflows",
-    request_body = APISetWorkflow,
+    params(
+        ("query" = String, Query, description = "Search query for workflows")
+    ),
     responses(
         (status = 200, description = "Successfully searched workflows", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -101,9 +103,19 @@ pub fn workflows_routes(
 pub async fn search_workflows_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    query: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let query = query_params
+        .get("query")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSearchWorkflows {
@@ -128,9 +140,11 @@ pub async fn search_workflows_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/search_shinkai_tool",
-    request_body = String,
+    params(
+        ("query" = String, Query, description = "Search query for Shinkai tools")
+    ),
     responses(
         (status = 200, description = "Successfully searched Shinkai tools", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -140,9 +154,19 @@ pub async fn search_workflows_handler(
 pub async fn search_shinkai_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    query: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let query = query_params
+        .get("query")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSearchShinkaiTool {

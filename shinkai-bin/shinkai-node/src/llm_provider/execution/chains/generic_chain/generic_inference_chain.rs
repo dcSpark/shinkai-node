@@ -161,7 +161,10 @@ impl GenericInferenceChain {
                 // }
 
                 // Search in JS Tools
-                let results = tool_router.vector_search_enabled_tools(&user_message.clone(), 3).await.unwrap();
+                let results = tool_router
+                    .vector_search_enabled_tools(&user_message.clone(), 3)
+                    .await
+                    .unwrap();
                 for result in results {
                     if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
                         tools.push(tool);
@@ -237,17 +240,26 @@ impl GenericInferenceChain {
                 // Find the ShinkaiTool that has a tool with the function name
                 let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
                 if shinkai_tool.is_none() {
+                    eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
 
                 // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
-                let function_response = tool_router
+                let function_response = match tool_router
                     .as_ref()
                     .unwrap()
                     .lock()
                     .await
                     .call_function(function_call, &context, shinkai_tool.unwrap())
-                    .await?;
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(e) => {
+                        eprintln!("Error calling function: {:?}", e);
+                        // Handle different error types here if needed
+                        return Err(e);
+                    }
+                };
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(

@@ -277,7 +277,7 @@ impl WorkflowTool {
             workflow Weather v0.1 {
                     step Main {
                         $OUTPUT = call shinkai__weather_by_city($INPUT)
-                        $PROMPT =  call concat("Format the following text in a very concise way, eg: it's currently clear and sunny with a temperature of 280.08°F (or 26°C). (that's it nothing more than that even if you have the extra information). Text: ", $OUTPUT)
+                        $PROMPT = call concat("Format the following text in a very concise way, eg: it's currently clear and sunny with a temperature of 280.08°F (or 26°C). (that's it nothing more than that even if you have the extra information). Text: ", $OUTPUT)
                         $RESULT = call opinionated_inference($PROMPT)
                     }
                 } @@official.shinkai
