@@ -441,6 +441,7 @@ impl Node {
                             let job_creation = JobCreationInfo {
                                 scope: job_scope,
                                 is_hidden: Some(false),
+                                associated_ui: None
                             };
 
                             let mut job_manager_locked = job_manager.lock().await;

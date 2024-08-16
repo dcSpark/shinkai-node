@@ -417,7 +417,7 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
-            match db_arc.create_new_job(job_id.clone(), llm_provider_id.clone(), job_creation.scope, is_hidden) {
+            match db_arc.create_new_job(job_id.clone(), llm_provider_id.clone(), job_creation.scope, is_hidden, job_creation.associated_ui) {
                 Ok(_) => (),
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
             };

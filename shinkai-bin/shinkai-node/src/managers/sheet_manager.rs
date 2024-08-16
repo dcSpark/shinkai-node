@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::sheet::{
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
+    AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
@@ -214,6 +214,7 @@ impl SheetManager {
             let job_creation_info = JobCreationInfo {
                 scope: JobScope::new_default(),
                 is_hidden: Some(true),
+                associated_ui: None,
             };
 
             let mut job_manager = job_manager.lock().await;

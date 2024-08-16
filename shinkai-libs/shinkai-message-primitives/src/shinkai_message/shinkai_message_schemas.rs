@@ -264,10 +264,17 @@ pub struct SymmetricKeyExchange {
     pub shared_secret_key: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum AssociatedUI {
+    Sheet(String),
+    // Add more variants as needed
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
     pub is_hidden: Option<bool>,
+    pub associated_ui: Option<AssociatedUI>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
