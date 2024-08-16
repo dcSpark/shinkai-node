@@ -244,7 +244,12 @@ impl Prompt {
         while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
-                    current_token_count -= removed_sub_prompt.count_tokens_as_completion_message();
+                    let removed_tokens = removed_sub_prompt.count_tokens_as_completion_message();
+                    if current_token_count >= removed_tokens {
+                        current_token_count -= removed_tokens;
+                    } else {
+                        current_token_count = 0;
+                    }
                     removed_subprompts.push(removed_sub_prompt);
                 }
                 None => break, // No more sub-prompts to remove, exit the loop
