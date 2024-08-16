@@ -7,7 +7,7 @@ use async_openai::{
     Client,
 };
 use async_trait::async_trait;
-use shinkai_graphrag::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
+use shinkai_graphrag::llm::llm::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
 use tiktoken_rs::{get_bpe_from_tokenizer, tokenizer::Tokenizer};
 
 pub struct ChatOpenAI {
@@ -133,6 +133,7 @@ impl BaseLLM for ChatOpenAI {
         streaming: bool,
         callbacks: Option<Vec<BaseLLMCallback>>,
         llm_params: LLMParams,
+        _search_phase: Option<GlobalSearchPhase>,
     ) -> anyhow::Result<String> {
         self.agenerate(messages, streaming, callbacks, llm_params).await
     }

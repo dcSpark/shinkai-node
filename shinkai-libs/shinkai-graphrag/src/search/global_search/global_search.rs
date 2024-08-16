@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use crate::context_builder::community_context::GlobalCommunityContext;
 use crate::context_builder::context_builder::{ContextBuilderParams, ConversationHistory};
-use crate::llm::llm::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
+use crate::llm::llm::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
 use crate::search::global_search::prompts::NO_DATA_ANSWER;
 
 use super::prompts::{GENERAL_KNOWLEDGE_INSTRUCTION, MAP_SYSTEM_PROMPT, REDUCE_SYSTEM_PROMPT};
@@ -258,7 +258,13 @@ impl GlobalSearch {
 
         let search_response = self
             .llm
-            .agenerate(MessageType::Dictionary(search_messages), false, None, llm_params)
+            .agenerate(
+                MessageType::Dictionary(search_messages),
+                false,
+                None,
+                llm_params,
+                Some(GlobalSearchPhase::Map),
+            )
             .await?;
 
         let processed_response = self.parse_search_response(&search_response);
@@ -412,6 +418,7 @@ impl GlobalSearch {
                 true,
                 llm_callbacks,
                 llm_params,
+                Some(GlobalSearchPhase::Reduce),
             )
             .await?;
 
