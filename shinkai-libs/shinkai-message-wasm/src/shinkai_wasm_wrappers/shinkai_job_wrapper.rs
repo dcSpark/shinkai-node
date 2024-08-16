@@ -49,6 +49,7 @@ impl JobCreationWrapper {
         let job_creation = JobCreationInfo {
             scope,
             is_hidden: Some(is_hidden),
+            associated_ui: None,
         };
         Ok(JobCreationWrapper { inner: job_creation })
     }
@@ -88,6 +89,7 @@ impl JobCreationWrapper {
             inner: JobCreationInfo {
                 scope: job_scope,
                 is_hidden: Some(false),
+                associated_ui: None,
             },
         })
     }

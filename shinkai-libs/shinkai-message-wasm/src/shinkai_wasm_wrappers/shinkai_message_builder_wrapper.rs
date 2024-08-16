@@ -828,6 +828,7 @@ impl ShinkaiMessageBuilderWrapper {
         let job_creation = JobCreationInfo {
             scope,
             is_hidden: Some(is_hidden),
+            associated_ui: None
         };
         let body = serde_json::to_string(&job_creation).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
