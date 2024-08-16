@@ -15,8 +15,6 @@ use super::split_text_for_llm::split_text_for_llm;
 // TODO: we need to generate description for each function (LLM processing?)
 // we need to extend the description with keywords maybe use RAKE as well
 // then we need to generate embeddings for them
-// TODO: We need a file that contains the embeddings for the functions
-// TODO: implement a new tool_router where we can instantiate it with embeddings and have handy fn for search and usage
 
 pub struct RustToolFunctions;
 

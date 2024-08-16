@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_channel::Sender;
 use futures::StreamExt;
 use futures::TryFutureExt;
@@ -16,12 +18,12 @@ use shinkai_message_primitives::{
 use utoipa::ToSchema;
 use warp::Buf;
 
-use crate::network::node_commands::NodeCommand;
 use crate::network::node_api_router::handle_node_command;
 use crate::network::node_api_router::APIError;
 use crate::network::node_api_router::GetPublicKeysResponse;
 use crate::network::node_api_router::SendResponseBody;
 use crate::network::node_api_router::SendResponseBodyData;
+use crate::network::node_commands::NodeCommand;
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {
@@ -423,6 +425,21 @@ pub async fn search_workflows_handler(
         node_commands_sender,
         message,
         |_node_commands_sender, message, res_sender| NodeCommand::APISearchWorkflows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn search_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISearchShinkaiTool {
             msg: message,
             res: res_sender,
         },
@@ -1172,6 +1189,48 @@ pub async fn get_notifications_before_timestamp_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     handle_node_command(node_commands_sender, message, |_sender, msg, res| {
         NodeCommand::APIGetNotificationsBeforeTimestamp { msg, res }
+    })
+    .await
+}
+
+pub async fn list_all_shinkai_tools_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIListAllShinkaiTools {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn set_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    query_params: HashMap<String, String>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, move |_, message, res_sender| {
+        let tool_router_key = query_params.get("tool_name").cloned().unwrap_or_default();
+        NodeCommand::APISetShinkaiTool {
+            tool_router_key,
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn get_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetShinkaiTool {
+            msg: message,
+            res: res_sender,
+        }
     })
     .await
 }

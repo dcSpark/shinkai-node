@@ -163,7 +163,7 @@ async fn test_process_job_queue_concurrency() {
             .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
-    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone()).await;
+    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
     let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
     let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
 
@@ -314,7 +314,7 @@ async fn test_sequential_process_for_same_job_id() {
             .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
-    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone()).await;
+    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
     let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
     let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
 

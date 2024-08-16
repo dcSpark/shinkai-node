@@ -110,10 +110,6 @@ fn job_from_cron_one_page() {
                     model_type: "gpt-4-1106-preview".to_string(),
                 };
 
-                let generic_api = GenericAPI {
-                    model_type: "togethercomputer/llama-2-70b-chat".to_string(),
-                };
-
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
                 let agent = SerializedLLMProvider {

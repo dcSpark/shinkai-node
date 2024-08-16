@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use async_recursion::async_recursion;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::schemas::sheet::{
@@ -16,12 +16,25 @@ const MAX_DEPENDENCY_DEPTH: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SheetUpdate {
-    CellUpdated(RowUuid, ColumnUuid),
-    // Add other update types as needed
+    CellUpdated(CellUpdateInfo),
 }
 
-pub trait SheetObserver {
-    fn on_sheet_update(&self, update: SheetUpdate);
+// Define the new struct
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CellUpdateInfo {
+    pub sheet_id: String,
+    pub update_type: String,
+    pub data: CellUpdateData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CellUpdateData {
+    pub column_id: ColumnUuid,
+    pub input_hash: Option<String>,
+    pub last_updated: DateTime<Utc>,
+    pub row_id: RowUuid,
+    pub status: CellStatus,
+    pub value: Option<String>,
 }
 
 /// The `Sheet` struct represents the state of a spreadsheet.
@@ -39,8 +52,10 @@ pub struct Sheet {
     pub column_dependency_manager: ColumnDependencyManager,
     pub display_columns: Vec<UuidString>,
     pub display_rows: Vec<UuidString>,
+    pub last_updated: DateTime<Utc>,
     #[serde(skip_serializing, skip_deserializing)]
-    update_sender: Option<Sender<SheetUpdate>>,
+    pub update_sender: Option<Sender<SheetUpdate>>,
+    // TODO: add history? (only if a cell changed value)
 }
 
 impl std::fmt::Debug for Sheet {
@@ -54,6 +69,7 @@ impl std::fmt::Debug for Sheet {
             .field("display_columns", &self.display_columns)
             .field("display_rows", &self.display_rows)
             .field("observer", &"Option<Arc<Mutex<dyn SheetObserver>>>")
+            .field("last_updated", &self.last_updated)
             .finish()
     }
 }
@@ -68,7 +84,8 @@ impl Clone for Sheet {
             column_dependency_manager: self.column_dependency_manager.clone(),
             display_columns: self.display_columns.clone(),
             display_rows: self.display_rows.clone(),
-            update_sender: None, // Always set to None when cloning
+            update_sender: self.update_sender.clone(),
+            last_updated: Utc::now(),
         }
     }
 }
@@ -90,6 +107,7 @@ impl Sheet {
             display_columns: Vec::new(),
             display_rows: Vec::new(),
             update_sender: None,
+            last_updated: Utc::now(),
         }
     }
 
@@ -98,7 +116,8 @@ impl Sheet {
     }
 
     pub async fn dispatch(&mut self, action: SheetAction) -> Vec<WorkflowSheetJobData> {
-        let (new_state, jobs) = sheet_reducer(self.clone(), action).await;
+        let (mut new_state, jobs) = sheet_reducer(self.clone(), action).await;
+        new_state.last_updated = Utc::now();
         *self = new_state;
         jobs
     }
@@ -113,7 +132,9 @@ impl Sheet {
         };
 
         // Check if the column already exists
+        let is_new_column;
         if self.columns.contains_key(&column_uuid) {
+            is_new_column = false;
             self.column_dependency_manager
                 .update_dependencies(column_uuid.clone(), dependencies);
         } else {
@@ -121,11 +142,14 @@ impl Sheet {
                 self.column_dependency_manager
                     .add_dependency(column_uuid.clone(), dep.clone());
             }
+            is_new_column = true;
         }
 
         let mut jobs = self.dispatch(SheetAction::SetColumn(definition.clone())).await;
 
-        self.display_columns.push(column_uuid.clone());
+        if is_new_column {
+            self.display_columns.push(column_uuid.clone()); // only add to display_columns if it's a new column
+        }
 
         // Collect rows to avoid borrowing issues
         let rows_to_update: Vec<UuidString> = self.display_rows.clone();
@@ -167,6 +191,7 @@ impl Sheet {
         Ok(jobs)
     }
 
+    // TODO: update this to be able to return an error maybe the user put the wrong thing
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<UuidString> {
         let mut dependencies = HashSet::new();
 
@@ -217,11 +242,23 @@ impl Sheet {
             })
             .await;
 
+        // Send update after setting the cell value
+        if let Some(sender) = &self.update_sender {
+            if let Some(update_info) = self.generate_cell_update_info(row.clone(), col.clone()) {
+                let sender_clone = sender.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                        eprintln!("Failed to send update: {:?}", e);
+                    }
+                });
+            }
+        }
+
         let changed_cell_id = CellId(format!("{}:{}", row, col));
         // unlike the previous job, this one *may* have updates because some formulas or workflows may depend on us
         // so updating x,y cell may trigger workflow(s) that depends on x,y
         let new_jobs = self
-            .dispatch(SheetAction::TriggerUpdateEvent {
+            .dispatch(SheetAction::PropagateUpdateToDependents {
                 changed_cell_id,
                 visited: HashSet::new(),
                 depth: 0,
@@ -271,6 +308,26 @@ impl Sheet {
         }
 
         Some(result)
+    }
+
+    pub fn generate_cell_update_info(&self, row_id: RowUuid, column_id: ColumnUuid) -> Option<CellUpdateInfo> {
+        if let Some(row) = self.rows.get(&row_id) {
+            if let Some(cell) = row.get(&column_id) {
+                return Some(CellUpdateInfo {
+                    sheet_id: self.uuid.clone(),
+                    update_type: "CellUpdated".to_string(),
+                    data: CellUpdateData {
+                        column_id,
+                        input_hash: cell.input_hash.clone(),
+                        last_updated: cell.last_updated,
+                        row_id,
+                        status: cell.status.clone(),
+                        value: cell.value.clone(),
+                    },
+                });
+            }
+        }
+        None
     }
 
     // Note: if we create a workflow in B that depends on A (not defined)
@@ -358,6 +415,51 @@ impl Sheet {
             .into_iter()
             .map(|(_, input_col, _)| (input_col.clone(), self.get_cell_value(row.clone(), input_col)))
             .collect()
+    }
+
+    /// Computes the processed input for a cell with ColumnBehavior::LLMCall.
+    /// This method evaluates the formula specified in the `input` field of the LLMCall behavior,
+    /// fetching the values of the dependent cells and concatenating them according to the formula.
+    ///
+    /// # Arguments
+    /// * `row` - The UUID of the row containing the cell.
+    /// * `col` - The UUID of the column containing the cell.
+    ///
+    /// # Returns
+    /// An `Option<String>` containing the processed input if successful, or `None` if the column behavior is not LLMCall.
+    pub fn get_processed_input(&self, row: UuidString, col: UuidString) -> Option<String> {
+        if let Some(column_definition) = self.columns.get(&col) {
+            if let ColumnBehavior::LLMCall { input, .. } = &column_definition.behavior {
+                if !input.starts_with('=') {
+                    // If the input does not start with '=', return it as is
+                    return Some(input.clone());
+                }
+
+                let formula = &input[1..]; // Remove the initial '='
+                let parts: Vec<&str> = formula.split('+').collect();
+                let mut result = String::new();
+
+                for part in parts {
+                    let part = part.trim();
+                    if part.starts_with('"') && part.ends_with('"') {
+                        // Handle quoted strings
+                        let literal = &part[1..part.len() - 1];
+                        result.push_str(literal);
+                    } else {
+                        // Handle cell references
+                        let col_index = CellNameConverter::column_name_to_index(part);
+                        if let Some(col_uuid) = self.display_columns.get(col_index) {
+                            if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
+                                result.push_str(&value);
+                            }
+                        }
+                    }
+                }
+
+                return Some(result);
+            }
+        }
+        None
     }
 
     fn compute_input_hash(
@@ -476,7 +578,11 @@ pub enum SheetAction {
         value: String,
         input_hash: Option<String>,
     },
-    TriggerUpdateEvent {
+    SetCellPending {
+        row: UuidString,
+        col: UuidString,
+    },
+    PropagateUpdateToDependents {
         changed_cell_id: CellId,
         visited: HashSet<(UuidString, UuidString)>,
         depth: usize,
@@ -508,7 +614,71 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         .add_dependency(definition.id.clone(), dep);
                 }
             }
-            state.columns.insert(definition.id.clone(), definition);
+            state.columns.insert(definition.clone().id, definition.clone());
+
+            // Collect row UUIDs before mutable borrow
+            let row_uuids: Vec<UuidString> = state.rows.keys().cloned().collect();
+
+            // Initialize new column cells with None for all existing rows
+            for row_uuid in &row_uuids {
+                if let Some(row) = state.rows.get_mut(row_uuid) {
+                    let status = if let ColumnBehavior::Text = definition.behavior {
+                        CellStatus::Ready
+                    } else {
+                        CellStatus::Pending
+                    };
+
+                    row.insert(
+                        definition.id.clone(),
+                        Cell {
+                            value: None,
+                            last_updated: Utc::now(),
+                            status,
+                            input_hash: None,
+                        },
+                    );
+                }
+            }
+
+            // Send updates after initializing the cells
+            if let Some(sender) = &state.update_sender {
+                for row_uuid in &row_uuids {
+                    if let Some(update_info) = state.generate_cell_update_info(row_uuid.clone(), definition.id.clone())
+                    {
+                        let sender_clone = sender.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                                eprintln!("Failed to send update: {:?}", e);
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Create jobs for new cells in the added column
+            for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
+                let value = match &definition.clone().behavior {
+                    ColumnBehavior::Formula(formula) => {
+                        state.evaluate_formula(formula, row_uuid.clone(), definition.clone().id)
+                    }
+                    _ => None,
+                };
+
+                if let Some(value) = value {
+                    let (new_state, mut new_jobs) = sheet_reducer(
+                        state,
+                        SheetAction::SetCellValue {
+                            row: row_uuid.clone(),
+                            col: definition.clone().id,
+                            value,
+                            input_hash: None,
+                        },
+                    )
+                    .await;
+                    state = new_state;
+                    jobs.append(&mut new_jobs);
+                }
+            }
         }
         SheetAction::SetCellValue {
             row,
@@ -520,9 +690,9 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 return (state, jobs); // Column index out of bounds
             }
 
-            let row_cells = state.rows.entry(row).or_default();
+            let row_cells = state.rows.entry(row.clone()).or_default();
             row_cells.insert(
-                col,
+                col.clone(),
                 Cell {
                     value: Some(value),
                     last_updated: Utc::now(),
@@ -530,8 +700,78 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                     input_hash,
                 },
             );
+
+            // Send update after setting the cell value
+            if let Some(sender) = &state.update_sender {
+                if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
+                    let sender_clone = sender.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                            eprintln!("Failed to send update: {:?}", e);
+                        }
+                    });
+                }
+            }
+
+            // Trigger updates for cells dependent on the updated cell
+            let changed_cell_id = CellId(format!("{}:{}", row, col));
+            let (new_state, mut new_jobs) = sheet_reducer(
+                state,
+                SheetAction::PropagateUpdateToDependents {
+                    changed_cell_id,
+                    visited: HashSet::new(),
+                    depth: 0,
+                },
+            )
+            .await;
+            state = new_state;
+            jobs.append(&mut new_jobs);
         }
-        SheetAction::TriggerUpdateEvent {
+        SheetAction::SetCellPending { row, col } => {
+            if !state.columns.contains_key(&col) {
+                return (state, jobs); // Column index out of bounds
+            }
+
+            if let Some(row_cells) = state.rows.get_mut(&row) {
+                if let Some(cell) = row_cells.get_mut(&col) {
+                    cell.status = CellStatus::Pending;
+                } else {
+                    row_cells.insert(
+                        col.clone(),
+                        Cell {
+                            value: None,
+                            last_updated: Utc::now(),
+                            status: CellStatus::Pending,
+                            input_hash: None,
+                        },
+                    );
+                }
+            } else {
+                let mut row_cells = HashMap::new();
+                row_cells.insert(
+                    col.clone(),
+                    Cell {
+                        value: None,
+                        last_updated: Utc::now(),
+                        status: CellStatus::Pending,
+                        input_hash: None,
+                    },
+                );
+                state.rows.insert(row.clone(), row_cells);
+            }
+
+            if let Some(sender) = &state.update_sender {
+                if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
+                    let sender_clone = sender.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                            eprintln!("Failed to send update: {:?}", e);
+                        }
+                    });
+                }
+            }
+        }
+        SheetAction::PropagateUpdateToDependents {
             changed_cell_id,
             mut visited,
             depth,
@@ -549,18 +789,20 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 return (state, jobs);
             }
 
-            let dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
-            eprintln!("Col: {:?} Dependents: {:?}", col, dependents);
-            for dependent_col in dependents {
-                if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
+            let reverse_dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
+            eprintln!("Col: {:?} Dependents: {:?}", col, reverse_dependents);
+            for reverse_dependent_col in reverse_dependents {
+                if let Some(column_definition) = state.columns.get(&reverse_dependent_col).cloned() {
                     match &column_definition.behavior {
                         ColumnBehavior::Formula(formula) => {
-                            if let Some(value) = state.evaluate_formula(formula, row.clone(), dependent_col.clone()) {
+                            if let Some(value) =
+                                state.evaluate_formula(formula, row.clone(), reverse_dependent_col.clone())
+                            {
                                 let (new_state, mut new_jobs) = sheet_reducer(
                                     state,
                                     SheetAction::SetCellValue {
                                         row: row.clone(),
-                                        col: dependent_col.clone(),
+                                        col: reverse_dependent_col.clone(),
                                         value,
                                         input_hash: None,
                                     },
@@ -569,13 +811,13 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                 state = new_state;
                                 jobs.append(&mut new_jobs);
 
-                                eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, dependent_col, col);
-                                let new_cell_id = CellId(format!("{}:{}", row, dependent_col));
+                                eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, reverse_dependent_col, col);
+                                let new_cell_id = CellId(format!("{}:{}", row, reverse_dependent_col));
                                 eprintln!("TriggerUpdateEvent newcellid: {:?}", new_cell_id);
                                 if changed_cell_id != new_cell_id {
                                     let (new_state, mut new_jobs) = sheet_reducer(
                                         state,
-                                        SheetAction::TriggerUpdateEvent {
+                                        SheetAction::PropagateUpdateToDependents {
                                             changed_cell_id: new_cell_id,
                                             visited: visited.clone(),
                                             depth: depth + 1,
@@ -590,33 +832,40 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         ColumnBehavior::LLMCall {
                             input: _, // used under the hood with get_input_cells_for_column
                             workflow,
+                            workflow_name,
                             llm_provider_name,
                             input_hash,
                         } => {
                             // Check if input_hash is present and matches the blake3 hash of the current input cells values
-                            let input_cells = state.get_input_cells_for_column(row.clone(), dependent_col.clone());
+                            let input_cells =
+                                state.get_input_cells_for_column(row.clone(), reverse_dependent_col.clone());
                             let workflow_job_data = WorkflowSheetJobData {
                                 sheet_id: state.uuid.clone(),
                                 row: row.clone(),
-                                col: dependent_col.clone(),
+                                col: reverse_dependent_col.clone(),
                                 col_definition: column_definition.clone(),
                                 workflow: workflow.clone(),
+                                workflow_name: workflow_name.clone(),
                                 input_cells,
                                 llm_provider_name: llm_provider_name.clone(),
                             };
 
+                            // Update the cell status to Pending
+                            let (new_state, mut new_jobs) = sheet_reducer(
+                                state,
+                                SheetAction::SetCellPending {
+                                    row: row.clone(),
+                                    col: reverse_dependent_col.clone(),
+                                },
+                            )
+                            .await;
+                            state = new_state;
+                            jobs.append(&mut new_jobs);
                             jobs.push(workflow_job_data);
                         }
                         _ => {}
                     }
                 }
-            }
-
-            if let Some(sender) = &state.update_sender {
-                let sender_clone = sender.clone();
-                tokio::spawn(async move {
-                    sender_clone.send(SheetUpdate::CellUpdated(row, col)).await.unwrap();
-                });
             }
         }
         SheetAction::RemoveColumn(col_uuid) => {
@@ -660,27 +909,45 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
         }
         SheetAction::TriggerUpdateColumnValues(col_uuid) => {
-            for row_uuid in state.rows.keys() {
+            let row_uuids: Vec<_> = state.rows.keys().cloned().collect();
+            for row_uuid in row_uuids {
                 if let Some(column_definition) = state.columns.get(&col_uuid).cloned() {
                     if let ColumnBehavior::LLMCall {
-                        input: _, // used under the hood with get_input_cells_for_column
+                        input, // used under the hood with get_input_cells_for_column
                         workflow,
+                        workflow_name,
                         llm_provider_name,
                         input_hash: _,
                     } = &column_definition.behavior
                     {
-                        let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
-                        let workflow_job_data = WorkflowSheetJobData {
-                            sheet_id: state.uuid.clone(),
-                            row: row_uuid.clone(),
-                            col: col_uuid.clone(),
-                            col_definition: column_definition.clone(),
-                            workflow: workflow.clone(),
-                            input_cells,
-                            llm_provider_name: llm_provider_name.clone(),
-                        };
+                        let dependencies = state.parse_formula_dependencies(input);
+                        let all_dependencies_met = dependencies.iter().all(|dep_col| {
+                            let cell_value = state.get_cell_value(row_uuid.clone(), dep_col.clone());
+                            cell_value.as_ref().map_or(false, |v| !v.is_empty())
+                        });
 
-                        jobs.push(workflow_job_data);
+                        if all_dependencies_met {
+                            let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
+                            let workflow_job_data = WorkflowSheetJobData {
+                                sheet_id: state.uuid.clone(),
+                                row: row_uuid.clone(),
+                                col: col_uuid.clone(),
+                                col_definition: column_definition.clone(),
+                                workflow: workflow.clone(),
+                                workflow_name: workflow_name.clone(),
+                                input_cells,
+                                llm_provider_name: llm_provider_name.clone(),
+                            };
+
+                            // Update the cell status to Pending
+                            if let Some(row_cells) = state.rows.get_mut(&row_uuid) {
+                                if let Some(cell) = row_cells.get_mut(&col_uuid) {
+                                    cell.status = CellStatus::Pending;
+                                }
+                            }
+
+                            jobs.push(workflow_job_data);
+                        }
                     }
                 }
             }
@@ -708,6 +975,33 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             input_hash: None,
                         },
                     );
+                } else {
+                    // Check the states of dependent cells to determine the status of the new cell
+                    let status = if let ColumnBehavior::Formula(formula)
+                    | ColumnBehavior::LLMCall { input: formula, .. } = &col_def.behavior
+                    {
+                        let dependencies = state.parse_formula_dependencies(formula);
+                        let any_dependency_missing = dependencies
+                            .iter()
+                            .any(|dep_col| state.get_cell_value(row_uuid.clone(), dep_col.clone()).is_none());
+                        if any_dependency_missing {
+                            CellStatus::Waiting
+                        } else {
+                            CellStatus::Pending
+                        }
+                    } else {
+                        CellStatus::Pending
+                    };
+
+                    row_cells.insert(
+                        col_uuid.clone(),
+                        Cell {
+                            value: None,
+                            last_updated: Utc::now(),
+                            status,
+                            input_hash: None,
+                        },
+                    );
                 }
             }
             state.rows.insert(row_uuid.clone(), row_cells);
@@ -722,7 +1016,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
 
                 let changed_cell_id = CellId(format!("{}:{}", row_uuid, col_uuid));
                 eprintln!("\nAddRow TriggerUpdateEvent: {:?}", changed_cell_id);
-                update_events.push(SheetAction::TriggerUpdateEvent {
+                update_events.push(SheetAction::PropagateUpdateToDependents {
                     changed_cell_id,
                     visited: HashSet::new(),
                     depth: 0,
@@ -738,5 +1032,7 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
             }
         }
     }
+    println!("After state: \n");
+    state.print_as_ascii_table();
     (state, jobs)
 }

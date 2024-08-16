@@ -5,7 +5,7 @@ use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
-use crate::llm_provider::queue::job_queue_manager::{self, JobForProcessing, JobQueueManager};
+use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
@@ -54,7 +54,7 @@ impl JobManager {
         ws_manager,
         tool_router,
         sheet_manager,
-        callback_manager
+        _callback_manager
     ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
@@ -68,7 +68,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
-        callback_manager: Arc<Mutex<JobCallbackManager>>,
+        _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -109,24 +109,11 @@ impl JobManager {
         )
         .unwrap();
 
-        // Temporal
-        if let Some(tool_router_arc) = &tool_router {
-            let mut tool_router = tool_router_arc.lock().await;
-            if !tool_router.is_started() {
-                let start_time = Instant::now(); // Start time measurement
-
-                if let Err(e) = tool_router
-                    .start(Box::new(generator.clone()), Arc::downgrade(&db), user_profile.clone())
-                    .await
-                {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to start tool router: {}", e),
-                    );
-                }
-                let duration = start_time.elapsed();
-                eprintln!("ToolRouter start call duration: {:?}", duration);
+        // Note: remove later on. This code is for the meantime only while we add embeddings to tools so they can get added at the first Shinkai start
+        {
+            if let Some(tool_router) = tool_router.clone() {
+                let tool_router = tool_router.lock().await;
+                let _ = tool_router.initialization(Box::new(generator.clone())).await;
             }
         }
 
@@ -317,7 +304,7 @@ impl JobManager {
             job_message.clone(),
             prev_execution_context,
             generator,
-            user_profile,
+            user_profile.clone(),
             ws_manager.clone(),
             tool_router.clone(),
         )
@@ -339,8 +326,8 @@ impl JobManager {
             inference_response_content.to_string(),
             "".to_string(),
             identity_secret_key_clone,
-            profile_name.clone(),
-            profile_name.clone(),
+            user_profile.node_name.clone(),
+            user_profile.node_name.clone(),
         )
         .map_err(|e| LLMProviderError::ShinkaiMessageBuilderError(e.to_string()))?;
 
@@ -381,7 +368,20 @@ impl JobManager {
         let workflow = if let Some(code) = &job_message.workflow_code {
             parse_workflow(code)?
         } else if let Some(name) = &job_message.workflow_name {
-            db.get_workflow(name, &user_profile)?
+            if let Some(tool_router) = tool_router.clone() {
+                let tool_router = tool_router.lock().await;
+                if let Some(workflow) = tool_router
+                    .get_workflow(name)
+                    .await
+                    .map_err(|e| LLMProviderError::from(e))?
+                {
+                    workflow
+                } else {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            }
         } else {
             return Ok(false);
         };
@@ -497,7 +497,23 @@ impl JobManager {
         }
 
         let functions = HashMap::new();
-        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow, functions);
+        let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow.clone(), functions);
+
+        let js_functions_used = workflow
+            .extract_function_names()
+            .into_iter()
+            .filter(|name| name.starts_with("shinkai__"))
+            .collect::<Vec<_>>();
+
+        let tools = {
+            // get tool_router and then call get_tools_by_names
+            if let Some(tool_router) = tool_router.clone() {
+                let tool_router = tool_router.lock().await;
+                tool_router.get_tools_by_names(js_functions_used).await?
+            } else {
+                return Err(LLMProviderError::ToolRouterNotFound);
+            }
+        };
 
         dsl_inference.add_inference_function();
         dsl_inference.add_inference_no_ws_function();
@@ -505,7 +521,7 @@ impl JobManager {
         dsl_inference.add_opinionated_inference_no_ws_function();
         dsl_inference.add_multi_inference_function();
         dsl_inference.add_all_generic_functions();
-        dsl_inference.add_tools_from_router().await?;
+        dsl_inference.add_tools_from_router(tools).await?;
 
         let start = Instant::now();
         let inference_result = dsl_inference.run_chain().await?;
@@ -541,38 +557,66 @@ impl JobManager {
             // Check SheetManager for the latest inputs
             let sheet_manager = sheet_manager.ok_or(LLMProviderError::SheetManagerNotFound)?;
 
-            // Get the input string within the lock scope
+            // Get the processed input string within the lock scope
             let input_string = {
                 let sheet_manager = sheet_manager.lock().await;
                 let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
-                let input_cells = sheet.get_input_values_for_cell(sheet_job_data.row.clone(), sheet_job_data.col.clone());
-                input_cells
-                    .iter()
-                    .filter_map(|(_, cell)| cell.as_ref())
-                    .fold(String::new(), |mut acc, s| {
-                        if !acc.is_empty() {
-                            acc.push(' ');
-                        }
-                        acc.push_str(s);
-                        acc
-                    })
+                sheet
+                    .get_processed_input(sheet_job_data.row.clone(), sheet_job_data.col.clone())
+                    .ok_or(LLMProviderError::InputProcessingError(format!("{:?}", sheet_job_data)))?
+            };
+
+            // Determine the workflow to use
+            let workflow = if let Some(workflow) = sheet_job_data.workflow {
+                Some(workflow)
+            } else if let Some(workflow_name) = sheet_job_data.workflow_name {
+                if let Some(tool_router) = tool_router.clone() {
+                    let tool_router = tool_router.lock().await;
+                    tool_router
+                        .get_workflow(&workflow_name)
+                        .await
+                        .map_err(LLMProviderError::from)?
+                } else {
+                    None
+                }
+            } else {
+                None
             };
 
             // Process the sheet job
-            let inference_result = Self::execute_workflow(
-                db.clone(),
-                vector_fs.clone(),
-                job_message,
-                input_string,
-                llm_provider_found,
-                full_job.clone(),
-                generator,
-                user_profile.clone(),
-                ws_manager.clone(),
-                tool_router.clone(),
-                sheet_job_data.workflow,
-            )
-            .await?;
+            let inference_result = if let Some(workflow) = workflow {
+                Self::execute_workflow(
+                    db.clone(),
+                    vector_fs.clone(),
+                    job_message,
+                    input_string,
+                    llm_provider_found,
+                    full_job.clone(),
+                    generator,
+                    user_profile.clone(),
+                    ws_manager.clone(),
+                    tool_router.clone(),
+                    workflow,
+                )
+                .await?
+            } else {
+                let mut job_message = job_message.clone();
+                job_message.content = input_string;
+
+                JobManager::inference_chain_router(
+                    db.clone(),
+                    vector_fs.clone(),
+                    llm_provider_found,
+                    full_job.clone(),
+                    job_message.clone(),
+                    HashMap::new(), // Assuming prev_execution_context is an empty HashMap
+                    generator,
+                    user_profile.clone(),
+                    ws_manager.clone(),
+                    tool_router.clone(),
+                )
+                .await?
+            };
 
             let response = inference_result.response;
 

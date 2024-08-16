@@ -244,7 +244,12 @@ impl Prompt {
         while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
-                    current_token_count -= removed_sub_prompt.count_tokens_as_completion_message();
+                    let removed_tokens = removed_sub_prompt.count_tokens_as_completion_message();
+                    if current_token_count >= removed_tokens {
+                        current_token_count -= removed_tokens;
+                    } else {
+                        current_token_count = 0;
+                    }
                     removed_subprompts.push(removed_sub_prompt);
                 }
                 None => break, // No more sub-prompts to remove, exit the loop
@@ -501,9 +506,9 @@ mod tests {
                     false,
                 ),
             ],
-            Embedding::new("", vec![]),
+            None,
         );
-        let shinkai_tool = ShinkaiTool::Rust(tool);
+        let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
         let sub_prompts = vec![
             SubPrompt::Content(SubPromptType::System, "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Use the content to directly answer the user's question. If the user talks about `it` or `this`, they are referencing the previous message.\n Respond using the following markdown schema and nothing else:\n # Answer \nhere goes the answer\n".to_string(), 98),
@@ -636,9 +641,9 @@ mod tests {
                     false,
                 ),
             ],
-            Embedding::new("", vec![]),
+            None,
         );
-        let shinkai_tool = ShinkaiTool::Rust(tool);
+        let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
         let sub_prompts = vec![
             SubPrompt::Content(

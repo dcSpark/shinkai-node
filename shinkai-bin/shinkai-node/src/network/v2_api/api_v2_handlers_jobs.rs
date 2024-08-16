@@ -249,7 +249,7 @@ pub async fn get_last_messages_handler(
 
 #[utoipa::path(
     get,
-    path = "/v2/all_smart_inboxes",
+    path = "/v2/all_inboxes",
     responses(
         (status = 200, description = "Successfully retrieved all smart inboxes", body = Vec<V2SmartInbox>),
         (status = 400, description = "Bad request", body = APIError),

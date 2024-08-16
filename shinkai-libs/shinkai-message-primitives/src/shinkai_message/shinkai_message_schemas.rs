@@ -83,6 +83,10 @@ pub enum MessageSchemaType {
     GetSheet,
     RemoveRows,
     AddRows,
+    SetShinkaiTool,
+    ListAllShinkaiTools,
+    GetShinkaiTool,
+    SearchShinkaiTool,
 }
 
 impl MessageSchemaType {
@@ -160,6 +164,10 @@ impl MessageSchemaType {
             "GetSheet" => Some(Self::GetSheet),
             "RemoveRows" => Some(Self::RemoveRows),
             "AddRows" => Some(Self::AddRows),
+            "SetShinkaiTool" => Some(Self::SetShinkaiTool),
+            "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
+            "GetShinkaiTool" => Some(Self::GetShinkaiTool),
+            "SearchShinkaiTool" => Some(Self::SearchShinkaiTool),
             _ => None,
         }
     }
@@ -237,6 +245,10 @@ impl MessageSchemaType {
             Self::GetSheet => "GetSheet",
             Self::RemoveRows => "RemoveRows",
             Self::AddRows => "AddRows",
+            Self::SetShinkaiTool => "SetShinkaiTool",
+            Self::ListAllShinkaiTools => "ListAllShinkaiTools",
+            Self::GetShinkaiTool => "GetShinkaiTool",
+            Self::SearchShinkaiTool => "SearchShinkaiTool",
             Self::Empty => "",
         }
     }
@@ -642,6 +654,8 @@ pub struct WSMessageResponse {
 pub enum WSTopic {
     Inbox,
     SmartInboxes,
+    Sheet,
+    SheetList,
 }
 
 impl fmt::Display for WSTopic {
@@ -649,6 +663,8 @@ impl fmt::Display for WSTopic {
         match self {
             WSTopic::Inbox => write!(f, "inbox"),
             WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
+            WSTopic::Sheet => write!(f, "sheet"),
+            WSTopic::SheetList => write!(f, "sheet_list"),
         }
     }
 }

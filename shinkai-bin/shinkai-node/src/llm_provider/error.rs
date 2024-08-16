@@ -1,4 +1,4 @@
-use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError, vector_fs::vector_fs_error::VectorFSError, workflows::sm_executor::WorkflowError};
+use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError, tools::error::ToolError, vector_fs::vector_fs_error::VectorFSError, workflows::sm_executor::WorkflowError};
 use anyhow::Error as AnyhowError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -77,6 +77,8 @@ pub enum LLMProviderError {
     SheetManagerNotFound,
     CallbackManagerNotFound,
     SheetManagerError(String),
+    InputProcessingError(String),
+    ToolRouterNotFound
 }
 
 impl fmt::Display for LLMProviderError {
@@ -160,6 +162,8 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::SheetManagerNotFound => write!(f, "Sheet Manager not found"),
             LLMProviderError::CallbackManagerNotFound => write!(f, "Callback Manager not found"),
             LLMProviderError::SheetManagerError(s) => write!(f, "{}", s),
+            LLMProviderError::InputProcessingError(s) => write!(f, "{}", s),
+            LLMProviderError::ToolRouterNotFound => write!(f, "Tool Router not found"),
         }
     }
 }
@@ -233,6 +237,8 @@ impl LLMProviderError {
             LLMProviderError::SheetManagerNotFound => "SheetManagerNotFound",
             LLMProviderError::CallbackManagerNotFound => "CallbackManagerNotFound",
             LLMProviderError::SheetManagerError(_) => "SheetManagerError",
+            LLMProviderError::InputProcessingError(_) => "InputProcessingError",
+            LLMProviderError::ToolRouterNotFound => "ToolRouterNotFound",
         };
 
         let error_message = format!("{}", self);
@@ -340,5 +346,11 @@ impl From<String> for LLMProviderError {
 impl From<WorkflowError> for LLMProviderError {
     fn from(err: WorkflowError) -> LLMProviderError {
         LLMProviderError::WorkflowExecutionError(err.to_string())
+    }
+}
+
+impl From<ToolError> for LLMProviderError {
+    fn from(err: ToolError) -> LLMProviderError {
+        LLMProviderError::ToolRouterError(err.to_string())
     }
 }

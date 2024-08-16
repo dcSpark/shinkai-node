@@ -487,4 +487,25 @@ mod tests {
         assert_eq!(workflow.author, "@@not_defined.shinkai".to_string());
         assert!(workflow.sticky);
     }
+
+    #[test]
+    fn test_extract_function_names() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call shinkai__weather_by_city($PROMPT, $EMBEDDINGS)
+                }
+            } @@nico.arb-sep-shinkai
+        "#;
+        let result = parse_workflow(input);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        let function_names = workflow.extract_function_names();
+        assert_eq!(function_names, vec!["process_embeddings_in_job_scope", "shinkai__weather_by_city"]);
+    }
 }

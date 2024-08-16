@@ -32,7 +32,8 @@ pub enum ColumnBehavior {
     Formula(String),
     LLMCall {
         input: Formula,
-        workflow: Workflow,
+        workflow: Option<Workflow>,
+        workflow_name: Option<String>,
         llm_provider_name: String, // Note: maybe we want a duality: specific model or some rules that pick a model e.g. Cheap + Private
         input_hash: Option<String>, // New parameter to store the hash of inputs (avoid recomputation)
     },
@@ -47,6 +48,7 @@ pub enum ColumnBehavior {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum CellStatus {
+    Waiting,
     Pending,
     Ready,
 }
@@ -68,7 +70,8 @@ pub struct WorkflowSheetJobData {
     pub row: UuidString,
     pub col: UuidString,
     pub col_definition: ColumnDefinition,
-    pub workflow: Workflow,
+    pub workflow: Option<Workflow>,
+    pub workflow_name: Option<String>,
     pub llm_provider_name: String,
     pub input_cells: Vec<(UuidString, UuidString, ColumnDefinition)>,
 }

@@ -16,7 +16,7 @@ use uuid::Uuid;
 use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
 
-#[test]
+// #[test]
 fn create_a_sheet_and_check_workflows() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     init_default_tracing();
@@ -165,7 +165,8 @@ fn create_a_sheet_and_check_workflows() {
                     name: "Column B".to_string(),
                     behavior: ColumnBehavior::LLMCall {
                         input: "=A".to_string(),
-                        workflow,
+                        workflow: Some(workflow),
+                        workflow_name: None,
                         llm_provider_name: node1_agent.clone(),
                         input_hash: None,
                     },

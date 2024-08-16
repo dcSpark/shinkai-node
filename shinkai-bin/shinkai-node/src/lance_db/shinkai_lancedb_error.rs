@@ -7,6 +7,8 @@ pub enum ShinkaiLanceDBError {
     LanceDB(LanceDbError),
     Schema(String),
     Arrow(String),
+    ToolError(String),
+    InvalidPath(String)
 }
 
 impl fmt::Display for ShinkaiLanceDBError {
@@ -15,6 +17,8 @@ impl fmt::Display for ShinkaiLanceDBError {
             ShinkaiLanceDBError::LanceDB(err) => write!(f, "LanceDB error: {}", err),
             ShinkaiLanceDBError::Schema(err) => write!(f, "Schema error: {}", err),
             ShinkaiLanceDBError::Arrow(err) => write!(f, "Arrow error: {}", err),
+            ShinkaiLanceDBError::ToolError(err) => write!(f, "Tool error: {}", err),
+            ShinkaiLanceDBError::InvalidPath(err) => write!(f, "Invalid path error: {}", err),
         }
     }
 }

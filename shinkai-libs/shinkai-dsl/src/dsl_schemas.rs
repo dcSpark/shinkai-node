@@ -1,4 +1,5 @@
 use pest_derive::Parser;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::parser::parse_workflow;
@@ -14,6 +15,7 @@ pub struct Workflow {
     pub steps: Vec<Step>,
     pub raw: String,
     pub description: Option<String>,
+    // TODO: add input description to guide the LLMs
     pub author: String,
     pub sticky: bool,
 }
@@ -25,10 +27,7 @@ impl Workflow {
     }
 
     /// Creates a Workflow from a JSON string and a description.
-    pub fn new(
-        dsl_input: String,
-        description: String,
-    ) -> Result<Self, String> {
+    pub fn new(dsl_input: String, description: String) -> Result<Self, String> {
         let workflow = parse_workflow(&dsl_input)?;
         Ok(Workflow {
             description: Some(description),
@@ -36,6 +35,12 @@ impl Workflow {
             sticky: workflow.sticky,
             ..workflow
         })
+    }
+
+    /// Extracts all function names used in the raw workflow string.
+    pub fn extract_function_names(&self) -> Vec<String> {
+        let re = Regex::new(r"call\s+(\w+)\s*\(").unwrap();
+        re.captures_iter(&self.raw).map(|cap| cap[1].to_string()).collect()
     }
 }
 

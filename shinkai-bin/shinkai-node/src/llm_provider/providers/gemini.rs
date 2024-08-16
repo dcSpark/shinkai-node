@@ -5,7 +5,7 @@ use super::shared::openai::openai_prepare_messages;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use crate::network::ws_manager::{WSMetadata, WSUpdateHandler};
+use crate::network::ws_manager::{WSMessageType, WSMetadata, WSUpdateHandler};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -299,12 +299,14 @@ async fn process_chunk(
                     eval_count: None,
                 };
 
+                let ws_message_type = WSMessageType::Metadata(metadata);
+
                 let _ = m
                     .queue_message(
                         WSTopic::Inbox,
                         inbox_name_string.clone(),
                         response_text.to_string(),
-                        Some(metadata),
+                        ws_message_type,
                         true,
                     )
                     .await;
@@ -344,12 +346,14 @@ async fn process_gemini_response(
                             eval_count: None,
                         };
 
+                        let ws_message_type = WSMessageType::Metadata(metadata);
+
                         let _ = m
                             .queue_message(
                                 WSTopic::Inbox,
                                 inbox_name_string.clone(),
                                 content.to_string(),
-                                Some(metadata),
+                                ws_message_type,
                                 true,
                             )
                             .await;

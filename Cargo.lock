@@ -4531,6 +4531,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hex-simd"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f7685beb53fc20efc2605f32f5d51e9ba18b8ef237961d1760169d2290d3bee"
+dependencies = [
+ "outref",
+ "vsimd",
+]
+
+[[package]]
 name = "hmac"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9570,6 +9580,7 @@ dependencies = [
  "dashmap",
  "pest",
  "pest_derive",
+ "regex",
  "serde",
  "serde_json",
 ]
@@ -9805,16 +9816,19 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.7.1-dev.12"
+version = "0.7.1-dev.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c78159a5164a500d91fe70fe8a7b7b77d3e8b9a60048caf683e15f3f3832eb86"
+checksum = "fef7bbfc537d607f6ba51ff9ba3ffdefd10383c675a394f7ba5dae223c6442ad"
 dependencies = [
+ "base64-simd",
  "derivative",
  "derive_more",
  "futures",
+ "hex-simd",
  "lazy_static",
  "nanoid",
  "patch",
+ "phf 0.11.2",
  "reqwest 0.11.27",
  "rquickjs",
  "serde",

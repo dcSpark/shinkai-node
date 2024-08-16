@@ -9,6 +9,7 @@ pest_derive = "2.7.10"
 serde_json = "1.0.117"
 dashmap = "5.5.3"
 chrono = "0.4"
+regex = "1"
 
 [dependencies.serde]
 version = "1.0.188"

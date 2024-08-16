@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+
 use async_channel::Sender;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIAvailableSharedItems;
 use warp::Filter;
 
-use crate::network::node_commands::NodeCommand;
 use super::api_v1_handlers::add_agent_handler;
 use super::api_v1_handlers::add_ollama_models_handler;
 use super::api_v1_handlers::add_row_handler;
@@ -51,11 +52,13 @@ use super::api_v1_handlers::get_my_subscribers_handler;
 use super::api_v1_handlers::get_notifications_before_timestamp_handler;
 use super::api_v1_handlers::get_public_key_handler;
 use super::api_v1_handlers::get_sheet_handler;
+use super::api_v1_handlers::get_shinkai_tool_handler;
 use super::api_v1_handlers::get_subscription_links_handler;
 use super::api_v1_handlers::get_workflow_info_handler;
 use super::api_v1_handlers::handle_file_upload;
 use super::api_v1_handlers::identity_name_to_external_profile_data_handler;
 use super::api_v1_handlers::job_message_handler;
+use super::api_v1_handlers::list_all_shinkai_tools_handler;
 use super::api_v1_handlers::list_all_workflows_handler;
 use super::api_v1_handlers::mark_as_read_up_to_handler;
 use super::api_v1_handlers::modify_agent_handler;
@@ -67,10 +70,12 @@ use super::api_v1_handlers::remove_sheet_handler;
 use super::api_v1_handlers::retrieve_vrkai_handler;
 use super::api_v1_handlers::retrieve_vrpack_handler;
 use super::api_v1_handlers::scan_ollama_models_handler;
+use super::api_v1_handlers::search_shinkai_tool_handler;
 use super::api_v1_handlers::search_workflows_handler;
 use super::api_v1_handlers::send_msg_handler;
 use super::api_v1_handlers::set_cell_value_handler;
 use super::api_v1_handlers::set_column_handler;
+use super::api_v1_handlers::set_shinkai_tool_handler;
 use super::api_v1_handlers::shinkai_health_handler;
 use super::api_v1_handlers::subscribe_to_shared_folder_handler;
 use super::api_v1_handlers::unsubscribe_handler;
@@ -81,6 +86,7 @@ use super::api_v1_handlers::update_workflow_handler;
 use super::api_v1_handlers::use_registration_code_handler;
 use super::api_v1_handlers::user_sheets_handler;
 use super::api_v1_handlers::NameToExternalProfileData;
+use crate::network::node_commands::NodeCommand;
 
 pub fn v1_routes(
     node_commands_sender: Sender<NodeCommand>,
@@ -100,7 +106,6 @@ pub fn v1_routes(
             .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| send_msg_handler(node_commands_sender.clone(), message))
     };
-
 
     let identity_name_to_external_profile_data = {
         let node_commands_sender = node_commands_sender.clone();
@@ -644,6 +649,14 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| search_workflows_handler(node_commands_sender.clone(), message))
     };
 
+    let search_shinkai_tool = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("search_shinkai_tool")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| search_shinkai_tool_handler(node_commands_sender.clone(), message))
+    };
+
     let add_workflow = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("add_workflow")
@@ -776,6 +789,35 @@ pub fn v1_routes(
             })
     };
 
+    let api_list_all_shinkai_tools = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("list_all_shinkai_tools")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                list_all_shinkai_tools_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    let api_set_shinkai_tool = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("set_shinkai_tool")
+            .and(warp::post())
+            .and(warp::query::<HashMap<String, String>>())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |query_params: HashMap<String, String>, message: ShinkaiMessage| {
+                set_shinkai_tool_handler(node_commands_sender.clone(), query_params, message)
+            })
+    };
+
+    let api_get_shinkai_tool = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("get_shinkai_tool")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| get_shinkai_tool_handler(node_commands_sender.clone(), message))
+    };
+
     ping_all
         .or(send_msg)
         .or(identity_name_to_external_profile_data)
@@ -852,4 +894,8 @@ pub fn v1_routes(
         .or(set_cell_value)
         .or(api_update_default_embedding_model)
         .or(api_update_supported_embedding_models)
+        .or(api_list_all_shinkai_tools)
+        .or(api_set_shinkai_tool)
+        .or(api_get_shinkai_tool)
+        .or(search_shinkai_tool)
 }

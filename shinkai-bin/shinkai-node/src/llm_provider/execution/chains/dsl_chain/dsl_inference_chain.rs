@@ -6,7 +6,7 @@ use crate::{
         providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::{shinkai_tool::ShinkaiTool, tool_router_dep::tool_management::all_available_js_tools, workflow_tool::WorkflowTool},
+    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
@@ -193,29 +193,14 @@ impl<'a> DslChain<'a> {
         );
     }
 
-    pub async fn add_tools_from_router(&mut self) -> Result<(), WorkflowError> {
+    pub async fn add_tools_from_router(&mut self, js_tools: Vec<ShinkaiTool>) -> Result<(), WorkflowError> {
         let start_time = Instant::now();
-        let tool_router = self
-            .context
-            .tool_router()
-            .as_ref()
-            .ok_or_else(|| WorkflowError::ExecutionError("ToolRouter not available".to_string()))?
-            .clone();
 
-        let tool_router_locked = tool_router.lock().await;
-
-        let tools = all_available_js_tools(
-            &tool_router_locked,
-            self.context.user_profile(),
-            self.context.db().clone(),
-        )
-        .map_err(|e| WorkflowError::ExecutionError(format!("Failed to fetch tools: {}", e)))?;
-
-        for tool in tools {
-            let function_name = format!("{}_{}", tool.toolkit_name(), tool.name());
-            eprintln!("add_tools_from_router> Adding function: {}", function_name.clone());
+        for tool in js_tools {
+            let function_name = tool.name();
+            eprintln!("add_tools_from_router> Adding function: {}", function_name);
             self.functions.insert(
-                function_name.clone(),
+                function_name,
                 Box::new(ShinkaiToolFunction {
                     tool: tool.clone(),
                     context: self.context.clone_box(),
@@ -559,7 +544,7 @@ impl AsyncFunction for ShinkaiToolFunction {
         };
 
         let result = match &self.tool {
-            ShinkaiTool::JS(js_tool) => {
+            ShinkaiTool::JS(js_tool, _) => {
                 let function_config = self.tool.get_config_from_env();
                 let result = js_tool
                     .run(function_call.arguments, function_config)
@@ -585,17 +570,12 @@ impl AsyncFunction for ShinkaiToolFunction {
                         .map_err(|e| WorkflowError::ExecutionError(format!("Failed to stringify result: {}", e)))?,
                 }
             }
-            ShinkaiTool::JSLite(_) => {
-                return Err(WorkflowError::ExecutionError(
-                    "Simplified JS tools are not supported in this context".to_string(),
-                ));
-            }
-            ShinkaiTool::Rust(_) => {
+            ShinkaiTool::Rust(_, _) => {
                 return Err(WorkflowError::ExecutionError(
                     "Rust tools are not supported in this context".to_string(),
                 ));
             }
-            ShinkaiTool::Workflow(_) => {
+            ShinkaiTool::Workflow(_, _) => {
                 // TODO: we should allow for a workflow to call another workflow
                 return Err(WorkflowError::ExecutionError(
                     "Workflows are not supported in this context".to_string(),

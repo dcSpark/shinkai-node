@@ -103,7 +103,7 @@ mod tests {
         let vector_fs_weak = Arc::downgrade(&vector_fs);
         let db_weak = Arc::downgrade(&db);
 
-        let sheet_manager_result = SheetManager::new(db_weak.clone(), node_profile_name.extract_node().clone()).await;
+        let sheet_manager_result = SheetManager::new(db_weak.clone(), node_profile_name.extract_node().clone(), None).await;
         let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
         let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
 

@@ -10,6 +10,7 @@ use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
+use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
@@ -42,7 +43,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_tcp_relayer::NetworkMessage;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::convert::TryInto;
@@ -102,6 +103,8 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
+    // The LanceDB
+    pub lance_db: Arc<Mutex<LanceShinkaiDb>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -319,13 +322,29 @@ impl Node {
         )
         .await;
 
+        let lance_db_path = format!("{}", main_db_path);
+        // Note: do we need to push this to start bc of the default embedding model?
+        let lance_db = LanceShinkaiDb::new(
+            &lance_db_path,
+            default_embedding_model.clone(),
+            embedding_generator.clone(),
+        )
+        .await
+        .unwrap();
+        let lance_db = Arc::new(Mutex::new(lance_db));
+
         // Initialize ToolRouter
-        let tool_router = ToolRouter::new();
+        let tool_router = ToolRouter::new(lance_db.clone());
 
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
-        let sheet_manager_result = SheetManager::new(Arc::downgrade(&db_arc.clone()), node_name.clone()).await;
+        let sheet_manager_result = SheetManager::new(
+            Arc::downgrade(&db_arc.clone()),
+            node_name.clone(),
+            ws_manager_trait.clone(),
+        )
+        .await;
         let sheet_manager = sheet_manager_result.unwrap();
 
         Arc::new(Mutex::new(Node {
@@ -346,6 +365,7 @@ impl Node {
             first_device_needs_registration_code,
             initial_llm_providers,
             vector_fs: vector_fs_arc.clone(),
+            lance_db,
             embedding_generator,
             unstructured_api,
             conn_limiter,
@@ -431,6 +451,18 @@ impl Node {
                 });
                 self.ws_server = Some(ws_server);
             }
+        }
+
+        // Call ToolRouter initialization in a new task
+        if let Some(tool_router) = &self.tool_router {
+            let tool_router = tool_router.clone();
+            let generator = Box::new(self.embedding_generator.clone()) as Box<dyn EmbeddingGenerator>;
+
+            tokio::spawn(async move {
+                if let Err(e) = tool_router.lock().await.initialization(generator).await {
+                    eprintln!("ToolRouter initialization failed: {:?}", e);
+                }
+            });
         }
         eprintln!(">> Node start set variables successfully");
 

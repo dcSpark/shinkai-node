@@ -20,7 +20,6 @@ pub struct JSTool {
     pub description: String,
     pub keywords: Vec<String>,
     pub input_args: Vec<ToolArgument>,
-    pub config_set: bool,
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: JSToolResult,
@@ -41,8 +40,8 @@ impl JSTool {
                 serde_json::from_str(extra).map_err(|e| ToolError::SerializationError(e.to_string()))?;
             for config in &self.config {
                 if let ToolConfig::BasicConfig(basic_config) = config {
-                    if basic_config.required && !extra_json.get(&basic_config.name).is_some() {
-                        return Err(ToolError::MissingConfigError(basic_config.name.clone()));
+                    if basic_config.required && !extra_json.get(&basic_config.key_name).is_some() {
+                        return Err(ToolError::MissingConfigError(basic_config.key_name.clone()));
                     }
                 }
             }
@@ -50,7 +49,7 @@ impl JSTool {
             for config in &self.config {
                 if let ToolConfig::BasicConfig(basic_config) = config {
                     if basic_config.required {
-                        return Err(ToolError::MissingConfigError(basic_config.name.clone()));
+                        return Err(ToolError::MissingConfigError(basic_config.key_name.clone()));
                     }
                 }
             }
@@ -69,7 +68,7 @@ impl JSTool {
                     tool.load_from_code(&code, &config)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
-                    tool.run(&input)
+                    tool.run(&input, None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
@@ -79,26 +78,21 @@ impl JSTool {
             .expect("Thread panicked")
     }
 
+    /// Check if all required config fields are set
+    pub fn check_required_config_fields(&self) -> bool {
+        for config in &self.config {
+            if let ToolConfig::BasicConfig(basic_config) = config {
+                if basic_config.required && basic_config.key_value.is_none() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
     /// Convert to JSON string
     pub fn to_json_string(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|e| ToolError::SerializationError(e.to_string()))
-    }
-
-    /// Convert to JSToolWithoutCode
-    pub fn to_without_code(&self) -> JSToolWithoutCode {
-        JSToolWithoutCode {
-            toolkit_name: self.toolkit_name.clone(),
-            name: self.name.clone(),
-            author: self.author.clone(),
-            config: self.config.clone(),
-            description: self.description.clone(),
-            keywords: self.keywords.clone(),
-            input_args: self.input_args.clone(),
-            config_set: self.config_set,
-            activated: self.activated,
-            embedding: self.embedding.clone(),
-            result: self.result.clone(),
-        }
     }
 }
 
@@ -159,35 +153,52 @@ impl JSToolResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct JSToolWithoutCode {
-    pub toolkit_name: String,
-    pub name: String,
-    pub author: String,
-    pub config: Vec<ToolConfig>,
-    pub description: String,
-    pub keywords: Vec<String>,
-    pub input_args: Vec<ToolArgument>,
-    pub config_set: bool,
-    pub activated: bool,
-    pub embedding: Option<Embedding>,
-    pub result: JSToolResult,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::js_toolkit_headers::BasicConfig;
+    use serde_json::json;
 
-impl JSToolWithoutCode {
-    pub fn from_jstool(tool: &JSTool) -> Self {
-        JSToolWithoutCode {
-            toolkit_name: tool.toolkit_name.clone(),
-            name: tool.name.clone(),
-            author: tool.author.clone(),
-            config: tool.config.clone(),
-            description: tool.description.clone(),
-            keywords: tool.keywords.clone(),
-            input_args: tool.input_args.clone(),
-            config_set: tool.config_set,
-            activated: tool.activated,
-            embedding: tool.embedding.clone(),
-            result: tool.result.clone(),
-        }
+    #[test]
+    fn test_check_required_config_fields() {
+        // Tool without config
+        let tool_without_config = JSTool {
+            toolkit_name: "test_toolkit".to_string(),
+            name: "test_tool".to_string(),
+            author: "author".to_string(),
+            js_code: "console.log('Hello, world!');".to_string(),
+            config: vec![],
+            description: "A test tool".to_string(),
+            keywords: vec![],
+            input_args: vec![],
+            activated: false,
+            embedding: None,
+            result: JSToolResult::new("object".to_string(), json!({}), vec![]),
+        };
+        assert!(tool_without_config.check_required_config_fields());
+
+        // Tool with config but without the required params
+        let tool_with_missing_config = JSTool {
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "apiKey".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                key_value: None,
+            })],
+            ..tool_without_config.clone()
+        };
+        assert!(!tool_with_missing_config.check_required_config_fields());
+
+        // Tool with config and with the required params
+        let tool_with_config = JSTool {
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "apiKey".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                key_value: Some("12345".to_string()),
+            })],
+            ..tool_without_config.clone()
+        };
+        assert!(tool_with_config.check_required_config_fields());
     }
 }

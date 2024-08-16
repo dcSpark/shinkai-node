@@ -14,6 +14,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMess
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sheet::sheet::CellUpdateInfo;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Weak;
@@ -37,6 +38,7 @@ use crate::managers::identity_manager::IdentityManagerTrait;
 pub enum MessageType {
     ShinkaiMessage,
     Stream,
+    Sheet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +64,6 @@ pub struct WSMetadata {
 pub enum WebSocketManagerError {
     UserValidationFailed(String),
     AccessDenied(String),
-    MissingSharedKey(String),
     InvalidSharedKey(String),
 }
 
@@ -71,7 +72,6 @@ impl fmt::Display for WebSocketManagerError {
         match self {
             WebSocketManagerError::UserValidationFailed(msg) => write!(f, "User validation failed: {}", msg),
             WebSocketManagerError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
-            WebSocketManagerError::MissingSharedKey(msg) => write!(f, "Missing shared key: {}", msg),
             WebSocketManagerError::InvalidSharedKey(msg) => write!(f, "Invalid shared key: {}", msg),
         }
     }
@@ -96,12 +96,19 @@ pub trait WSUpdateHandler {
         topic: WSTopic,
         subtopic: String,
         update: String,
-        metadata: Option<WSMetadata>,
+        metadata: WSMessageType,
         is_stream: bool,
     );
 }
 
-pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, Option<WSMetadata>, bool)>>>;
+#[derive(Debug, Clone)]
+pub enum WSMessageType {
+    Metadata(WSMetadata),
+    Sheet(CellUpdateInfo),
+    None,
+}
+
+pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, WSMessageType, bool)>>>;
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
@@ -256,6 +263,8 @@ impl WebSocketManager {
                 // But we need to be careful about *just* sharing their inboxes.
                 true
             }
+            WSTopic::Sheet => true,
+            WSTopic::SheetList => true,
         }
     }
 
@@ -444,7 +453,7 @@ impl WebSocketManager {
         topic: WSTopic,
         subtopic: String,
         update: String,
-        metadata: Option<WSMetadata>,
+        metadata: WSMessageType,
         is_stream: bool,
     ) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
@@ -454,17 +463,28 @@ impl WebSocketManager {
             format!("Sending update to topic: {}", topic_subtopic).as_str(),
         );
 
+        // Determine the message type
+        let message_type = match metadata {
+            WSMessageType::Sheet(_) => MessageType::Sheet,
+            _ => {
+                if is_stream {
+                    MessageType::Stream
+                } else {
+                    MessageType::ShinkaiMessage
+                }
+            }
+        };
+
         // Create the WSMessagePayload
         let payload = WSMessagePayload {
-            message_type: if metadata.is_some() {
-                MessageType::Stream
-            } else {
-                MessageType::ShinkaiMessage
-            },
+            message_type,
             inbox: subtopic.clone(),
             message: Some(update.clone()),
             error_message: None,
-            metadata,
+            metadata: match metadata {
+                WSMessageType::Metadata(meta) => Some(meta),
+                _ => None,
+            },
             is_stream,
         };
 
@@ -481,7 +501,17 @@ impl WebSocketManager {
                 .is_some();
             let is_subscribed_to_topic = self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some();
 
-            if is_subscribed_to_smart_inboxes || is_subscribed_to_topic {
+            let is_subscribed_to_sheets = self
+                .subscriptions
+                .get(id)
+                .unwrap()
+                .get(&format!("{}:::{}", WSTopic::Sheet, ""))
+                .is_some();
+
+            if is_subscribed_to_smart_inboxes
+                || is_subscribed_to_topic
+                || (is_subscribed_to_sheets && topic == WSTopic::Sheet)
+            {
                 // If the user is subscribed to SmartInboxes, check if they have access to the specific inbox
                 if is_subscribed_to_smart_inboxes {
                     match ShinkaiName::new(id.clone()) {
@@ -583,7 +613,7 @@ impl WSUpdateHandler for WebSocketManager {
         topic: WSTopic,
         subtopic: String,
         update: String,
-        metadata: Option<WSMetadata>,
+        metadata: WSMessageType,
         is_stream: bool,
     ) {
         let mut queue = self.message_queue.lock().await;

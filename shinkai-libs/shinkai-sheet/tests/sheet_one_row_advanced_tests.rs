@@ -34,7 +34,8 @@ mod tests {
             name: "LLM Call Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -167,7 +168,8 @@ mod tests {
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -261,7 +263,8 @@ mod tests {
             name: "Column C".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Summarize: $INPUT".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -493,7 +496,8 @@ mod tests {
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "=A".to_string(),
-                workflow,
+                workflow: Some(workflow),
+                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -596,6 +600,342 @@ mod tests {
 
         // Print final state of the sheet
         sheet_locked.print_as_ascii_table();
+    }
+
+    // TODO: add a new test and feature to throw an error that gets scaled up to the user
+    //eg behavior: ColumnBehavior::Formula("=LLM Call Column + \" Copy\"".to_string()),
+
+    #[tokio::test]
+    async fn test_llm_call_and_formula_cell_status() {
+        let sheet = Arc::new(Mutex::new(Sheet::new()));
+        let row_id = Uuid::new_v4().to_string();
+        let column_llm_id = Uuid::new_v4().to_string();
+        let column_formula_id = Uuid::new_v4().to_string();
+
+        let workflow_str = r#"
+        workflow WorkflowTest v0.1 {
+            step Main {
+                $RESULT = call opinionated_inference($INPUT)
+            }
+        }
+        "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        let column_llm = ColumnDefinition {
+            id: column_llm_id.clone(),
+            name: "LLM Call Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "Say Hello World".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let column_formula = ColumnDefinition {
+            id: column_formula_id.clone(),
+            name: "Formula Column".to_string(),
+            behavior: ColumnBehavior::Formula("=A + \" Copy\"".to_string()),
+        };
+
+        {
+            let mut sheet = sheet.lock().await;
+            let _ = sheet.set_column(column_llm.clone()).await;
+            let _ = sheet.set_column(column_formula.clone()).await;
+        }
+
+        sheet.lock().await.add_row(row_id.clone()).await.unwrap();
+
+        // Check initial cell statuses
+        {
+            let sheet_locked = sheet.lock().await;
+            let llm_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+            let formula_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_formula_id.clone())
+                .map(|cell| &cell.status);
+
+            assert_eq!(llm_cell_status, Some(&CellStatus::Pending));
+            assert_eq!(formula_cell_status, Some(&CellStatus::Ready)); // TODO: eventually it should be "linked" so Pending
+        }
+
+        // Simulate LLM call completion
+        sheet
+            .lock()
+            .await
+            .set_cell_value(row_id.clone(), column_llm_id.clone(), "Hello World".to_string())
+            .await
+            .unwrap();
+
+        // Check cell statuses after LLM call completion
+        {
+            let sheet_locked = sheet.lock().await;
+            let llm_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+            let formula_cell_status = sheet_locked
+                .get_cell(row_id.clone(), column_formula_id.clone())
+                .map(|cell| &cell.status);
+
+            assert_eq!(llm_cell_status, Some(&CellStatus::Ready));
+            assert_eq!(formula_cell_status, Some(&CellStatus::Ready));
+        }
+
+        // Print final state of the sheet
+        sheet.lock().await.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_jobs_created_for_new_column() {
+        let mut sheet = Sheet::new();
+        let column_a_id = Uuid::new_v4().to_string();
+        let column_b_id = Uuid::new_v4().to_string();
+
+        let column_a = ColumnDefinition {
+            id: column_a_id.clone(),
+            name: "Column A".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        // Add Column A and a row
+        let _ = sheet.set_column(column_a.clone()).await;
+
+        // Add multiple rows
+        let mut row_ids = Vec::new();
+        for _ in 0..3 {
+            let row_id = Uuid::new_v4().to_string();
+            sheet.add_row(row_id.clone()).await.unwrap();
+            row_ids.push(row_id.clone());
+            // Set value in Column A
+            sheet
+                .set_cell_value(row_id.clone(), column_a_id.clone(), "Hello".to_string())
+                .await
+                .unwrap();
+        }
+
+        // Define the workflow for the LLMCall column
+        let workflow_str = r#"
+             workflow WorkflowTest v0.1 {
+                 step Main {
+                     $RESULT = call opinionated_inference($INPUT)
+                 }
+             }
+             "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Add Column B as LLMCall and check if jobs are created
+        let column_b = ColumnDefinition {
+            id: column_b_id.clone(),
+            name: "Column B".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "Say Hello World".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let jobs = sheet.set_column(column_b.clone()).await.unwrap();
+        assert_eq!(
+            jobs.len(),
+            3,
+            "The number of jobs should be equal to the number of rows created"
+        );
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_llm_call_shouldnt_include_empty_dependencies() {
+        let mut sheet = Sheet::new();
+        let column_a_id = Uuid::new_v4().to_string();
+        let column_b_id = Uuid::new_v4().to_string();
+
+        let column_a = ColumnDefinition {
+            id: column_a_id.clone(),
+            name: "Cities".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+
+        // Add Column A and create 3 rows
+        let _ = sheet.set_column(column_a.clone()).await;
+
+        let row_0_id = Uuid::new_v4().to_string();
+        let row_1_id = Uuid::new_v4().to_string();
+        let row_2_id = Uuid::new_v4().to_string();
+
+        sheet.add_row(row_0_id.clone()).await.unwrap();
+        sheet.add_row(row_1_id.clone()).await.unwrap();
+        sheet.add_row(row_2_id.clone()).await.unwrap();
+
+        // Set values in Column A
+        sheet
+            .set_cell_value(row_0_id.clone(), column_a_id.clone(), "Santiago, Chile".to_string())
+            .await
+            .unwrap();
+        sheet
+            .set_cell_value(row_1_id.clone(), column_a_id.clone(), "Austin, Texas".to_string())
+            .await
+            .unwrap();
+
+        // Define the workflow for the LLMCall column
+        let workflow_str = r#"
+         workflow WorkflowTest v0.1 {
+             step Main {
+                 $RESULT = call opinionated_inference($INPUT)
+             }
+         }
+         "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Add Column B as LLMCall and check if jobs are created
+        let column_b = ColumnDefinition {
+            id: column_b_id.clone(),
+            name: "New Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "=\"Say Hello World in \" + A".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+
+        let jobs = sheet.set_column(column_b.clone()).await.unwrap();
+        assert_eq!(
+            jobs.len(),
+            2,
+            "The number of jobs should be equal to the number of rows with values set"
+        );
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_create_text_column_and_get_value() {
+        let mut sheet = Sheet::new();
+        let column_text_id = Uuid::new_v4().to_string();
+        let column_text_2_id = Uuid::new_v4().to_string();
+        let row_id = Uuid::new_v4().to_string();
+
+        // Create a text column
+        let column_text = ColumnDefinition {
+            id: column_text_id.clone(),
+            name: "Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let _ = sheet.set_column(column_text.clone()).await;
+
+        // Add a row
+        sheet.add_row(row_id.clone()).await.unwrap();
+
+        // Set the first item to some text
+        sheet
+            .set_cell_value(row_id.clone(), column_text_id.clone(), "Sample Text".to_string())
+            .await
+            .unwrap();
+
+        // Create a second text column
+        let column_text_2 = ColumnDefinition {
+            id: column_text_2_id.clone(),
+            name: "Second Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let _ = sheet.set_column(column_text_2.clone()).await;
+
+        // Try to get the value of the cell from the second column
+        let cell_value = sheet.get_cell_value(row_id.clone(), column_text_2_id.clone());
+        assert_eq!(cell_value, None);
+
+        // Retrieve rows from the sheet and ensure there are two cells
+        let rows = sheet.rows.get(&row_id).unwrap();
+        assert_eq!(rows.len(), 2);
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_llm_call_column_with_two_rows() {
+        let mut sheet = Sheet::new();
+        let column_text_id = Uuid::new_v4().to_string();
+        let column_llm_id = Uuid::new_v4().to_string();
+        let row_0_id = Uuid::new_v4().to_string();
+        let row_1_id = Uuid::new_v4().to_string();
+
+        // Create a text column
+        let column_text = ColumnDefinition {
+            id: column_text_id.clone(),
+            name: "Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let _ = sheet.set_column(column_text.clone()).await;
+
+        // Add two rows
+        sheet.add_row(row_0_id.clone()).await.unwrap();
+        sheet.add_row(row_1_id.clone()).await.unwrap();
+
+        // Set the first item in both rows to some text
+        sheet
+            .set_cell_value(row_0_id.clone(), column_text_id.clone(), "Sample Text 1".to_string())
+            .await
+            .unwrap();
+        sheet
+            .set_cell_value(row_1_id.clone(), column_text_id.clone(), "Sample Text 2".to_string())
+            .await
+            .unwrap();
+
+        // Define the workflow for the LLMCall column
+        let workflow_str = r#"
+        workflow WorkflowTest v0.1 {
+            step Main {
+                $RESULT = call opinionated_inference($INPUT)
+            }
+        }
+    "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Create an LLMCall column
+        let column_llm = ColumnDefinition {
+            id: column_llm_id.clone(),
+            name: "LLM Call Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "=A".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+        let jobs = sheet.set_column(column_llm.clone()).await.unwrap();
+
+        // Check that two jobs are created
+        assert_eq!(
+            jobs.len(),
+            2,
+            "The number of jobs should be equal to the number of rows created"
+        );
+
+        // Check that the two cells of the second column are in pending status
+        {
+            let llm_cell_status_row_0 = sheet
+                .get_cell(row_0_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+            let llm_cell_status_row_1 = sheet
+                .get_cell(row_1_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+
+            assert_eq!(llm_cell_status_row_0, Some(&CellStatus::Pending));
+            assert_eq!(llm_cell_status_row_1, Some(&CellStatus::Pending));
+        }
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
     }
 }
 
