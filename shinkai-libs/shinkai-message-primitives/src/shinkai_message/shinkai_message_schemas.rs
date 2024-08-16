@@ -167,7 +167,7 @@ impl MessageSchemaType {
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
-            "SearchShinkaiTool" => Some(Self::GetShinkaiTool),
+            "SearchShinkaiTool" => Some(Self::SearchShinkaiTool),
             _ => None,
         }
     }
