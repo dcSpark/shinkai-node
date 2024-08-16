@@ -191,6 +191,7 @@ impl Sheet {
         Ok(jobs)
     }
 
+    // TODO: update this to be able to return an error maybe the user put the wrong thing
     pub fn parse_formula_dependencies(&self, formula: &str) -> HashSet<UuidString> {
         let mut dependencies = HashSet::new();
 
@@ -614,6 +615,45 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                 }
             }
             state.columns.insert(definition.clone().id, definition.clone());
+
+            // Collect row UUIDs before mutable borrow
+            let row_uuids: Vec<UuidString> = state.rows.keys().cloned().collect();
+
+            // Initialize new column cells with None for all existing rows
+            for row_uuid in &row_uuids {
+                if let Some(row) = state.rows.get_mut(row_uuid) {
+                    let status = if let ColumnBehavior::Text = definition.behavior {
+                        CellStatus::Ready
+                    } else {
+                        CellStatus::Pending
+                    };
+
+                    row.insert(
+                        definition.id.clone(),
+                        Cell {
+                            value: None,
+                            last_updated: Utc::now(),
+                            status,
+                            input_hash: None,
+                        },
+                    );
+                }
+            }
+
+            // Send updates after initializing the cells
+            if let Some(sender) = &state.update_sender {
+                for row_uuid in &row_uuids {
+                    if let Some(update_info) = state.generate_cell_update_info(row_uuid.clone(), definition.id.clone())
+                    {
+                        let sender_clone = sender.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                                eprintln!("Failed to send update: {:?}", e);
+                            }
+                        });
+                    }
+                }
+            }
 
             // Create jobs for new cells in the added column
             for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {

@@ -852,6 +852,88 @@ mod tests {
         let cell_value = sheet.get_cell_value(row_id.clone(), column_text_2_id.clone());
         assert_eq!(cell_value, None);
 
+        // Retrieve rows from the sheet and ensure there are two cells
+        let rows = sheet.rows.get(&row_id).unwrap();
+        assert_eq!(rows.len(), 2);
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
+
+    #[tokio::test]
+    async fn test_llm_call_column_with_two_rows() {
+        let mut sheet = Sheet::new();
+        let column_text_id = Uuid::new_v4().to_string();
+        let column_llm_id = Uuid::new_v4().to_string();
+        let row_0_id = Uuid::new_v4().to_string();
+        let row_1_id = Uuid::new_v4().to_string();
+
+        // Create a text column
+        let column_text = ColumnDefinition {
+            id: column_text_id.clone(),
+            name: "Text Column".to_string(),
+            behavior: ColumnBehavior::Text,
+        };
+        let _ = sheet.set_column(column_text.clone()).await;
+
+        // Add two rows
+        sheet.add_row(row_0_id.clone()).await.unwrap();
+        sheet.add_row(row_1_id.clone()).await.unwrap();
+
+        // Set the first item in both rows to some text
+        sheet
+            .set_cell_value(row_0_id.clone(), column_text_id.clone(), "Sample Text 1".to_string())
+            .await
+            .unwrap();
+        sheet
+            .set_cell_value(row_1_id.clone(), column_text_id.clone(), "Sample Text 2".to_string())
+            .await
+            .unwrap();
+
+        // Define the workflow for the LLMCall column
+        let workflow_str = r#"
+        workflow WorkflowTest v0.1 {
+            step Main {
+                $RESULT = call opinionated_inference($INPUT)
+            }
+        }
+    "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Create an LLMCall column
+        let column_llm = ColumnDefinition {
+            id: column_llm_id.clone(),
+            name: "LLM Call Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "=A".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+        let jobs = sheet.set_column(column_llm.clone()).await.unwrap();
+
+        // Check that two jobs are created
+        assert_eq!(
+            jobs.len(),
+            2,
+            "The number of jobs should be equal to the number of rows created"
+        );
+
+        // Check that the two cells of the second column are in pending status
+        {
+            let llm_cell_status_row_0 = sheet
+                .get_cell(row_0_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+            let llm_cell_status_row_1 = sheet
+                .get_cell(row_1_id.clone(), column_llm_id.clone())
+                .map(|cell| &cell.status);
+
+            assert_eq!(llm_cell_status_row_0, Some(&CellStatus::Pending));
+            assert_eq!(llm_cell_status_row_1, Some(&CellStatus::Pending));
+        }
+
         // Print final state of the sheet
         sheet.print_as_ascii_table();
     }
