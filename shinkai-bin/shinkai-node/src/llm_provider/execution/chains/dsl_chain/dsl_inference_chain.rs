@@ -198,7 +198,6 @@ impl<'a> DslChain<'a> {
 
         for tool in js_tools {
             let function_name = tool.name();
-            eprintln!("add_tools_from_router> Adding function: {}", function_name);
             self.functions.insert(
                 function_name,
                 Box::new(ShinkaiToolFunction {

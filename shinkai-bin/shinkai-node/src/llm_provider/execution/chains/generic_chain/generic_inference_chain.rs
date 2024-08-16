@@ -7,6 +7,7 @@ use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
+use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -70,6 +71,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.max_tokens_in_prompt,
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
+            self.context.sheet_manager.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -89,7 +91,7 @@ impl GenericInferenceChain {
     }
 
     #[async_recursion]
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router))]
+    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -104,6 +106,7 @@ impl GenericInferenceChain {
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -234,6 +237,7 @@ impl GenericInferenceChain {
                     HashMap::new(),
                     ws_manager_trait.clone(),
                     tool_router.clone(),
+                    sheet_manager.clone(),
                 );
 
                 // 6) Call workflow or tooling

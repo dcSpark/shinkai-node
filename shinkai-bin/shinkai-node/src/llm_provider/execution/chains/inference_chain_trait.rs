@@ -2,6 +2,7 @@ use crate::db::ShinkaiDB;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
+use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs;
@@ -9,6 +10,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::sheet;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::fmt;
@@ -65,6 +67,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn raw_files(&self) -> &RawFiles;
     fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>;
     fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>>;
+    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
 }
@@ -148,6 +151,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.tool_router.clone()
     }
 
+    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
+        self.sheet_manager.clone()
+    }
+
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         Box::new(self.clone())
     }
@@ -173,6 +180,7 @@ pub struct InferenceChainContext {
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
 }
 
 impl InferenceChainContext {
@@ -191,6 +199,7 @@ impl InferenceChainContext {
         score_results: HashMap<String, ScoreResult>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>
     ) -> Self {
         Self {
             db,
@@ -208,6 +217,7 @@ impl InferenceChainContext {
             raw_files: None,
             ws_manager_trait,
             tool_router,
+            sheet_manager,
         }
     }
 
@@ -373,6 +383,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).tool_router()
     }
 
+    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
+        (**self).sheet_manager()
+    }
+
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         (**self).clone_box()
     }
@@ -514,6 +528,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
     }
 
     fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+        unimplemented!()
+    }
+
+    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
         unimplemented!()
     }
 

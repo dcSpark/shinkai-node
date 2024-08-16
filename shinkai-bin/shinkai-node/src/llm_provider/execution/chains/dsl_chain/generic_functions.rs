@@ -882,6 +882,7 @@ mod tests {
             HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
+            None, // Replace with actual SheetManager if needed
         );
 
         // Call the function to process embeddings in job scope
@@ -1011,6 +1012,7 @@ mod tests {
             HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
+            None, // Replace with actual SheetManager if needed
         );
 
         // Call the function to search embeddings in job scope

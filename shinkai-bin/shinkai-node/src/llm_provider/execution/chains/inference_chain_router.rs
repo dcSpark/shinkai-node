@@ -6,6 +6,7 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -21,7 +22,7 @@ impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
     /// and then starts using the chosen chain.
     /// Returns the final String result from the inferencing, and a new execution context.
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router))]
+    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
         db: Arc<ShinkaiDB>,
@@ -34,6 +35,7 @@ impl JobManager {
         user_profile: ShinkaiName,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         // Initializations
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -55,6 +57,7 @@ impl JobManager {
             HashMap::new(),
             ws_manager_trait.clone(),
             tool_router.clone(),
+            sheet_manager.clone(),
         );
 
         let mut generic_chain = GenericInferenceChain::new(chain_context, ws_manager_trait);

@@ -7,7 +7,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::managers::sheet_manager::SheetManager;
+use crate::managers::sheet_manager::{self, SheetManager};
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -15,7 +15,7 @@ use ed25519_dalek::SigningKey;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
+use shinkai_message_primitives::schemas::sheet::{self, WorkflowSheetJobData};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -146,6 +146,7 @@ impl JobManager {
             user_profile.clone(),
             ws_manager.clone(),
             tool_router.clone(),
+            Some(sheet_manager.clone()),
         )
         .await;
 
@@ -213,6 +214,7 @@ impl JobManager {
             generator,
             ws_manager.clone(),
             tool_router.clone(),
+            Some(sheet_manager.clone()),
         )
         .await;
 
@@ -264,7 +266,15 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(identity_secret_key, db, vector_fs, generator, ws_manager, tool_router))]
+    #[instrument(skip(
+        identity_secret_key,
+        db,
+        vector_fs,
+        generator,
+        ws_manager,
+        tool_router,
+        sheet_manager
+    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
@@ -277,6 +287,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     ) -> Result<(), LLMProviderError> {
         let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
@@ -307,6 +318,7 @@ impl JobManager {
             user_profile.clone(),
             ws_manager.clone(),
             tool_router.clone(),
+            sheet_manager.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -364,6 +376,7 @@ impl JobManager {
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     ) -> Result<bool, LLMProviderError> {
         let workflow = if let Some(code) = &job_message.workflow_code {
             parse_workflow(code)?
@@ -413,6 +426,7 @@ impl JobManager {
             user_profile.clone(),
             ws_manager.clone(),
             tool_router.clone(),
+            sheet_manager.clone(),
             workflow,
         )
         .await?;
@@ -467,6 +481,7 @@ impl JobManager {
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         workflow: Workflow,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -488,6 +503,7 @@ impl JobManager {
             HashMap::new(),
             ws_manager.clone(),
             tool_router.clone(),
+            sheet_manager.clone(),
         );
 
         // Process files
@@ -596,6 +612,7 @@ impl JobManager {
                     user_profile.clone(),
                     ws_manager.clone(),
                     tool_router.clone(),
+                    Some(sheet_manager.clone()),
                     workflow,
                 )
                 .await?
@@ -614,6 +631,7 @@ impl JobManager {
                     user_profile.clone(),
                     ws_manager.clone(),
                     tool_router.clone(),
+                    Some(sheet_manager.clone()),
                 )
                 .await?
             };
