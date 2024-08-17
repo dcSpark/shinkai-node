@@ -1,5 +1,6 @@
 use super::generic_chain::generic_inference_chain::GenericInferenceChain;
 use super::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult};
+use super::sheet_ui_chain::sheet_ui_inference_chain::SheetUIInferenceChain;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -12,7 +13,7 @@ use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -46,7 +47,7 @@ impl JobManager {
         let chain_context = InferenceChainContext::new(
             db,
             vector_fs,
-            full_job,
+            full_job.clone(),
             parsed_user_message,
             llm_provider,
             prev_execution_context,
@@ -60,7 +61,13 @@ impl JobManager {
             sheet_manager.clone(),
         );
 
-        let mut generic_chain = GenericInferenceChain::new(chain_context, ws_manager_trait);
-        generic_chain.run_chain().await
+        // Check for associated_ui and choose the appropriate chain
+        if let Some(AssociatedUI::Sheet(sheet_string)) = &full_job.associated_ui {
+            let mut sheet_ui_chain = SheetUIInferenceChain::new(chain_context, ws_manager_trait, sheet_string.clone());
+            sheet_ui_chain.run_chain().await
+        } else {
+            let mut generic_chain = GenericInferenceChain::new(chain_context, ws_manager_trait);
+            generic_chain.run_chain().await
+        }
     }
 }

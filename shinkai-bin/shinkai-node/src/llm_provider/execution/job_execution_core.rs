@@ -179,7 +179,7 @@ impl JobManager {
             return Ok(job_id);
         }
 
-        // If a .jobkai file is found, processing job message is taken over by this alternate logic
+        // 4.- If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
             db.clone(),
             vector_fs.clone(),

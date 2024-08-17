@@ -250,6 +250,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("raw_files", &self.raw_files)
             .field("ws_manager_trait", &self.ws_manager_trait.is_some())
             .field("tool_router", &self.tool_router.is_some())
+            .field("sheet_manager", &self.sheet_manager.is_some())
             .finish()
     }
 }

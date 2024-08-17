@@ -472,7 +472,6 @@ mod tests {
         },
         tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
     };
-    use shinkai_vector_resources::embeddings::Embedding;
 
     #[test]
     fn test_generate_llm_messages() {

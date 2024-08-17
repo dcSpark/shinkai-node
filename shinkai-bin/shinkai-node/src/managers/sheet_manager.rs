@@ -295,7 +295,6 @@ impl SheetManager {
             .map_err(|e| e.to_string())?;
 
         // Create and chain JobMessages, and add the first one to the job queue
-        // Create and chain JobMessages, and add the first one to the job queue
         if let Some(job_manager) = &self.job_manager {
             Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
         } else {
