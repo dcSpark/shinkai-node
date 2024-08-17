@@ -8,6 +8,7 @@ use shinkai_message_primitives::{
 use wasm_bindgen::prelude::*;
 
 use crate::shinkai_wasm_wrappers::shinkai_wasm_error::ShinkaiWasmError;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -44,12 +45,17 @@ pub struct JobCreationWrapper {
 #[wasm_bindgen]
 impl JobCreationWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(scope_js: &JsValue, is_hidden: bool) -> Result<JobCreationWrapper, JsValue> {
+    pub fn new(scope_js: &JsValue, is_hidden: bool, associated_ui_js: JsValue) -> Result<JobCreationWrapper, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope_js.clone())?;
+        let associated_ui: Option<AssociatedUI> = if associated_ui_js.is_null() || associated_ui_js.is_undefined() {
+            None
+        } else {
+            Some(serde_wasm_bindgen::from_value(associated_ui_js)?)
+        };
         let job_creation = JobCreationInfo {
             scope,
             is_hidden: Some(is_hidden),
-            associated_ui: None,
+            associated_ui,
         };
         Ok(JobCreationWrapper { inner: job_creation })
     }

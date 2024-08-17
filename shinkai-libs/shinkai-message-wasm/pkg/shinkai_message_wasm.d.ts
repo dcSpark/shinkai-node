@@ -1,15 +1,15 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
-* @param {string} input
-* @returns {string}
-*/
-export function calculate_blake3_hash(input: string): string;
-/**
 * @param {string} encryption_sk
 * @returns {string}
 */
 export function convert_encryption_sk_string_to_encryption_pk_string(encryption_sk: string): string;
+/**
+* @param {string} input
+* @returns {string}
+*/
+export function calculate_blake3_hash(input: string): string;
 /**
 */
 export class InboxNameWrapper {
@@ -67,8 +67,9 @@ export class JobCreationWrapper {
 /**
 * @param {any} scope_js
 * @param {boolean} is_hidden
+* @param {any} associated_ui_js
 */
-  constructor(scope_js: any, is_hidden: boolean);
+  constructor(scope_js: any, is_hidden: boolean, associated_ui_js: any);
 /**
 * @returns {any}
 */
@@ -202,228 +203,6 @@ export class SerializedLLMProviderWrapper {
 */
 export class ShinkaiMessageBuilderWrapper {
   free(): void;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} folder_name
-* @param {string} path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_create_folder(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, folder_name: string, path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} origin_path
-* @param {string} destination_path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_move_folder(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} origin_path
-* @param {string} destination_path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_copy_folder(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} origin_path
-* @param {string} destination_path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_move_item(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} origin_path
-* @param {string} destination_path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_copy_item(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} destination_path
-* @param {string} file_inbox
-* @param {string | undefined} file_datetime_iso8601
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_create_items(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, destination_path: string, file_inbox: string, file_datetime_iso8601: string | undefined, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_retrieve_resource(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} path
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_retrieve_path_simplified(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} search
-* @param {string | undefined} path
-* @param {number | undefined} max_results
-* @param {number | undefined} max_files_to_scan
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} receiver
-* @param {string} receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_retrieve_vector_search_simplified(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, search: string, path: string | undefined, max_results: number | undefined, max_files_to_scan: number | undefined, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
-/**
-* @param {any} payload_create_shareable_folder
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static subscriptions_create_share_folder(payload_create_shareable_folder: any, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
-/**
-* @param {string} shared_folder
-* @param {any} requirements
-* @param {boolean | undefined} http_preferred
-* @param {string | undefined} base_folder
-* @param {string} streamer_node
-* @param {string} streamer_profile
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static vecfs_subscribe_to_shared_folder(shared_folder: string, requirements: any, http_preferred: boolean | undefined, base_folder: string | undefined, streamer_node: string, streamer_profile: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
-/**
-* @param {string} shared_folder
-* @param {string} streamer_node
-* @param {string} streamer_profile
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static subscription_unsubscribe_to_shared_folder(shared_folder: string, streamer_node: string, streamer_profile: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
-/**
-* @param {string} results
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static subscription_available_shared_items_response(results: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
-/**
-* @param {string | undefined} path
-* @param {string} streamer_node_name
-* @param {string} streamer_profile_name
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static subscription_available_shared_items(path: string | undefined, streamer_node_name: string, streamer_profile_name: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
-/**
-* @param {string} shared_folder_path
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static subscription_request_share_current_shared_folder_state(shared_folder_path: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
-/**
-* @param {any} tree_item_response
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_profile
-* @param {string} node_receiver
-* @param {string} node_receiver_profile
-* @returns {string}
-*/
-  static subscription_share_current_shared_folder_state(tree_item_response: any, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_profile: string, node_receiver: string, node_receiver_profile: string): string;
-/**
-* @param {string} my_encryption_secret_key
-* @param {string} my_signature_secret_key
-* @param {string} receiver_public_key
-* @param {string} sender
-* @param {string} sender_subidentity
-* @param {string} node_receiver
-* @param {string} node_receiver_subidentity
-* @returns {string}
-*/
-  static subscription_my_subscriptions(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
 /**
 * @param {string} my_encryption_secret_key
 * @param {string} my_signature_secret_key
@@ -675,13 +454,14 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} receiver_public_key
 * @param {any} scope
 * @param {boolean} is_hidden
+* @param {any} associated_ui
 * @param {string} sender
 * @param {string} sender_subidentity
 * @param {string} receiver
 * @param {string} receiver_subidentity
 * @returns {string}
 */
-  static job_creation(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, scope: any, is_hidden: boolean, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+  static job_creation(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, scope: any, is_hidden: boolean, associated_ui: any, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
 /**
 * @param {string} job_id
 * @param {string} content
@@ -720,6 +500,228 @@ export class ShinkaiMessageBuilderWrapper {
 * @returns {string}
 */
   static error_message(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, receiver: string, error_msg: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} folder_name
+* @param {string} path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_create_folder(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, folder_name: string, path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} origin_path
+* @param {string} destination_path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_move_folder(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} origin_path
+* @param {string} destination_path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_copy_folder(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} origin_path
+* @param {string} destination_path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_move_item(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} origin_path
+* @param {string} destination_path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_copy_item(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, origin_path: string, destination_path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} destination_path
+* @param {string} file_inbox
+* @param {string | undefined} file_datetime_iso8601
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_create_items(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, destination_path: string, file_inbox: string, file_datetime_iso8601: string | undefined, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_retrieve_resource(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} path
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_retrieve_path_simplified(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, path: string, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} search
+* @param {string | undefined} path
+* @param {number | undefined} max_results
+* @param {number | undefined} max_files_to_scan
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} receiver
+* @param {string} receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_retrieve_vector_search_simplified(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, search: string, path: string | undefined, max_results: number | undefined, max_files_to_scan: number | undefined, sender: string, sender_subidentity: string, receiver: string, receiver_subidentity: string): string;
+/**
+* @param {any} payload_create_shareable_folder
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static subscriptions_create_share_folder(payload_create_shareable_folder: any, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
+/**
+* @param {string} shared_folder
+* @param {any} requirements
+* @param {boolean | undefined} http_preferred
+* @param {string | undefined} base_folder
+* @param {string} streamer_node
+* @param {string} streamer_profile
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static vecfs_subscribe_to_shared_folder(shared_folder: string, requirements: any, http_preferred: boolean | undefined, base_folder: string | undefined, streamer_node: string, streamer_profile: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
+/**
+* @param {string} shared_folder
+* @param {string} streamer_node
+* @param {string} streamer_profile
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static subscription_unsubscribe_to_shared_folder(shared_folder: string, streamer_node: string, streamer_profile: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
+/**
+* @param {string} results
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static subscription_available_shared_items_response(results: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
+/**
+* @param {string | undefined} path
+* @param {string} streamer_node_name
+* @param {string} streamer_profile_name
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static subscription_available_shared_items(path: string | undefined, streamer_node_name: string, streamer_profile_name: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
+/**
+* @param {string} shared_folder_path
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static subscription_request_share_current_shared_folder_state(shared_folder_path: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
+/**
+* @param {any} tree_item_response
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_profile
+* @param {string} node_receiver
+* @param {string} node_receiver_profile
+* @returns {string}
+*/
+  static subscription_share_current_shared_folder_state(tree_item_response: any, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_profile: string, node_receiver: string, node_receiver_profile: string): string;
+/**
+* @param {string} my_encryption_secret_key
+* @param {string} my_signature_secret_key
+* @param {string} receiver_public_key
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} node_receiver
+* @param {string} node_receiver_subidentity
+* @returns {string}
+*/
+  static subscription_my_subscriptions(my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, sender_subidentity: string, node_receiver: string, node_receiver_subidentity: string): string;
 }
 /**
 */

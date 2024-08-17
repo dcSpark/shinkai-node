@@ -20,6 +20,7 @@ use shinkai_message_primitives::{
         signatures::{signature_public_key_to_string, string_to_signature_secret_key},
     },
 };
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -818,17 +819,23 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         scope: JsValue,
         is_hidden: bool,
+        associated_ui: JsValue,
         sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
         receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let associated_ui: Option<AssociatedUI> = if associated_ui.is_null() || associated_ui.is_undefined() {
+            None
+        } else {
+            Some(serde_wasm_bindgen::from_value(associated_ui).map_err(|e| JsValue::from_str(&e.to_string()))?)
+        };
 
         let job_creation = JobCreationInfo {
             scope,
             is_hidden: Some(is_hidden),
-            associated_ui: None
+            associated_ui,
         };
         let body = serde_json::to_string(&job_creation).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
