@@ -5,7 +5,6 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
-use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
@@ -13,7 +12,6 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
@@ -94,7 +92,7 @@ impl SheetUIInferenceChain {
 
     // Note: this code is very similar to the one from Generic, maybe we could inject
     // the tool code handling in the future so we can reuse the code
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
+    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, _tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -108,7 +106,7 @@ impl SheetUIInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        _tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         sheet_id: String,
     ) -> Result<String, LLMProviderError> {

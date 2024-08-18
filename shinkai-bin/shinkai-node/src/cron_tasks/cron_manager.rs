@@ -66,7 +66,6 @@ pub struct CronManager {
 #[derive(Debug)]
 pub enum CronManagerError {
     SomeError(String),
-    JobDequeueFailed(String),
     JobCreationError(String),
     StrError(String),
     DBError(db_errors::ShinkaiDBError),
@@ -404,6 +403,7 @@ impl CronManager {
     }
 
     // TODO: rename this or refactor it to a manager
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub async fn add_cron_task(
         &self,

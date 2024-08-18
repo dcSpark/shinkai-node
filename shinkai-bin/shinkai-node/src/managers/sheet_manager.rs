@@ -1,6 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::job_manager::JobManagerTrait;
 use crate::network::ws_manager::{WSMessageType, WSUpdateHandler};
 use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::sheet::{
@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::sheet::{
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
+    CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
@@ -34,7 +34,7 @@ pub struct SheetManager {
     pub sheets: HashMap<String, (Sheet, Sender<SheetUpdate>)>,
     pub db: Weak<ShinkaiDB>,
     pub user_profile: ShinkaiName,
-    pub job_manager: Option<Arc<Mutex<JobManager>>>,
+    pub job_manager: Option<Arc<Mutex<dyn JobManagerTrait + Send>>>,
     pub update_handles: Vec<JoinHandle<()>>,
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     pub receivers: HashMap<String, Receiver<SheetUpdate>>, // to avoid premature drops
@@ -86,7 +86,7 @@ impl SheetManager {
         })
     }
 
-    pub fn set_job_manager(&mut self, job_manager: Arc<Mutex<JobManager>>) {
+    pub fn set_job_manager(&mut self, job_manager: Arc<Mutex<dyn JobManagerTrait + Send>>) {
         self.job_manager = Some(job_manager);
     }
 
@@ -205,7 +205,7 @@ impl SheetManager {
 
     async fn create_and_chain_job_messages(
         jobs: Vec<WorkflowSheetJobData>,
-        job_manager: &Arc<Mutex<JobManager>>,
+        job_manager: &Arc<Mutex<dyn JobManagerTrait + Send>>,
         user_profile: &ShinkaiName,
     ) -> Result<(), String> {
         let mut job_messages: Vec<(JobMessage, WorkflowSheetJobData)> = Vec::new();
@@ -220,7 +220,7 @@ impl SheetManager {
             let mut job_manager = job_manager.lock().await;
             let agent_id = job_data.llm_provider_name.clone();
             let job_id = job_manager
-                .process_job_creation(job_creation_info, user_profile, &agent_id)
+                .create_job(job_creation_info, user_profile, &agent_id)
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -256,7 +256,7 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-                .add_job_message_to_job_queue(first_job_message, user_profile)
+                .queue_job_message(first_job_message, user_profile)
                 .await
                 .map_err(|e| e.to_string())?;
         }

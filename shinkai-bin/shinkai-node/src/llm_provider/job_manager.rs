@@ -33,6 +33,21 @@ use tokio::sync::{Mutex, Semaphore};
 
 const NUM_THREADS: usize = 4;
 
+pub trait JobManagerTrait {
+    fn create_job<'a>(
+        &'a mut self,
+        job_creation_info: JobCreationInfo,
+        user_profile: &'a ShinkaiName,
+        agent_id: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+
+    fn queue_job_message<'a>(
+        &'a mut self,
+        job_message: &'a JobMessage,
+        user_profile: &'a ShinkaiName,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+}
+
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     pub db: Weak<ShinkaiDB>,
@@ -417,7 +432,13 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
-            match db_arc.create_new_job(job_id.clone(), llm_provider_id.clone(), job_creation.scope, is_hidden, job_creation.associated_ui) {
+            match db_arc.create_new_job(
+                job_id.clone(),
+                llm_provider_id.clone(),
+                job_creation.scope,
+                is_hidden,
+                job_creation.associated_ui,
+            ) {
                 Ok(_) => (),
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
             };
@@ -516,5 +537,32 @@ impl JobManager {
         let _ = job_queue_manager.push(&job_message.job_id, job_for_processing).await;
 
         Ok(job_message.job_id.clone().to_string())
+    }
+}
+
+impl JobManagerTrait for JobManager {
+    fn create_job<'a>(
+        &'a mut self,
+        job_creation_info: JobCreationInfo,
+        user_profile: &'a ShinkaiName,
+        agent_id: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        Box::pin(async move {
+            self.process_job_creation(job_creation_info, user_profile, &agent_id.to_string())
+                .await
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    fn queue_job_message<'a>(
+        &'a mut self,
+        job_message: &'a JobMessage,
+        user_profile: &'a ShinkaiName,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        Box::pin(async move {
+            self.add_job_message_to_job_queue(job_message, user_profile)
+                .await
+                .map_err(|e| e.to_string())
+        })
     }
 }
