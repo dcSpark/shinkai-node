@@ -61,6 +61,66 @@ impl SheetRustFunctions {
         Ok("Column created successfully".to_string())
     }
 
+    pub async fn update_column_with_values(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        sheet_id: String,
+        column_position: usize,
+        values: String,
+    ) -> Result<String, String> {
+        // Split the values string into a Vec<String>
+        let values: Vec<String> = values.split(',').map(|s| s.trim().to_string()).collect();
+
+        // Lock the sheet manager to access the sheet
+        let (column_id, row_ids) = {
+            let mut sheet_manager = sheet_manager.lock().await;
+            let (sheet, _) = sheet_manager.sheets.get_mut(&sheet_id).ok_or("Sheet ID not found")?;
+
+            // Ensure the column position is valid
+            if column_position >= sheet.columns.len() {
+                return Err("Invalid column position".to_string());
+            }
+
+            // Get the column ID
+            let column_id = sheet
+                .display_columns
+                .get(column_position)
+                .ok_or("Column ID not found")?
+                .clone();
+
+            (column_id, sheet.display_rows.clone())
+        };
+
+        // Ensure the number of rows matches the number of values
+        {
+            let mut sheet_manager = sheet_manager.lock().await;
+            while {
+                let (sheet, _) = sheet_manager.sheets.get_mut(&sheet_id).ok_or("Sheet ID not found")?;
+                sheet.rows.len() < values.len()
+            } {
+                sheet_manager.add_row(&sheet_id, None).await?;
+            }
+        }
+
+        // Clean existing values in the column
+        for row_id in &row_ids {
+            let mut sheet_manager = sheet_manager.lock().await;
+            sheet_manager
+                .set_cell_value(&sheet_id, row_id.clone(), column_id.clone(), "".to_string())
+                .await?;
+        }
+
+        // Set new values for the column
+        for (row_index, value) in values.iter().enumerate() {
+            let row_id = row_ids.get(row_index).ok_or("Row ID not found")?.clone();
+            let mut sheet_manager = sheet_manager.lock().await;
+            sheet_manager
+                .set_cell_value(&sheet_id, row_id, column_id.clone(), value.clone())
+                .await?;
+        }
+
+        Ok("Column updated successfully".to_string())
+    }
+
     fn get_tool_map() -> HashMap<
         &'static str,
         fn(
@@ -247,6 +307,68 @@ mod tests {
                 cell_value, "Italy",
                 "The value in the first row, second column should be 'Italy'"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_column_with_values() {
+        setup();
+        let node_name = "@@test.arb-sep-shinkai".to_string();
+        let db = create_testing_db(node_name.clone());
+        let db = Arc::new(db);
+        let node_name = ShinkaiName::new(node_name).unwrap();
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        let sheet_manager = Arc::new(Mutex::new(
+            SheetManager::new(Arc::downgrade(&db), node_name, ws_manager)
+                .await
+                .unwrap(),
+        ));
+
+        let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
+        sheet_manager.lock().await.set_job_manager(mock_job_manager);
+
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+
+        // Create a new column with values: "USA, Chile, Canada"
+        let result = SheetRustFunctions::create_new_column_with_values(
+            sheet_manager.clone(),
+            sheet_id.clone(),
+            "USA, Chile, Canada".to_string(),
+        )
+        .await;
+        assert!(result.is_ok(), "Creating new column with values should succeed");
+
+        // Update the column with new values: "Italy, France"
+        let result = SheetRustFunctions::update_column_with_values(
+            sheet_manager.clone(),
+            sheet_id.clone(),
+            0, // Update the first column
+            "Italy, France".to_string(),
+        )
+        .await;
+        assert!(result.is_ok(), "Updating column with values should succeed");
+
+        {
+            let sheet_manager = sheet_manager.lock().await;
+            let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+            assert_eq!(sheet.columns.len(), 1, "There should be one column in the sheet");
+            assert_eq!(sheet.rows.len(), 3, "There should still be three rows in the sheet");
+
+            // Check the updated values in the first column
+            let col_id = sheet.display_columns.get(0).expect("Column ID not found").clone();
+            let expected_values = vec!["Italy", "France", ""];
+            for (i, expected_value) in expected_values.iter().enumerate() {
+                let row_id = sheet.display_rows.get(i).expect("Row ID not found").clone();
+                let cell_value = sheet
+                    .get_cell_value(row_id.clone(), col_id.clone())
+                    .expect("Cell value not found");
+                assert_eq!(
+                    cell_value, *expected_value,
+                    "The value in row {} of the first column should be '{}'",
+                    i, expected_value
+                );
+            }
         }
     }
 }
