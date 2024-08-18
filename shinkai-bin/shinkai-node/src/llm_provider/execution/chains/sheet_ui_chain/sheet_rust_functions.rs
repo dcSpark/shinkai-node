@@ -121,6 +121,46 @@ impl SheetRustFunctions {
         Ok("Column updated successfully".to_string())
     }
 
+    pub async fn replace_value_at_position(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        sheet_id: String,
+        column_position: usize,
+        row_position: usize,
+        new_value: String,
+    ) -> Result<String, String> {
+        // Lock the sheet manager to access the sheet
+        let (column_id, row_id) = {
+            let mut sheet_manager = sheet_manager.lock().await;
+            let (sheet, _) = sheet_manager.sheets.get_mut(&sheet_id).ok_or("Sheet ID not found")?;
+
+            // Ensure the column and row positions are valid
+            if column_position >= sheet.columns.len() {
+                return Err("Invalid column position".to_string());
+            }
+            if row_position >= sheet.rows.len() {
+                return Err("Invalid row position".to_string());
+            }
+
+            // Get the column ID and row ID
+            let column_id = sheet
+                .display_columns
+                .get(column_position)
+                .ok_or("Column ID not found")?
+                .clone();
+            let row_id = sheet.display_rows.get(row_position).ok_or("Row ID not found")?.clone();
+
+            (column_id, row_id)
+        };
+
+        // Set the new value for the specified cell
+        let mut sheet_manager = sheet_manager.lock().await;
+        sheet_manager
+            .set_cell_value(&sheet_id, row_id, column_id, new_value)
+            .await?;
+
+        Ok("Value replaced successfully".to_string())
+    }
+
     fn get_tool_map() -> HashMap<
         &'static str,
         fn(
@@ -369,6 +409,65 @@ mod tests {
                     i, expected_value
                 );
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_replace_value_at_position() {
+        setup();
+        let node_name = "@@test.arb-sep-shinkai".to_string();
+        let db = create_testing_db(node_name.clone());
+        let db = Arc::new(db);
+        let node_name = ShinkaiName::new(node_name).unwrap();
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        let sheet_manager = Arc::new(Mutex::new(
+            SheetManager::new(Arc::downgrade(&db), node_name, ws_manager)
+                .await
+                .unwrap(),
+        ));
+
+        let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
+        sheet_manager.lock().await.set_job_manager(mock_job_manager);
+
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+
+        // Create a new column with values: "USA, Chile, Canada"
+        let result = SheetRustFunctions::create_new_column_with_values(
+            sheet_manager.clone(),
+            sheet_id.clone(),
+            "USA, Chile, Canada".to_string(),
+        )
+        .await;
+        assert!(result.is_ok(), "Creating new column with values should succeed");
+
+        // Replace the value at position (0, 1) with "Brazil"
+        let result = SheetRustFunctions::replace_value_at_position(
+            sheet_manager.clone(),
+            sheet_id.clone(),
+            0, // First column
+            1, // Second row
+            "Brazil".to_string(),
+        )
+        .await;
+        assert!(result.is_ok(), "Replacing value at position should succeed");
+
+        {
+            let sheet_manager = sheet_manager.lock().await;
+            let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+            assert_eq!(sheet.columns.len(), 1, "There should be one column in the sheet");
+            assert_eq!(sheet.rows.len(), 3, "There should be three rows in the sheet");
+
+            // Check the updated value in the first column, second row
+            let col_id = sheet.display_columns.get(0).expect("Column ID not found").clone();
+            let row_id = sheet.display_rows.get(1).expect("Row ID not found").clone();
+            let cell_value = sheet
+                .get_cell_value(row_id.clone(), col_id.clone())
+                .expect("Cell value not found");
+            assert_eq!(
+                cell_value, "Brazil",
+                "The value in the first column, second row should be 'Brazil'"
+            );
         }
     }
 }
