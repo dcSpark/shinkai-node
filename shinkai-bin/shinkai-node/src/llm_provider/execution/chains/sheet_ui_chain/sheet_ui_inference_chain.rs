@@ -5,6 +5,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
+use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
@@ -93,7 +94,7 @@ impl SheetUIInferenceChain {
 
     // Note: this code is very similar to the one from Generic, maybe we could inject
     // the tool code handling in the future so we can reuse the code
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, _tool_router, sheet_manager))]
+    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -107,7 +108,7 @@ impl SheetUIInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        _tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         sheet_id: String,
     ) -> Result<String, LLMProviderError> {
@@ -158,6 +159,27 @@ impl SheetUIInferenceChain {
         let mut tools = vec![];
         if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
+
+            if let Some(tool_router) = &tool_router {
+                let tool_router = tool_router.lock().await;
+
+                // TODO: enable back the default tools (must tools)
+                // // Get default tools
+                // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
+                //     tools.extend(default_tools);
+                // }
+
+                // Search in JS Tools
+                let results = tool_router
+                    .vector_search_enabled_tools(&user_message.clone(), 2)
+                    .await
+                    .unwrap();
+                for result in results {
+                    if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
+                        tools.push(tool);
+                    }
+                }
+            }
         }
 
         // 3) Generate Prompt
@@ -207,55 +229,92 @@ impl SheetUIInferenceChain {
             // 5) Check response if it requires a function call
             if let Some(function_call) = response.function_call {
                 // 6) Call workflow or tooling
-                // Get the function from the map
-                let function = SheetRustFunctions::get_tool_function(function_call.name.clone());
-                if function.is_none() {
+                // Find the ShinkaiTool that has a tool with the function name
+                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
+                if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
 
-                // Call the function with the right parameters
-                let function = function.unwrap();
-                let sheet_manager_clone = sheet_manager.clone().unwrap();
-                let sheet_id_clone = sheet_id.clone();
-                let mut args = HashMap::new();
-                if let Some(arguments) = function_call.arguments.as_object() {
-                    for (key, value) in arguments {
-                        let mut val = value.to_string();
-                        // Clean up extra double quotes
-                        if val.starts_with('"') && val.ends_with('"') {
-                            val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
+                // Check if the tool is Rust-based or JS/workflow
+                let function_response = if shinkai_tool.unwrap().is_rust_based() {
+                    // Rust-based tool
+                    let function = SheetRustFunctions::get_tool_function(function_call.name.clone());
+                    if function.is_none() {
+                        eprintln!("Function not found: {}", function_call.name);
+                        return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
+                    }
+
+                    let function = function.unwrap();
+                    let sheet_manager_clone = sheet_manager.clone().unwrap();
+                    let sheet_id_clone = sheet_id.clone();
+                    let mut args = HashMap::new();
+                    if let Some(arguments) = function_call.arguments.as_object() {
+                        for (key, value) in arguments {
+                            let mut val = value.to_string();
+                            if val.starts_with('"') && val.ends_with('"') {
+                                val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
+                            }
+                            args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                         }
-                        args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
+                    } else {
+                        return Err(LLMProviderError::InvalidFunctionArguments(
+                            "Function arguments should be a JSON object".to_string(),
+                        ));
+                    }
+
+                    let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
+
+                    let response = match handle.await {
+                        Ok(Ok(response)) => response,
+                        Ok(Err(e)) => {
+                            eprintln!("Error calling function: {:?}", e);
+                            return Err(LLMProviderError::FunctionExecutionError(e));
+                        }
+                        Err(e) => {
+                            eprintln!("Task join error: {:?}", e);
+                            return Err(LLMProviderError::FunctionExecutionError(e.to_string()));
+                        }
+                    };
+
+                    FunctionCallResponse {
+                        response,
+                        function_call: function_call.clone(),
                     }
                 } else {
-                    return Err(LLMProviderError::InvalidFunctionArguments(
-                        "Function arguments should be a JSON object".to_string(),
-                    ));
-                }
-                eprintln!("Function call: {}", function_call.name);
-                eprintln!("Function arguments: {:?}", function_call.arguments);
-
-                // Spawn a new task to run the function
-                let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
-
-                // Await the result of the spawned task
-                let function_response = match handle.await {
-                    Ok(Ok(response)) => response,
-                    Ok(Err(e)) => {
-                        eprintln!("Error calling function: {:?}", e);
-                        return Err(LLMProviderError::FunctionExecutionError(e));
+                    let parsed_message = ParsedUserMessage::new(user_message.clone());
+                    let context = InferenceChainContext::new(
+                        db.clone(),
+                        vector_fs.clone(),
+                        full_job.clone(),
+                        parsed_message,
+                        llm_provider.clone(),
+                        execution_context.clone(),
+                        generator.clone(),
+                        user_profile.clone(),
+                        max_iterations,
+                        max_tokens_in_prompt,
+                        HashMap::new(),
+                        ws_manager_trait.clone(),
+                        tool_router.clone(),
+                        sheet_manager.clone(),
+                    );
+                    
+                    // JS or workflow tool
+                    match tool_router
+                        .as_ref()
+                        .unwrap()
+                        .lock()
+                        .await
+                        .call_function(function_call, &context, shinkai_tool.unwrap())
+                        .await
+                    {
+                        Ok(response) => response,
+                        Err(e) => {
+                            eprintln!("Error calling function: {:?}", e);
+                            return Err(e);
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("Task join error: {:?}", e);
-                        return Err(LLMProviderError::FunctionExecutionError(e.to_string()));
-                    }
-                };
-
-                // Create FunctionCallResponse
-                let function_response = FunctionCallResponse {
-                    response: function_response,
-                    function_call: function_call.clone(),
                 };
 
                 // 7) Call LLM again with the response (for formatting)

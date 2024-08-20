@@ -110,8 +110,8 @@ impl LanceShinkaiDb {
         let tool_types = vec![shinkai_tool.tool_type().to_string()];
 
         // Check if the tool already exists and delete it if it does
-        if let Some(_) = self
-            .get_tool(&tool_key)
+        if self
+            .tool_exists(&tool_key)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?
         {
@@ -134,8 +134,19 @@ impl LanceShinkaiDb {
         };
         let vectors = embedding;
 
+        let is_enabled = match shinkai_tool.is_enabled() {
+            true => shinkai_tool.can_be_enabled(),
+            false => false,
+        };
+
+        // Update the tool header and data if the tool cannot be enabled
+        let mut shinkai_tool = shinkai_tool.clone();
+        if shinkai_tool.is_enabled() && !shinkai_tool.can_be_enabled() {
+            shinkai_tool.disable();
+        }
+
         let tool_data =
-            vec![serde_json::to_string(shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?];
+            vec![serde_json::to_string(&shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?];
 
         let tool_header = vec![serde_json::to_string(&shinkai_tool.to_header())
             .map_err(|e| ToolError::SerializationError(e.to_string()))?];
@@ -151,11 +162,6 @@ impl LanceShinkaiDb {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
         let vectors_normalized = Arc::new(Float32Array::from(vectors));
-
-        let is_enabled = match shinkai_tool.is_enabled() {
-            true => shinkai_tool.can_be_enabled(),
-            false => false,
-        };
 
         let batch = RecordBatch::try_new(
             schema.clone(),
@@ -237,6 +243,28 @@ impl LanceShinkaiDb {
             .delete(format!("{} = '{}'", ShinkaiToolSchema::tool_key_field(), tool_key).as_str())
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))
+    }
+
+    async fn tool_exists(&self, tool_key: &str) -> Result<bool, ShinkaiLanceDBError> {
+        let query = self
+            .table
+            .query()
+            .only_if(format!(
+                "{} = '{}'",
+                ShinkaiToolSchema::tool_key_field(),
+                tool_key.to_lowercase()
+            ))
+            .limit(1)
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        let results = query
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        Ok(!results.is_empty())
     }
 
     pub async fn get_all_workflows(&self) -> Result<Vec<ShinkaiToolHeader>, ShinkaiLanceDBError> {

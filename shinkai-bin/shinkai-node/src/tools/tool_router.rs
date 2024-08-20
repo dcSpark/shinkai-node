@@ -60,6 +60,16 @@ impl ToolRouter {
         Ok(())
     }
 
+    pub async fn force_reinstall_all(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+        // Add workflows
+        let _ = self.add_static_workflows(generator).await;
+
+        // Add JS tools
+        let _ = self.add_js_tools().await;
+
+        Ok(())
+    }
+
     async fn add_static_workflows(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         let lance_db = self.lance_db.lock().await;
         let model_type = generator.model_type();
