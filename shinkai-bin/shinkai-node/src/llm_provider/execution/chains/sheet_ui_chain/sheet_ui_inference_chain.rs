@@ -21,6 +21,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
+use std::any::Any;
 use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -217,14 +218,26 @@ impl SheetUIInferenceChain {
                 let function = function.unwrap();
                 let sheet_manager_clone = sheet_manager.clone().unwrap();
                 let sheet_id_clone = sheet_id.clone();
-                let mut values = function_call.arguments.get("values").unwrap().to_string();
-                // Clean up extra double quotes
-                if values.starts_with('"') && values.ends_with('"') {
-                    values = values.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
+                let mut args = HashMap::new();
+                if let Some(arguments) = function_call.arguments.as_object() {
+                    for (key, value) in arguments {
+                        let mut val = value.to_string();
+                        // Clean up extra double quotes
+                        if val.starts_with('"') && val.ends_with('"') {
+                            val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
+                        }
+                        args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
+                    }
+                } else {
+                    return Err(LLMProviderError::InvalidFunctionArguments(
+                        "Function arguments should be a JSON object".to_string(),
+                    ));
                 }
+                eprintln!("Function call: {}", function_call.name);
+                eprintln!("Function arguments: {:?}", function_call.arguments);
 
                 // Spawn a new task to run the function
-                let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, values).await });
+                let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
 
                 // Await the result of the spawned task
                 let function_response = match handle.await {

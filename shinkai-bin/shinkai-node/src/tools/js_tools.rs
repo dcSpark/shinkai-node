@@ -64,11 +64,8 @@ impl JSTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    let mut tool = Tool::new();
-                    tool.load_from_code(&code, &config)
-                        .await
-                        .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
-                    tool.run(&input, None)
+                    let tool = Tool::new(code, serde_json::from_str(&config).unwrap());
+                    tool.run(serde_json::from_str(&input).unwrap(), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })

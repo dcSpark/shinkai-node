@@ -1,4 +1,4 @@
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{any::Any, collections::HashMap, pin::Pin, sync::Arc};
 
 use crate::{
     managers::sheet_manager::SheetManager,
@@ -10,14 +10,27 @@ use uuid::Uuid;
 
 pub struct SheetRustFunctions;
 
+// Type alias for the unified function signature
+type SheetToolFunction = fn(
+    Arc<Mutex<SheetManager>>,
+    String,
+    HashMap<String, Box<dyn Any + Send>>,
+) -> Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>;
+
 impl SheetRustFunctions {
     pub async fn create_new_column_with_values(
         sheet_manager: Arc<Mutex<SheetManager>>,
         sheet_id: String,
-        values: String,
+        args: HashMap<String, Box<dyn Any + Send>>,
     ) -> Result<String, String> {
-        // Split the values string into a Vec<String>
-        let values: Vec<String> = values.split(',').map(|s| s.trim().to_string()).collect();
+        let values = args
+            .get("values")
+            .ok_or_else(|| "Missing argument: values".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for values".to_string())?
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect::<Vec<String>>();
 
         // Create a new column of type Text
         let column_definition = ColumnDefinition {
@@ -64,11 +77,28 @@ impl SheetRustFunctions {
     pub async fn update_column_with_values(
         sheet_manager: Arc<Mutex<SheetManager>>,
         sheet_id: String,
-        column_position: usize,
-        values: String,
+        args: HashMap<String, Box<dyn Any + Send>>,
     ) -> Result<String, String> {
-        // Split the values string into a Vec<String>
-        let values: Vec<String> = values.split(',').map(|s| s.trim().to_string()).collect();
+        let column_position = args
+            .get("column_position")
+            .ok_or_else(|| "Missing argument: column_position".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for column position".to_string())?
+            .parse::<usize>()
+            .map_err(|_| "Invalid column position format".to_string())?;
+        let values = args
+            .get("values")
+            .ok_or_else(|| "Missing argument: values".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for values".to_string())?
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect::<Vec<String>>();
+
+        // Adjust column_position to be 0-based
+        let column_position = column_position
+            .checked_sub(1)
+            .ok_or_else(|| "Invalid column position".to_string())?;
 
         // Lock the sheet manager to access the sheet
         let (column_id, row_ids) = {
@@ -124,10 +154,37 @@ impl SheetRustFunctions {
     pub async fn replace_value_at_position(
         sheet_manager: Arc<Mutex<SheetManager>>,
         sheet_id: String,
-        column_position: usize,
-        row_position: usize,
-        new_value: String,
+        args: HashMap<String, Box<dyn Any + Send>>,
     ) -> Result<String, String> {
+        let column_position = args
+            .get("column_position")
+            .ok_or_else(|| "Missing argument: column_position".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for column position".to_string())?
+            .parse::<usize>()
+            .map_err(|_| "Invalid column position format".to_string())?;
+        let row_position = args
+            .get("row_position")
+            .ok_or_else(|| "Missing argument: row_position".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for row position".to_string())?
+            .parse::<usize>()
+            .map_err(|_| "Invalid row position format".to_string())?;
+        let new_value = args
+            .get("new_value")
+            .ok_or_else(|| "Missing argument: new_value".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for new value".to_string())?
+            .clone();
+
+        // Adjust column_position and row_position to be 0-based
+        let column_position = column_position
+            .checked_sub(1)
+            .ok_or_else(|| "Invalid column position".to_string())?;
+        let row_position = row_position
+            .checked_sub(1)
+            .ok_or_else(|| "Invalid row position".to_string())?;
+
         // Lock the sheet manager to access the sheet
         let (column_id, row_id) = {
             let mut sheet_manager = sheet_manager.lock().await;
@@ -161,41 +218,33 @@ impl SheetRustFunctions {
         Ok("Value replaced successfully".to_string())
     }
 
-    fn get_tool_map() -> HashMap<
-        &'static str,
-        fn(
-            Arc<Mutex<SheetManager>>,
-            String,
-            String,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>,
-    > {
-        let mut tool_map: HashMap<
-            &str,
-            fn(
-                Arc<Mutex<SheetManager>>,
-                String,
-                String,
-            ) -> Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>,
-        > = HashMap::new();
-        tool_map.insert("create_new_column_with_values", |sheet_manager, sheet_id, values| {
+    fn get_tool_map() -> HashMap<&'static str, SheetToolFunction> {
+        let mut tool_map: HashMap<&str, SheetToolFunction> = HashMap::new();
+        tool_map.insert("create_new_column_with_values", |sheet_manager, sheet_id, args| {
             Box::pin(SheetRustFunctions::create_new_column_with_values(
                 sheet_manager,
                 sheet_id,
-                values,
+                args,
+            ))
+        });
+        tool_map.insert("update_column_with_values", |sheet_manager, sheet_id, args| {
+            Box::pin(SheetRustFunctions::update_column_with_values(
+                sheet_manager,
+                sheet_id,
+                args,
+            ))
+        });
+        tool_map.insert("replace_value_at_position", |sheet_manager, sheet_id, args| {
+            Box::pin(SheetRustFunctions::replace_value_at_position(
+                sheet_manager,
+                sheet_id,
+                args,
             ))
         });
         tool_map
     }
 
-    pub fn get_tool_function(
-        name: String,
-    ) -> Option<
-        fn(
-            Arc<Mutex<SheetManager>>,
-            String,
-            String,
-        ) -> Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>,
-    > {
+    pub fn get_tool_function(name: String) -> Option<SheetToolFunction> {
         let tool_map = Self::get_tool_map();
         tool_map.get(name.as_str()).copied()
     }
@@ -215,9 +264,60 @@ impl SheetRustFunctions {
             ],
             None,
         );
-        let shinkai_tool = ShinkaiTool::Rust(create_new_column_tool, true);
 
-        vec![shinkai_tool]
+        // Add the tool definition for update_column_with_values
+        let update_column_tool = RustTool::new(
+            "update_column_with_values".to_string(),
+            "Updates an existing column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
+            vec![
+                ToolArgument::new(
+                    "column_position".to_string(),
+                    "usize".to_string(),
+                    "The position of the column to update".to_string(),
+                    true,
+                ),
+                ToolArgument::new(
+                    "values".to_string(),
+                    "string".to_string(),
+                    "The values to update the column with, separated by commas".to_string(),
+                    true,
+                ),
+            ],
+            None,
+        );
+
+        // Add the tool definition for replace_value_at_position
+        let replace_value_tool = RustTool::new(
+            "replace_value_at_position".to_string(),
+            "Replaces the value at the specified column and row position. Example: 'column_position, row_position, new_value'".to_string(),
+            vec![
+                ToolArgument::new(
+                    "column_position".to_string(),
+                    "usize".to_string(),
+                    "The position of the column".to_string(),
+                    true,
+                ),
+                ToolArgument::new(
+                    "row_position".to_string(),
+                    "usize".to_string(),
+                    "The position of the row".to_string(),
+                    true,
+                ),
+                ToolArgument::new(
+                    "new_value".to_string(),
+                    "string".to_string(),
+                    "The new value to set".to_string(),
+                    true,
+                ),
+            ],
+            None,
+        );
+
+        vec![
+            ShinkaiTool::Rust(create_new_column_tool, true),
+            ShinkaiTool::Rust(update_column_tool, true),
+            ShinkaiTool::Rust(replace_value_tool, true),
+        ]
     }
 }
 
@@ -291,12 +391,13 @@ mod tests {
         let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
 
         // Call create_new_column_with_values with the values: "USA, Chile, Canada"
-        let result = SheetRustFunctions::create_new_column_with_values(
-            sheet_manager.clone(),
-            sheet_id.clone(),
-            "USA, Chile, Canada".to_string(),
-        )
-        .await;
+        let mut args = HashMap::new();
+        args.insert(
+            "values".to_string(),
+            Box::new("USA, Chile, Canada".to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_column_with_values(sheet_manager.clone(), sheet_id.clone(), args).await;
         assert!(result.is_ok(), "Creating new column with values should succeed");
 
         {
@@ -322,12 +423,13 @@ mod tests {
         }
 
         // Call create_new_column_with_values again with the value: "Italy"
-        let result = SheetRustFunctions::create_new_column_with_values(
-            sheet_manager.clone(),
-            sheet_id.clone(),
-            "Italy".to_string(),
-        )
-        .await;
+        let mut args = HashMap::new();
+        args.insert(
+            "values".to_string(),
+            Box::new("Italy".to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_column_with_values(sheet_manager.clone(), sheet_id.clone(), args).await;
         assert!(result.is_ok(), "Creating new column with a single value should succeed");
 
         {
@@ -371,22 +473,23 @@ mod tests {
         let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
 
         // Create a new column with values: "USA, Chile, Canada"
-        let result = SheetRustFunctions::create_new_column_with_values(
-            sheet_manager.clone(),
-            sheet_id.clone(),
-            "USA, Chile, Canada".to_string(),
-        )
-        .await;
+        let mut args = HashMap::new();
+        args.insert(
+            "values".to_string(),
+            Box::new("USA, Chile, Canada".to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_column_with_values(sheet_manager.clone(), sheet_id.clone(), args).await;
         assert!(result.is_ok(), "Creating new column with values should succeed");
 
         // Update the column with new values: "Italy, France"
-        let result = SheetRustFunctions::update_column_with_values(
-            sheet_manager.clone(),
-            sheet_id.clone(),
-            0, // Update the first column
-            "Italy, France".to_string(),
-        )
-        .await;
+        let mut args = HashMap::new();
+        args.insert("column_position".to_string(), Box::new(0usize) as Box<dyn Any + Send>);
+        args.insert(
+            "values".to_string(),
+            Box::new("Italy, France".to_string()) as Box<dyn Any + Send>,
+        );
+        let result = SheetRustFunctions::update_column_with_values(sheet_manager.clone(), sheet_id.clone(), args).await;
         assert!(result.is_ok(), "Updating column with values should succeed");
 
         {
@@ -433,23 +536,24 @@ mod tests {
         let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
 
         // Create a new column with values: "USA, Chile, Canada"
-        let result = SheetRustFunctions::create_new_column_with_values(
-            sheet_manager.clone(),
-            sheet_id.clone(),
-            "USA, Chile, Canada".to_string(),
-        )
-        .await;
+        let mut args = HashMap::new();
+        args.insert(
+            "values".to_string(),
+            Box::new("USA, Chile, Canada".to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_column_with_values(sheet_manager.clone(), sheet_id.clone(), args).await;
         assert!(result.is_ok(), "Creating new column with values should succeed");
 
         // Replace the value at position (0, 1) with "Brazil"
-        let result = SheetRustFunctions::replace_value_at_position(
-            sheet_manager.clone(),
-            sheet_id.clone(),
-            0, // First column
-            1, // Second row
-            "Brazil".to_string(),
-        )
-        .await;
+        let mut args = HashMap::new();
+        args.insert("column_position".to_string(), Box::new(0usize) as Box<dyn Any + Send>);
+        args.insert("row_position".to_string(), Box::new(1usize) as Box<dyn Any + Send>);
+        args.insert(
+            "new_value".to_string(),
+            Box::new("Brazil".to_string()) as Box<dyn Any + Send>,
+        );
+        let result = SheetRustFunctions::replace_value_at_position(sheet_manager.clone(), sheet_id.clone(), args).await;
         assert!(result.is_ok(), "Replacing value at position should succeed");
 
         {
