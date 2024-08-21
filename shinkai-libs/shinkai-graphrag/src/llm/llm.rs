@@ -47,6 +47,7 @@ pub trait BaseLLM {
 #[async_trait]
 pub trait BaseTextEmbedding {
     async fn aembed(&self, text: &str) -> Vec<f64>;
+    fn embed(&self, text: &str) -> Vec<f64>;
 }
 
 pub enum GlobalSearchPhase {

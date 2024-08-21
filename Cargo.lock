@@ -10411,6 +10411,7 @@ dependencies = [
  "serde_json",
  "tiktoken-rs",
  "tokio",
+ "uuid 1.8.0",
 ]
 
 [[package]]

@@ -13,7 +13,23 @@ use rand::prelude::SliceRandom;
 
 use crate::models::{CommunityReport, Entity};
 
-use super::context_builder::GlobalSearchContextBuilderParams;
+#[derive(Debug, Clone)]
+pub struct CommunityContextBuilderParams {
+    pub use_community_summary: bool,
+    pub column_delimiter: String,
+    pub shuffle_data: bool,
+    pub include_community_rank: bool,
+    pub min_community_rank: u32,
+    pub community_rank_name: String,
+    pub include_community_weight: bool,
+    pub community_weight_name: String,
+    pub normalize_community_weight: bool,
+    pub max_tokens: usize,
+    pub context_name: String,
+    // conversation_history: Option<ConversationHistory>,
+    // conversation_history_user_turns_only: bool,
+    // conversation_history_max_turns: Option<i32>,
+}
 
 pub struct GlobalCommunityContext {
     community_reports: Vec<CommunityReport>,
@@ -34,11 +50,11 @@ impl GlobalCommunityContext {
         }
     }
 
-    pub async fn build_context(
+    pub fn build_context(
         &self,
-        context_builder_params: GlobalSearchContextBuilderParams,
+        context_builder_params: CommunityContextBuilderParams,
     ) -> anyhow::Result<(Vec<String>, HashMap<String, DataFrame>)> {
-        let GlobalSearchContextBuilderParams {
+        let CommunityContextBuilderParams {
             use_community_summary,
             column_delimiter,
             shuffle_data,

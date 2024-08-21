@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    mixed_context::{LocalSearchContextBuilderParams, LocalSearchMixedContext},
+    mixed_context::{LocalSearchMixedContext, MixedContextBuilderParams},
     prompts::LOCAL_SEARCH_SYSTEM_PROMPT,
 };
 
@@ -26,7 +26,7 @@ pub struct LocalSearch {
     system_prompt: String,
     response_type: String,
     llm_params: LLMParams,
-    context_builder_params: LocalSearchContextBuilderParams,
+    context_builder_params: MixedContextBuilderParams,
 }
 
 impl LocalSearch {
@@ -35,7 +35,7 @@ impl LocalSearch {
         context_builder: LocalSearchMixedContext,
         num_tokens_fn: fn(&str) -> usize,
         llm_params: LLMParams,
-        context_builder_params: LocalSearchContextBuilderParams,
+        context_builder_params: MixedContextBuilderParams,
         response_type: String,
         system_prompt: Option<String>,
     ) -> Self {
@@ -81,6 +81,7 @@ impl LocalSearch {
                 false,
                 None,
                 self.llm_params.clone(),
+                None,
             )
             .await?;
 

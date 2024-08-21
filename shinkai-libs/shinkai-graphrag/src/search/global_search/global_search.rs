@@ -3,8 +3,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::context_builder::community_context::GlobalCommunityContext;
-use crate::context_builder::context_builder::{ConversationHistory, GlobalSearchContextBuilderParams};
+use crate::context_builder::community_context::{CommunityContextBuilderParams, GlobalCommunityContext};
+use crate::context_builder::context_builder::ConversationHistory;
 use crate::llm::llm::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
 use crate::search::base::{ContextData, ContextText, KeyPoint, ResponseType};
 use crate::search::global_search::prompts::NO_DATA_ANSWER;
@@ -62,7 +62,7 @@ pub struct GlobalSearch {
     llm: Box<dyn BaseLLM>,
     context_builder: GlobalCommunityContext,
     num_tokens_fn: fn(&str) -> usize,
-    context_builder_params: GlobalSearchContextBuilderParams,
+    context_builder_params: CommunityContextBuilderParams,
     map_system_prompt: String,
     reduce_system_prompt: String,
     response_type: String,
@@ -88,7 +88,7 @@ pub struct GlobalSearchParams {
     pub max_data_tokens: usize,
     pub map_llm_params: LLMParams,
     pub reduce_llm_params: LLMParams,
-    pub context_builder_params: GlobalSearchContextBuilderParams,
+    pub context_builder_params: CommunityContextBuilderParams,
 }
 
 impl GlobalSearch {
@@ -151,8 +151,7 @@ impl GlobalSearch {
         let start_time = Instant::now();
         let (context_chunks, context_records) = self
             .context_builder
-            .build_context(self.context_builder_params.clone())
-            .await?;
+            .build_context(self.context_builder_params.clone())?;
 
         let mut callbacks = match &self.callbacks {
             Some(callbacks) => {
