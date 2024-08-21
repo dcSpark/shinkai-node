@@ -218,6 +218,70 @@ impl SheetRustFunctions {
         Ok("Value replaced successfully".to_string())
     }
 
+    pub async fn create_new_columns_with_csv(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        sheet_id: String,
+        args: HashMap<String, Box<dyn Any + Send>>,
+    ) -> Result<String, String> {
+        let csv_data = args
+            .get("csv_data")
+            .ok_or_else(|| "Missing argument: csv_data".to_string())?
+            .downcast_ref::<String>()
+            .ok_or_else(|| "Invalid argument for csv_data".to_string())?;
+
+        let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
+        let headers = reader.headers().map_err(|e| e.to_string())?.clone();
+        let records: Vec<csv::StringRecord> = reader.records().collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+
+        // Create new columns based on headers
+        let column_definitions: Vec<ColumnDefinition> = headers.iter().map(|header| {
+            ColumnDefinition {
+                id: Uuid::new_v4().to_string(),
+                name: header.to_string(),
+                behavior: ColumnBehavior::Text,
+            }
+        }).collect();
+
+        // Set the new columns
+        {
+            let mut sheet_manager = sheet_manager.lock().await;
+            for column_definition in &column_definitions {
+                sheet_manager.set_column(&sheet_id, column_definition.clone()).await?;
+            }
+        }
+
+        // Ensure the number of rows matches the number of records
+        {
+            let mut sheet_manager = sheet_manager.lock().await;
+            while {
+                let (sheet, _) = sheet_manager.sheets.get_mut(&sheet_id).ok_or("Sheet ID not found")?;
+                sheet.rows.len() < records.len()
+            } {
+                sheet_manager.add_row(&sheet_id, None).await?;
+            }
+        }
+
+        // Set values for the new columns
+        let row_ids: Vec<String> = {
+            let sheet_manager = sheet_manager.lock().await;
+            let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
+            sheet.display_rows.clone()
+        };
+
+        for (row_index, record) in records.iter().enumerate() {
+            let row_id = row_ids.get(row_index).ok_or("Row ID not found")?.clone();
+            for (col_index, value) in record.iter().enumerate() {
+                let column_definition = &column_definitions[col_index];
+                let mut sheet_manager = sheet_manager.lock().await;
+                sheet_manager
+                    .set_cell_value(&sheet_id, row_id.clone(), column_definition.id.clone(), value.to_string())
+                    .await?;
+            }
+        }
+
+        Ok("Columns created successfully".to_string())
+    }
+
     fn get_tool_map() -> HashMap<&'static str, SheetToolFunction> {
         let mut tool_map: HashMap<&str, SheetToolFunction> = HashMap::new();
         tool_map.insert("create_new_column_with_values", |sheet_manager, sheet_id, args| {
@@ -236,6 +300,13 @@ impl SheetRustFunctions {
         });
         tool_map.insert("replace_value_at_position", |sheet_manager, sheet_id, args| {
             Box::pin(SheetRustFunctions::replace_value_at_position(
+                sheet_manager,
+                sheet_id,
+                args,
+            ))
+        });
+        tool_map.insert("create_new_columns_with_csv", |sheet_manager, sheet_id, args| {
+            Box::pin(SheetRustFunctions::create_new_columns_with_csv(
                 sheet_manager,
                 sheet_id,
                 args,
@@ -313,10 +384,24 @@ impl SheetRustFunctions {
             None,
         );
 
+        // Add the tool definition for create_new_columns_with_csv
+        let create_new_columns_tool = RustTool::new(
+            "create_new_columns_with_csv".to_string(),
+            "Creates new columns with the provided CSV data. Example: 'column1,column2\nvalue1,value2'".to_string(),
+            vec![ToolArgument::new(
+                "csv_data".to_string(),
+                "string".to_string(),
+                "The CSV data to populate the new columns".to_string(),
+                true,
+            )],
+            None,
+        );
+
         vec![
             ShinkaiTool::Rust(create_new_column_tool, true),
             ShinkaiTool::Rust(update_column_tool, true),
             ShinkaiTool::Rust(replace_value_tool, true),
+            ShinkaiTool::Rust(create_new_columns_tool, true),
         ]
     }
 }
@@ -572,6 +657,66 @@ mod tests {
                 cell_value, "Brazil",
                 "The value in the first column, second row should be 'Brazil'"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_new_columns_with_csv() {
+        setup();
+        let node_name = "@@test.arb-sep-shinkai".to_string();
+        let db = create_testing_db(node_name.clone());
+        let db = Arc::new(db);
+        let node_name = ShinkaiName::new(node_name).unwrap();
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        let sheet_manager = Arc::new(Mutex::new(
+            SheetManager::new(Arc::downgrade(&db), node_name, ws_manager)
+                .await
+                .unwrap(),
+        ));
+
+        let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
+        sheet_manager.lock().await.set_job_manager(mock_job_manager);
+
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+
+        // Create new columns with CSV data
+        let csv_data = "Name,Age,Location\nAlice,30,USA\nBob,25,UK\nCharlie,35,Canada";
+        let mut args = HashMap::new();
+        args.insert(
+            "csv_data".to_string(),
+            Box::new(csv_data.to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_columns_with_csv(sheet_manager.clone(), sheet_id.clone(), args).await;
+        assert!(result.is_ok(), "Creating new columns with CSV data should succeed");
+
+        {
+            let sheet_manager = sheet_manager.lock().await;
+            let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+            assert_eq!(sheet.columns.len(), 3, "There should be three columns in the sheet");
+            assert_eq!(sheet.rows.len(), 3, "There should be three rows in the sheet");
+
+            // Check the values in the columns
+            let expected_values = vec![
+                vec!["Alice", "30", "USA"],
+                vec!["Bob", "25", "UK"],
+                vec!["Charlie", "35", "Canada"],
+            ];
+            for (row_index, expected_row) in expected_values.iter().enumerate() {
+                let row_id = sheet.display_rows.get(row_index).expect("Row ID not found").clone();
+                for (col_index, expected_value) in expected_row.iter().enumerate() {
+                    let col_id = sheet.display_columns.get(col_index).expect("Column ID not found").clone();
+                    let cell_value = sheet
+                        .get_cell_value(row_id.clone(), col_id.clone())
+                        .expect("Cell value not found");
+                    assert_eq!(
+                        cell_value, *expected_value,
+                        "The value in row {}, column {} should be '{}'",
+                        row_index, col_index, expected_value
+                    );
+                }
+            }
         }
     }
 }
