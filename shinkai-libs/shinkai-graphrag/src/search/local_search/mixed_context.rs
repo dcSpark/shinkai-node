@@ -7,10 +7,14 @@ use polars::{
 };
 
 use crate::{
-    context_builder::community_context::CommunityContext,
+    context_builder::{
+        community_context::CommunityContext,
+        entity_extraction::map_query_to_entities,
+        local_context::{build_entity_context, build_relationship_context},
+    },
     llm::llm::BaseTextEmbedding,
     models::{CommunityReport, Entity, Relationship, TextUnit},
-    retrieval::{community_reports::get_candidate_communities, entity_extraction::map_query_to_entities},
+    retrieval::community_reports::get_candidate_communities,
     vector_stores::vector_store::VectorStore,
 };
 
@@ -166,7 +170,44 @@ impl LocalSearchMixedContext {
             2,
         );
 
+        let mut final_context = Vec::new();
+        let mut final_context_data = HashMap::new();
+
         let community_tokens = std::cmp::max((max_tokens as f32 * community_prop) as usize, 0);
+        let (community_context, community_context_data) = self._build_community_context(
+            selected_entities.clone(),
+            community_tokens,
+            use_community_summary,
+            &column_delimiter,
+            include_community_rank,
+            min_community_rank,
+            return_candidate_context,
+            &community_context_name,
+        )?;
+
+        if !community_context.trim().is_empty() {
+            final_context.push(community_context);
+            final_context_data.extend(community_context_data);
+        }
+
+        let local_prop = 1 as f32 - community_prop - text_unit_prop;
+        let local_tokens = std::cmp::max((max_tokens as f32 * local_prop) as usize, 0);
+        let (local_context, local_context_data) = self._build_local_context(
+            selected_entities.clone(),
+            local_tokens,
+            include_entity_rank,
+            &rank_description,
+            include_relationship_weight,
+            top_k_relationships,
+            &relationship_ranking_attribute,
+            return_candidate_context,
+            &column_delimiter,
+        )?;
+
+        if !local_context.trim().is_empty() {
+            final_context.push(local_context);
+            final_context_data.extend(local_context_data);
+        }
 
         let context_text = String::new();
         let context_records = HashMap::new();
@@ -308,5 +349,72 @@ impl LocalSearchMixedContext {
         }
 
         Ok((context_text_result, context_data))
+    }
+
+    fn _build_local_context(
+        &self,
+        selected_entities: Vec<Entity>,
+        max_tokens: usize,
+        include_entity_rank: bool,
+        rank_description: &str,
+        include_relationship_weight: bool,
+        top_k_relationships: usize,
+        relationship_ranking_attribute: &str,
+        return_candidate_context: bool,
+        column_delimiter: &str,
+    ) -> anyhow::Result<(String, HashMap<String, DataFrame>)> {
+        let (entity_context, entity_context_data) = build_entity_context(
+            selected_entities.clone(),
+            self.num_tokens_fn,
+            max_tokens,
+            include_entity_rank,
+            rank_description,
+            column_delimiter,
+            "Entities",
+        )?;
+
+        let entity_tokens = (self.num_tokens_fn)(&entity_context);
+
+        let mut added_entities = Vec::new();
+        let mut final_context = Vec::new();
+        let mut final_context_data = HashMap::new();
+
+        for entity in selected_entities {
+            let mut current_context = Vec::new();
+            let mut current_context_data = HashMap::new();
+            added_entities.push(entity);
+
+            let (relationship_context, relationship_context_data) = build_relationship_context(
+                &added_entities,
+                &self.relationships.values().cloned().collect(),
+                self.num_tokens_fn,
+                include_relationship_weight,
+                max_tokens,
+                top_k_relationships,
+                relationship_ranking_attribute,
+                column_delimiter,
+                "Relationships",
+            )?;
+
+            current_context.push(relationship_context.clone());
+            current_context_data.insert("relationships", relationship_context_data);
+
+            let total_tokens = entity_tokens + (self.num_tokens_fn)(&relationship_context);
+
+            if total_tokens > max_tokens {
+                eprintln!("Reached token limit - reverting to previous context state");
+                break;
+            }
+
+            final_context = current_context;
+            final_context_data = current_context_data;
+        }
+
+        let mut final_context_text = entity_context.to_string();
+        final_context_text.push_str("\n\n");
+        final_context_text.push_str(&final_context.join("\n\n"));
+        final_context_data.insert("entities", entity_context_data.clone());
+
+        Ok(("".to_string(), HashMap::new()))
     }
 }

@@ -1,2 +1,3 @@
 pub mod community_reports;
-pub mod entity_extraction;
+pub mod entities;
+pub mod relationships;
