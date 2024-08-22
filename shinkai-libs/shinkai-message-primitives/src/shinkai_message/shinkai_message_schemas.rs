@@ -290,8 +290,9 @@ pub struct JobMessage {
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
+    #[serde(default)]
     pub workflow_code: Option<String>,
-    #[serde(deserialize_with = "deserialize_workflow_name")]
+    #[serde(default, deserialize_with = "deserialize_workflow_name")]
     pub workflow_name: Option<String>,
     pub sheet_job_data: Option<String>,
     pub callback: Option<Box<CallbackAction>>,
@@ -301,7 +302,7 @@ fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, 
 where
     D: Deserializer<'de>,
 {
-    let s: Option<String> = Option::deserialize(deserializer)?;
+    let s: Option<String> = Option::deserialize(deserializer).unwrap_or(None);
     if let Some(ref s) = s {
         if s == "undefined:::undefined" {
             return Ok(None);
