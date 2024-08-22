@@ -53,7 +53,7 @@ impl JobManager {
             prev_execution_context,
             generator,
             user_profile,
-            2,
+            3,
             max_tokens_in_prompt,
             HashMap::new(),
             ws_manager_trait.clone(),

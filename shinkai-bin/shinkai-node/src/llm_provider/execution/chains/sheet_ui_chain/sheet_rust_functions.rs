@@ -4,11 +4,33 @@ use crate::{
     managers::sheet_manager::SheetManager,
     tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
 };
+use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub struct SheetRustFunctions;
+
+// Function to detect the delimiter
+fn detect_delimiter(csv_data: &str) -> u8 {
+    let mut comma_count = 0;
+    let mut semicolon_count = 0;
+    let mut tab_count = 0;
+
+    for line in csv_data.lines().take(10) {
+        comma_count += line.matches(',').count();
+        semicolon_count += line.matches(';').count();
+        tab_count += line.matches('\t').count();
+    }
+
+    if comma_count >= semicolon_count && comma_count >= tab_count {
+        b','
+    } else if semicolon_count >= comma_count && semicolon_count >= tab_count {
+        b';'
+    } else {
+        b'\t'
+    }
+}
 
 // Type alias for the unified function signature
 type SheetToolFunction = fn(
@@ -229,18 +251,45 @@ impl SheetRustFunctions {
             .downcast_ref::<String>()
             .ok_or_else(|| "Invalid argument for csv_data".to_string())?;
 
-        let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
+        let csv_data = csv_data.replace("\\n", "\n");
+
+        let delimiter = detect_delimiter(&csv_data);
+        eprintln!("Detected delimiter: {}", delimiter as char);
+
+        let mut reader = ReaderBuilder::new()
+            .delimiter(delimiter)
+            .flexible(true)
+            .from_reader(csv_data.as_bytes());
         let headers = reader.headers().map_err(|e| e.to_string())?.clone();
-        let records: Vec<csv::StringRecord> = reader.records().collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        eprintln!("Headers: {:?}", headers);
+
+        let records: Vec<csv::StringRecord> = reader.records().collect::<Result<_, _>>().map_err(|e| {
+            eprintln!("Error reading records: {}", e);
+            e.to_string()
+        })?;
+
+        let records: Vec<csv::StringRecord> = records
+            .into_iter()
+            .map(|mut record| {
+                let record: &mut csv::StringRecord = &mut record;
+                while record.len() < headers.len() {
+                    record.push_field("");
+                }
+                record.clone()
+            })
+            .collect();
+        eprintln!("Records: {:?}", records);
 
         // Create new columns based on headers
-        let column_definitions: Vec<ColumnDefinition> = headers.iter().map(|header| {
-            ColumnDefinition {
+        let column_definitions: Vec<ColumnDefinition> = headers
+            .iter()
+            .map(|header| ColumnDefinition {
                 id: Uuid::new_v4().to_string(),
                 name: header.to_string(),
                 behavior: ColumnBehavior::Text,
-            }
-        }).collect();
+            })
+            .collect();
+        eprintln!("Column Definitions: {:?}", column_definitions);
 
         // Set the new columns
         {
@@ -274,7 +323,12 @@ impl SheetRustFunctions {
                 let column_definition = &column_definitions[col_index];
                 let mut sheet_manager = sheet_manager.lock().await;
                 sheet_manager
-                    .set_cell_value(&sheet_id, row_id.clone(), column_definition.id.clone(), value.to_string())
+                    .set_cell_value(
+                        &sheet_id,
+                        row_id.clone(),
+                        column_definition.id.clone(),
+                        value.to_string(),
+                    )
                     .await?;
             }
         }
@@ -387,7 +441,7 @@ impl SheetRustFunctions {
         // Add the tool definition for create_new_columns_with_csv
         let create_new_columns_tool = RustTool::new(
             "create_new_columns_with_csv".to_string(),
-            "Creates new columns with the provided CSV data. Example: 'column1,column2\nvalue1,value2'".to_string(),
+            "Creates new columns with the provided CSV data. Example: 'column1;column2\nvalue1;value2' It also supports comma separators.".to_string(),
             vec![ToolArgument::new(
                 "csv_data".to_string(),
                 "string".to_string(),
@@ -706,7 +760,265 @@ mod tests {
             for (row_index, expected_row) in expected_values.iter().enumerate() {
                 let row_id = sheet.display_rows.get(row_index).expect("Row ID not found").clone();
                 for (col_index, expected_value) in expected_row.iter().enumerate() {
-                    let col_id = sheet.display_columns.get(col_index).expect("Column ID not found").clone();
+                    let col_id = sheet
+                        .display_columns
+                        .get(col_index)
+                        .expect("Column ID not found")
+                        .clone();
+                    let cell_value = sheet
+                        .get_cell_value(row_id.clone(), col_id.clone())
+                        .expect("Cell value not found");
+                    assert_eq!(
+                        cell_value, *expected_value,
+                        "The value in row {}, column {} should be '{}'",
+                        row_index, col_index, expected_value
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_new_columns_with_large_csv() {
+        setup();
+        let node_name = "@@test.arb-sep-shinkai".to_string();
+        let db = create_testing_db(node_name.clone());
+        let db = Arc::new(db);
+        let node_name = ShinkaiName::new(node_name).unwrap();
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        let sheet_manager = Arc::new(Mutex::new(
+            SheetManager::new(Arc::downgrade(&db), node_name, ws_manager)
+                .await
+                .unwrap(),
+        ));
+
+        let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
+        sheet_manager.lock().await.set_job_manager(mock_job_manager);
+
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+
+        // Create new columns with large CSV data from JSON content
+        let json_content = r#"{
+            "data": {
+                "columnsCount": 16,
+                "rowsCount": 10,
+                "tableCsv": "Rank;Compare;Name;1d Change;7d Change;1m Change;TVL;Fees 7d;Revenue 7d;Mcap/TVL;Fees 24h;Fees 30d;Revenue 24h;Borrowed;Supplied;Supplied/TVL\n1;;AAVE12 chains;-1.93%;-3.07%;-15.84%;$11.473b;$4.49m;$461,609;0.17;$1.38m;$21.9m;$18,229;;;\n2;;JustLend1 chain;+2.24%;+2.93%;-8.44%;$5.861b;$71,060;$6,428;0.05;$11,496;$281,726;$1,038;94.25m;5.955b;1.02\n3;;Spark2 chains;-2.01%;-6.01%;-21.04%;$2.538b;;;;;;;638.24m;3.176b;1.25\n4;;Compound Finance6 chains;-1.45%;-2.47%;-23.01%;$1.891b;$142,443;$24,816;0.21;$20,752;$1.14m;$3,616;;;\n5;;Venus4 chains;-0.61%;+0.68%;-10.72%;$1.593b;$747,095;$108,184;0.07;$111,968;$2.9m;$17,483;;;\n6;;Morpho2 chains;-3.57%;-9.11%;-23.94%;$1.458b;$504,076;;;$68,897;$2.08m;;;;\n7;;Kamino Lend1 chain;+2.36%;+4.86%;+5.32%;$1.275b;$1.15m;$224,387;;$161,367;$4.77m;$31,234;;;\n8;;LayerBank8 chains;-2.14%;-1.94%;-22.10%;$674.22m;;;;;;;16.22m;690.45m;1.02\n9;;Fluid3 chains;-2.23%;+8.23%;-8.37%;$365.3m;$210,172;$21,027;;$30,200;$1.28m;$3,035;292.24m;657.53m;1.8\n10;;marginfi Lending1 chain;-0.99%;+0.31%;-20.11%;$339.8m;;;;;;;;"
+            }
+        }"#;
+
+        let parsed_json: serde_json::Value = serde_json::from_str(json_content).unwrap();
+        let csv_data = parsed_json["data"]["tableCsv"].as_str().unwrap();
+
+        let mut args = HashMap::new();
+        args.insert(
+            "csv_data".to_string(),
+            Box::new(csv_data.to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_columns_with_csv(sheet_manager.clone(), sheet_id.clone(), args).await;
+        assert!(
+            result.is_ok(),
+            "Creating new columns with large CSV data should succeed"
+        );
+
+        {
+            let sheet_manager = sheet_manager.lock().await;
+            let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+            assert_eq!(sheet.columns.len(), 16, "There should be sixteen columns in the sheet");
+            assert_eq!(sheet.rows.len(), 10, "There should be ten rows in the sheet");
+
+            // Check the values in the columns
+            let expected_values = vec![
+                vec![
+                    "1",
+                    "",
+                    "AAVE12 chains",
+                    "-1.93%",
+                    "-3.07%",
+                    "-15.84%",
+                    "$11.473b",
+                    "$4.49m",
+                    "$461,609",
+                    "0.17",
+                    "$1.38m",
+                    "$21.9m",
+                    "$18,229",
+                    "",
+                    "",
+                    "",
+                ],
+                vec![
+                    "2",
+                    "",
+                    "JustLend1 chain",
+                    "+2.24%",
+                    "+2.93%",
+                    "-8.44%",
+                    "$5.861b",
+                    "$71,060",
+                    "$6,428",
+                    "0.05",
+                    "$11,496",
+                    "$281,726",
+                    "$1,038",
+                    "94.25m",
+                    "5.955b",
+                    "1.02",
+                ],
+                vec![
+                    "3",
+                    "",
+                    "Spark2 chains",
+                    "-2.01%",
+                    "-6.01%",
+                    "-21.04%",
+                    "$2.538b",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "638.24m",
+                    "3.176b",
+                    "1.25",
+                ],
+                vec![
+                    "4",
+                    "",
+                    "Compound Finance6 chains",
+                    "-1.45%",
+                    "-2.47%",
+                    "-23.01%",
+                    "$1.891b",
+                    "$142,443",
+                    "$24,816",
+                    "0.21",
+                    "$20,752",
+                    "$1.14m",
+                    "$3,616",
+                    "",
+                    "",
+                    "",
+                ],
+                vec![
+                    "5",
+                    "",
+                    "Venus4 chains",
+                    "-0.61%",
+                    "+0.68%",
+                    "-10.72%",
+                    "$1.593b",
+                    "$747,095",
+                    "$108,184",
+                    "0.07",
+                    "$111,968",
+                    "$2.9m",
+                    "$17,483",
+                    "",
+                    "",
+                    "",
+                ],
+                vec![
+                    "6",
+                    "",
+                    "Morpho2 chains",
+                    "-3.57%",
+                    "-9.11%",
+                    "-23.94%",
+                    "$1.458b",
+                    "$504,076",
+                    "",
+                    "",
+                    "$68,897",
+                    "$2.08m",
+                    "",
+                    "",
+                    "",
+                    "",
+                ],
+                vec![
+                    "7",
+                    "",
+                    "Kamino Lend1 chain",
+                    "+2.36%",
+                    "+4.86%",
+                    "+5.32%",
+                    "$1.275b",
+                    "$1.15m",
+                    "$224,387",
+                    "",
+                    "$161,367",
+                    "$4.77m",
+                    "$31,234",
+                    "",
+                    "",
+                    "",
+                ],
+                vec![
+                    "8",
+                    "",
+                    "LayerBank8 chains",
+                    "-2.14%",
+                    "-1.94%",
+                    "-22.10%",
+                    "$674.22m",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "16.22m",
+                    "690.45m",
+                    "1.02",
+                ],
+                vec![
+                    "9",
+                    "",
+                    "Fluid3 chains",
+                    "-2.23%",
+                    "+8.23%",
+                    "-8.37%",
+                    "$365.3m",
+                    "$210,172",
+                    "$21,027",
+                    "",
+                    "$30,200",
+                    "$1.28m",
+                    "$3,035",
+                    "292.24m",
+                    "657.53m",
+                    "1.8",
+                ],
+                vec![
+                    "10",
+                    "",
+                    "marginfi Lending1 chain",
+                    "-0.99%",
+                    "+0.31%",
+                    "-20.11%",
+                    "$339.8m",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ],
+            ];
+            for (row_index, expected_row) in expected_values.iter().enumerate() {
+                let row_id = sheet.display_rows.get(row_index).expect("Row ID not found").clone();
+                for (col_index, expected_value) in expected_row.iter().enumerate() {
+                    let col_id = sheet
+                        .display_columns
+                        .get(col_index)
+                        .expect("Column ID not found")
+                        .clone();
                     let cell_value = sheet
                         .get_cell_value(row_id.clone(), col_id.clone())
                         .expect("Cell value not found");

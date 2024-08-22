@@ -498,7 +498,7 @@ impl JobManager {
             full_execution_context,
             generator,
             user_profile.clone(),
-            2,
+            3,
             max_tokens_in_prompt,
             HashMap::new(),
             ws_manager.clone(),
