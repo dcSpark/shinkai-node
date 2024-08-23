@@ -1,4 +1,5 @@
 use crate::tools::error::ToolError;
+use crate::tools::js_toolkit_headers::{BasicConfig, ToolConfig};
 use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use arrow_array::{Array, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
@@ -12,6 +13,7 @@ use lancedb::Error as LanceDbError;
 use lancedb::{connect, Connection, Table};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
+use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -19,11 +21,14 @@ use super::ollama_embedding_fn::OllamaEmbeddingFunction;
 use super::shinkai_lancedb_error::ShinkaiLanceDBError;
 use super::shinkai_tool_schema::ShinkaiToolSchema;
 
+pub static LATEST_ROUTER_DB_VERSION: &str = "1";
+
 #[derive(Clone)]
 pub struct LanceShinkaiDb {
     #[allow(dead_code)]
     connection: Connection,
-    table: Table,
+    pub tool_table: Table,
+    pub version_table: Table,
     embedding_model: EmbeddingModelType,
     embedding_function: OllamaEmbeddingFunction,
 }
@@ -42,13 +47,15 @@ impl LanceShinkaiDb {
         };
 
         let connection = connect(&db_path).execute().await?;
-        let table = Self::create_tool_router_table(&connection, &embedding_model).await?;
+        let version_table = Self::create_version_table(&connection).await?;
+        let tool_table = Self::create_tool_router_table(&connection, &embedding_model).await?;
         let api_url = generator.api_url;
         let embedding_function = OllamaEmbeddingFunction::new(&api_url, embedding_model.clone());
 
         Ok(LanceShinkaiDb {
             connection,
-            table,
+            tool_table,
+            version_table,
             embedding_model,
             embedding_function,
         })
@@ -110,12 +117,12 @@ impl LanceShinkaiDb {
         let tool_types = vec![shinkai_tool.tool_type().to_string()];
 
         // Check if the tool already exists and delete it if it does
-        if let Some(_) = self
-            .get_tool(&tool_key)
+        if self
+            .tool_exists(&tool_key)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?
         {
-            self.table
+            self.tool_table
                 .delete(format!("{} = '{}'", ShinkaiToolSchema::tool_key_field(), tool_key).as_str())
                 .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -134,14 +141,56 @@ impl LanceShinkaiDb {
         };
         let vectors = embedding;
 
+        // Update the tool header and data if the tool cannot be enabled
+        let mut shinkai_tool = shinkai_tool.clone();
+
+        // For Debugging
+        // add an if using env REINSTALL_TOOLS so we inject some configuration data for certain tools and also we make it enabled
+        if env::var("REINSTALL_TOOLS").is_ok() {
+            if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+                if tool_key.starts_with("shinkai-tool-coinbase") {
+                    if let (Ok(api_name), Ok(private_key), Ok(wallet_id), Ok(use_server_signer)) = (
+                        env::var("COINBASE_API_NAME"),
+                        env::var("COINBASE_API_PRIVATE_KEY"),
+                        env::var("COINBASE_API_WALLET_ID"),
+                        env::var("COINBASE_API_USE_SERVER_SIGNER"),
+                    ) {
+                        for config in &mut js_tool.config {
+                            if let ToolConfig::BasicConfig(ref mut basic_config) = config {
+                                if basic_config.key_name == "name" {
+                                    basic_config.key_value = Some(api_name.clone());
+                                } else if basic_config.key_name == "privateKey" {
+                                    basic_config.key_value = Some(private_key.clone());
+                                } else if basic_config.key_name == "walletId" {
+                                    basic_config.key_value = Some(wallet_id.clone());
+                                } else if basic_config.key_name == "useServerSigner" {
+                                    basic_config.key_value = Some(use_server_signer.clone());
+                                }
+                            }
+                        }
+                        shinkai_tool.enable();
+                    }
+                }
+            }
+        }
+
+        let is_enabled = match shinkai_tool.is_enabled() {
+            true => shinkai_tool.can_be_enabled(),
+            false => false,
+        };
+
+        if shinkai_tool.is_enabled() && !shinkai_tool.can_be_enabled() {
+            shinkai_tool.disable();
+        }
+
         let tool_data =
-            vec![serde_json::to_string(shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?];
+            vec![serde_json::to_string(&shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?];
 
         let tool_header = vec![serde_json::to_string(&shinkai_tool.to_header())
             .map_err(|e| ToolError::SerializationError(e.to_string()))?];
 
         let schema = self
-            .table
+            .tool_table
             .schema()
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -151,11 +200,6 @@ impl LanceShinkaiDb {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
         let vectors_normalized = Arc::new(Float32Array::from(vectors));
-
-        let is_enabled = match shinkai_tool.is_enabled() {
-            true => shinkai_tool.can_be_enabled(),
-            false => false,
-        };
 
         let batch = RecordBatch::try_new(
             schema.clone(),
@@ -182,7 +226,7 @@ impl LanceShinkaiDb {
 
         let batch_reader = Box::new(RecordBatchIterator::new(vec![Ok(batch)], schema.clone()));
 
-        self.table
+        self.tool_table
             .add(batch_reader)
             .mode(AddDataMode::Append)
             .execute()
@@ -196,7 +240,7 @@ impl LanceShinkaiDb {
         let start_time = Instant::now();
 
         let query = self
-            .table
+            .tool_table
             .query()
             .only_if(format!(
                 "{} = '{}'",
@@ -233,15 +277,37 @@ impl LanceShinkaiDb {
     }
 
     pub async fn remove_tool(&self, tool_key: &str) -> Result<(), ShinkaiLanceDBError> {
-        self.table
+        self.tool_table
             .delete(format!("{} = '{}'", ShinkaiToolSchema::tool_key_field(), tool_key).as_str())
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))
     }
 
+    async fn tool_exists(&self, tool_key: &str) -> Result<bool, ShinkaiLanceDBError> {
+        let query = self
+            .tool_table
+            .query()
+            .only_if(format!(
+                "{} = '{}'",
+                ShinkaiToolSchema::tool_key_field(),
+                tool_key.to_lowercase()
+            ))
+            .limit(1)
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        let results = query
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        Ok(!results.is_empty())
+    }
+
     pub async fn get_all_workflows(&self) -> Result<Vec<ShinkaiToolHeader>, ShinkaiLanceDBError> {
         let query = self
-            .table
+            .tool_table
             .query()
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
@@ -279,7 +345,7 @@ impl LanceShinkaiDb {
 
     pub async fn get_all_tools(&self) -> Result<Vec<ShinkaiToolHeader>, ShinkaiLanceDBError> {
         let query = self
-            .table
+            .tool_table
             .query()
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
@@ -353,7 +419,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
         let mut query_builder = self
-            .table
+            .tool_table
             .query()
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
@@ -415,7 +481,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
         let query = self
-            .table
+            .tool_table
             .query()
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
@@ -463,7 +529,7 @@ impl LanceShinkaiDb {
 
     pub async fn is_empty(&self) -> Result<bool, ShinkaiLanceDBError> {
         let query = self
-            .table
+            .tool_table
             .query()
             .limit(1)
             .execute()
@@ -480,7 +546,7 @@ impl LanceShinkaiDb {
 
     pub async fn has_any_js_tools(&self) -> Result<bool, ShinkaiLanceDBError> {
         let query = self
-            .table
+            .tool_table
             .query()
             .only_if(format!("{} = 'JS'", ShinkaiToolSchema::tool_type_field()))
             .limit(1)
@@ -558,7 +624,7 @@ mod tests {
         let duration = start_time.elapsed();
         println!("Added {} tools in {:?}", tool_count, duration);
 
-        let query = "search";
+        let query = "duckduckgo";
         let results = db
             .vector_search_enabled_tools(&query, 5)
             .await

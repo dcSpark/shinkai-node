@@ -4,7 +4,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
@@ -52,10 +52,26 @@ impl ToolRouter {
 
             // Add JS tools
             let _ = self.add_js_tools().await;
+
+            // Set the latest version in the database
+            self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_js_tools().await;
         }
+
+        Ok(())
+    }
+
+    pub async fn force_reinstall_all(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+        // Add workflows
+        let _ = self.add_static_workflows(generator).await;
+
+        // Add JS tools
+        let _ = self.add_js_tools().await;
+
+        // Set the latest version in the database
+        self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
 
         Ok(())
     }
@@ -259,6 +275,22 @@ impl ToolRouter {
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))
+    }
+
+    pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {
+        let lance_db = self.lance_db.lock().await;
+        lance_db
+            .get_current_version()
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))
+    }
+
+    pub async fn set_lancedb_version(&self, version: &str) -> Result<(), ToolError> {
+        let lance_db = self.lance_db.lock().await;
+        lance_db
+            .set_version(version)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 }
 

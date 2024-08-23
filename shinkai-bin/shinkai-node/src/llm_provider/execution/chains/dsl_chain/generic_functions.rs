@@ -799,7 +799,7 @@ mod tests {
             network_folders: Vec::new(),
         };
         shinkai_db_arc
-            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false)
+            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None)
             .unwrap();
 
         // Retrieve the created job
@@ -882,6 +882,7 @@ mod tests {
             HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
+            None, // Replace with actual SheetManager if needed
         );
 
         // Call the function to process embeddings in job scope
@@ -927,7 +928,7 @@ mod tests {
             network_folders: Vec::new(),
         };
         shinkai_db_arc
-            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false)
+            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None)
             .unwrap();
 
         // Retrieve the created job
@@ -1011,6 +1012,7 @@ mod tests {
             HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
+            None, // Replace with actual SheetManager if needed
         );
 
         // Call the function to search embeddings in job scope
