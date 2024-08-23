@@ -10,7 +10,7 @@ use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
@@ -460,7 +460,8 @@ impl Node {
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
-                if reinstall_tools {
+                let current_version = tool_router.lock().await.get_current_lancedb_version().await.unwrap_or(None);
+                if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
                     if let Err(e) = tool_router.lock().await.force_reinstall_all(generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }
