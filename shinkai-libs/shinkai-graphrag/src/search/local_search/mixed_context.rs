@@ -10,11 +10,12 @@ use crate::{
     context_builder::{
         community_context::CommunityContext,
         entity_extraction::map_query_to_entities,
-        local_context::{build_entity_context, build_relationship_context},
+        local_context::{build_entity_context, build_relationship_context, get_candidate_context},
+        source_context::{build_text_unit_context, count_relationships},
     },
     llm::llm::BaseTextEmbedding,
     models::{CommunityReport, Entity, Relationship, TextUnit},
-    retrieval::community_reports::get_candidate_communities,
+    retrieval::{community_reports::get_candidate_communities, text_units::get_candidate_text_units},
     vector_stores::vector_store::VectorStore,
 };
 
@@ -173,6 +174,7 @@ impl LocalSearchMixedContext {
         let mut final_context = Vec::new();
         let mut final_context_data = HashMap::new();
 
+        // build community context
         let community_tokens = std::cmp::max((max_tokens as f32 * community_prop) as usize, 0);
         let (community_context, community_context_data) = self._build_community_context(
             selected_entities.clone(),
@@ -190,6 +192,7 @@ impl LocalSearchMixedContext {
             final_context_data.extend(community_context_data);
         }
 
+        // build local (i.e. entity-relationship-covariate) context
         let local_prop = 1 as f32 - community_prop - text_unit_prop;
         let local_tokens = std::cmp::max((max_tokens as f32 * local_prop) as usize, 0);
         let (local_context, local_context_data) = self._build_local_context(
@@ -209,9 +212,22 @@ impl LocalSearchMixedContext {
             final_context_data.extend(local_context_data);
         }
 
-        let context_text = String::new();
-        let context_records = HashMap::new();
-        Ok((context_text, context_records))
+        // build text unit context
+        let text_unit_tokens = std::cmp::max((max_tokens as f32 * text_unit_prop) as usize, 0);
+        let (text_unit_context, text_unit_context_data) = self._build_text_unit_context(
+            selected_entities.clone(),
+            text_unit_tokens,
+            return_candidate_context,
+            "|",
+            "Sources",
+        )?;
+
+        if !text_unit_context.trim().is_empty() {
+            final_context.push(text_unit_context);
+            final_context_data.extend(text_unit_context_data);
+        }
+
+        Ok((final_context.join("\n\n"), final_context_data))
     }
 
     fn _build_community_context(
@@ -320,9 +336,7 @@ impl LocalSearchMixedContext {
             let context_key = context_name.to_lowercase();
             if !context_data.contains_key(&context_key) {
                 let mut new_data = candidate_context_data.clone();
-                new_data
-                    .with_column(Series::new("in_context", vec![false; candidate_context_data.height()]))
-                    .unwrap();
+                new_data.with_column(Series::new("in_context", vec![false; candidate_context_data.height()]))?;
                 context_data.insert(context_key.to_string(), new_data);
             } else {
                 let existing_data = context_data.get(&context_key).unwrap();
@@ -340,9 +354,7 @@ impl LocalSearchMixedContext {
                     context_data.insert(context_key.to_string(), new_data);
                 } else {
                     let mut existing_data = existing_data.clone();
-                    existing_data
-                        .with_column(Series::new("in_context", vec![true; existing_data.height()]))
-                        .unwrap();
+                    existing_data.with_column(Series::new("in_context", vec![true; existing_data.height()]))?;
                     context_data.insert(context_key.to_string(), existing_data);
                 }
             }
@@ -379,10 +391,10 @@ impl LocalSearchMixedContext {
         let mut final_context = Vec::new();
         let mut final_context_data = HashMap::new();
 
-        for entity in selected_entities {
+        for entity in &selected_entities {
             let mut current_context = Vec::new();
             let mut current_context_data = HashMap::new();
-            added_entities.push(entity);
+            added_entities.push(entity.clone());
 
             let (relationship_context, relationship_context_data) = build_relationship_context(
                 &added_entities,
@@ -397,7 +409,7 @@ impl LocalSearchMixedContext {
             )?;
 
             current_context.push(relationship_context.clone());
-            current_context_data.insert("relationships", relationship_context_data);
+            current_context_data.insert("relationships".to_string(), relationship_context_data);
 
             let total_tokens = entity_tokens + (self.num_tokens_fn)(&relationship_context);
 
@@ -413,8 +425,176 @@ impl LocalSearchMixedContext {
         let mut final_context_text = entity_context.to_string();
         final_context_text.push_str("\n\n");
         final_context_text.push_str(&final_context.join("\n\n"));
-        final_context_data.insert("entities", entity_context_data.clone());
+        final_context_data.insert("entities".to_string(), entity_context_data.clone());
 
-        Ok(("".to_string(), HashMap::new()))
+        if return_candidate_context {
+            let entities = self.entities.values().cloned().collect();
+            let relationships = self.relationships.values().cloned().collect();
+
+            let candidate_context_data = get_candidate_context(
+                &selected_entities,
+                &entities,
+                &relationships,
+                include_entity_rank,
+                rank_description,
+                include_relationship_weight,
+            )?;
+
+            for (key, candidate_df) in candidate_context_data {
+                if !final_context_data.contains_key(&key) {
+                    final_context_data.insert(key.clone(), candidate_df);
+                } else {
+                    let in_context_df = final_context_data.get_mut(&key).unwrap();
+
+                    if in_context_df.get_column_names().contains(&"id".to_string().as_str())
+                        && candidate_df.get_column_names().contains(&"id".to_string().as_str())
+                    {
+                        let context_ids = in_context_df.column("id")?;
+                        let candidate_ids = candidate_df.column("id")?;
+                        let mut new_data = candidate_df.clone();
+                        let in_context = is_in(candidate_ids, context_ids)?;
+                        let in_context = Series::new("in_context", in_context);
+                        new_data.with_column(in_context)?;
+                        final_context_data.insert(key.clone(), new_data);
+                    } else {
+                        in_context_df.with_column(Series::new("in_context", vec![true; in_context_df.height()]))?;
+                    }
+                }
+            }
+        } else {
+            for (_key, context_df) in final_context_data.iter_mut() {
+                context_df.with_column(Series::new("in_context", vec![true; context_df.height()]))?;
+            }
+        }
+
+        Ok((final_context_text, final_context_data))
+    }
+
+    fn _build_text_unit_context(
+        &self,
+        selected_entities: Vec<Entity>,
+        max_tokens: usize,
+        return_candidate_context: bool,
+        column_delimiter: &str,
+        context_name: &str,
+    ) -> anyhow::Result<(String, HashMap<String, DataFrame>)> {
+        if selected_entities.is_empty() || self.text_units.is_empty() {
+            return Ok((String::new(), HashMap::new()));
+        }
+
+        let mut selected_text_units: Vec<TextUnit> = Vec::new();
+
+        for (index, entity) in selected_entities.iter().enumerate() {
+            if let Some(text_unit_ids) = &entity.text_unit_ids {
+                for text_id in text_unit_ids {
+                    if !selected_text_units.iter().any(|unit| &unit.id == text_id)
+                        && self.text_units.contains_key(text_id)
+                    {
+                        let mut selected_unit = self.text_units[text_id].clone();
+                        let num_relationships = count_relationships(&selected_unit, entity, &self.relationships);
+                        selected_unit
+                            .attributes
+                            .as_mut()
+                            .unwrap_or(&mut HashMap::new())
+                            .insert("entity_order".to_string(), index.to_string());
+                        selected_unit
+                            .attributes
+                            .as_mut()
+                            .unwrap_or(&mut HashMap::new())
+                            .insert("num_relationships".to_string(), num_relationships.to_string());
+                        selected_text_units.push(selected_unit);
+                    }
+                }
+            }
+        }
+
+        selected_text_units.sort_by(|a, b| {
+            let a_order = a
+                .attributes
+                .as_ref()
+                .unwrap()
+                .get("entity_order")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap();
+            let b_order = b
+                .attributes
+                .as_ref()
+                .unwrap()
+                .get("entity_order")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap();
+
+            let a_relationships = a
+                .attributes
+                .as_ref()
+                .unwrap()
+                .get("num_relationships")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap();
+            let b_relationships = b
+                .attributes
+                .as_ref()
+                .unwrap()
+                .get("num_relationships")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap();
+
+            a_order
+                .cmp(&b_order)
+                .then_with(|| b_relationships.cmp(&a_relationships))
+        });
+
+        for unit in &mut selected_text_units {
+            unit.attributes.as_mut().unwrap().remove("entity_order");
+            unit.attributes.as_mut().unwrap().remove("num_relationships");
+        }
+
+        let (context_text, context_data) = build_text_unit_context(
+            selected_text_units,
+            self.num_tokens_fn,
+            column_delimiter,
+            false,
+            max_tokens,
+            context_name,
+            86,
+        )?;
+
+        let mut context_data = context_data;
+        if return_candidate_context {
+            let candidate_context_data =
+                get_candidate_text_units(&selected_entities, &self.text_units.values().cloned().collect())?;
+
+            let context_key = context_name.to_lowercase();
+            if !context_data.contains_key(&context_key) {
+                let mut new_data = candidate_context_data.clone();
+                new_data.with_column(Series::new("in_context", vec![false; candidate_context_data.height()]))?;
+                context_data.insert(context_key.to_string(), new_data);
+            } else {
+                let existing_data = context_data.get(&context_key).unwrap();
+                if candidate_context_data
+                    .get_column_names()
+                    .contains(&"id".to_string().as_str())
+                    && existing_data.get_column_names().contains(&"id".to_string().as_str())
+                {
+                    let existing_ids = existing_data.column("id")?;
+                    let context_ids = candidate_context_data.column("id")?;
+                    let mut new_data = candidate_context_data.clone();
+                    let in_context = is_in(context_ids, existing_ids)?;
+                    let in_context = Series::new("in_context", in_context);
+                    new_data.with_column(in_context)?;
+                    context_data.insert(context_key.to_string(), new_data);
+                } else {
+                    let mut existing_data = existing_data.clone();
+                    existing_data.with_column(Series::new("in_context", vec![true; existing_data.height()]))?;
+                    context_data.insert(context_key.to_string(), existing_data);
+                }
+            }
+        }
+
+        Ok((context_text, context_data))
     }
 }

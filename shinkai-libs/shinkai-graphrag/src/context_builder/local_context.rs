@@ -7,7 +7,13 @@ use polars::{frame::DataFrame, prelude::NamedFrom, series::Series};
 
 use crate::{
     models::{Entity, Relationship},
-    retrieval::relationships::{get_in_network_relationships, get_out_network_relationships},
+    retrieval::{
+        entities::to_entity_dataframe,
+        relationships::{
+            get_candidate_relationships, get_entities_from_relationships, get_in_network_relationships,
+            get_out_network_relationships, to_relationship_dataframe,
+        },
+    },
 };
 
 pub fn build_entity_context(
@@ -400,4 +406,29 @@ fn _filter_relationships(
     out_network_relationships.truncate(relationship_budget);
 
     Vec::new()
+}
+
+pub fn get_candidate_context(
+    selected_entities: &Vec<Entity>,
+    entities: &Vec<Entity>,
+    relationships: &Vec<Relationship>,
+    include_entity_rank: bool,
+    entity_rank_description: &str,
+    include_relationship_weight: bool,
+) -> anyhow::Result<HashMap<String, DataFrame>> {
+    let mut candidate_context = HashMap::new();
+
+    let candidate_relationships = get_candidate_relationships(selected_entities, relationships);
+    candidate_context.insert(
+        "relationships".to_string(),
+        to_relationship_dataframe(&candidate_relationships, include_relationship_weight)?,
+    );
+
+    let candidate_entities = get_entities_from_relationships(&candidate_relationships, entities);
+    candidate_context.insert(
+        "entities".to_string(),
+        to_entity_dataframe(&candidate_entities, include_entity_rank, entity_rank_description)?,
+    );
+
+    Ok(candidate_context)
 }
