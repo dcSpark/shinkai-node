@@ -624,7 +624,7 @@ mod tests {
         let duration = start_time.elapsed();
         println!("Added {} tools in {:?}", tool_count, duration);
 
-        let query = "search";
+        let query = "duckduckgo";
         let results = db
             .vector_search_enabled_tools(&query, 5)
             .await

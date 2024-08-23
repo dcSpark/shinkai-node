@@ -623,7 +623,10 @@ mod tests {
 
         // Update the column with new values: "Italy, France"
         let mut args = HashMap::new();
-        args.insert("column_position".to_string(), Box::new(0usize) as Box<dyn Any + Send>);
+        args.insert(
+            "column_position".to_string(),
+            Box::new("1".to_string()) as Box<dyn Any + Send>,
+        );
         args.insert(
             "values".to_string(),
             Box::new("Italy, France".to_string()) as Box<dyn Any + Send>,
@@ -686,8 +689,14 @@ mod tests {
 
         // Replace the value at position (0, 1) with "Brazil"
         let mut args = HashMap::new();
-        args.insert("column_position".to_string(), Box::new(0usize) as Box<dyn Any + Send>);
-        args.insert("row_position".to_string(), Box::new(1usize) as Box<dyn Any + Send>);
+        args.insert(
+            "column_position".to_string(),
+            Box::new("1".to_string()) as Box<dyn Any + Send>,
+        );
+        args.insert(
+            "row_position".to_string(),
+            Box::new("2".to_string()) as Box<dyn Any + Send>,
+        );
         args.insert(
             "new_value".to_string(),
             Box::new("Brazil".to_string()) as Box<dyn Any + Send>,
