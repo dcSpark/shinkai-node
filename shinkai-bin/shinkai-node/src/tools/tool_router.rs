@@ -70,6 +70,9 @@ impl ToolRouter {
         // Add JS tools
         let _ = self.add_js_tools().await;
 
+        // Set the latest version in the database
+        self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
+
         Ok(())
     }
 
