@@ -1,4 +1,5 @@
 use crate::tools::error::ToolError;
+use crate::tools::js_toolkit_headers::{BasicConfig, ToolConfig};
 use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use arrow_array::{Array, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
@@ -12,6 +13,7 @@ use lancedb::Error as LanceDbError;
 use lancedb::{connect, Connection, Table};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
+use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -134,13 +136,53 @@ impl LanceShinkaiDb {
         };
         let vectors = embedding;
 
+        // Update the tool header and data if the tool cannot be enabled
+        let mut shinkai_tool = shinkai_tool.clone();
+
+        // For Debugging
+        // add an if using env REINSTALL_TOOLS so we inject some configuration data for certain tools and also we make it enabled
+        if env::var("REINSTALL_TOOLS").is_ok() {
+            if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+                if tool_key.starts_with("shinkai-tool-coinbase") {
+                    if let (Ok(api_name), Ok(private_key), Ok(wallet_id), Ok(use_server_signer)) = (
+                        env::var("COINBASE_API_NAME"),
+                        env::var("COINBASE_API_PRIVATE_KEY"),
+                        env::var("COINBASE_API_WALLET_ID"),
+                        env::var("COINBASE_API_USE_SERVER_SIGNER"),
+                    ) {
+                        let mut updated_name = false;
+                        let mut updated_private_key = false;
+                        let mut updated_wallet_id = false;
+                        let mut updated_use_server_signer = false;
+
+                        for config in &mut js_tool.config {
+                            if let ToolConfig::BasicConfig(ref mut basic_config) = config {
+                                if basic_config.key_name == "name" {
+                                    basic_config.key_value = Some(api_name.clone());
+                                    updated_name = true;
+                                } else if basic_config.key_name == "privateKey" {
+                                    basic_config.key_value = Some(private_key.clone());
+                                    updated_private_key = true;
+                                } else if basic_config.key_name == "walletId" {
+                                    basic_config.key_value = Some(wallet_id.clone());
+                                    updated_wallet_id = true;
+                                } else if basic_config.key_name == "useServerSigner" {
+                                    basic_config.key_value = Some(use_server_signer.clone());
+                                    updated_use_server_signer = true;
+                                }
+                            }
+                        }
+                        shinkai_tool.enable();
+                    }
+                }
+            }
+        }
+
         let is_enabled = match shinkai_tool.is_enabled() {
             true => shinkai_tool.can_be_enabled(),
             false => false,
         };
 
-        // Update the tool header and data if the tool cannot be enabled
-        let mut shinkai_tool = shinkai_tool.clone();
         if shinkai_tool.is_enabled() && !shinkai_tool.can_be_enabled() {
             shinkai_tool.disable();
         }
