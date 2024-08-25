@@ -8,13 +8,14 @@ use lazy_static::lazy_static;
 use reqwest::blocking::Client;
 #[cfg(feature = "desktop-only")]
 use reqwest::Client as AsyncClient;
-use serde::{Deserialize, Serialize};
 use reqwest::ClientBuilder;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 lazy_static! {
     pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
     pub static ref DEFAULT_EMBEDDINGS_LOCAL_URL: &'static str = "http://localhost:11434/";
+    pub static ref MAX_CHUNK_SIZE: usize = 20;
 }
 
 /// A trait for types that can generate embeddings from text.
@@ -107,9 +108,11 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             }
             EmbeddingModelType::OllamaTextEmbeddingsInference(_) => {
                 let mut embeddings = Vec::new();
-                for (input_string, id) in input_strings.iter().zip(ids) {
-                    let embedding = self.generate_embedding_ollama_blocking(input_string, id)?;
-                    embeddings.push(embedding);
+                for chunk in input_strings.chunks(*MAX_CHUNK_SIZE).zip(ids.chunks(*MAX_CHUNK_SIZE)) {
+                    let (input_chunk, id_chunk) = chunk;
+                    let chunk_embeddings =
+                        self.generate_embedding_ollama_blocking(input_chunk.to_vec(), id_chunk.to_vec())?;
+                    embeddings.extend(chunk_embeddings);
                 }
                 Ok(embeddings)
             }
@@ -164,11 +167,12 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             }
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => {
                 let mut embeddings = Vec::new();
-                for (input_string, id) in input_strings.iter().zip(ids) {
-                    let embedding = self
-                        .generate_embedding_ollama(input_string.clone(), id.clone(), model.to_string())
+                for chunk in input_strings.chunks(*MAX_CHUNK_SIZE).zip(ids.chunks(*MAX_CHUNK_SIZE)) {
+                    let (input_chunk, id_chunk) = chunk;
+                    let chunk_embeddings = self
+                        .generate_embedding_ollama(input_chunk.to_vec(), id_chunk.to_vec(), model.to_string())
                         .await?;
-                    embeddings.push(embedding);
+                    embeddings.extend(chunk_embeddings);
                 }
                 Ok(embeddings)
             }
@@ -235,8 +239,8 @@ impl RemoteEmbeddingGenerator {
             api_key: None,
         }
     }
-     /// Create a RemoteEmbeddingGenerator that uses the default model and server
-     pub fn new_default_local() -> RemoteEmbeddingGenerator {
+    /// Create a RemoteEmbeddingGenerator that uses the default model and server
+    pub fn new_default_local() -> RemoteEmbeddingGenerator {
         let model_architecture =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
         RemoteEmbeddingGenerator {
@@ -260,31 +264,30 @@ impl RemoteEmbeddingGenerator {
     /// Ollama Text Embedding Interface server
     fn ollama_endpoint_url(&self) -> String {
         if self.api_url.ends_with('/') {
-            format!("{}api/embeddings", self.api_url)
+            format!("{}api/embed", self.api_url)
         } else {
-            format!("{}/api/embeddings", self.api_url)
+            format!("{}/api/embed", self.api_url)
         }
     }
 
     #[cfg(feature = "desktop-only")]
-    /// Generates embeddings using Hugging Face's Text Embedding Interface server
-    /// pub async fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
+    /// Generates embeddings using the Ollama API for multiple input strings.
     pub async fn generate_embedding_ollama(
         &self,
-        input_string: String,
-        id: String,
+        input_strings: Vec<String>,
+        ids: Vec<String>,
         model: String,
-    ) -> Result<Embedding, VRError> {
+    ) -> Result<Vec<Embedding>, VRError> {
         let max_retries = 3;
         let mut retry_count = 0;
         let mut shortening_retry = 0;
-        let mut input_string = input_string.clone();
+        let mut current_input_strings = input_strings.clone();
 
         loop {
             // Prepare the request body
             let request_body = OllamaEmbeddingsRequestBody {
                 model: model.clone(),
-                prompt: input_string.clone(),
+                input: current_input_strings.iter().map(|s| s.to_string()).collect(),
             };
 
             // Create the HTTP client with a custom timeout
@@ -311,11 +314,18 @@ impl RemoteEmbeddingGenerator {
                         response.json::<OllamaEmbeddingsResponse>().await;
                     match embedding_response {
                         Ok(embedding_response) => {
-                            let embedding = Embedding {
-                                id: String::from(id),
-                                vector: embedding_response.embedding,
-                            };
-                            return Ok(embedding);
+                            // Create a Vec<Embedding> by iterating over ids and embeddings
+                            let embeddings: Result<Vec<Embedding>, _> = ids
+                                .iter()
+                                .zip(embedding_response.embeddings.into_iter())
+                                .map(|(id, embedding)| {
+                                    Ok(Embedding {
+                                        id: id.clone(),
+                                        vector: embedding,
+                                    })
+                                })
+                                .collect();
+                            return embeddings;
                         }
                         Err(err) => {
                             return Err(VRError::RequestFailed(format!(
@@ -326,15 +336,24 @@ impl RemoteEmbeddingGenerator {
                     }
                 }
                 Ok(response) if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE => {
-                    // Calculate the maximum size allowed based on the number of retries
+                    let max_size = current_input_strings.iter().map(|s| s.len()).max().unwrap_or(0);
+                    // Increase the number of characters removed based on the number of retries
                     let reduction_step = if shortening_retry > 1 {
                         100 * shortening_retry
                     } else {
                         50
                     };
-                    let shortened_max_size = input_string.len().saturating_sub(reduction_step).max(5);
-                    input_string = input_string.chars().take(shortened_max_size).collect();
-
+                    let shortened_max_size = max_size.saturating_sub(reduction_step).max(5);
+                    current_input_strings = current_input_strings
+                        .iter()
+                        .map(|s| {
+                            if s.len() > shortened_max_size {
+                                s.chars().take(shortened_max_size).collect()
+                            } else {
+                                s.clone()
+                            }
+                        })
+                        .collect();
                     retry_count = 0;
                     shortening_retry += 1;
                     if shortening_retry > 10 {
@@ -367,12 +386,15 @@ impl RemoteEmbeddingGenerator {
     }
 
     #[cfg(feature = "desktop-only")]
-    /// Generate an Embedding for an input string by using the external Ollama API.
-    fn generate_embedding_ollama_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
+    /// Generate Embeddings for input strings by using the external Ollama API.
+    fn generate_embedding_ollama_blocking(
+        &self,
+        input_strings: Vec<String>,
+        ids: Vec<String>,
+    ) -> Result<Vec<Embedding>, VRError> {
         // Prepare the request body
-        let request_body = OllamaEmbeddingsRequestBody {
-            model: self.model_type.to_string(),
-            prompt: String::from(input_string),
+        let request_body = EmbeddingArrayRequestBody {
+            inputs: input_strings.iter().map(|s| s.to_string()).collect(),
         };
 
         // Create the HTTP client
@@ -398,15 +420,24 @@ impl RemoteEmbeddingGenerator {
         // Check if the response is successful
         if response.status().is_success() {
             // Deserialize the response JSON into a struct
-            let embedding_response: OllamaEmbeddingsResponse = response
+            let embedding_response: Vec<Vec<f32>> = response
                 .json()
                 .map_err(|err| VRError::RequestFailed(format!("Failed to deserialize response JSON: {}", err)))?;
 
-            // Use the response to create an Embedding instance
-            Ok(Embedding {
-                id: String::from(id),
-                vector: embedding_response.embedding,
-            })
+            // Create a Vec<Embedding> by iterating over ids and embeddings
+            let embeddings: Result<Vec<Embedding>, _> = ids
+                .iter()
+                .zip(embedding_response.into_iter())
+                .map(|(id, embedding)| {
+                    Ok(Embedding {
+                        id: id.clone(),
+                        vector: embedding,
+                    })
+                })
+                .collect();
+
+            // Return the embeddings
+            embeddings
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
             Err(VRError::RequestFailed(format!(
@@ -750,22 +781,19 @@ struct EmbeddingResponse {
 }
 
 #[derive(Serialize)]
-#[allow(dead_code)]
 struct EmbeddingArrayRequestBody {
     inputs: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
-struct OllamaEmbeddingsRequestBody {
-    model: String,
-    prompt: String,
+pub struct OllamaEmbeddingsRequestBody {
+    pub model: String,
+    pub input: Vec<String>,
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
-struct OllamaEmbeddingsResponse {
-    embedding: Vec<f32>,
+pub struct OllamaEmbeddingsResponse {
+    embeddings: Vec<Vec<f32>>,
 }
 
 // /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
