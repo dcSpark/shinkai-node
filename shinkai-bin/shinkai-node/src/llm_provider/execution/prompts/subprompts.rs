@@ -12,6 +12,7 @@ use super::prompts::Prompt;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPromptType {
     User,
+    UserLastMessage,
     System,
     Assistant,
     ExtraContext,
@@ -23,6 +24,7 @@ impl fmt::Display for SubPromptType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             SubPromptType::User => "user",
+            SubPromptType::UserLastMessage => "user",
             SubPromptType::System => "system",
             SubPromptType::Assistant => "assistant",
             SubPromptType::ExtraContext => "user",

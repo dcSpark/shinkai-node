@@ -286,6 +286,7 @@ impl Prompt {
         // Accumulator for ExtraContext content
         let mut extra_context_content = String::new();
         let mut processing_extra_context = false;
+        let mut last_user_message: Option<String> = None;
 
         for sub_prompt in &self.sub_prompts {
             match sub_prompt {
@@ -340,25 +341,10 @@ impl Prompt {
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
                     tiktoken_messages.push(new_message);
                 }
+                SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
+                    last_user_message = Some(content.clone());
+                }
                 _ => {
-                    // If we were processing ExtraContext, add it as a single System message
-                    if processing_extra_context {
-                        let extra_context_message = LlmMessage {
-                            role: Some(SubPromptType::User.to_string()),
-                            content: Some(extra_context_content.trim().to_string()),
-                            name: None,
-                            function_call: None,
-                            functions: None,
-                        };
-                        current_length +=
-                            ModelCapabilitiesManager::num_tokens_from_llama3(&[extra_context_message.clone()]);
-                        tiktoken_messages.push(extra_context_message);
-
-                        // Reset the accumulator
-                        extra_context_content.clear();
-                        processing_extra_context = false;
-                    }
-
                     // Process the current sub-prompt
                     let new_message = sub_prompt.into_chat_completion_request_message();
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
@@ -367,17 +353,25 @@ impl Prompt {
             }
         }
 
-        // If there are any remaining ExtraContext sub-prompts, add them as a single message
-        if processing_extra_context && !extra_context_content.is_empty() {
-            let extra_context_message = LlmMessage {
+        // Combine ExtraContext and UserLastMessage into one message
+        if !extra_context_content.is_empty() || last_user_message.is_some() {
+            let combined_content = format!(
+                "{}\n{}",
+                extra_context_content.trim(),
+                last_user_message.unwrap_or_default()
+            )
+            .trim()
+            .to_string();
+
+            let combined_message = LlmMessage {
                 role: Some(SubPromptType::User.to_string()),
-                content: Some(extra_context_content.trim().to_string()),
+                content: Some(combined_content),
                 name: None,
                 function_call: None,
                 functions: None,
             };
-            current_length += ModelCapabilitiesManager::num_tokens_from_llama3(&[extra_context_message.clone()]);
-            tiktoken_messages.push(extra_context_message);
+            current_length += ModelCapabilitiesManager::num_tokens_from_llama3(&[combined_message.clone()]);
+            tiktoken_messages.push(combined_message);
         }
 
         (tiktoken_messages, current_length)

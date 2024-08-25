@@ -57,17 +57,6 @@ impl JobPromptGenerator {
             }
         }
 
-        // Add the user question and the preference prompt for the answer
-        if !user_message.is_empty() {
-            let user_prompt = custom_user_prompt.unwrap_or_default();
-            let content = if user_prompt.is_empty() {
-                user_message.clone()
-            } else {
-                format!("{}\n {}", user_message, user_prompt)
-            };
-            prompt.add_content(content, SubPromptType::User, 100);
-        }
-
         // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
         // and also grouping i.e. instead of having 100 tiny messages, we have a message with the chunks grouped
         {
@@ -80,6 +69,17 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }
+        }
+
+        // Add the user question and the preference prompt for the answer
+        if !user_message.is_empty() {
+            let user_prompt = custom_user_prompt.unwrap_or_default();
+            let content = if user_prompt.is_empty() {
+                user_message.clone()
+            } else {
+                format!("{}\n {}", user_message, user_prompt)
+            };
+            prompt.add_content(content, SubPromptType::UserLastMessage, 100);
         }
 
         // If function_call exists, it means that the LLM requested a function call and we need to send the response back
