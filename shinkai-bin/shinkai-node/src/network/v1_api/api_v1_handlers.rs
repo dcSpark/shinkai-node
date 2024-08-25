@@ -1251,6 +1251,7 @@ pub struct APIUseRegistrationCodeSuccessResponse {
     pub node_name: String,
     pub encryption_public_key: String,
     pub identity_public_key: String,
+    pub api_v2_key: String,
 }
 
 pub async fn use_registration_code_handler(
@@ -1274,16 +1275,12 @@ pub async fn use_registration_code_handler(
                 "message": success_response.message,
                 "node_name": success_response.node_name,
                 "encryption_public_key": success_response.encryption_public_key,
-                "identity_public_key": success_response.identity_public_key
+                "identity_public_key": success_response.identity_public_key,
+                "api_v2_key": success_response.api_v2_key
             });
             let response = serde_json::json!({
                 "status": "success",
-                "data": data,
-                // TODO: remove the below repeated data  once the Apps have updated
-                "message": success_response.message,
-                "node_name": success_response.node_name,
-                "encryption_public_key": success_response.encryption_public_key,
-                "identity_public_key": success_response.identity_public_key
+                "data": data
             });
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
         }

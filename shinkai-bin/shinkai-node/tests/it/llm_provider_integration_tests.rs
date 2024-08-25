@@ -145,6 +145,7 @@ fn node_llm_provider_registration() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {

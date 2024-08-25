@@ -118,6 +118,7 @@ fn tcp_proxy_test_identity() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -140,6 +141,7 @@ fn tcp_proxy_test_identity() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -524,6 +526,7 @@ fn tcp_proxy_test_localhost() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -546,6 +549,7 @@ fn tcp_proxy_test_localhost() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 

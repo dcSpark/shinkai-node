@@ -106,6 +106,7 @@ fn subidentity_registration() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -128,6 +129,7 @@ fn subidentity_registration() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 

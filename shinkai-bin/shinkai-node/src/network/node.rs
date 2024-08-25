@@ -31,7 +31,8 @@ use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
-use rand::Rng;
+use rand::rngs::OsRng;
+use rand::{Rng, RngCore};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -139,6 +140,8 @@ pub struct Node {
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
     pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
+    // API V2 Key
+    pub api_v2_key: String,
 }
 
 impl Node {
@@ -163,6 +166,7 @@ impl Node {
         ws_address: Option<SocketAddr>,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
+        api_v2_key: Option<String>,
     ) -> Arc<Mutex<Node>> {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_name.to_string().clone()) {
@@ -347,6 +351,25 @@ impl Node {
         .await;
         let sheet_manager = sheet_manager_result.unwrap();
 
+        // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in the db
+        let api_v2_key = if let Some(key) = api_v2_key {
+            db_arc
+                .set_api_v2_key(&key)
+                .expect("Failed to set api_v2_key in the database");
+            key
+        } else {
+            match db_arc.read_api_v2_key() {
+                Ok(Some(key)) => key,
+                Ok(None) | Err(_) => {
+                    let new_key = Node::generate_api_v2_key();
+                    db_arc
+                        .set_api_v2_key(&new_key)
+                        .expect("Failed to set api_v2_key in the database");
+                    new_key
+                }
+            }
+        };
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -383,6 +406,7 @@ impl Node {
             tool_router: Some(Arc::new(Mutex::new(tool_router))),
             default_embedding_model,
             supported_embedding_models,
+            api_v2_key,
         }))
     }
 
@@ -460,7 +484,12 @@ impl Node {
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
-                let current_version = tool_router.lock().await.get_current_lancedb_version().await.unwrap_or(None);
+                let current_version = tool_router
+                    .lock()
+                    .await
+                    .get_current_lancedb_version()
+                    .await
+                    .unwrap_or(None);
                 if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
                     if let Err(e) = tool_router.lock().await.force_reinstall_all(generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
@@ -1456,6 +1485,12 @@ impl Node {
             }
             Err(e) => eprintln!("Failed to read validation data: {}", e),
         }
+    }
+
+    fn generate_api_v2_key() -> String {
+        let mut key = [0u8; 32]; // 256-bit key
+        OsRng.fill_bytes(&mut key);
+        base64::encode(&key)
     }
 }
 

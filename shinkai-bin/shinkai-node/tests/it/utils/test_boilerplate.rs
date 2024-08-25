@@ -112,6 +112,8 @@ where
         // Fetch the PROXY_ADDRESS environment variable
         let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
+        let api_v2_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
+
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -132,6 +134,7 @@ where
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            Some(api_v2_key),
         )
         .await;
 
