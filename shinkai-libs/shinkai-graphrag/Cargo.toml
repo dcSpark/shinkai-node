@@ -5,8 +5,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
+arrow = "52.1"
+arrow-array = "52.1"
+arrow-schema = "52.1"
 async-trait = "0.1.74"
 futures = "0.3.30"
+lancedb = "0.8.0"
 polars = { version = "0.41.3", features = ["dtype-struct", "is_in", "lazy", "parquet"] }
 polars-lazy = "0.41.3"
 rand = "0.8.5"

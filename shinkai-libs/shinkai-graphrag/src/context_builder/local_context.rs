@@ -6,14 +6,14 @@ use std::{
 use polars::{frame::DataFrame, prelude::NamedFrom, series::Series};
 
 use crate::{
-    models::{Entity, Relationship},
-    retrieval::{
+    input::retrieval::{
         entities::to_entity_dataframe,
         relationships::{
             get_candidate_relationships, get_entities_from_relationships, get_in_network_relationships,
             get_out_network_relationships, to_relationship_dataframe,
         },
     },
+    models::{Entity, Relationship},
 };
 
 pub fn build_entity_context(

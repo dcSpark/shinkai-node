@@ -1,7 +1,7 @@
 use polars::{io::SerReader, prelude::ParquetReader};
 use shinkai_graphrag::{
     context_builder::community_context::{CommunityContextBuilderParams, GlobalCommunityContext},
-    indexer_adapters::{indexer_entities::read_indexer_entities, indexer_reports::read_indexer_reports},
+    indexer_adapters::{read_indexer_entities, read_indexer_reports},
     llm::llm::LLMParams,
     search::global_search::global_search::{GlobalSearch, GlobalSearchParams},
 };

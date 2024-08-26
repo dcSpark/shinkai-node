@@ -13,9 +13,9 @@ use crate::{
         local_context::{build_entity_context, build_relationship_context, get_candidate_context},
         source_context::{build_text_unit_context, count_relationships},
     },
+    input::retrieval::{community_reports::get_candidate_communities, text_units::get_candidate_text_units},
     llm::llm::BaseTextEmbedding,
     models::{CommunityReport, Entity, Relationship, TextUnit},
-    retrieval::{community_reports::get_candidate_communities, text_units::get_candidate_text_units},
     vector_stores::vector_store::VectorStore,
 };
 

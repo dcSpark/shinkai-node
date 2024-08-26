@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use crate::{
+    input::retrieval::entities::{get_entity_by_key, get_entity_by_name},
     llm::llm::BaseTextEmbedding,
     models::Entity,
-    retrieval::entities::{get_entity_by_key, get_entity_by_name},
     vector_stores::vector_store::VectorStore,
 };
 

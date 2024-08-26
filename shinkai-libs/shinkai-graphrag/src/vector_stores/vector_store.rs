@@ -8,6 +8,7 @@ pub struct VectorStoreSearchResult {
 pub struct VectorStoreDocument {
     pub id: String,
     pub text: Option<String>,
+    pub vector: Option<Vec<f64>>,
     pub attributes: HashMap<String, String>,
 }
 
@@ -18,4 +19,6 @@ pub trait VectorStore {
         text_embedder: &dyn Fn(&str) -> Vec<f64>,
         k: usize,
     ) -> Vec<VectorStoreSearchResult>;
+
+    fn load_documents(&mut self, documents: Vec<VectorStoreDocument>, overwrite: bool) -> anyhow::Result<()>;
 }
