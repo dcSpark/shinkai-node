@@ -1,34 +1,20 @@
-use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::IdentityManager;
-use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::node::ProxyConnectionInfo;
-use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::ws_manager::WSUpdateHandler;
-use crate::network::Node;
-use crate::schemas::identity::StandardIdentity;
+use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use chrono::{DateTime, Utc};
-use dashmap::DashMap;
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription::{
-    ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
-};
-use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
-use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::env;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -38,22 +24,75 @@ use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry};
+use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
 #[derive(Debug)]
-pub enum AgentOfferingManagerError {}
+pub enum AgentOfferingManagerError {
+    OperationFailed(String),
+    InvalidUsageType(String),
+}
 
+// TODO: for the hash maybe we could use public_key + nonce
+// and then that hash it is used to produce another hash that's shared
+// this way we never share our public key + nonce
+// what's this public key? is it a new one generated from the sk?
+// should we use the name of the destination as part of the hash?
+
+// TODO: Maybe create a trait that's shared between the two structs?
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct InvoiceRequest {
     pub requester_name: ShinkaiName,
     pub tool_key_name: String,
     pub usage_type_inquiry: UsageTypeInquiry,
     pub date_time: DateTime<Utc>,
+    pub unique_id: String,
 }
 
-impl InvoiceRequest {
-    pub fn unique_id(&self) -> String {
-        format!("{}{}", self.requester_name.to_string(), self.date_time)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
+pub struct InternalInvoiceRequest {
+    pub requester_name: ShinkaiName,
+    pub tool_key_name: String,
+    pub usage_type_inquiry: UsageTypeInquiry,
+    pub date_time: DateTime<Utc>,
+    pub unique_id: String,
+    pub secret_prehash: String,
+}
+
+impl InternalInvoiceRequest {
+    pub fn new(requester_name: ShinkaiName, tool_key_name: String, usage_type_inquiry: UsageTypeInquiry) -> Self {
+        // Generate a random number
+        let random_number: u64 = rand::thread_rng().gen();
+
+        // Encode the random number in base64
+        let random_number_base64 = base64::encode(&random_number.to_be_bytes());
+
+        // Use only the first half of the base64 encoded string
+        let short_random_number = &random_number_base64[..random_number_base64.len() / 2];
+
+        // Combine the short random number and timestamp to create a unique ID
+        let unique_id = format!("{}", short_random_number);
+
+        // Generate a secret prehash value (example: using the tool_key_name and random number)
+        let secret_prehash = format!("{}{}", tool_key_name, random_number);
+
+        Self {
+            requester_name,
+            tool_key_name,
+            usage_type_inquiry,
+            date_time: Utc::now(),
+            unique_id,
+            secret_prehash,
+        }
+    }
+
+    pub fn to_invoice_request(&self) -> InvoiceRequest {
+        InvoiceRequest {
+            requester_name: self.requester_name.clone(),
+            tool_key_name: self.tool_key_name.clone(),
+            usage_type_inquiry: self.usage_type_inquiry.clone(),
+            date_time: self.date_time,
+            unique_id: self.unique_id.clone(),
+        }
     }
 }
 
@@ -67,12 +106,6 @@ pub struct Invoice {
     // average response time / congestion level or something like that
 }
 
-impl Invoice {
-    pub fn unique_id(&self) -> String {
-        self.invoice_id.clone()
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct InvoicePayment {
     pub invoice_id: String,
@@ -81,33 +114,20 @@ pub struct InvoicePayment {
     pub payment_id: String,
     pub payment_amount: String,
     pub payment_time: DateTime<Utc>,
+    pub requester_node_name: ShinkaiName,
+    // TODO: add payload and other stuff to be able to perform the job
+    // This is sent by the requester by verified by us before getting added
 }
 
-// TODO: NEtworkOffering not required
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub enum NetworkOffering {
-    InvoiceRequest(InvoiceRequest),
-    CashoutRequest(InvoicePayment),
-}
-
-impl Ord for NetworkOffering {
+impl Ord for InvoicePayment {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.date_time().cmp(&other.date_time())
+        self.date_time.cmp(&other.date_time)
     }
 }
 
-impl PartialOrd for NetworkOffering {
+impl PartialOrd for InvoicePayment {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl NetworkOffering {
-    fn date_time(&self) -> &DateTime<Utc> {
-        match self {
-            NetworkOffering::InvoiceRequest(req) => &req.date_time,
-            NetworkOffering::CashoutRequest(payment) => &payment.date_time,
-        }
     }
 }
 
@@ -120,7 +140,9 @@ pub struct AgentOfferingsManager {
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     // pub shared_tools: Arc<DashMap<String, ShinkaiToolOffering>>, // (streamer_profile:::path, shared_folder)
-    pub offerings_queue_manager: Arc<Mutex<JobQueueManager<NetworkOffering>>>,
+    pub offerings_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
+    pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
+    pub tool_router: Weak<Mutex<ToolRouter>>,
 }
 
 const NUM_THREADS: usize = 4;
@@ -135,11 +157,11 @@ impl AgentOfferingsManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        tool_router: Weak<Mutex<ToolRouter>>,
         // need tool_router
     ) -> Self {
         let db_prefix = "shinkai__tool__offering_"; // dont change it
-        let offerings_queue = JobQueueManager::<NetworkOffering>::new(
+        let offerings_queue = JobQueueManager::<InvoicePayment>::new(
             db.clone(),
             Topic::AnyQueuesPrefixed.as_str(),
             Some(db_prefix.to_string()),
@@ -154,7 +176,7 @@ impl AgentOfferingsManager {
 
         let offerings_queue_manager = Arc::new(Mutex::new(offerings_queue));
 
-        let subscription_queue_handler = AgentOfferingsManager::process_offerings_queue(
+        let offering_queue_handler = AgentOfferingsManager::process_offerings_queue(
             offerings_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
@@ -164,16 +186,18 @@ impl AgentOfferingsManager {
             identity_manager.clone(),
             thread_number,
             proxy_connection_info.clone(),
-            |network_offering,
+            tool_router.clone(),
+            |invoice_payment,
              db,
              vector_fs,
              node_name,
              my_signature_secret_key,
              my_encryption_secret_key,
              identity_manager,
-             proxy_connection_info| {
-                AgentOfferingsManager::process_subscription_job_message_queued(
-                    network_offering,
+             proxy_connection_info,
+             tool_router| {
+                AgentOfferingsManager::process_invoice_payment(
+                    invoice_payment,
                     db,
                     vector_fs,
                     node_name,
@@ -181,6 +205,7 @@ impl AgentOfferingsManager {
                     my_encryption_secret_key,
                     identity_manager,
                     proxy_connection_info,
+                    tool_router,
                 )
             },
         )
@@ -193,13 +218,15 @@ impl AgentOfferingsManager {
             my_encryption_secret_key,
             identity_manager,
             offerings_queue_manager,
+            offering_processing_task: Some(offering_queue_handler),
+            tool_router,
         }
     }
 
     // TODO: Should be split this into two? one for invoices and one for actual tool jobs?
     #[allow(clippy::too_many_arguments)]
     pub async fn process_offerings_queue(
-        offering_queue_manager: Arc<Mutex<JobQueueManager<NetworkOffering>>>,
+        offering_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
@@ -209,8 +236,9 @@ impl AgentOfferingsManager {
         // shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         thread_number: usize,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        tool_router: Weak<Mutex<ToolRouter>>,
         process_job: impl Fn(
-                NetworkOffering,
+                InvoicePayment,
                 Weak<ShinkaiDB>,
                 Weak<VectorFS>,
                 ShinkaiName,
@@ -218,20 +246,8 @@ impl AgentOfferingsManager {
                 EncryptionStaticKey,
                 Weak<Mutex<IdentityManager>>,
                 Weak<Mutex<Option<ProxyConnectionInfo>>>,
-            ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
-            + Send
-            + Sync
-            + 'static,
-        process_invoice: impl Fn(
-                NetworkOffering,
-                Weak<ShinkaiDB>,
-                Weak<VectorFS>,
-                ShinkaiName,
-                SigningKey,
-                EncryptionStaticKey,
-                Weak<Mutex<IdentityManager>>,
-                Weak<Mutex<Option<ProxyConnectionInfo>>>,
-            ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
+                Weak<Mutex<ToolRouter>>,
+            ) -> Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send>>
             + Send
             + Sync
             + 'static,
@@ -253,7 +269,7 @@ impl AgentOfferingsManager {
             loop {
                 let mut continue_immediately = false;
 
-                // Sort jobs by paid and then by inquiry
+                // Get the jobs to process
                 let jobs_sorted = {
                     let mut processing_jobs_lock = processing_jobs.lock().await;
                     let job_queue_manager_lock = offering_queue_manager.lock().await;
@@ -263,14 +279,11 @@ impl AgentOfferingsManager {
                     let filtered_jobs = all_jobs
                         .unwrap_or(Vec::new())
                         .into_iter()
-                        .filter_map(|job| {
-                            let job_id = match &job {
-                                NetworkOffering::InvoiceRequest(req) => req.tool_key_name.clone(),
-                                NetworkOffering::CashoutRequest(payment) => payment.invoice_id.clone(),
-                            };
-                            if !processing_jobs_lock.contains(&job_id) {
-                                processing_jobs_lock.insert(job_id.clone());
-                                Some(job)
+                        .filter_map(|invoice_payment| {
+                            let invoice_id = invoice_payment.invoice_id.clone(); // All jobs are now of the form of payment
+                            if !processing_jobs_lock.contains(&invoice_id) {
+                                processing_jobs_lock.insert(invoice_id.clone());
+                                Some(invoice_payment)
                             } else {
                                 None
                             }
@@ -286,10 +299,10 @@ impl AgentOfferingsManager {
                 };
                 // TODO: Sort jobs by paid and then by inquiry
 
-                for job_offering in jobs_sorted {
+                for invoice_payment in jobs_sorted {
                     eprintln!(
                         ">> (process_offerings_queue) Processing job_offering: {:?}",
-                        job_offering
+                        invoice_payment
                     );
                     let offering_queue_manager = Arc::clone(&offering_queue_manager);
                     let processing_jobs = Arc::clone(&processing_jobs);
@@ -302,72 +315,59 @@ impl AgentOfferingsManager {
                     let identity_manager = identity_manager.clone();
                     let process_job = process_job.clone();
                     let proxy_connection_info = proxy_connection_info.clone();
+                    let invoice_payment = invoice_payment.clone();
+                    let tool_router = tool_router.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
 
-                        // Acquire the lock, dequeue the job, and immediately release the lock
-                        let subscription_with_tree = {
-                            let job_queue_manager = offering_queue_manager.lock().await;
-                            job_queue_manager.peek(&job_offering).await
+                        // Acquire the lock, process the job, and immediately release the lock
+                        let result = {
+                            let result = process_job(
+                                invoice_payment.clone(),
+                                db.clone(),
+                                vector_fs.clone(),
+                                node_name.clone(),
+                                my_signature_secret_key.clone(),
+                                my_encryption_secret_key.clone(),
+                                identity_manager.clone(),
+                                proxy_connection_info.clone(),
+                                tool_router.clone(),
+                            )
+                            .await;
+                            if let Ok(Some(_)) = offering_queue_manager
+                                .lock()
+                                .await
+                                .dequeue(invoice_payment.invoice_id.as_str())
+                                .await
+                            {
+                                result
+                            } else {
+                                Err(AgentOfferingManagerError::OperationFailed(format!(
+                                    "Failed to dequeue job: {}",
+                                    invoice_payment.invoice_id.as_str()
+                                )))
+                            }
                         };
-
-                        match subscription_with_tree {
-                            Ok(Some(job)) => {
-                                // Acquire the lock, process the job, and immediately release the lock
-                                let result = {
-                                    let result = process_job(
-                                        job.clone(),
-                                        db.clone(),
-                                        vector_fs.clone(),
-                                        node_name.clone(),
-                                        my_signature_secret_key.clone(),
-                                        my_encryption_secret_key.clone(),
-                                        identity_manager.clone(),
-                                        shared_folders_trees.clone(),
-                                        subscription_ids_are_sync.clone(),
-                                        shared_folders_to_ephemeral_versioning_clone.clone(),
-                                        proxy_connection_info.clone(),
-                                    )
-                                    .await;
-                                    if let Ok(Some(_)) = job_queue_manager
-                                        .lock()
-                                        .await
-                                        .dequeue(job.subscription.subscription_id.clone().get_unique_id())
-                                        .await
-                                    {
-                                        result
-                                    } else {
-                                        Err(SubscriberManagerError::OperationFailed(format!(
-                                            "Failed to dequeue job: {}",
-                                            job.subscription.subscription_id.clone().get_unique_id()
-                                        )))
-                                    }
-                                };
-                                match result {
-                                    Ok(_) => {
-                                        shinkai_log(
-                                            ShinkaiLogOption::ExtSubscriptions,
-                                            ShinkaiLogLevel::Debug,
-                                            "process_subscription_queue: Job processed successfully",
-                                        );
-                                    } // handle success case
-                                    Err(_) => {
-                                        shinkai_log(
-                                            ShinkaiLogOption::ExtSubscriptions,
-                                            ShinkaiLogLevel::Error,
-                                            "Job processing failed",
-                                        );
-                                    } // handle error case
-                                }
-                            }
-                            Ok(None) => {}
+                        match result {
+                            Ok(_) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::ExtSubscriptions,
+                                    ShinkaiLogLevel::Debug,
+                                    "process_subscription_queue: Job processed successfully",
+                                );
+                            } // handle success case
                             Err(_) => {
-                                // Log the error
-                            }
+                                shinkai_log(
+                                    ShinkaiLogOption::ExtSubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    "Job processing failed",
+                                );
+                            } // handle error case
                         }
+
                         drop(_permit);
-                        processing_jobs.lock().await.remove(&job_offering);
+                        processing_jobs.lock().await.remove(&invoice_payment.invoice_id);
                     });
                     handles.push(handle);
                 }
@@ -387,52 +387,196 @@ impl AgentOfferingsManager {
                     shinkai_log(
                         ShinkaiLogOption::ExtSubscriptions,
                         ShinkaiLogLevel::Info,
-                        format!(
-                            "Received new subscription job {:?}",
-                            new_job.subscription.subscription_id.clone().get_unique_id().to_string()
-                        )
-                        .as_str(),
+                        format!("Received new paid invoice job {:?}", new_job.invoice_id.as_str()).as_str(),
                     );
                 }
             }
         })
     }
 
-    pub async fn update_shared_folders(&mut self) -> Result<(), SubscriberManagerError> {
-        let profiles = {
-            let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
-                "Database instance is not available".to_string(),
-            ))?;
-            let identities = db
-                .get_all_profiles(self.node_name.clone())
-                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
-            identities
-                .iter()
-                .filter_map(|i| i.full_identity_name.clone().get_profile_name_string())
-                .collect::<Vec<String>>()
+    #[allow(clippy::too_many_arguments)]
+    fn process_invoice_payment(
+        invoice_payment: InvoicePayment,
+        db: Weak<ShinkaiDB>,
+        _vector_fs: Weak<VectorFS>,
+        _node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+        maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        tool_router: Weak<Mutex<ToolRouter>>,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>> {
+        Box::pin(async move {
+            // Actually do the work by calling tool_router
+            // Then craft the message with the response and send it back to the requester
+            Ok(format!("Done. thx"))
+        })
+    }
+
+    pub async fn available_tools(&mut self) -> Result<Vec<String>, AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        let tools = db.get_all_tool_offerings().map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
+        })?;
+
+        let tool_names = tools.into_iter().map(|tool| tool.human_readable_name).collect();
+
+        Ok(tool_names)
+    }
+
+    pub async fn update_shareable_tool_requirements(
+        &self,
+        updated_offering: ShinkaiToolOffering,
+    ) -> Result<bool, AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        db.set_tool_offering(updated_offering).map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to update tool offering: {:?}", e))
+        })?;
+
+        Ok(true)
+    }
+
+    pub async fn make_tool_shareable(
+        &mut self,
+        offering: ShinkaiToolOffering,
+    ) -> Result<bool, AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        db.set_tool_offering(offering)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to share tool: {:?}", e)))?;
+
+        Ok(true)
+    }
+
+    pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| SubscriberManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        db.remove_tool_offering(&tool_key_name)
+            .map_err(|e| SubscriberManagerError::OperationFailed(format!("Failed to unshare tool: {:?}", e)))?;
+
+        Ok(true)
+    }
+
+    pub async fn request_invoice(
+        &mut self,
+        requester_node_name: ShinkaiName,
+        tool_key_name: String,
+        usage_type_inquiry: UsageTypeInquiry,
+    ) -> Result<Invoice, AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        let shinkai_offering = db
+            .get_tool_offering(&tool_key_name)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
+
+        let usage_type = match usage_type_inquiry {
+            UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
+                UsageType::PerUse(price) => UsageType::PerUse(price),
+                UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
+                _ => {
+                    return Err(AgentOfferingManagerError::InvalidUsageType(
+                        "Invalid usage type for PerUse inquiry".to_string(),
+                    ))
+                }
+            },
+            UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
+                UsageType::Downloadable(price) => UsageType::Downloadable(price),
+                UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
+                _ => {
+                    return Err(AgentOfferingManagerError::InvalidUsageType(
+                        "Invalid usage type for Downloadable inquiry".to_string(),
+                    ))
+                }
+            },
         };
 
-        for profile in profiles {
-            let result = self
-                .available_shared_folders(
-                    self.node_name.clone(),
-                    profile.clone(),
-                    self.node_name.clone(),
-                    profile.clone(),
-                    "/".to_string(),
-                )
-                .await;
-            shinkai_log(
-                ShinkaiLogOption::ExtSubscriptions,
-                ShinkaiLogLevel::Debug,
-                format!(
-                    "ExternalSubscriberManager::update_shared_folders for profile {:?} result: {:?}",
-                    profile, result
-                )
-                .as_str(),
-            );
-        }
+        // TODO: invoice_id needs to be smarter
+        // we need to make it based on the content of the request + some time + random number
 
-        Ok(())
+        let invoice_request =
+            InternalInvoiceRequest::new(requester_node_name.clone(), tool_key_name, usage_type_inquiry);
+
+        let invoice = Invoice {
+            invoice_id: invoice_request.unique_id.clone(),
+            requester_name: requester_node_name,
+            shinkai_offering: ShinkaiToolOffering {
+                tool_key_name: invoice_request.tool_key_name.clone(),
+                human_readable_name: shinkai_offering.human_readable_name.clone(),
+                tool_description: shinkai_offering.tool_description.clone(),
+                usage_type,
+            },
+            expiration_time: Utc::now(),
+        };
+
+        Ok(invoice)
+    }
+
+    pub async fn confirm_invoice_payment_and_process(
+        &mut self,
+        requester_node_name: ShinkaiName,
+        invoice_id: String,
+        signed_invoice: String, // TODO: maybe not required? we could just look into the db
+        prehash_validation: String,
+        process_data: Value,
+        payment_id: String,
+        payment_amount: String,
+    ) -> Result<InvoicePayment, AgentOfferingManagerError> {
+        let invoice_payment = InvoicePayment {
+            invoice_id,
+            date_time: Utc::now(),
+            signed_invoice,
+            payment_id,
+            payment_amount,
+            payment_time: Utc::now(),
+            requester_node_name,
+        };
+
+        // TODO: we need the transaction_id and then call the crypto service to verify the payment
+        // Note: how do we know that this identity actually was the one that paid for it? -> prehash validation
+
+        // TODO: update the db and mark the invoice as paid (maybe after the job is done)
+        // Note: what happens if the job fails? should we retry and then good-luck with the payment?
+        // Should we actually receive the job input before the payment so we can confirm that we are "comfortable" with the job?
+        // What happens if you want to crawl a website, but the website is down? should we refund the payment?
+        // What happens if the job is done, but the requester is not happy with the result? should we refund the payment?
+
+        Ok(invoice_payment)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_unique_id() {
+        let invoice_request = InternalInvoiceRequest::new(
+            ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),
+            "test_tool".to_string(),
+            UsageTypeInquiry::PerUse,
+        );
+
+        println!("Generated unique_id: {}", invoice_request.unique_id);
+
+        // Assert that the unique_id is not empty
+        assert!(!invoice_request.unique_id.is_empty());
     }
 }

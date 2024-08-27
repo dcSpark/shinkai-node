@@ -17,6 +17,18 @@ pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
     JS(JSTool, IsEnabled),
     Workflow(WorkflowTool, IsEnabled),
+    // TODO: add NetworkTool
+    // Network(NetworkTool, IsEnabled),
+}
+
+pub struct NetworkTool {
+    // name
+    // description
+    // provider (ShinkaiName)
+    // price
+    // activated
+    // embedding
+    // restrictions (per tool in terms of usage)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
