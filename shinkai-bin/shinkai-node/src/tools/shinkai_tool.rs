@@ -7,7 +7,7 @@ use crate::tools::rust_tools::RustTool;
 use serde_json::{self};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{js_toolkit_headers::ToolConfig, workflow_tool::WorkflowTool};
+use super::{js_toolkit_headers::ToolConfig, network_tool::NetworkTool, workflow_tool::WorkflowTool};
 
 pub type IsEnabled = bool;
 
@@ -17,18 +17,7 @@ pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
     JS(JSTool, IsEnabled),
     Workflow(WorkflowTool, IsEnabled),
-    // TODO: add NetworkTool
-    // Network(NetworkTool, IsEnabled),
-}
-
-pub struct NetworkTool {
-    // name
-    // description
-    // provider (ShinkaiName)
-    // price
-    // activated
-    // embedding
-    // restrictions (per tool in terms of usage)
+    Network(NetworkTool, IsEnabled),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -71,6 +60,7 @@ impl ShinkaiTool {
                     match self {
                         ShinkaiTool::Rust(r, _) => r.toolkit_type_name(),
                         ShinkaiTool::JS(j, _) => j.toolkit_name.to_string(),
+                        ShinkaiTool::Network(n, _) => n.name.clone(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
@@ -91,6 +81,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
             ShinkaiTool::JS(j, _) => j.name.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_name(),
+            ShinkaiTool::Network(n, _) => n.name.clone(),
         }
     }
     /// Tool description
@@ -99,6 +90,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.description.clone(),
             ShinkaiTool::JS(j, _) => j.description.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_description(),
+            ShinkaiTool::Network(n, _) => n.description.clone(),
         }
     }
 
@@ -108,6 +100,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
             ShinkaiTool::JS(j, _) => j.name.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_name(),
+            ShinkaiTool::Network(n, _) => n.name.clone(),
         }
     }
 
@@ -117,6 +110,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.toolkit_type_name().clone(),
             ShinkaiTool::JS(j, _) => j.toolkit_name.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_name(),
+            ShinkaiTool::Network(n, _) => n.name.clone(),
         }
     }
 
@@ -126,6 +120,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.input_args.clone(),
             ShinkaiTool::JS(j, _) => j.input_args.clone(),
             ShinkaiTool::Workflow(w, _) => w.get_input_args(),
+            ShinkaiTool::Network(n, _) => n.input_args.clone(),
         }
     }
 
@@ -135,6 +130,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_, _) => "Rust",
             ShinkaiTool::JS(_, _) => "JS",
             ShinkaiTool::Workflow(_, _) => "Workflow",
+            ShinkaiTool::Network(_, _) => "Network",
         }
     }
 
@@ -154,6 +150,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
             ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
             ShinkaiTool::Workflow(w, _) => w.embedding = Some(embedding),
+            ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
         }
     }
 
@@ -207,6 +204,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
             ShinkaiTool::JS(j, _) => j.embedding.clone(),
             ShinkaiTool::Workflow(w, _) => w.embedding.clone(),
+            ShinkaiTool::Network(n, _) => n.embedding.clone(),
         }
     }
 
@@ -224,6 +222,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
             ShinkaiTool::JS(j, _) => j.author.clone(),
             ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
+            ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
         }
     }
 
@@ -233,6 +232,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
             ShinkaiTool::JS(_j, _) => "v0.1".to_string(),
             ShinkaiTool::Workflow(w, _) => w.workflow.version.clone(),
+            ShinkaiTool::Network(n, _) => n.version.clone(),
         }
     }
 
@@ -242,6 +242,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_, enabled) => *enabled,
             ShinkaiTool::JS(_, enabled) => *enabled,
             ShinkaiTool::Workflow(_, enabled) => *enabled,
+            ShinkaiTool::Network(_, enabled) => *enabled,
         }
     }
 
@@ -251,6 +252,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_, enabled) => *enabled = true,
             ShinkaiTool::JS(_, enabled) => *enabled = true,
             ShinkaiTool::Workflow(_, enabled) => *enabled = true,
+            ShinkaiTool::Network(_, enabled) => *enabled = true,
         }
     }
 
@@ -260,6 +262,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_, enabled) => *enabled = false,
             ShinkaiTool::JS(_, enabled) => *enabled = false,
             ShinkaiTool::Workflow(_, enabled) => *enabled = false,
+            ShinkaiTool::Network(_, enabled) => *enabled = false,
         }
     }
 
@@ -278,6 +281,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(_, _) => true,
             ShinkaiTool::Workflow(_, _) => true,
             ShinkaiTool::JS(js_tool, _) => js_tool.check_required_config_fields(),
+            ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
         }
     }
 
@@ -306,6 +310,11 @@ impl ShinkaiTool {
     pub fn is_workflow_based(&self) -> bool {
         matches!(self, ShinkaiTool::Workflow(_, _))
     }
+
+    /// Check if the tool is Workflow-based
+    pub fn is_network_based(&self) -> bool {
+        matches!(self, ShinkaiTool::Network(_, _))
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
@@ -317,5 +326,11 @@ impl From<RustTool> for ShinkaiTool {
 impl From<JSTool> for ShinkaiTool {
     fn from(tool: JSTool) -> Self {
         ShinkaiTool::JS(tool, true)
+    }
+}
+
+impl From<NetworkTool> for ShinkaiTool {
+    fn from(tool: NetworkTool) -> Self {
+        ShinkaiTool::Network(tool, true)
     }
 }

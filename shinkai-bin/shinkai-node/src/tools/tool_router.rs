@@ -272,6 +272,10 @@ impl ToolRouter {
                     function_call,
                 });
             }
+            ShinkaiTool::Network(network_tool, _) => {
+                // TOOD: implement this
+                unimplemented!("WIP")
+            }
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))

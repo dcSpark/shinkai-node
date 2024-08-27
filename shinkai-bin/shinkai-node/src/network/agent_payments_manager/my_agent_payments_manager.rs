@@ -1,4 +1,3 @@
-
 /*
 - My Agent Payments Manager
 
@@ -16,6 +15,26 @@ Notes:
 can it be done in one step? maybe we have rules per: tool, provider or overall spending.
 
 */
+
+use std::{rc::Weak, sync::Arc};
+
+use chrono::Utc;
+use ed25519_dalek::SigningKey;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use tokio::sync::Mutex;
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+use crate::{
+    db::ShinkaiDB,
+    managers::IdentityManager,
+    tools::{network_tool::NetworkTool, tool_router::ToolRouter},
+    vector_fs::vector_fs::VectorFS,
+};
+
+use super::{
+    external_agent_payments_manager::{AgentOfferingManagerError, InternalInvoiceRequest, Invoice},
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry},
+};
 
 pub struct MyAgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
@@ -38,18 +57,17 @@ impl MyAgentOfferingsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        // proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        // ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
     ) -> Self {
         Self {
             db,
+            vector_fs,
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
             identity_manager,
-            offerings_queue_manager,
-            offering_processing_task: Some(offering_queue_handler),
             tool_router,
         }
     }
@@ -62,19 +80,165 @@ impl MyAgentOfferingsManager {
     // Fn: (Temp) Hardcoded list of offerings of a provider (PoC)
 
     // Fn: Request an invoice <- can we triggered by the user through API
+    // Note: currently works only for added network tools
+    pub async fn request_invoice(
+        &self,
+        network_tool: NetworkTool,
+        usage_type_inquiry: UsageTypeInquiry,
+    ) -> Result<(), AgentOfferingManagerError> {
+        // Upgrade the database reference to a strong reference
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        // Get the offering for the requested tool key name
+        let shinkai_offering = db
+            .get_tool_offering(&network_tool.tool_router_key())
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
+
+        // Determine the appropriate usage type based on the inquiry and the available offering
+        let usage_type = match usage_type_inquiry {
+            UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
+                UsageType::PerUse(price) => UsageType::PerUse(price),
+                UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
+                _ => {
+                    return Err(AgentOfferingManagerError::InvalidUsageType(
+                        "Invalid usage type for PerUse inquiry".to_string(),
+                    ))
+                }
+            },
+            UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
+                UsageType::Downloadable(price) => UsageType::Downloadable(price),
+                UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
+                _ => {
+                    return Err(AgentOfferingManagerError::InvalidUsageType(
+                        "Invalid usage type for Downloadable inquiry".to_string(),
+                    ))
+                }
+            },
+        };
+
+        // Create a new InternalInvoiceRequest
+        let internal_invoice_request = InternalInvoiceRequest::new(
+            network_tool.provider.clone(),
+            network_tool.tool_router_key(),
+            usage_type_inquiry,
+        );
+
+        // Store the InternalInvoiceRequest in the database
+        db.set_internal_invoice_request(&internal_invoice_request)
+            .map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Failed to store internal invoice request: {:?}", e))
+            })?;
+
+        // TODO: Add code to request an invoice
+
+        // Return the generated invoice
+        Ok(())
+    }
 
     // Fn: Verify an invoice
     // - Check if the invoice is valid (even if we asked for it)
     // - Check about any rules for auto-payment
+    pub async fn verify_invoice(&self, invoice: &Invoice) -> Result<bool, AgentOfferingManagerError> {
+        // Upgrade the database reference to a strong reference
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        // Try to retrieve the corresponding InternalInvoiceRequest from the database
+        let _internal_invoice_request = match db.get_internal_invoice_request(&invoice.invoice_id) {
+            Ok(request) => request,
+            Err(_) => {
+                // If no corresponding InternalInvoiceRequest is found, the invoice is invalid
+                return Ok(false);
+            }
+        };
+
+        // Additional logic could be added here to check any rules for auto-payment.
+        // For example, checking if the invoice matches certain criteria or thresholds
+        // for automatic approval/payment.
+
+        // If we found the corresponding InternalInvoiceRequest, the invoice is valid
+        Ok(true)
+    }
 
     // Fn: Pay an invoice and wait for the blockchain update of it
+    pub async fn pay_invoice(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+        // Mocking the payment process
+        println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
+
+        // Simulate payment processing delay
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        // Simulate blockchain confirmation or update
+        println!("Waiting for blockchain confirmation...");
+
+        // Simulate blockchain update delay
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        // Assume the payment was successful and the blockchain has confirmed the transaction
+        println!(
+            "Payment successful for invoice ID: {}. Blockchain update confirmed.",
+            invoice.invoice_id
+        );
+
+        // In a real implementation, this is where you would handle the actual payment logic and blockchain integration.
+        // You might want to check the status of the transaction on the blockchain and confirm that it has been committed.
+
+        Ok(())
+    }
+
+    // Note: For Testing
+    // Fn: Automatically verify and pay an invoice, then send receipt and data to the provider
+    pub async fn auto_pay_invoice(&self, invoice: Invoice) -> Result<(), AgentOfferingManagerError> {
+        // Step 1: Verify the invoice
+        let is_valid = self.verify_invoice(&invoice).await?;
+        if !is_valid {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Invoice verification failed".to_string(),
+            ));
+        }
+
+        // Step 2: Pay the invoice
+        self.pay_invoice(&invoice).await?;
+
+        // Step 3: Send receipt and data to provider
+        self.send_receipt_and_data_to_provider(&invoice).await?;
+
+        Ok(())
+    }
 
     // Fn: Send the receipt and the data for the job to the provider
+    pub async fn send_receipt_and_data_to_provider(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+        // Mocking the process of sending receipt and data to the provider
+        println!(
+            "Sending receipt for invoice ID: {} to provider: {}",
+            invoice.invoice_id, invoice.requester_name
+        );
+
+        // Simulate sending process delay
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Simulate a successful send
+        println!(
+            "Receipt and data successfully sent for invoice ID: {}",
+            invoice.invoice_id
+        );
+
+        // In a real implementation, you would send the actual receipt and relevant data
+        // to the provider using appropriate communication protocols (e.g., HTTP, gRPC, etc.).
+
+        Ok(())
+    }
 
     // Fn: Receive the response from the provider and process it -> update the job
 
     // Note: Should be create a new type of ShinkaiTool "NetworkTool" that can be called by an LLM?
     // We could extend the schema with some rules for the payment and the usage of the tool depending on the network.
+    // When we try to execute it it would perform the entire flow (and even wait for user confirmation if required).
 
     // For now we could do an extra search for available tools on the network and show the user
     // if any of the options is interesting for them and the price.
@@ -88,7 +252,6 @@ impl MyAgentOfferingsManager {
     // We could even do two searches: one of the locals and one for the locals + network tools (so we know which ones are the best to use).
     // ONLY: if the user has a wallet set up.
 
-
     // Thoughts
-    // Should we add a way to scan previous invoices sent to the chain? if we reset the node but we wouldnt be able to know if they were already claimed.
+    // Should we add a way to scan previous invoices sent to the chain? if we reset the node but we wouldn't be able to know if they were already claimed.
 }

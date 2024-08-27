@@ -22,3 +22,5 @@ pub mod db_settings;
 pub mod db_network_notifications;
 pub mod db_uploaded_files_links;
 pub mod db_sheet;
+pub mod db_invoice;
+pub mod db_internal_invoice_request;
