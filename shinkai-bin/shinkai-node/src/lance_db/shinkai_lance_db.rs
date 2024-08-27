@@ -298,7 +298,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))
     }
 
-    async fn tool_exists(&self, tool_key: &str) -> Result<bool, ShinkaiLanceDBError> {
+    pub async fn tool_exists(&self, tool_key: &str) -> Result<bool, ShinkaiLanceDBError> {
         let query = self
             .tool_table
             .query()

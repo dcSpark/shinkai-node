@@ -2708,6 +2708,55 @@ impl Node {
                     let _ = Node::v2_api_list_files_in_inbox(db_clone, vector_fs_clone, bearer, inbox_name, res).await;
                 });
             }
+            NodeCommand::V2ApiGetToolOffering { bearer, tool_key_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tool_offering(
+                        db_clone,
+                        bearer,
+                        tool_key_name,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiRemoveToolOffering { bearer, tool_key_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_remove_tool_offering(
+                        db_clone,
+                        bearer,
+                        tool_key_name,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiGetAllToolOfferings { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_all_tool_offering(
+                        db_clone,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiSetToolOffering { bearer, tool_offering, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_tool_offering(
+                        db_clone,
+                        lance_db,
+                        bearer,
+                        tool_offering,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

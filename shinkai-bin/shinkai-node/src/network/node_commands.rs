@@ -12,21 +12,33 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
+            APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp,
+            APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
+            APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
+            APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+            APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
         },
     },
 };
 
-use crate::{schemas::{
-    identity::{Identity, StandardIdentity},
-    smart_inbox::{SmartInbox, V2SmartInbox},
-}, tools::shinkai_tool::ShinkaiTool};
+use crate::{
+    schemas::{
+        identity::{Identity, StandardIdentity},
+        smart_inbox::{SmartInbox, V2SmartInbox},
+    },
+    tools::shinkai_tool::ShinkaiTool,
+};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
+    agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering,
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    v2_api::api_v2_handlers_general::InitialRegistrationRequest,
+    v2_api::{
+        api_v2_handlers_ext_agent_offers::GetToolOfferingRequest, api_v2_handlers_general::InitialRegistrationRequest,
+    },
 };
 
 pub enum NodeCommand {
@@ -770,7 +782,7 @@ pub enum NodeCommand {
     },
     V2ApiModifyLlmProvider {
         bearer: String,
-        agent: SerializedLLMProvider, 
+        agent: SerializedLLMProvider,
         res: Sender<Result<String, APIError>>,
     },
     V2ApiChangeNodesName {
@@ -790,5 +802,25 @@ pub enum NodeCommand {
         bearer: String,
         payload: APIAddOllamaModels,
         res: Sender<Result<(), APIError>>,
+    },
+    // New Stuff
+    V2ApiGetToolOffering {
+        bearer: String,
+        tool_key_name: String,
+        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+    },
+    V2ApiRemoveToolOffering {
+        bearer: String,
+        tool_key_name: String,
+        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+    },
+    V2ApiGetAllToolOfferings {
+        bearer: String,
+        res: Sender<Result<Vec<ShinkaiToolOffering>, APIError>>,
+    },
+    V2ApiSetToolOffering {
+        bearer: String,
+        tool_offering: ShinkaiToolOffering,
+        res: Sender<Result<ShinkaiToolOffering, APIError>>,
     },
 }
