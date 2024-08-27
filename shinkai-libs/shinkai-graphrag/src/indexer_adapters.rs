@@ -1,9 +1,11 @@
+use std::vec;
+
 use polars::prelude::*;
 use polars_lazy::dsl::col;
 
 use crate::{
-    input::loaders::dfs::{read_community_reports, read_entities},
-    models::{CommunityReport, Entity},
+    input::loaders::dfs::{read_community_reports, read_entities, read_relationships, read_text_units},
+    models::{CommunityReport, Entity, Relationship, TextUnit},
 };
 
 pub fn read_indexer_entities(
@@ -96,6 +98,41 @@ pub fn read_indexer_reports(
         None,
     )?;
     Ok(reports)
+}
+
+pub fn read_indexer_relationships(final_relationships: &DataFrame) -> anyhow::Result<Vec<Relationship>> {
+    let relationships = read_relationships(
+        final_relationships.clone(),
+        "id",
+        Some("human_readable_id"),
+        "source",
+        "target",
+        Some("description"),
+        None,
+        Some("weight"),
+        Some("text_unit_ids"),
+        None,
+        Some(vec!["rank"]),
+    )?;
+
+    Ok(relationships)
+}
+
+pub fn read_indexer_text_units(final_text_units: &DataFrame) -> anyhow::Result<Vec<TextUnit>> {
+    let text_units = read_text_units(
+        final_text_units.clone(),
+        "id",
+        None,
+        "text",
+        Some("entity_ids"),
+        Some("relationship_ids"),
+        Some("n_tokens"),
+        Some("document_ids"),
+        Some("text_embedding"),
+        None,
+    )?;
+
+    Ok(text_units)
 }
 
 fn filter_under_community_level(df: &DataFrame, community_level: u32) -> anyhow::Result<DataFrame> {

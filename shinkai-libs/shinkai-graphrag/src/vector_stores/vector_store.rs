@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::llm::llm::BaseTextEmbedding;
+
 pub struct VectorStoreSearchResult {
     pub document: VectorStoreDocument,
     pub score: f64,
@@ -16,9 +18,13 @@ pub trait VectorStore {
     fn similarity_search_by_text(
         &self,
         text: &str,
-        text_embedder: &dyn Fn(&str) -> Vec<f64>,
+        text_embedder: &Box<dyn BaseTextEmbedding + Send + Sync>,
         k: usize,
-    ) -> Vec<VectorStoreSearchResult>;
+    ) -> impl std::future::Future<Output = anyhow::Result<Vec<VectorStoreSearchResult>>> + Send;
 
-    fn load_documents(&mut self, documents: Vec<VectorStoreDocument>, overwrite: bool) -> anyhow::Result<()>;
+    fn load_documents(
+        &mut self,
+        documents: Vec<VectorStoreDocument>,
+        overwrite: bool,
+    ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
 }

@@ -16,7 +16,7 @@ use crate::{
     input::retrieval::{community_reports::get_candidate_communities, text_units::get_candidate_text_units},
     llm::llm::BaseTextEmbedding,
     models::{CommunityReport, Entity, Relationship, TextUnit},
-    vector_stores::vector_store::VectorStore,
+    vector_stores::lancedb::LanceDBVectorStore,
 };
 
 #[derive(Debug, Clone)]
@@ -69,8 +69,8 @@ pub fn default_local_context_params() -> MixedContextBuilderParams {
 
 pub struct LocalSearchMixedContext {
     entities: HashMap<String, Entity>,
-    entity_text_embeddings: Box<dyn VectorStore>,
-    text_embedder: Box<dyn BaseTextEmbedding>,
+    entity_text_embeddings: LanceDBVectorStore,
+    text_embedder: Box<dyn BaseTextEmbedding + Send + Sync>,
     text_units: HashMap<String, TextUnit>,
     community_reports: HashMap<String, CommunityReport>,
     relationships: HashMap<String, Relationship>,
@@ -81,8 +81,8 @@ pub struct LocalSearchMixedContext {
 impl LocalSearchMixedContext {
     pub fn new(
         entities: Vec<Entity>,
-        entity_text_embeddings: Box<dyn VectorStore>,
-        text_embedder: Box<dyn BaseTextEmbedding>,
+        entity_text_embeddings: LanceDBVectorStore,
+        text_embedder: Box<dyn BaseTextEmbedding + Send + Sync>,
         text_units: Option<Vec<TextUnit>>,
         community_reports: Option<Vec<CommunityReport>>,
         relationships: Option<Vec<Relationship>>,
@@ -169,7 +169,8 @@ impl LocalSearchMixedContext {
             Some(exclude_entity_names),
             top_k_mapped_entities,
             2,
-        );
+        )
+        .await?;
 
         let mut final_context = Vec::new();
         let mut final_context_data = HashMap::new();

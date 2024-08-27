@@ -1,33 +1,31 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     input::retrieval::entities::{get_entity_by_key, get_entity_by_name},
     llm::llm::BaseTextEmbedding,
     models::Entity,
-    vector_stores::vector_store::VectorStore,
+    vector_stores::{lancedb::LanceDBVectorStore, vector_store::VectorStore},
 };
 
-pub fn map_query_to_entities(
+pub async fn map_query_to_entities(
     query: &str,
-    text_embedding_vectorstore: &Box<dyn VectorStore>,
-    text_embedder: &Box<dyn BaseTextEmbedding>,
+    text_embedding_vectorstore: &LanceDBVectorStore,
+    text_embedder: &Box<dyn BaseTextEmbedding + Send + Sync>,
     all_entities: &Vec<Entity>,
     embedding_vectorstore_key: &str,
     include_entity_names: Option<Vec<String>>,
     exclude_entity_names: Option<Vec<String>>,
     k: usize,
     oversample_scaler: usize,
-) -> Vec<Entity> {
+) -> anyhow::Result<Vec<Entity>> {
     let include_entity_names = include_entity_names.unwrap_or_else(Vec::new);
     let exclude_entity_names: HashSet<String> = exclude_entity_names.unwrap_or_else(Vec::new).into_iter().collect();
     let mut matched_entities = Vec::new();
 
     if !query.is_empty() {
-        let search_results = text_embedding_vectorstore.similarity_search_by_text(
-            query,
-            &|t| text_embedder.embed(t),
-            k * oversample_scaler,
-        );
+        let search_results = text_embedding_vectorstore
+            .similarity_search_by_text(query, text_embedder, k * oversample_scaler)
+            .await?;
 
         for result in search_results {
             if let Some(matched) = get_entity_by_key(all_entities, &embedding_vectorstore_key, &result.document.id) {
@@ -48,5 +46,5 @@ pub fn map_query_to_entities(
     }
 
     included_entities.extend(matched_entities);
-    included_entities
+    Ok(included_entities)
 }
