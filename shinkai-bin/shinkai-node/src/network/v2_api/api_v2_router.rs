@@ -1,5 +1,6 @@
 use crate::network::node_commands::NodeCommand;
 
+use super::api_v2_handlers_ext_agent_offers::ext_agent_offers_routes;
 use super::api_v2_handlers_jobs::job_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_workflows::workflows_routes;
@@ -19,12 +20,14 @@ pub fn v2_routes(
     let job_routes = job_routes(node_commands_sender.clone(), node_name.clone());
     let subscriptions_routes = subscriptions_routes(node_commands_sender.clone());
     let workflows_routes = workflows_routes(node_commands_sender.clone());
+    let ext_agent_offers = ext_agent_offers_routes(node_commands_sender.clone());
 
     general_routes
         .or(vecfs_routes)
         .or(job_routes)
         .or(subscriptions_routes)
         .or(workflows_routes)
+        .or(ext_agent_offers)
 }
 
 pub fn with_sender(
