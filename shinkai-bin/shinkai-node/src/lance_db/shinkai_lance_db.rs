@@ -5,6 +5,7 @@ use arrow_array::{Array, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::TryStreamExt;
+use lancedb::connection::LanceFileVersion;
 use lancedb::index::Index;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
@@ -21,7 +22,8 @@ use super::ollama_embedding_fn::OllamaEmbeddingFunction;
 use super::shinkai_lancedb_error::ShinkaiLanceDBError;
 use super::shinkai_tool_schema::ShinkaiToolSchema;
 
-pub static LATEST_ROUTER_DB_VERSION: &str = "1";
+// Note: Add 1 to the current number to force an old fashion migration (delete all and then add all)
+pub static LATEST_ROUTER_DB_VERSION: &str = "2";
 
 #[derive(Clone)]
 pub struct LanceShinkaiDb {
@@ -68,7 +70,12 @@ impl LanceShinkaiDb {
         let schema = ShinkaiToolSchema::create_schema(embedding_model)
             .map_err(|e| ShinkaiLanceDBError::Schema(e.to_string()))?;
 
-        let table = match connection.create_empty_table("tool_router", schema).execute().await {
+        let table = match connection
+            .create_empty_table("tool_router", schema)
+            .data_storage_version(LanceFileVersion::V2_1)
+            .execute()
+            .await
+        {
             Ok(table) => table,
             Err(e) => {
                 if let LanceDbError::TableAlreadyExists { .. } = e {
@@ -98,6 +105,11 @@ impl LanceShinkaiDb {
         // Create the index if it doesn't exist
         if !index_exists {
             table.create_index(&["tool_key"], Index::Auto).execute().await?;
+            // Note: potentially add this and we will need FTS index as well (v0.10.0)
+            // table
+            //     .create_index(&["tool_key"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
+            //     .execute()
+            //     .await?;
         }
 
         Ok(table)

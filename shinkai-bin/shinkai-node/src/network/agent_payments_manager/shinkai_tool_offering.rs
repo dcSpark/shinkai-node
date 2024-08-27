@@ -1,9 +1,20 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum UsageTypeInquiry {
     PerUse,
     Downloadable,
+}
+
+impl fmt::Display for UsageTypeInquiry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UsageTypeInquiry::PerUse => write!(f, "PerUse"),
+            UsageTypeInquiry::Downloadable => write!(f, "Downloadable"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]

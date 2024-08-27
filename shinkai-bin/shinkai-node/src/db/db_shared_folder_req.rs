@@ -3,7 +3,6 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscri
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 
 impl ShinkaiDB {
-    // TODO: extend to take a profile as well
     pub fn set_folder_requirements(
         &self,
         path: &str,
@@ -26,7 +25,6 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    // TODO: extend to take a profile as well
     pub fn get_folder_requirements(&self, path: &str) -> Result<FolderSubscription, ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
@@ -57,7 +55,6 @@ impl ShinkaiDB {
         Ok(subscription_requirement)
     }
 
-    // TODO: extend to take a profile as well
     pub fn remove_folder_requirements(&self, path: &str) -> Result<(), ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
