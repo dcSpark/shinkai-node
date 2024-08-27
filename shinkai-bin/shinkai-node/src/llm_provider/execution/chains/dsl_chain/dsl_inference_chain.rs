@@ -580,6 +580,12 @@ impl AsyncFunction for ShinkaiToolFunction {
                     "Workflows are not supported in this context".to_string(),
                 ));
             }
+            ShinkaiTool::Network(_, _) => {
+                // TODO: we should allow for a workflow to call another workflow
+                return Err(WorkflowError::ExecutionError(
+                    "Network Tools are not supported in this context".to_string(),
+                ));
+            }
         };
 
         Ok(Box::new(result))

@@ -25,6 +25,9 @@ use super::shinkai_tool_schema::ShinkaiToolSchema;
 // Note: Add 1 to the current number to force an old fashion migration (delete all and then add all)
 pub static LATEST_ROUTER_DB_VERSION: &str = "2";
 
+
+// TODO: we need a way to export and import the db (or tables). it could be much faster to reset.
+
 #[derive(Clone)]
 pub struct LanceShinkaiDb {
     #[allow(dead_code)]
