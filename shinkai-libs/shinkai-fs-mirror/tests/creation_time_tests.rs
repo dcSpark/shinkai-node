@@ -1,10 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use shinkai_fs_mirror::synchronizer::FilesystemSynchronizer;
     use std::fs::{self, File};
     use std::io::Write;
-    use std::os::unix::prelude::MetadataExt;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
     use chrono::TimeZone;
