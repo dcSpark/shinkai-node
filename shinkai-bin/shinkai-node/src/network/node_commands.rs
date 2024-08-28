@@ -28,7 +28,7 @@ use crate::{
         identity::{Identity, StandardIdentity},
         smart_inbox::{SmartInbox, V2SmartInbox},
     },
-    tools::shinkai_tool::ShinkaiTool,
+    tools::{network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}}, wallet::{local_ether_wallet::{LocalEthersWallet, WalletSource}, mixed::{Network, NetworkIdentifier}},
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -816,11 +816,22 @@ pub enum NodeCommand {
     },
     V2ApiGetAllToolOfferings {
         bearer: String,
-        res: Sender<Result<Vec<ShinkaiToolOffering>, APIError>>,
+        res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     },
     V2ApiSetToolOffering {
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
+    },
+    V2ApiRestoreWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        source: WalletSource,
+        res: Sender<Result<LocalEthersWallet, APIError>>,
+    },
+    V2ApiCreateWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        res: Sender<Result<LocalEthersWallet, APIError>>,
     },
 }

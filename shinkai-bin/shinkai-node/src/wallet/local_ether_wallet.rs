@@ -5,6 +5,9 @@ use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Address as EthersAddress, NameOrAddress};
 use ethers::utils::{format_units, hex};
 use ethers::{core::k256::SecretKey, prelude::*};
+use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -16,7 +19,7 @@ use crate::wallet::erc20_abi::ERC20_ABI;
 use crate::wallet::wallet_error::WalletError;
 
 use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network};
-use super::wallet_traits::{CommonActions, SendActions};
+use super::wallet_traits::{CommonActions, IsWallet, SendActions, TransactionHash};
 
 pub type LocalWalletProvider = Provider<Http>;
 
@@ -29,14 +32,14 @@ pub struct LocalEthersWallet {
     pub provider: LocalWalletProvider,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WalletSource {
     Mnemonic(String),
     PrivateKey(String),
 }
 
 impl LocalEthersWallet {
-    fn create_wallet(network: Network) -> Result<Self, WalletError> {
+    pub fn create_wallet(network: Network) -> Result<Self, WalletError> {
         let wallet = EthersLocalWallet::new(&mut rand::thread_rng()).with_chain_id(network.chain_id);
         let address = format!("0x{:x}", wallet.address());
 
@@ -216,31 +219,42 @@ impl LocalEthersWallet {
     }
 }
 
+impl IsWallet for LocalEthersWallet {}
+
 impl SendActions for LocalEthersWallet {
-    async fn send_transaction(
+    fn send_transaction(
         &self,
         to_wallet: Address,
         token: Option<Asset>,
         send_amount: String,
         invoice_id: String,
-    ) -> Result<String, WalletError> {
-        // Convert send_amount from String to U256
-        let send_amount_u256 =
-            U256::from_dec_str(&send_amount).map_err(|e| WalletError::ConversionError(e.to_string()))?;
+    ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send + 'static>> {
+        let send_amount_u256 = U256::from_dec_str(&send_amount);
+        let send_amount_u256 = match send_amount_u256 {
+            Ok(amount) => amount,
+            Err(e) => return Box::pin(async move { Err(WalletError::ConversionError(e.to_string())) }),
+        };
 
-        // Call internal_send_transaction
-        let tx_hash = self
-            .internal_send_transaction(to_wallet, token, send_amount_u256, invoice_id)
-            .await?;
+        let self_clone = self.clone();
+        let fut = async move {
+            let tx_hash = self_clone
+                .internal_send_transaction(to_wallet, token, send_amount_u256, invoice_id)
+                .await?;
+            Ok(tx_hash.to_string())
+        };
 
-        Ok(tx_hash.to_string())
+        Box::pin(fut)
     }
 
-    async fn sign_transaction(&self, tx: mixed::Transaction) -> Result<String, WalletError> {
-        // Convert Transaction to TypedTransaction
-        let typed_tx: TypedTransaction = tx.into();
-        let signature = self.internal_sign_transaction(typed_tx).await?;
-        Ok(signature.to_string())
+    fn sign_transaction(&self, tx: mixed::Transaction) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
+        let self_clone = self.clone();
+        let fut = async move {
+            let typed_tx: TypedTransaction = tx.into();
+            let signature = self_clone.internal_sign_transaction(typed_tx).await?;
+            Ok(signature.to_string())
+        };
+
+        Box::pin(fut)
     }
 }
 
@@ -256,108 +270,112 @@ impl From<mixed::Transaction> for TypedTransaction {
     }
 }
 
-#[async_trait]
 impl CommonActions for LocalEthersWallet {
     fn get_address(&self) -> Address {
         self.address.clone()
     }
 
-    async fn get_balance(&self) -> Result<f64, WalletError> {
-        let balance_wei = self
-            .provider
-            .get_balance(self.wallet.address(), None)
-            .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-
-        // Convert balance from wei to ETH using ethers::utils::format_units
-        let balance_eth = format_units(balance_wei, "ether")
-            .map_err(|e| WalletError::ConversionError(e.to_string()))?
-            .parse::<f64>()
-            .map_err(|e| WalletError::ConversionError(e.to_string()))?;
-
-        Ok(balance_eth)
-    }
-
-    async fn check_balances(&self) -> Result<AddressBalanceList, WalletError> {
-        let mut balances = Vec::new();
-
-        // Check ETH balance
-        let eth_balance_wei = self
-            .provider
-            .get_balance(self.wallet.address(), None)
-            .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-        let eth_balance = Balance {
-            amount: eth_balance_wei.to_string(),
-            decimals: Some(18),
-            asset: Asset::new(AssetType::ETH, &self.network.id).ok_or_else(|| {
-                WalletError::UnsupportedAssetForNetwork("ETH".to_string(), self.network.id.to_string())
-            })?,
-        };
-        balances.push(eth_balance);
-
-        // Check USDC balance
-        if let Some(usdc_asset) = Asset::new(AssetType::USDC, &self.network.id) {
-            let usdc_contract_address = usdc_asset
-                .contract_address
-                .clone()
-                .ok_or_else(|| WalletError::MissingContractAddress(usdc_asset.asset_id.clone()))?;
-            let usdc_contract = Contract::new(
-                usdc_contract_address
-                    .parse::<EthersAddress>()
-                    .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-                ERC20_ABI.clone(),
-                Arc::new(self.provider.clone()),
-            );
-            let usdc_balance: U256 = usdc_contract
-                .method::<EthersAddress, U256>("balanceOf", self.wallet.address())
-                .map_err(|e| WalletError::ContractError(e.to_string()))?
-                .call()
+    fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
+        let self_clone = self.clone();
+        Box::pin(async move {
+            let balance_wei = self_clone
+                .provider
+                .get_balance(self_clone.wallet.address(), None)
                 .await
                 .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-            let usdc_balance = Balance {
-                amount: usdc_balance.to_string(),
-                decimals: Some(6),
-                asset: usdc_asset,
-            };
-            balances.push(usdc_balance);
-        }
 
-        // Check KAI balance (if applicable)
-        if let Some(kai_asset) = Asset::new(AssetType::KAI, &self.network.id) {
-            let kai_contract_address = kai_asset
-                .contract_address
-                .clone()
-                .ok_or_else(|| WalletError::MissingContractAddress(kai_asset.asset_id.clone()))?;
-            let kai_contract = Contract::new(
-                kai_contract_address
-                    .parse::<EthersAddress>()
-                    .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-                ERC20_ABI.clone(),
-                Arc::new(self.provider.clone()),
-            );
-            let kai_balance: U256 = kai_contract
-                .method::<EthersAddress, U256>("balanceOf", self.wallet.address())
-                .map_err(|e| WalletError::ContractError(e.to_string()))?
-                .call()
-                .await
-                .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-            let kai_balance = Balance {
-                amount: kai_balance.to_string(),
-                decimals: Some(18),
-                asset: kai_asset,
-            };
-            balances.push(kai_balance);
-        }
+            // Convert balance from wei to ETH using ethers::utils::format_units
+            let balance_eth = format_units(balance_wei, "ether")
+                .map_err(|e| WalletError::ConversionError(e.to_string()))?
+                .parse::<f64>()
+                .map_err(|e| WalletError::ConversionError(e.to_string()))?;
 
-        Ok(AddressBalanceList {
-            data: balances.clone(),
-            has_more: false,
-            next_page: "".to_string(),
-            total_count: balances.len() as u32,
+            Ok(balance_eth)
         })
     }
 
+    fn check_balances(&self) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
+        let self_clone = self.clone();
+        Box::pin(async move {
+            let mut balances = Vec::new();
+
+            // Check ETH balance
+            let eth_balance_wei = self_clone
+                .provider
+                .get_balance(self_clone.wallet.address(), None)
+                .await
+                .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+            let eth_balance = Balance {
+                amount: eth_balance_wei.to_string(),
+                decimals: Some(18),
+                asset: Asset::new(AssetType::ETH, &self_clone.network.id).ok_or_else(|| {
+                    WalletError::UnsupportedAssetForNetwork("ETH".to_string(), self_clone.network.id.to_string())
+                })?,
+            };
+            balances.push(eth_balance);
+
+            // Check USDC balance
+            if let Some(usdc_asset) = Asset::new(AssetType::USDC, &self_clone.network.id) {
+                let usdc_contract_address = usdc_asset
+                    .contract_address
+                    .clone()
+                    .ok_or_else(|| WalletError::MissingContractAddress(usdc_asset.asset_id.clone()))?;
+                let usdc_contract = Contract::new(
+                    usdc_contract_address
+                        .parse::<EthersAddress>()
+                        .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+                    ERC20_ABI.clone(),
+                    Arc::new(self_clone.provider.clone()),
+                );
+                let usdc_balance: U256 = usdc_contract
+                    .method::<EthersAddress, U256>("balanceOf", self_clone.wallet.address())
+                    .map_err(|e| WalletError::ContractError(e.to_string()))?
+                    .call()
+                    .await
+                    .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+                let usdc_balance = Balance {
+                    amount: usdc_balance.to_string(),
+                    decimals: Some(6),
+                    asset: usdc_asset,
+                };
+                balances.push(usdc_balance);
+            }
+
+            // Check KAI balance (if applicable)
+            if let Some(kai_asset) = Asset::new(AssetType::KAI, &self_clone.network.id) {
+                let kai_contract_address = kai_asset
+                    .contract_address
+                    .clone()
+                    .ok_or_else(|| WalletError::MissingContractAddress(kai_asset.asset_id.clone()))?;
+                let kai_contract = Contract::new(
+                    kai_contract_address
+                        .parse::<EthersAddress>()
+                        .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+                    ERC20_ABI.clone(),
+                    Arc::new(self_clone.provider.clone()),
+                );
+                let kai_balance: U256 = kai_contract
+                    .method::<EthersAddress, U256>("balanceOf", self_clone.wallet.address())
+                    .map_err(|e| WalletError::ContractError(e.to_string()))?
+                    .call()
+                    .await
+                    .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+                let kai_balance = Balance {
+                    amount: kai_balance.to_string(),
+                    decimals: Some(18),
+                    asset: kai_asset,
+                };
+                balances.push(kai_balance);
+            }
+
+            Ok(AddressBalanceList {
+                data: balances.clone(),
+                has_more: false,
+                next_page: "".to_string(),
+                total_count: balances.len() as u32,
+            })
+        })
+    }
     //     fn check_balance(&self) -> Result<AddressBalanceList, String> {
     //         // Implement balance checking logic
     //     }

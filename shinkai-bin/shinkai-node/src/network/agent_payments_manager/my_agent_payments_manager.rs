@@ -305,7 +305,6 @@ mod tests {
     };
     use std::{fs, path::Path, sync::Arc};
     use tokio::sync::Mutex;
-    use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
     #[derive(Clone, Debug)]
     struct MockIdentityManager {

@@ -12,6 +12,7 @@ use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
 };
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
+use shinkai_node::tools::shinkai_tool::ShinkaiToolHeader;
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -295,7 +296,62 @@ fn micropayment_flow_test() {
                     .await
                     .unwrap();
                 let resp = receiver.recv().await.unwrap();
-                eprintln!("resp: {:?}", resp);
+                eprintln!("resp set tool offering: {:?}", resp);
+            }
+            {
+                // Check if the tool is available
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiGetAllToolOfferings {
+                        bearer: api_v2_key.to_string(),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp get all tool offerings: {:?}", resp);
+
+                let expected_response = vec![ShinkaiToolHeader {
+                    name: "shinkai__echo".to_string(),
+                    description: "Echoes the input message".to_string(),
+                    tool_router_key: "shinkai-tool-echo:::shinkai__echo".to_string(),
+                    tool_type: "JS".to_string(),
+                    formatted_tool_summary_for_ui: "Tool Name: shinkai__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message".to_string(),
+                    author: "Shinkai".to_string(),
+                    version: "v0.1".to_string(),
+                    enabled: true,
+                    config: Some(vec![]),
+                    usage_type: None,
+                    tool_offering: Some(ShinkaiToolOffering {
+                        tool_key: "shinkai-tool-echo:::shinkai__echo".to_string(),
+                        usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                            asset: Asset {
+                                network_id: "mainnet".to_string(),
+                                asset_id: "USDC".to_string(),
+                                decimals: Some(6),
+                                contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
+                            },
+                            amount: "10500000".to_string(), // 10.5 USDC in atomic units (6 decimals)
+                        }])),
+                        meta_description: Some("Echo tool offering".to_string()),
+                    }),
+                }];
+            
+                match resp {
+                    Ok(actual_response) => assert_eq!(actual_response, expected_response),
+                    Err(e) => panic!("Expected Ok, got Err: {:?}", e),
+                }
+            }
+            {
+                // // Add wallet to node2
+                // let (sender, receiver) = async_channel::bounded(1);
+                // node2_commands_sender
+                //     .send(NodeCommand::V2ApiAddWallet {
+                //         bearer: api_v2_key.to_string(),
+                //         wallet: Wallet {
+                            
+                //         }
+                //     })
             }
         });
 

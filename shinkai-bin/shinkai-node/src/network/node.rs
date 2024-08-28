@@ -142,6 +142,10 @@ pub struct Node {
     pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
     // API V2 Key
     pub api_v2_key: String,
+    // Wallet Manager
+    // pub wallet_manager: Arc<Mutex<DynWalletManager<T,U>>>,
+
+    // TODO: how do we save the wallet manager?
 }
 
 impl Node {

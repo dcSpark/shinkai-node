@@ -1,9 +1,10 @@
 use std::env;
 
-use crate::tools::argument::ToolArgument;
+use crate::network::agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
+use crate::{network::agent_payments_manager::shinkai_tool_offering::UsageType, tools::argument::ToolArgument};
 use serde_json::{self};
 use shinkai_vector_resources::embeddings::Embedding;
 
@@ -20,7 +21,7 @@ pub enum ShinkaiTool {
     Network(NetworkTool, IsEnabled),
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShinkaiToolHeader {
     pub name: String,
     pub description: String,
@@ -31,6 +32,17 @@ pub struct ShinkaiToolHeader {
     pub version: String,
     pub enabled: bool,
     pub config: Option<Vec<ToolConfig>>,
+    pub usage_type: Option<UsageType>, // includes pricing
+    pub tool_offering: Option<ShinkaiToolOffering>,
+}
+
+impl ShinkaiToolHeader {
+    /// Sanitize the config by removing key-values from BasicConfig
+    pub fn sanitize_config(&mut self) {
+        if let Some(configs) = &self.config {
+            self.config = Some(configs.iter().map(|config| config.sanitize()).collect());
+        }
+    }
 }
 
 impl ShinkaiTool {
@@ -46,6 +58,8 @@ impl ShinkaiTool {
             version: self.version(),
             enabled: self.is_enabled(),
             config: self.get_js_tool_config().cloned(),
+            usage_type: self.get_usage_type(),
+            tool_offering: None,
         }
     }
 
@@ -233,6 +247,15 @@ impl ShinkaiTool {
             ShinkaiTool::JS(_j, _) => "v0.1".to_string(),
             ShinkaiTool::Workflow(w, _) => w.workflow.version.clone(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
+        }
+    }
+
+    /// Get the usage type, only valid for NetworkTool
+    pub fn get_usage_type(&self) -> Option<UsageType> {
+        if let ShinkaiTool::Network(n, _) = self {
+            Some(n.usage_type.clone())
+        } else {
+            None
         }
     }
 
