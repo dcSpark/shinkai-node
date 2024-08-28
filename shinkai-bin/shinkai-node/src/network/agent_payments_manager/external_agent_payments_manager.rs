@@ -1,20 +1,16 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
-use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::env;
 use std::pin::Pin;
@@ -25,6 +21,7 @@ use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+use super::invoices::{InternalInvoiceRequest, Invoice, InvoicePayment, InvoiceStatusEnum};
 use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
 #[derive(Debug, Clone)]
@@ -38,99 +35,6 @@ pub enum AgentOfferingManagerError {
 // this way we never share our public key + nonce
 // what's this public key? is it a new one generated from the sk?
 // should we use the name of the destination as part of the hash?
-
-// TODO: Maybe create a trait that's shared between the two structs?
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
-pub struct InvoiceRequest {
-    pub requester_name: ShinkaiName,
-    pub tool_key_name: String,
-    pub usage_type_inquiry: UsageTypeInquiry,
-    pub date_time: DateTime<Utc>,
-    pub unique_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
-pub struct InternalInvoiceRequest {
-    pub requester_name: ShinkaiName,
-    pub tool_key_name: String,
-    pub usage_type_inquiry: UsageTypeInquiry,
-    pub date_time: DateTime<Utc>,
-    pub unique_id: String,
-    pub secret_prehash: String,
-}
-
-impl InternalInvoiceRequest {
-    pub fn new(requester_name: ShinkaiName, tool_key_name: String, usage_type_inquiry: UsageTypeInquiry) -> Self {
-        // Generate a random number
-        let random_number: u64 = rand::thread_rng().gen();
-
-        // Encode the random number in base64
-        let random_number_base64 = base64::encode(&random_number.to_be_bytes());
-
-        // Use only the first half of the base64 encoded string
-        let short_random_number = &random_number_base64[..random_number_base64.len() / 2];
-
-        // Combine the short random number and timestamp to create a unique ID
-        let unique_id = format!("{}", short_random_number);
-
-        // Generate a secret prehash value (example: using the tool_key_name and random number)
-        let secret_prehash = format!("{}{}", tool_key_name, random_number);
-
-        Self {
-            requester_name,
-            tool_key_name,
-            usage_type_inquiry,
-            date_time: Utc::now(),
-            unique_id,
-            secret_prehash,
-        }
-    }
-
-    pub fn to_invoice_request(&self) -> InvoiceRequest {
-        InvoiceRequest {
-            requester_name: self.requester_name.clone(),
-            tool_key_name: self.tool_key_name.clone(),
-            usage_type_inquiry: self.usage_type_inquiry.clone(),
-            date_time: self.date_time,
-            unique_id: self.unique_id.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct Invoice {
-    pub invoice_id: String,
-    pub requester_name: ShinkaiName,
-    pub shinkai_offering: ShinkaiToolOffering,
-    pub expiration_time: DateTime<Utc>,
-    // Maybe add something related to current estimated response times
-    // average response time / congestion level or something like that
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct InvoicePayment {
-    pub invoice_id: String,
-    pub date_time: DateTime<Utc>,
-    pub signed_invoice: String, // necessary? it acts like a written contract
-    pub payment_id: String,
-    pub payment_amount: String,
-    pub payment_time: DateTime<Utc>,
-    pub requester_node_name: ShinkaiName,
-    // TODO: add payload and other stuff to be able to perform the job
-    // This is sent by the requester by verified by us before getting added
-}
-
-impl Ord for InvoicePayment {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.date_time.cmp(&other.date_time)
-    }
-}
-
-impl PartialOrd for InvoicePayment {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
 
 pub struct AgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
@@ -530,6 +434,8 @@ impl AgentOfferingsManager {
                 usage_type,
             },
             expiration_time: Utc::now(),
+            status: InvoiceStatusEnum::Pending,
+            payment: None,
         };
 
         Ok(invoice)
@@ -581,7 +487,6 @@ mod tests {
 
     use super::*;
     use async_trait::async_trait;
-    use chrono::Utc;
     use shinkai_message_primitives::{
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{

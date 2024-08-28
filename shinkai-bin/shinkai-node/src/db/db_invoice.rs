@@ -1,4 +1,4 @@
-use crate::network::agent_payments_manager::external_agent_payments_manager::Invoice;
+use crate::network::agent_payments_manager::invoices::Invoice;
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 

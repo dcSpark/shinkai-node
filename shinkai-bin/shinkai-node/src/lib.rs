@@ -4,7 +4,6 @@ pub mod cron_tasks;
 pub mod db;
 pub mod managers;
 pub mod network;
-pub mod payments;
 pub mod planner;
 pub mod runner;
 pub mod schemas;
