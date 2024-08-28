@@ -50,30 +50,23 @@ jobs:
             sudo apt-get install -y protobuf-compiler
 
         - name: Build
-          run: cargo build --release --features dynamic-pdf-parser
+          run: cargo build --release
 
-        - name: Upload binaries to release
-          uses: svenstaro/upload-release-action@v2
+        - name: Prepare bundle files
           env:
+            ZIP_FILE_NAME: ${{ github.ref_name }}.zip
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
-          with:
-            repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: target/release/shinkai_node${{ env.EXTENSION }}
-            asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
-            tag: ${{ github.ref }}
-            overwrite: true
-
-        - name: Prepare binary files
-          env:
-            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
-            PDFIUM_LIB_FILE: ${{ matrix.os == 'ubuntu-22.04' && 'libpdfium.so' || matrix.os == 'macos-14' && 'libpdfium.dylib' || matrix.os == 'windows-2022' && 'pdfium.dll' || '' }}
+            PDFIUM_LIB_FILE: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' && 'libpdfium.so' || matrix.arch == 'aarch64-apple-darwin' && 'libpdfium.dylib' || matrix.arch == 'x86_64-pc-windows-msvc' && 'pdfium.dll' || '' }}
           run: |
             mkdir files-to-r2
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-${{ github.ref_name }}${{ env.EXTENSION }}
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-latest${{ env.EXTENSION }}
-            cp target/release/{{ env.PDFIUM_LIB_FILE }} files-to-r2/{{ env.PDFIUM_LIB_FILE }}
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node${{ env.EXTENSION }}
+            cp -r target/release/shinkai-tools-runner-resources files-to-r2/
+            cp target/release/${{ env.PDFIUM_LIB_FILE }} files-to-r2/
+            cd ./files-to-r2
+            7z a -tzip ${{ env.ZIP_FILE_NAME}} . -sdel
+            cp ${{ env.ZIP_FILE_NAME}} latest.zip
 
-        - name: Upload binaries to R2 bucket
+        - name: Upload bundle to R2 bucket
           uses: shallwefootball/s3-upload-action@master
           with:
             endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
@@ -81,4 +74,15 @@ jobs:
             aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
             aws_bucket: shinkai-download
             source_dir: files-to-r2
-            destination_dir: ./shinkai-node/binaries/${{ matrix.arch }}/
+            destination_dir: ./shinkai-node/binaries/production/${{ matrix.arch }}/
+
+        - name: Upload bundle to release
+          uses: svenstaro/upload-release-action@v2
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
+          with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: files-to-r2/${{ github.ref_name }}.zip
+            asset_name: shinkai-node-${{ matrix.arch }}.zip
+            tag: ${{ github.ref }}
+            overwrite: true
