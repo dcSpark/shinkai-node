@@ -4,6 +4,7 @@ mod it {
     mod a0_subscription_manager_tests;
     mod a1_http_subscription_tests;
     mod a2_sheet_workflow_tests;
+    mod a3_micropayment_flow_tests;
     mod cron_job_tests;
     mod db_identity_tests;
     mod db_inbox_tests;
