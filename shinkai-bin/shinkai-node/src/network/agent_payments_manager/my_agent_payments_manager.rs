@@ -455,9 +455,8 @@ mod tests {
             requester_name: internal_invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
                 tool_key: internal_invoice_request.tool_key_name.clone(),
-                name: "Test Tool".to_string(),
-                tool_description: "A tool for testing".to_string(),
                 usage_type: UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
+                meta_description: Some("A tool for testing".to_string()),
             },
             expiration_time: Utc::now() + chrono::Duration::hours(1), // Example expiration time
             status: InvoiceStatusEnum::Pending,

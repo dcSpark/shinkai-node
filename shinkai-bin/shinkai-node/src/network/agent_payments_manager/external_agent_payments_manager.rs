@@ -334,7 +334,7 @@ impl AgentOfferingsManager {
             AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
         })?;
 
-        let tool_names = tools.into_iter().map(|tool| tool.name).collect();
+        let tool_names = tools.into_iter().map(|tool| tool.tool_key).collect();
 
         Ok(tool_names)
     }
@@ -429,9 +429,8 @@ impl AgentOfferingsManager {
             requester_name: requester_node_name,
             shinkai_offering: ShinkaiToolOffering {
                 tool_key: invoice_request.tool_key_name.clone(),
-                name: shinkai_offering.name.clone(),
-                tool_description: shinkai_offering.tool_description.clone(),
                 usage_type,
+                meta_description: None,
             },
             expiration_time: Utc::now(),
             status: InvoiceStatusEnum::Pending,
@@ -667,8 +666,6 @@ mod tests {
                 if shinkai_tool.name() == "shinkai__weather_by_city" {
                     let shinkai_offering = ShinkaiToolOffering {
                         tool_key: shinkai_tool.tool_router_key(),
-                        name: shinkai_tool.name().to_string(),
-                        tool_description: shinkai_tool.description().to_string(),
                         usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
                             asset: Asset {
                                 network_id: "1".to_string(),
@@ -678,6 +675,7 @@ mod tests {
                             },
                             amount: "0.01".to_string(),
                         }])),
+                        meta_description: None,
                     };
 
                     agent_offerings_manager
