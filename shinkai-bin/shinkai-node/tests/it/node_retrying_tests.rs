@@ -103,6 +103,7 @@ fn node_retrying_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -125,6 +126,7 @@ fn node_retrying_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 

@@ -28,6 +28,7 @@ pub struct NodeEnvironment {
     pub proxy_identity: Option<String>,
     pub default_embedding_model: EmbeddingModelType,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
+    pub api_v2_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +194,10 @@ pub fn fetch_node_environment() -> NodeEnvironment {
                 OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
             )]
         });
-        
+
+    // Fetch the API_V2_KEY environment variable
+    let api_v2_key: Option<String> = env::var("API_V2_KEY").ok();
+
     NodeEnvironment {
         global_identity_name,
         listen_address,
@@ -213,6 +217,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         proxy_identity,
         default_embedding_model,
         supported_embedding_models,
+        api_v2_key
     }
 }
 

@@ -137,6 +137,7 @@ fn workflow_integration_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {
@@ -398,6 +399,7 @@ fn workflow_complex_integration_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {
