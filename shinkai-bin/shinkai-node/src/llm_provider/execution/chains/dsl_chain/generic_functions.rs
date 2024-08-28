@@ -1,14 +1,14 @@
-use csv::ReaderBuilder;
 use futures::{future::join_all, StreamExt};
-use html2md::parse_html;
-use scraper::{Html, Selector};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::{any::Any, collections::HashMap};
 
-use crate::{llm_provider::{
-    execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt},
-    job_manager::JobManager,
-}, workflows::sm_executor::WorkflowError};
+use crate::{
+    llm_provider::{
+        execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt},
+        job_manager::JobManager,
+    },
+    workflows::sm_executor::WorkflowError,
+};
 
 use super::split_text_for_llm::split_text_for_llm;
 
@@ -24,15 +24,9 @@ impl RustToolFunctions {
 
         tool_map.insert("concat_strings", concat_strings);
         tool_map.insert("search_and_replace", search_and_replace);
-        tool_map.insert("download_webpage", download_webpage);
-        tool_map.insert("html_to_markdown", html_to_markdown);
-        tool_map.insert("array_to_markdown_template", array_to_markdown_template);
-        tool_map.insert("fill_variable_in_md_template", fill_variable_in_md_template);
-        // tool_map.insert("print_arg", print_arg);
         tool_map.insert("return_error_message", return_error_message);
         tool_map.insert("count_files_from_input", count_files_from_input);
         tool_map.insert("retrieve_file_from_input", retrieve_file_from_input);
-        tool_map.insert("extract_and_map_csv_column", extract_and_map_csv_column);
 
         tool_map.insert("process_embeddings_in_job_scope", process_embeddings_in_job_scope);
         tool_map.insert("split_text_for_llm", split_text_for_llm);
@@ -91,134 +85,6 @@ pub fn search_and_replace(
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for replace".to_string()))?;
 
     Ok(Box::new(text.replace(search, replace)))
-}
-
-#[allow(dead_code)]
-pub fn download_webpage(
-    _context: &dyn InferenceChainContextTrait,
-    args: Vec<Box<dyn Any + Send>>,
-) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 1 {
-        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
-    }
-    let url = args[0]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for URL".to_string()))?
-        .clone();
-
-    let result = tokio::runtime::Runtime::new()
-        .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?
-        .block_on(async {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(60))
-                .redirect(reqwest::redirect::Policy::limited(20))
-                .build()
-                .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
-            let response = client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
-            let content = response
-                .text()
-                .await
-                .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
-            Ok::<_, WorkflowError>(content)
-        })?;
-
-    Ok(Box::new(result))
-}
-
-#[allow(dead_code)]
-pub fn html_to_markdown(
-    _context: &dyn InferenceChainContextTrait,
-    args: Vec<Box<dyn Any + Send>>,
-) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 1 {
-        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
-    }
-    let html_content = args[0]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for HTML content".to_string()))?
-        .clone();
-
-    let document = Html::parse_document(&html_content);
-
-    // Remove script and style elements
-    let selector = Selector::parse("script, style").unwrap();
-    let mut cleaned_html = document.root_element().inner_html();
-    for element in document.select(&selector) {
-        cleaned_html = cleaned_html.replace(&element.html(), "");
-    }
-
-    let markdown = parse_html(&cleaned_html);
-
-    Ok(Box::new(markdown))
-}
-
-#[allow(dead_code)]
-pub fn array_to_markdown_template(
-    _context: &dyn InferenceChainContextTrait,
-    args: Vec<Box<dyn Any + Send>>,
-) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 1 {
-        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
-    }
-    let input = args[0]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for input string".to_string()))?
-        .clone();
-
-    let array: Vec<&str> = input.split(',').collect();
-    let mut markdown = String::new();
-    for item in array {
-        markdown.push_str(&format!("## {}\n\n{{{{{}}}}}\n\n", item, item));
-    }
-
-    Ok(Box::new(markdown))
-}
-
-#[allow(dead_code)]
-pub fn fill_variable_in_md_template(
-    _context: &dyn InferenceChainContextTrait,
-    args: Vec<Box<dyn Any + Send>>,
-) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 3 {
-        return Err(WorkflowError::InvalidArgument("Expected 3 arguments".to_string()));
-    }
-    let template = args[0]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for template".to_string()))?
-        .clone();
-    let variable = args[1]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for variable".to_string()))?
-        .clone();
-    let content = args[2]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for content".to_string()))?
-        .clone();
-
-    let placeholder = format!("{{{{{}}}}}", variable);
-    let filled_template = template.replace(&placeholder, &content);
-
-    Ok(Box::new(filled_template))
-}
-
-#[allow(dead_code)]
-pub fn print_arg(
-    _context: &dyn InferenceChainContextTrait,
-    args: Vec<Box<dyn Any + Send>>,
-) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 1 {
-        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
-    }
-    let arg = args[0]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
-
-    println!("print_arg: {}", arg);
-    Ok(Box::new(()))
 }
 
 #[allow(dead_code)]
@@ -292,52 +158,6 @@ pub fn retrieve_file_from_input(
     }
 
     Err(WorkflowError::InvalidArgument("File not found".to_string()))
-}
-
-#[allow(dead_code)]
-pub fn extract_and_map_csv_column(
-    _context: &dyn InferenceChainContextTrait,
-    args: Vec<Box<dyn Any + Send>>,
-) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 3 {
-        return Err(WorkflowError::InvalidArgument("Expected 3 arguments".to_string()));
-    }
-
-    let csv_data = args[0]
-        .downcast_ref::<Vec<u8>>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for CSV data".to_string()))?
-        .clone();
-    let column_identifier = args[1]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for column identifier".to_string()))?
-        .clone();
-    let map_fn = args[2]
-        .downcast_ref::<Box<dyn Fn(&str) -> String + Send>>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?;
-
-    let mut reader = ReaderBuilder::new().has_headers(true).from_reader(csv_data.as_slice());
-
-    let headers = reader
-        .headers()
-        .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
-    let column_index = if let Ok(index) = column_identifier.parse::<usize>() {
-        index
-    } else {
-        headers
-            .iter()
-            .position(|h| h == column_identifier)
-            .ok_or_else(|| WorkflowError::InvalidArgument("Column not found".to_string()))?
-    };
-
-    let mut mapped_values = Vec::new();
-    for result in reader.records() {
-        let record = result.map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
-        if let Some(value) = record.get(column_index) {
-            mapped_values.push(map_fn(value));
-        }
-    }
-
-    Ok(Box::new(mapped_values))
 }
 
 pub fn process_embeddings_in_job_scope(
@@ -503,8 +323,7 @@ mod tests {
     use crate::llm_provider::execution::{
         chains::{
             dsl_chain::generic_functions::{
-                count_files_from_input, extract_and_map_csv_column, retrieve_file_from_input,
-                search_embeddings_in_job_scope,
+                count_files_from_input, retrieve_file_from_input, search_embeddings_in_job_scope,
             },
             inference_chain_trait::MockInferenceChainContext,
         },
@@ -512,71 +331,7 @@ mod tests {
     };
     use crate::vector_fs::vector_fs::VectorFS;
 
-    use super::{super::generic_functions::html_to_markdown, array_to_markdown_template, fill_variable_in_md_template};
     use std::{any::Any, collections::HashMap, fs, path::Path, sync::Arc};
-
-    #[test]
-    fn test_html_to_markdown() {
-        let html_content = "<html><body><h1>Title</h1><p>This is a paragraph.</p><script>console.log('test');</script><style>body { font-size: 12px; }</style></body></html>";
-        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(html_content.to_string())];
-        let context = MockInferenceChainContext::default();
-
-        let result = html_to_markdown(&context, args);
-
-        match result {
-            Ok(markdown) => {
-                let markdown_str = markdown.downcast_ref::<String>().unwrap();
-                println!("Generated Markdown: {}", markdown_str);
-                assert!(markdown_str.contains("Title"));
-                assert!(markdown_str.contains("This is a paragraph."));
-                assert!(!markdown_str.contains("console.log"));
-                assert!(!markdown_str.contains("font-size"));
-            }
-            Err(e) => panic!("Test failed with error: {:?}", e),
-        }
-    }
-
-    #[test]
-    fn test_array_to_markdown() {
-        let input = "red,blue,green".to_string();
-        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(input)];
-        let context = MockInferenceChainContext::default();
-
-        let result = array_to_markdown_template(&context, args);
-
-        match result {
-            Ok(markdown) => {
-                let markdown_str = markdown.downcast_ref::<String>().unwrap();
-                println!("Generated Markdown: {}", markdown_str);
-                assert!(markdown_str.contains("## red\n\n{{red}}\n\n"));
-                assert!(markdown_str.contains("## blue\n\n{{blue}}\n\n"));
-                assert!(markdown_str.contains("## green\n\n{{green}}\n\n"));
-            }
-            Err(e) => panic!("Test failed with error: {:?}", e),
-        }
-    }
-
-    #[test]
-    fn test_fill_variable_in_md_template() {
-        let template = "## red\n\n{{red}}\n\n## blue\n\n{{blue}}\n\n## green\n\n{{green}}\n\n".to_string();
-        let variable = "red".to_string();
-        let content = "the blood is red".to_string();
-        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(template), Box::new(variable), Box::new(content)];
-        let context = MockInferenceChainContext::default();
-
-        let result = fill_variable_in_md_template(&context, args);
-
-        match result {
-            Ok(filled_template) => {
-                let filled_template_str = filled_template.downcast_ref::<String>().unwrap();
-                println!("Filled Template: {}", filled_template_str);
-                assert!(filled_template_str.contains("## red\n\nthe blood is red\n\n"));
-                assert!(filled_template_str.contains("## blue\n\n{{blue}}\n\n"));
-                assert!(filled_template_str.contains("## green\n\n{{green}}\n\n"));
-            }
-            Err(e) => panic!("Test failed with error: {:?}", e),
-        }
-    }
 
     #[test]
     fn test_count_files_from_input_no_extension() {
@@ -688,57 +443,6 @@ mod tests {
 
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new("file3.txt".to_string())];
         let result = retrieve_file_from_input(&context, args);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_extract_and_map_csv_column_by_header() {
-        let csv_data = b"Name,Age,Location\nAlice,30,USA\nBob,25,UK\nCharlie,35,Canada".to_vec();
-        let column_identifier = "Age".to_string();
-        let map_fn: Box<dyn Fn(&str) -> String + Send> = Box::new(|value| format!("Age: {}", value));
-
-        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(csv_data), Box::new(column_identifier), Box::new(map_fn)];
-        let context = MockInferenceChainContext::default();
-
-        let result = extract_and_map_csv_column(&context, args).unwrap();
-        let mapped_values = result.downcast_ref::<Vec<String>>().unwrap();
-        assert_eq!(
-            mapped_values,
-            &vec!["Age: 30".to_string(), "Age: 25".to_string(), "Age: 35".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_extract_and_map_csv_column_by_index() {
-        let csv_data = b"Name,Age,Location\nAlice,30,USA\nBob,25,UK\nCharlie,35,Canada".to_vec();
-        let column_identifier = "2".to_string(); // Location column
-        let map_fn: Box<dyn Fn(&str) -> String + Send> = Box::new(|value| format!("Location: {}", value));
-
-        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(csv_data), Box::new(column_identifier), Box::new(map_fn)];
-        let context = MockInferenceChainContext::default();
-
-        let result = extract_and_map_csv_column(&context, args).unwrap();
-        let mapped_values = result.downcast_ref::<Vec<String>>().unwrap();
-        assert_eq!(
-            mapped_values,
-            &vec![
-                "Location: USA".to_string(),
-                "Location: UK".to_string(),
-                "Location: Canada".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn test_extract_and_map_csv_column_invalid_column() {
-        let csv_data = b"Name,Age,Location\nAlice,30,USA\nBob,25,UK\nCharlie,35,Canada".to_vec();
-        let column_identifier = "InvalidColumn".to_string();
-        let map_fn: Box<dyn Fn(&str) -> String + Send> = Box::new(|value| format!("Value: {}", value));
-
-        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(csv_data), Box::new(column_identifier), Box::new(map_fn)];
-        let context = MockInferenceChainContext::default();
-
-        let result = extract_and_map_csv_column(&context, args);
         assert!(result.is_err());
     }
 

@@ -222,29 +222,11 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("search_and_replace", |context, args| {
             generic_functions::search_and_replace(&*context, args)
         });
-        self.add_generic_function("download_webpage", |context, args| {
-            generic_functions::download_webpage(&*context, args)
-        });
-        self.add_generic_function("html_to_markdown", |context, args| {
-            generic_functions::html_to_markdown(&*context, args)
-        });
-        self.add_generic_function("fill_variable_in_md_template", |context, args| {
-            generic_functions::fill_variable_in_md_template(&*context, args)
-        });
-        self.add_generic_function("array_to_markdown_template", |context, args| {
-            generic_functions::array_to_markdown_template(&*context, args)
-        });
-        // self.add_generic_function("print_arg", |context, args| {
-        //     generic_functions::print_arg(&*context, args)
-        // });
         self.add_generic_function("count_files_from_input", |context, args| {
             generic_functions::count_files_from_input(&*context, args)
         });
         self.add_generic_function("retrieve_file_from_input", |context, args| {
             generic_functions::retrieve_file_from_input(&*context, args)
-        });
-        self.add_generic_function("extract_and_map_csv_column", |context, args| {
-            generic_functions::extract_and_map_csv_column(&*context, args)
         });
         self.add_generic_function("process_embeddings_in_job_scope", |context, args| {
             generic_functions::process_embeddings_in_job_scope(&*context, args)

@@ -66,7 +66,6 @@ blake3 = "1.2.0"
 async-recursion = "1.0.5"
 cron-parser = "0.8.1"
 thiserror = "1.0.50"
-pddl-ish-parser= "0.0.4"
 base64 = "0.13.0"
 ethers = "2.0"
 dashmap = "5.5.3"
@@ -78,14 +77,11 @@ async-lock = "2.4.0"
 governor = "0.6.3"
 lru = "0.7.0"
 console-subscriber = { version = "0.1", optional = true }
-quickxml_to_serde = "0.6.0"
-minidom = "0.12"
 rust_decimal = "1.17.0"
 aws-types = "1.2.0"
 aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
-shinkai_tools_runner = { version = "0.7.5", features = ["built-in-tools"] } # If you change this version you need to change the build.rs hardcoded version
-scraper = "0.12.0" # remove later on
-html2md = "0.2.14" # remove later on
+# shinkai_tools_runner = { version = "0.7.5", features = ["built-in-tools"] } # change to a crate later on
+shinkai_tools_runner = { path = "../../../shinkai-tool/libs/shinkai-tools-runner", features = ["built-in-tools"] }
 lancedb = "0.9.0"
 arrow = "52.2"
 arrow-array = "52.2"

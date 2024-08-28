@@ -49,7 +49,6 @@ use crate::{
     db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
     llm_provider::{error::LLMProviderError, job_manager::JobManager},
     network::ws_manager::WSUpdateHandler,
-    planner::kai_files::{KaiJobFile, KaiSchemaType},
     schemas::inbox_permission::InboxPermission,
     vector_fs::vector_fs::VectorFS,
 };
@@ -281,11 +280,6 @@ impl CronManager {
         );
 
         let shinkai_profile = ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile)?;
-        let kai_file = KaiJobFile {
-            schema: KaiSchemaType::CronJob(cron_job.clone()),
-            shinkai_profile: Some(shinkai_profile.clone()),
-            llm_provider_id: cron_job.llm_provider_id.clone(),
-        };
 
         let job_creation = JobCreationInfo {
             scope: JobScope::new_default(),
@@ -299,29 +293,6 @@ impl CronManager {
             .await
             .process_job_creation(job_creation, &shinkai_profile, &cron_job.llm_provider_id)
             .await?;
-
-        // Note(Nico): should we close the job after the processing?
-        let db_arc = db.upgrade().unwrap();
-        let vector_fs = vector_fs.upgrade().unwrap();
-        let inbox_name_result = JobManager::insert_kai_job_file_into_inbox(
-            db_arc.clone(),
-            vector_fs.clone(),
-            "cron_job".to_string(),
-            kai_file,
-        )
-        .await;
-
-        if let Err(e) = inbox_name_result {
-            shinkai_log(
-                ShinkaiLogOption::CronExecution,
-                ShinkaiLogLevel::Error,
-                format!("Failed to insert kai job file into inbox: {:?}", e).as_str(),
-            );
-            return Err(CronManagerError::SomeError(format!(
-                "Failed to insert kai job file into inbox: {:?}",
-                e
-            )));
-        }
 
         {
             // Get the inbox name
@@ -358,7 +329,7 @@ impl CronManager {
         let job_message = JobMessage {
             job_id: job_id.clone(),
             content: "".to_string(),
-            files_inbox: inbox_name_result.unwrap(),
+            files_inbox: "".to_string(), // TODO placeholder
             parent: None,
             workflow_code: None,
             workflow_name: None,
