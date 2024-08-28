@@ -68,8 +68,13 @@ jobs:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           run: |
             mkdir files-to-r2
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-${{ github.ref_name }}${{ env.EXTENSION }}
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-latest${{ env.EXTENSION }}
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node${{ env.EXTENSION }}
+            cp -r target/release/shinkai-tools-runner-resources files-to-r2/
+            cp -r target/release/pdfium files-to-r2/
+            cd ./files-to-r2
+            ls
+            7z a -tzip v${{ needs.prebuild.outputs.version }}.zip . -sdel
+            cp v${{ needs.prebuild.outputs.version }}.zip latest.zip
 
         - name: Upload binaries to R2 bucket
           uses: shallwefootball/s3-upload-action@master
@@ -79,4 +84,15 @@ jobs:
             aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
             aws_bucket: shinkai-download
             source_dir: files-to-r2
-            destination_dir: ./shinkai-node/binaries/${{ matrix.arch }}/
+            destination_dir: ./shinkai-node/binaries/production/${{ matrix.arch }}/
+
+        - name: Upload binaries to release
+          uses: svenstaro/upload-release-action@v2
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
+          with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: files-to-r2/v${{ needs.prebuild.outputs.version }}.zip
+            asset_name: shinkai-node-${{ matrix.arch }}.zip
+            tag: ${{ github.ref }}
+            overwrite: true
