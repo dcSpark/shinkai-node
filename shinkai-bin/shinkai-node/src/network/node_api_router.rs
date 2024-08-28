@@ -122,24 +122,17 @@ pub async fn run_api(
     );
     println!("API server running on http://{}", address);
 
-    if env::var("API_V2_KEY").is_ok() {
-        let v2_routes = warp::path("v2").and(
-            v2_routes(node_commands_sender.clone(), node_name.clone())
-                .recover(handle_rejection)
-                .with(log)
-                .with(cors.clone()),
-        );
+    let v2_routes = warp::path("v2").and(
+        v2_routes(node_commands_sender.clone(), node_name.clone())
+            .recover(handle_rejection)
+            .with(log)
+            .with(cors.clone()),
+    );
 
-        // Combine all routes
-        let routes = v1_routes.or(v2_routes).with(log).with(cors);
+    // Combine all routes
+    let routes = v1_routes.or(v2_routes).with(log).with(cors);
 
-        warp::serve(routes).run(address).await;
-    } else {
-        // Combine all routes
-        let routes = v1_routes.with(log).with(cors);
-
-        warp::serve(routes).run(address).await;
-    }
+    warp::serve(routes).run(address).await;
 
     Ok(())
 }

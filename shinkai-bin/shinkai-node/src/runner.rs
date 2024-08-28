@@ -185,6 +185,7 @@ pub async fn initialize_node() -> Result<
         node_env.ws_address,
         node_env.default_embedding_model.clone(),
         node_env.supported_embedding_models.clone(),
+        node_env.api_v2_key.clone(),
     )
     .await;
 

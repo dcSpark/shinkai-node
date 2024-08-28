@@ -216,6 +216,7 @@ fn mirror_sync_tests() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 

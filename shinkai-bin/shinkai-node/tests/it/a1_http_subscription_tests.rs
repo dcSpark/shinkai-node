@@ -116,6 +116,7 @@ fn http_subscription_manager_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -138,6 +139,7 @@ fn http_subscription_manager_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            None,
         )
         .await;
 
