@@ -32,8 +32,7 @@ use crate::{
 };
 
 use super::{
-    external_agent_payments_manager::{AgentOfferingManagerError, InternalInvoiceRequest, Invoice},
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry},
+    crypto_invoice_manager::CryptoInvoiceManagerTrait, external_agent_payments_manager::{AgentOfferingManagerError, InternalInvoiceRequest, Invoice}, shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry}
 };
 
 pub struct MyAgentOfferingsManager {
@@ -46,6 +45,7 @@ pub struct MyAgentOfferingsManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub tool_router: Weak<Mutex<ToolRouter>>,
+    pub crypto_invoice_manager: Arc<dyn CryptoInvoiceManagerTrait + Send + Sync>,
 }
 
 impl MyAgentOfferingsManager {
@@ -60,6 +60,7 @@ impl MyAgentOfferingsManager {
         // proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         // ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
+        crypto_invoice_manager: Arc<dyn CryptoInvoiceManagerTrait + Send + Sync>,
     ) -> Self {
         Self {
             db,
@@ -69,6 +70,7 @@ impl MyAgentOfferingsManager {
             my_encryption_secret_key,
             identity_manager,
             tool_router,
+            crypto_invoice_manager,
         }
     }
 
@@ -254,4 +256,174 @@ impl MyAgentOfferingsManager {
 
     // Thoughts
     // Should we add a way to scan previous invoices sent to the chain? if we reset the node but we wouldn't be able to know if they were already claimed.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        db::ShinkaiDB,
+        lance_db::shinkai_lance_db::LanceShinkaiDb,
+        managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+        network::agent_payments_manager::crypto_invoice_manager::CryptoInvoiceManager,
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
+        tools::tool_router::ToolRouter,
+        vector_fs::vector_fs::VectorFS,
+    };
+    use async_trait::async_trait;
+    use ed25519_dalek::SigningKey;
+    use shinkai_message_primitives::{
+        shinkai_message::shinkai_message_schemas::IdentityPermissions,
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
+        },
+    };
+    use shinkai_vector_resources::{
+        embedding_generator::RemoteEmbeddingGenerator,
+        model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
+    };
+    use std::{fs, path::Path, sync::Arc};
+    use tokio::sync::Mutex;
+    use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+    #[derive(Clone, Debug)]
+    struct MockIdentityManager {
+        dummy_standard_identity: Identity,
+    }
+
+    impl MockIdentityManager {
+        pub fn new() -> Self {
+            let (_, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+            let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+            let dummy_standard_identity = Identity::Standard(StandardIdentity {
+                full_identity_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
+                addr: None,
+                node_encryption_public_key: node1_encryption_pk,
+                node_signature_public_key: node1_identity_pk,
+                profile_encryption_public_key: Some(node1_encryption_pk),
+                profile_signature_public_key: Some(node1_identity_pk),
+                identity_type: StandardIdentityType::Global,
+                permission_type: IdentityPermissions::Admin,
+            });
+
+            Self {
+                dummy_standard_identity,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl IdentityManagerTrait for MockIdentityManager {
+        fn find_by_identity_name(&self, _full_profile_name: ShinkaiName) -> Option<&Identity> {
+            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+                Some(&self.dummy_standard_identity)
+            } else {
+                None
+            }
+        }
+
+        async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+            if full_identity_name == "@@node1.shinkai/main" {
+                Some(self.dummy_standard_identity.clone())
+            } else {
+                None
+            }
+        }
+
+        fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
+            Box::new(self.clone())
+        }
+    }
+
+    fn setup() {
+        let path = Path::new("lance_db_tests/");
+        let _ = fs::remove_dir_all(path);
+
+        let path = Path::new("shinkai_db_tests/");
+        let _ = fs::remove_dir_all(path);
+    }
+
+    fn default_test_profile() -> ShinkaiName {
+        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap()
+    }
+
+    fn node_name() -> ShinkaiName {
+        ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap()
+    }
+
+    async fn setup_default_vector_fs() -> VectorFS {
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let fs_db_path = format!("db_tests/{}", "vector_fs");
+        let profile_list = vec![default_test_profile()];
+        let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+        )];
+
+        VectorFS::new(
+            generator,
+            supported_embedding_models,
+            profile_list,
+            &fs_db_path,
+            node_name(),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_verify_invoice() {
+        setup();
+
+        // Setup the necessary components for MyAgentOfferingsManager
+        let db = Arc::new(ShinkaiDB::new("shinkai_db_tests/shinkaidb").unwrap());
+        let vector_fs = Arc::new(setup_default_vector_fs().await);
+        let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
+            Arc::new(Mutex::new(MockIdentityManager::new()));
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        let lance_db = Arc::new(Mutex::new(
+            LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
+        ));
+
+        let tool_router = Arc::new(Mutex::new(ToolRouter::new(lance_db.clone())));
+        let node_name = ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap();
+
+        let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
+
+        // Create a real CryptoInvoiceManager with a provider using Base Sepolia
+        let provider_url = "https://sepolia.base.org";
+        let crypto_invoice_manager = Arc::new(CryptoInvoiceManager::new(provider_url).unwrap());
+
+        let manager = MyAgentOfferingsManager::new(
+            Arc::downgrade(&db),
+            Arc::downgrade(&vector_fs),
+            Arc::downgrade(&identity_manager),
+            node_name,
+            my_signature_secret_key,
+            my_encryption_secret_key,
+            Arc::downgrade(&tool_router),
+            crypto_invoice_manager,
+        )
+        .await;
+
+        // Create a mock invoice
+        let invoice = Invoice {
+            invoice_id: "test_invoice_id".to_string(),
+            requester_name: ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap(),
+            shinkai_offering: ShinkaiToolOffering {
+                tool_key_name: "test_tool".to_string(),
+                human_readable_name: "Test Tool".to_string(),
+                tool_description: "A tool for testing".to_string(),
+                usage_type: UsageType::PerUse(0.01),
+            },
+            expiration_time: Utc::now(),
+        };
+
+        // Call verify_invoice
+        let result = manager.verify_invoice(&invoice).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
 }

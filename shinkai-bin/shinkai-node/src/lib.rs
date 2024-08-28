@@ -14,5 +14,6 @@ pub mod vector_fs;
 pub mod welcome_files;
 pub mod workflows;
 pub mod lance_db;
+pub mod wallet;
 
 pub use runner::{initialize_node, run_node_tasks};
