@@ -151,7 +151,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match lance_db.lock().await.tool_exists(&tool_offering.tool_key_name).await {
+        match lance_db.lock().await.tool_exists(&tool_offering.tool_key).await {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {

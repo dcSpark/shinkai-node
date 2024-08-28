@@ -19,8 +19,8 @@ impl fmt::Display for UsageTypeInquiry {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct ShinkaiToolOffering {
-    pub human_readable_name: String,
-    pub tool_key_name: String,
+    pub name: String,
+    pub tool_key: String,
     pub tool_description: String,
     pub usage_type: UsageType,
 }
@@ -34,6 +34,34 @@ pub enum UsageType {
         per_use_price: ToolPrice,
         download_price: ToolPrice,
     },
+}
+
+impl UsageType {
+    pub fn per_use_usd_price(&self) -> f32 {
+        match self {
+            UsageType::PerUse(price) => price.to_usd_float(),
+            UsageType::Both { per_use_price, .. } => per_use_price.to_usd_float(),
+            _ => 0.0,
+        }
+    }
+}
+
+impl ToolPrice {
+    // TODO: expand to support the other assets correctly
+    pub fn to_usd_float(&self) -> f32 {
+        match self {
+            ToolPrice::Free => 0.0,
+            ToolPrice::DirectDelegation(_) => 0.0, // Handle this case as needed
+            ToolPrice::Payment(payments) => {
+                for payment in payments {
+                    if payment.asset.asset_id == "USDC" {
+                        return payment.amount.parse::<f32>().unwrap_or(999_999_999.0);
+                    }
+                }
+                999_999_999.0 // Return 999_999_999 if USDC is not found
+            }
+        }
+    }
 }
 
 type KAIAmount = String;
@@ -78,7 +106,6 @@ pub struct Asset {
 // TODO: add the rest of the code here from the playground project
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use serde_json;
@@ -86,8 +113,8 @@ mod tests {
     #[test]
     fn test_shinkai_tool_offering_to_json() {
         let offering = ShinkaiToolOffering {
-            human_readable_name: "Test Tool".to_string(),
-            tool_key_name: "test_tool".to_string(),
+            name: "Test Tool".to_string(),
+            tool_key: "test_tool".to_string(),
             tool_description: "A tool for testing".to_string(),
             usage_type: UsageType::Both {
                 per_use_price: ToolPrice::Free,
@@ -97,7 +124,7 @@ mod tests {
 
         let json = serde_json::to_string(&offering).expect("Failed to convert to JSON");
         println!("{}", json);
-        assert!(json.contains("\"human_readable_name\":\"Test Tool\""));
+        assert!(json.contains("\"name\":\"Test Tool\""));
         assert!(json.contains("\"per_use_price\":\"Free\""));
         assert!(json.contains("\"download_price\":\"DirectDelegation\""));
     }
@@ -106,8 +133,8 @@ mod tests {
     fn test_shinkai_tool_offering_from_json() {
         let json = r#"
         {
-            "human_readable_name": "Test Tool",
-            "tool_key_name": "test_tool",
+            "name": "Test Tool",
+            "tool_key": "test_tool",
             "tool_description": "A tool for testing",
             "usage_type": {
                 "Both": {
@@ -120,10 +147,14 @@ mod tests {
         }"#;
 
         let offering: ShinkaiToolOffering = serde_json::from_str(json).expect("Failed to convert from JSON");
-        assert_eq!(offering.human_readable_name, "Test Tool");
-        assert_eq!(offering.tool_key_name, "test_tool");
+        assert_eq!(offering.name, "Test Tool");
+        assert_eq!(offering.tool_key, "test_tool");
         assert_eq!(offering.tool_description, "A tool for testing");
-        if let UsageType::Both { per_use_price, download_price } = offering.usage_type {
+        if let UsageType::Both {
+            per_use_price,
+            download_price,
+        } = offering.usage_type
+        {
             assert_eq!(per_use_price, ToolPrice::Free);
             assert_eq!(download_price, ToolPrice::DirectDelegation("1000".to_string()));
         } else {

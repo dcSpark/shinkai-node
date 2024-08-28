@@ -77,7 +77,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using LanceShinkaiDb
-        match lance_db.lock().await.vector_search_all_tools(&query, 5).await {
+        match lance_db.lock().await.vector_search_all_tools(&query, 5, false).await {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
@@ -274,7 +274,7 @@ impl Node {
         }
 
         // List all tools
-        match lance_db.lock().await.get_all_tools().await {
+        match lance_db.lock().await.get_all_tools(true).await {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -347,7 +347,7 @@ impl Node {
 
         // Merge existing_tool_value with input_value
         let merged_value = Self::merge_json(existing_tool_value, input_value);
-        
+
         // Convert merged_value to ShinkaiTool
         let merged_tool: ShinkaiTool = match serde_json::from_value(merged_value) {
             Ok(tool) => tool,

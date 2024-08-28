@@ -3449,7 +3449,7 @@ impl Node {
         // List all Shinkai tools
         let tools = {
             let lance_db = lance_db.lock().await;
-            match lance_db.get_all_tools().await {
+            match lance_db.get_all_tools(true).await {
                 Ok(tools) => tools,
                 Err(err) => {
                     let api_error = APIError {

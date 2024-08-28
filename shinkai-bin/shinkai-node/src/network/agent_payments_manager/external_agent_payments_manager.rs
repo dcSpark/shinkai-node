@@ -27,7 +27,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AgentOfferingManagerError {
     OperationFailed(String),
     InvalidUsageType(String),
@@ -430,7 +430,7 @@ impl AgentOfferingsManager {
             AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
         })?;
 
-        let tool_names = tools.into_iter().map(|tool| tool.human_readable_name).collect();
+        let tool_names = tools.into_iter().map(|tool| tool.name).collect();
 
         Ok(tool_names)
     }
@@ -524,8 +524,8 @@ impl AgentOfferingsManager {
             invoice_id: invoice_request.unique_id.clone(),
             requester_name: requester_node_name,
             shinkai_offering: ShinkaiToolOffering {
-                tool_key_name: invoice_request.tool_key_name.clone(),
-                human_readable_name: shinkai_offering.human_readable_name.clone(),
+                tool_key: invoice_request.tool_key_name.clone(),
+                name: shinkai_offering.name.clone(),
                 tool_description: shinkai_offering.tool_description.clone(),
                 usage_type,
             },
@@ -744,6 +744,7 @@ mod tests {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
                 let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
                 let embedding = generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())
                     .await
@@ -756,30 +757,31 @@ mod tests {
                     .set_tool(&shinkai_tool)
                     .await
                     .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+                // Check if the tool is "shinkai__weather_by_city" and make it shareable
+                if shinkai_tool.name() == "shinkai__weather_by_city" {
+                    let shinkai_offering = ShinkaiToolOffering {
+                        tool_key: shinkai_tool.tool_router_key(),
+                        name: shinkai_tool.name().to_string(),
+                        tool_description: shinkai_tool.description().to_string(),
+                        usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                            asset: Asset {
+                                network_id: "1".to_string(),
+                                asset_id: "ETH".to_string(),
+                                decimals: Some(18),
+                                contract_address: None,
+                            },
+                            amount: "0.01".to_string(),
+                        }])),
+                    };
+
+                    agent_offerings_manager
+                        .make_tool_shareable(shinkai_offering)
+                        .await
+                        .unwrap();
+                }
             }
         }
-
-        // Make one of the tools shareable
-        let tool_key_name = "shinkai-tool-weather-by-city".to_string();
-        let shinkai_offering = ShinkaiToolOffering {
-            tool_key_name: tool_key_name.clone(),
-            human_readable_name: "Weather by City".to_string(),
-            tool_description: "Provides weather information for a given city".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: "1".to_string(),
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-                amount: "0.01".to_string(),
-            }])),
-        };
-
-        agent_offerings_manager
-            .make_tool_shareable(shinkai_offering)
-            .await
-            .unwrap();
 
         // Check available tools
         let available_tools = agent_offerings_manager.available_tools().await.unwrap();
