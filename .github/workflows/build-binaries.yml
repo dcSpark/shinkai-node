@@ -54,6 +54,7 @@ jobs:
 
         - name: Prepare bundle files
           env:
+            ZIP_FILE_NAME: ${{ github.ref_name }}.zip
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           run: |
             mkdir files-to-r2
@@ -62,8 +63,8 @@ jobs:
             cp -r target/release/pdfium files-to-r2/
             cd ./files-to-r2
             ls
-            7z a -tzip v${{ needs.prebuild.outputs.version }}.zip . -sdel
-            cp v${{ needs.prebuild.outputs.version }}.zip latest.zip
+            7z a -tzip ${{ env.ZIP_FILE_NAME}} . -sdel
+            cp ${{ env.ZIP_FILE_NAME}} latest.zip
 
         - name: Upload bundle to R2 bucket
           uses: shallwefootball/s3-upload-action@master
@@ -81,7 +82,7 @@ jobs:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           with:
             repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: files-to-r2/v${{ needs.prebuild.outputs.version }}.zip
+            file: files-to-r2/${{ github.ref_name }}.zip
             asset_name: shinkai-node-${{ matrix.arch }}.zip
             tag: ${{ github.ref }}
             overwrite: true
