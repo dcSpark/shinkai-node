@@ -11,7 +11,7 @@ impl ShinkaiDB {
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
         let prefix = format!(
             "tool_micropayments_requirements_abcdefg_prefix_{}",
-            tool_offering.tool_key_name
+            tool_offering.tool_key
         );
         let offering_bytes = serde_json::to_vec(&tool_offering)
             .map_err(|e| ShinkaiDBError::SomeError(format!("Failed to serialize tool offering: {:?}", e)))?;
@@ -19,9 +19,9 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_tool_offering(&self, tool_key_name: &str) -> Result<ShinkaiToolOffering, ShinkaiDBError> {
+    pub fn get_tool_offering(&self, tool_key: &str) -> Result<ShinkaiToolOffering, ShinkaiDBError> {
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
-        let prefix = format!("tool_micropayments_requirements_abcdefg_prefix_{}", tool_key_name);
+        let prefix = format!("tool_micropayments_requirements_abcdefg_prefix_{}", tool_key);
         let offering_bytes = self
             .db
             .get_cf(cf_node, prefix.as_bytes())
@@ -32,9 +32,9 @@ impl ShinkaiDB {
         Ok(tool_offering)
     }
 
-    pub fn remove_tool_offering(&self, tool_key_name: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_tool_offering(&self, tool_key: &str) -> Result<(), ShinkaiDBError> {
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
-        let prefix = format!("tool_micropayments_requirements_abcdefg_prefix_{}", tool_key_name);
+        let prefix = format!("tool_micropayments_requirements_abcdefg_prefix_{}", tool_key);
         self.db
             .delete_cf(cf_node, prefix.as_bytes())
             .map_err(|_| ShinkaiDBError::SomeError("Failed to remove tool offering".to_string()))?;

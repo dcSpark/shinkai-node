@@ -16,7 +16,7 @@ can it be done in one step? maybe we have rules per: tool, provider or overall s
 
 */
 
-use std::{rc::Weak, sync::Arc};
+use std::sync::{Arc, Weak};
 
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
@@ -26,19 +26,21 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
     db::ShinkaiDB,
-    managers::IdentityManager,
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
     tools::{network_tool::NetworkTool, tool_router::ToolRouter},
     vector_fs::vector_fs::VectorFS,
 };
 
 use super::{
-    crypto_invoice_manager::CryptoInvoiceManagerTrait, external_agent_payments_manager::{AgentOfferingManagerError, InternalInvoiceRequest, Invoice}, shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry}
+    crypto_invoice_manager::CryptoInvoiceManagerTrait,
+    external_agent_payments_manager::{AgentOfferingManagerError, InternalInvoiceRequest, Invoice},
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry},
 };
 
 pub struct MyAgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
     pub vector_fs: Weak<VectorFS>,
-    pub identity_manager: Weak<Mutex<IdentityManager>>,
+    pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -53,7 +55,7 @@ impl MyAgentOfferingsManager {
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
-        identity_manager: Weak<Mutex<IdentityManager>>,
+        identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -87,39 +89,39 @@ impl MyAgentOfferingsManager {
         &self,
         network_tool: NetworkTool,
         usage_type_inquiry: UsageTypeInquiry,
-    ) -> Result<(), AgentOfferingManagerError> {
+    ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
         // Upgrade the database reference to a strong reference
         let db = self
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        // Get the offering for the requested tool key name
-        let shinkai_offering = db
-            .get_tool_offering(&network_tool.tool_router_key())
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
+        // // Get the offering for the requested tool key name
+        // let shinkai_offering = db
+        //     .get_tool_offering(&network_tool.tool_router_key())
+        //     .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
 
-        // Determine the appropriate usage type based on the inquiry and the available offering
-        let usage_type = match usage_type_inquiry {
-            UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
-                UsageType::PerUse(price) => UsageType::PerUse(price),
-                UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
-                _ => {
-                    return Err(AgentOfferingManagerError::InvalidUsageType(
-                        "Invalid usage type for PerUse inquiry".to_string(),
-                    ))
-                }
-            },
-            UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
-                UsageType::Downloadable(price) => UsageType::Downloadable(price),
-                UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
-                _ => {
-                    return Err(AgentOfferingManagerError::InvalidUsageType(
-                        "Invalid usage type for Downloadable inquiry".to_string(),
-                    ))
-                }
-            },
-        };
+        // // Determine the appropriate usage type based on the inquiry and the available offering
+        // let usage_type = match usage_type_inquiry {
+        //     UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
+        //         UsageType::PerUse(price) => UsageType::PerUse(price),
+        //         UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
+        //         _ => {
+        //             return Err(AgentOfferingManagerError::InvalidUsageType(
+        //                 "Invalid usage type for PerUse inquiry".to_string(),
+        //             ))
+        //         }
+        //     },
+        //     UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
+        //         UsageType::Downloadable(price) => UsageType::Downloadable(price),
+        //         UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
+        //         _ => {
+        //             return Err(AgentOfferingManagerError::InvalidUsageType(
+        //                 "Invalid usage type for Downloadable inquiry".to_string(),
+        //             ))
+        //         }
+        //     },
+        // };
 
         // Create a new InternalInvoiceRequest
         let internal_invoice_request = InternalInvoiceRequest::new(
@@ -137,7 +139,7 @@ impl MyAgentOfferingsManager {
         // TODO: Add code to request an invoice
 
         // Return the generated invoice
-        Ok(())
+        Ok(internal_invoice_request)
     }
 
     // Fn: Verify an invoice
@@ -151,13 +153,15 @@ impl MyAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
         // Try to retrieve the corresponding InternalInvoiceRequest from the database
-        let _internal_invoice_request = match db.get_internal_invoice_request(&invoice.invoice_id) {
+        let internal_invoice_request = match db.get_internal_invoice_request(&invoice.invoice_id) {
             Ok(request) => request,
             Err(_) => {
                 // If no corresponding InternalInvoiceRequest is found, the invoice is invalid
                 return Ok(false);
             }
         };
+
+        eprintln!("internal_invoice_request: {:?}", internal_invoice_request);
 
         // Additional logic could be added here to check any rules for auto-payment.
         // For example, checking if the invoice matches certain criteria or thresholds
@@ -236,6 +240,21 @@ impl MyAgentOfferingsManager {
         Ok(())
     }
 
+    pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), AgentOfferingManagerError> {
+        let tool_router = self.tool_router.upgrade().ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Failed to upgrade tool_router reference".to_string())
+        })?;
+
+        let result = tool_router
+            .lock()
+            .await
+            .add_network_tool(network_tool)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to add network tool: {:?}", e)));
+
+        result
+    }
+
     // Fn: Receive the response from the provider and process it -> update the job
 
     // Note: Should be create a new type of ShinkaiTool "NetworkTool" that can be called by an LLM?
@@ -263,9 +282,11 @@ mod tests {
     use super::*;
     use crate::{
         db::ShinkaiDB,
-        lance_db::shinkai_lance_db::LanceShinkaiDb,
+        lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
         managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-        network::agent_payments_manager::crypto_invoice_manager::CryptoInvoiceManager,
+        network::agent_payments_manager::{
+            crypto_invoice_manager::CryptoInvoiceManager, shinkai_tool_offering::ToolPrice,
+        },
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::tool_router::ToolRouter,
         vector_fs::vector_fs::VectorFS,
@@ -279,7 +300,7 @@ mod tests {
         },
     };
     use shinkai_vector_resources::{
-        embedding_generator::RemoteEmbeddingGenerator,
+        embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
     use std::{fs, path::Path, sync::Arc};
@@ -372,7 +393,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_verify_invoice() {
+    async fn test_verify_invoice() -> Result<(), ShinkaiLanceDBError> {
         setup();
 
         // Setup the necessary components for MyAgentOfferingsManager
@@ -408,22 +429,44 @@ mod tests {
         )
         .await;
 
-        // Create a mock invoice
+        // Create a mock network tool
+        let network_tool = NetworkTool::new(
+            "Test Tool".to_string(),
+            "A tool for testing".to_string(),
+            "1.0".to_string(),
+            ShinkaiName::new("test_provider".to_string()).unwrap(),
+            UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
+            true,
+            vec![],
+            vec![],
+            None,
+            None,
+        );
+
+        // Create a usage type inquiry
+        let usage_type_inquiry = UsageTypeInquiry::PerUse;
+
+        // Call request_invoice to generate an invoice request
+        let internal_invoice_request = manager.request_invoice(network_tool, usage_type_inquiry).await.unwrap();
+
+        // Simulate receiving an invoice from the server
         let invoice = Invoice {
-            invoice_id: "test_invoice_id".to_string(),
-            requester_name: ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap(),
+            invoice_id: internal_invoice_request.unique_id.clone(),
+            requester_name: internal_invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
-                tool_key_name: "test_tool".to_string(),
-                human_readable_name: "Test Tool".to_string(),
+                tool_key: internal_invoice_request.tool_key_name.clone(),
+                name: "Test Tool".to_string(),
                 tool_description: "A tool for testing".to_string(),
-                usage_type: UsageType::PerUse(0.01),
+                usage_type: UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
             },
-            expiration_time: Utc::now(),
+            expiration_time: Utc::now() + chrono::Duration::hours(1), // Example expiration time
         };
 
         // Call verify_invoice
         let result = manager.verify_invoice(&invoice).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
+
+        Ok(())
     }
 }

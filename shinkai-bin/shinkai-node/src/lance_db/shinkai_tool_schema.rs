@@ -15,6 +15,8 @@ impl ShinkaiToolSchema {
     /// - version: UTF-8 string (non-nullable)
     /// - is_enabled: Boolean (non-nullable)
     /// - config: UTF-8 string (nullable)
+    /// - on_demand_price: 32-bit float (nullable)
+    /// - is_network: Boolean (non-nullable)
     ///
     /// The vector field's size is determined by the embedding model's dimensions.
     pub fn create_schema(embedding_model: &EmbeddingModelType) -> Result<Arc<Schema>, VRError> {
@@ -36,6 +38,8 @@ impl ShinkaiToolSchema {
             Field::new(Self::author_field(), DataType::Utf8, false),
             Field::new(Self::version_field(), DataType::Utf8, false),
             Field::new(Self::is_enabled_field(), DataType::Boolean, false),
+            Field::new(Self::on_demand_price_field(), DataType::Float32, false),
+            Field::new(Self::is_network_field(), DataType::Boolean, false),
         ])))
     }
 
@@ -69,6 +73,14 @@ impl ShinkaiToolSchema {
 
     pub fn is_enabled_field() -> &'static str {
         "is_enabled"
+    }
+
+    pub fn on_demand_price_field() -> &'static str {
+        "on_demand_price"
+    }
+
+    pub fn is_network_field() -> &'static str {
+        "is_network"
     }
 
     pub fn vector_dimensions(embedding_model: &EmbeddingModelType) -> Result<usize, VRError> {

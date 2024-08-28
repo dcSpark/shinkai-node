@@ -22,6 +22,7 @@ use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddi
 use tokio::sync::Mutex;
 
 use super::js_toolkit::JSToolkit;
+use super::network_tool::NetworkTool;
 use super::rust_tools::RustTool;
 use super::shinkai_tool::ShinkaiToolHeader;
 use super::tool_router_dep::workflows_data;
@@ -118,6 +119,12 @@ impl ToolRouter {
         Ok(())
     }
 
+    pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
+        let lance_db = self.lance_db.lock().await;
+        lance_db.set_tool(&ShinkaiTool::Network(network_tool, true)).await?;
+        Ok(())
+    }
+
     async fn add_js_tools(&self) -> Result<(), ToolError> {
         let start_time = Instant::now(); // Start the timer
 
@@ -176,7 +183,7 @@ impl ToolRouter {
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let lance_db = self.lance_db.lock().await;
-        let tool_headers = lance_db.vector_search_enabled_tools(query, num_of_results).await?;
+        let tool_headers = lance_db.vector_search_enabled_tools(query, num_of_results, false).await?;
         Ok(tool_headers)
     }
 
@@ -186,7 +193,7 @@ impl ToolRouter {
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let lance_db = self.lance_db.lock().await;
-        let tool_headers = lance_db.vector_search_all_tools(query, num_of_results).await?;
+        let tool_headers = lance_db.vector_search_all_tools(query, num_of_results, false).await?;
         Ok(tool_headers)
     }
 
