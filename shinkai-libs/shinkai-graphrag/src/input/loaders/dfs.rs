@@ -15,8 +15,8 @@ use crate::{
 
 pub async fn store_entity_semantic_embeddings(
     entities: Vec<Entity>,
-    mut vectorstore: LanceDBVectorStore,
-) -> anyhow::Result<LanceDBVectorStore> {
+    vectorstore: &mut LanceDBVectorStore,
+) -> anyhow::Result<()> {
     let documents: Vec<VectorStoreDocument> = entities
         .into_iter()
         .map(|entity| {
@@ -29,14 +29,16 @@ pub async fn store_entity_semantic_embeddings(
             VectorStoreDocument {
                 id: entity.id,
                 text: entity.description,
-                vector: entity.description_embedding,
+                vector: entity
+                    .description_embedding
+                    .map(|v| v.into_iter().map(|f| f as f32).collect()),
                 attributes,
             }
         })
         .collect();
 
     vectorstore.load_documents(documents, true).await?;
-    Ok(vectorstore)
+    Ok(())
 }
 
 pub fn read_entities(
@@ -55,6 +57,7 @@ pub fn read_entities(
     rank_col: Option<&str>,
     // attributes_cols: Option<Vec<&str>>,
 ) -> anyhow::Result<Vec<Entity>> {
+    let df_column_names = df.get_column_names();
     let column_names = [
         Some(id_col),
         short_id_col,
@@ -70,7 +73,10 @@ pub fn read_entities(
         rank_col,
     ]
     .iter()
-    .filter_map(|&v| v.map(|v| v.to_string()))
+    .filter_map(|&v| {
+        v.map(|v| v.to_string())
+            .filter(|v| df_column_names.contains(&v.as_str()))
+    })
     .collect::<Vec<_>>();
 
     let column_names = column_names.into_iter().collect::<HashSet<String>>().into_vec();
@@ -233,6 +239,7 @@ pub fn read_community_reports(
     _content_embedding_col: Option<&str>,
     // attributes_cols: Option<&[&str]>,
 ) -> anyhow::Result<Vec<CommunityReport>> {
+    let df_column_names = df.get_column_names();
     let column_names = [
         Some(id_col),
         short_id_col,
@@ -243,7 +250,10 @@ pub fn read_community_reports(
         rank_col,
     ]
     .iter()
-    .filter_map(|&v| v.map(|v| v.to_string()))
+    .filter_map(|&v| {
+        v.map(|v| v.to_string())
+            .filter(|v| df_column_names.contains(&v.as_str()))
+    })
     .collect::<Vec<_>>();
 
     let column_names: Vec<String> = column_names.into_iter().collect::<HashSet<String>>().into_vec();
@@ -331,6 +341,7 @@ pub fn read_relationships(
     document_ids_col: Option<&str>,
     attributes_cols: Option<Vec<&str>>,
 ) -> anyhow::Result<Vec<Relationship>> {
+    let df_column_names = df.get_column_names();
     let mut column_names = [
         Some(id_col),
         short_id_col,
@@ -343,7 +354,10 @@ pub fn read_relationships(
         document_ids_col,
     ]
     .iter()
-    .filter_map(|&v| v.map(|v| v.to_string()))
+    .filter_map(|&v| {
+        v.map(|v| v.to_string())
+            .filter(|v| df_column_names.contains(&v.as_str()))
+    })
     .collect::<HashSet<String>>();
 
     attributes_cols.as_ref().map(|cols| {
@@ -479,6 +493,7 @@ pub fn read_text_units(
     embedding_col: Option<&str>,
     attributes_cols: Option<Vec<&str>>,
 ) -> anyhow::Result<Vec<TextUnit>> {
+    let df_column_names = df.get_column_names();
     let mut column_names = [
         Some(id_col),
         short_id_col,
@@ -490,7 +505,10 @@ pub fn read_text_units(
         embedding_col,
     ]
     .iter()
-    .filter_map(|&v| v.map(|v| v.to_string()))
+    .filter_map(|&v| {
+        v.map(|v| v.to_string())
+            .filter(|v| df_column_names.contains(&v.as_str()))
+    })
     .collect::<HashSet<String>>();
 
     attributes_cols.as_ref().map(|cols| {

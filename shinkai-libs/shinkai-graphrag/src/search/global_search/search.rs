@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use crate::context_builder::community_context::{CommunityContextBuilderParams, GlobalCommunityContext};
 use crate::context_builder::context_builder::ConversationHistory;
-use crate::llm::llm::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
+use crate::llm::base::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
 use crate::search::base::{ContextData, ContextText, KeyPoint, ResponseType};
 use crate::search::global_search::prompts::NO_DATA_ANSWER;
 
@@ -33,7 +33,7 @@ pub struct GlobalSearchResult {
     pub reduce_context_text: ContextText,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GlobalSearchLLMCallback {
     response: Vec<String>,
     map_response_contexts: Vec<String>,
@@ -41,14 +41,6 @@ pub struct GlobalSearchLLMCallback {
 }
 
 impl GlobalSearchLLMCallback {
-    pub fn new() -> Self {
-        GlobalSearchLLMCallback {
-            response: Vec::new(),
-            map_response_contexts: Vec::new(),
-            map_response_outputs: Vec::new(),
-        }
-    }
-
     pub fn on_map_response_start(&mut self, map_response_contexts: Vec<String>) {
         self.map_response_contexts = map_response_contexts;
     }
@@ -83,7 +75,6 @@ pub struct GlobalSearchParams {
     pub response_type: String,
     pub allow_general_knowledge: bool,
     pub general_knowledge_inclusion_prompt: Option<String>,
-    pub json_mode: bool,
     pub callbacks: Option<Vec<GlobalSearchLLMCallback>>,
     pub max_data_tokens: usize,
     pub map_llm_params: LLMParams,
@@ -102,7 +93,6 @@ impl GlobalSearch {
             response_type,
             allow_general_knowledge,
             general_knowledge_inclusion_prompt,
-            json_mode,
             callbacks,
             max_data_tokens,
             map_llm_params,
@@ -111,14 +101,6 @@ impl GlobalSearch {
         } = global_search_params;
 
         let mut map_llm_params = map_llm_params;
-
-        if json_mode {
-            map_llm_params
-                .response_format
-                .insert("type".to_string(), "json_object".to_string());
-        } else {
-            map_llm_params.response_format.remove("response_format");
-        }
 
         let map_system_prompt = map_system_prompt.unwrap_or(MAP_SYSTEM_PROMPT.to_string());
         let reduce_system_prompt = reduce_system_prompt.unwrap_or(REDUCE_SYSTEM_PROMPT.to_string());
@@ -219,15 +201,16 @@ impl GlobalSearch {
         let start_time = Instant::now();
         let search_prompt = self.map_system_prompt.replace("{context_data}", context_data);
 
-        let mut search_messages = Vec::new();
-        search_messages.push(HashMap::from([
-            ("role".to_string(), "system".to_string()),
-            ("content".to_string(), search_prompt.clone()),
-        ]));
-        search_messages.push(HashMap::from([
-            ("role".to_string(), "user".to_string()),
-            ("content".to_string(), query.to_string()),
-        ]));
+        let mut search_messages = vec![
+            HashMap::from([
+                ("role".to_string(), "system".to_string()),
+                ("content".to_string(), search_prompt.clone()),
+            ]),
+            HashMap::from([
+                ("role".to_string(), "user".to_string()),
+                ("content".to_string(), query.to_string()),
+            ]),
+        ];
 
         let search_response = self
             .llm

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use shinkai_graphrag::llm::llm::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
+use shinkai_graphrag::llm::base::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OllamaResponse {

@@ -4,10 +4,7 @@ use polars::{frame::DataFrame, prelude::NamedFrom, series::Series};
 
 use crate::models::{Entity, TextUnit};
 
-pub fn get_candidate_text_units(
-    selected_entities: &Vec<Entity>,
-    text_units: &Vec<TextUnit>,
-) -> anyhow::Result<DataFrame> {
+pub fn get_candidate_text_units(selected_entities: &Vec<Entity>, text_units: &[TextUnit]) -> anyhow::Result<DataFrame> {
     let mut selected_text_ids: HashSet<String> = HashSet::new();
 
     for entity in selected_entities {
@@ -20,8 +17,8 @@ pub fn get_candidate_text_units(
 
     let selected_text_units: Vec<TextUnit> = text_units
         .iter()
-        .cloned()
         .filter(|unit| selected_text_ids.contains(&unit.id))
+        .cloned()
         .collect();
 
     to_text_unit_dataframe(selected_text_units)
@@ -39,7 +36,7 @@ pub fn to_text_unit_dataframe(text_units: Vec<TextUnit>) -> anyhow::Result<DataF
             .attributes
             .unwrap_or_default()
             .keys()
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>()
     } else {
         Vec::new()

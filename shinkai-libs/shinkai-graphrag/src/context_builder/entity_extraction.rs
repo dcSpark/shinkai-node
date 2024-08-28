@@ -1,8 +1,8 @@
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use crate::{
     input::retrieval::entities::{get_entity_by_key, get_entity_by_name},
-    llm::llm::BaseTextEmbedding,
+    llm::base::BaseTextEmbedding,
     models::Entity,
     vector_stores::{lancedb::LanceDBVectorStore, vector_store::VectorStore},
 };

@@ -2,8 +2,8 @@ use polars::{io::SerReader, prelude::ParquetReader};
 use shinkai_graphrag::{
     context_builder::community_context::{CommunityContextBuilderParams, GlobalCommunityContext},
     indexer_adapters::{read_indexer_entities, read_indexer_reports},
-    llm::llm::LLMParams,
-    search::global_search::global_search::{GlobalSearch, GlobalSearchParams},
+    llm::base::LLMParams,
+    search::global_search::search::{GlobalSearch, GlobalSearchParams},
 };
 use utils::{
     ollama::Ollama,
@@ -67,13 +67,11 @@ async fn ollama_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let map_llm_params = LLMParams {
         max_tokens: 1000,
         temperature: 0.0,
-        response_format: std::collections::HashMap::from([("type".to_string(), "json_object".to_string())]),
     };
 
     let reduce_llm_params = LLMParams {
         max_tokens: 2000,
         temperature: 0.0,
-        response_format: std::collections::HashMap::new(),
     };
 
     // Perform global search
@@ -87,7 +85,6 @@ async fn ollama_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
         response_type: String::from("multiple paragraphs"),
         allow_general_knowledge: false,
         general_knowledge_inclusion_prompt: None,
-        json_mode: true,
         callbacks: None,
         max_data_tokens: 5000,
         map_llm_params,
@@ -164,13 +161,11 @@ async fn openai_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let map_llm_params = LLMParams {
         max_tokens: 1000,
         temperature: 0.0,
-        response_format: std::collections::HashMap::from([("type".to_string(), "json_object".to_string())]),
     };
 
     let reduce_llm_params = LLMParams {
         max_tokens: 2000,
         temperature: 0.0,
-        response_format: std::collections::HashMap::new(),
     };
 
     // Perform global search
@@ -184,7 +179,6 @@ async fn openai_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
         response_type: String::from("multiple paragraphs"),
         allow_general_knowledge: false,
         general_knowledge_inclusion_prompt: None,
-        json_mode: true,
         callbacks: None,
         max_data_tokens: 12_000,
         map_llm_params,

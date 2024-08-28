@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Instant};
 
 use crate::{
-    llm::llm::{BaseLLM, LLMParams, MessageType},
+    llm::base::{BaseLLM, LLMParams, MessageType},
     search::base::{ContextData, ContextText, ResponseType},
 };
 
@@ -54,25 +54,27 @@ impl LocalSearch {
 
     pub async fn asearch(&self, query: String) -> anyhow::Result<LocalSearchResult> {
         let start_time = Instant::now();
-        let (context_text, context_records) = self
-            .context_builder
-            .build_context(self.context_builder_params.clone())
-            .await?;
+
+        let mut context_builder_params = self.context_builder_params.clone();
+        context_builder_params.query = query.clone();
+
+        let (context_text, context_records) = self.context_builder.build_context(context_builder_params).await?;
 
         let search_prompt = self
             .system_prompt
             .replace("{context_data}", &context_text)
             .replace("{response_type}", &self.response_type);
 
-        let mut search_messages = Vec::new();
-        search_messages.push(HashMap::from([
-            ("role".to_string(), "system".to_string()),
-            ("content".to_string(), search_prompt.clone()),
-        ]));
-        search_messages.push(HashMap::from([
-            ("role".to_string(), "user".to_string()),
-            ("content".to_string(), query.to_string()),
-        ]));
+        let search_messages = vec![
+            HashMap::from([
+                ("role".to_string(), "system".to_string()),
+                ("content".to_string(), search_prompt.clone()),
+            ]),
+            HashMap::from([
+                ("role".to_string(), "user".to_string()),
+                ("content".to_string(), query.to_string()),
+            ]),
+        ];
 
         let search_response = self
             .llm

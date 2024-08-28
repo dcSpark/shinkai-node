@@ -1,2 +1,2 @@
-pub mod global_search;
 pub mod prompts;
+pub mod search;

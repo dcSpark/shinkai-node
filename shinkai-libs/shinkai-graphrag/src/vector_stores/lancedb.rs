@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use arrow::datatypes::Float64Type;
-use arrow_array::{Array, Float64Array, ListArray, RecordBatch, RecordBatchIterator, StringArray};
+use arrow::datatypes::Float32Type;
+use arrow_array::{Array, FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use futures::TryStreamExt;
 use lancedb::{
     arrow::arrow_schema::{DataType, Field, Schema},
@@ -11,7 +11,7 @@ use lancedb::{
 };
 use serde_json::json;
 
-use crate::llm::llm::BaseTextEmbedding;
+use crate::llm::base::BaseTextEmbedding;
 
 use super::vector_store::{VectorStore, VectorStoreDocument, VectorStoreSearchResult};
 
@@ -38,7 +38,7 @@ impl LanceDBVectorStore {
 
     async fn similarity_search_by_vector(
         &self,
-        query_embedding: Vec<f64>,
+        query_embedding: Vec<f32>,
         k: usize,
     ) -> anyhow::Result<Vec<VectorStoreSearchResult>> {
         if let Some(document_collection) = &self.document_collection {
@@ -69,7 +69,7 @@ impl LanceDBVectorStore {
                     .column_by_name("vector")
                     .unwrap()
                     .as_any()
-                    .downcast_ref::<ListArray>()
+                    .downcast_ref::<FixedSizeListArray>()
                     .unwrap();
                 let attributes_col = record
                     .column_by_name("attributes")
@@ -82,24 +82,24 @@ impl LanceDBVectorStore {
                     .column_by_name("_distance")
                     .unwrap()
                     .as_any()
-                    .downcast_ref::<Float64Array>()
+                    .downcast_ref::<Float32Array>()
                     .unwrap();
 
-                if id_col.len() == 0
-                    || text_col.len() == 0
-                    || vector_col.len() == 0
-                    || attributes_col.len() == 0
-                    || distance_col.len() == 0
+                if id_col.is_empty()
+                    || text_col.is_empty()
+                    || vector_col.is_empty()
+                    || attributes_col.is_empty()
+                    || distance_col.is_empty()
                 {
                     continue;
                 }
 
                 let id = id_col.value(0).to_string();
                 let text = text_col.value(0).to_string();
-                let vector: Vec<f64> = vector_col
+                let vector: Vec<f32> = vector_col
                     .value(0)
                     .as_any()
-                    .downcast_ref::<Float64Array>()
+                    .downcast_ref::<Float32Array>()
                     .unwrap()
                     .iter()
                     .map(|value| value.unwrap())
@@ -134,7 +134,7 @@ impl VectorStore for LanceDBVectorStore {
         text_embedder: &Box<dyn BaseTextEmbedding + Send + Sync>,
         k: usize,
     ) -> anyhow::Result<Vec<VectorStoreSearchResult>> {
-        let query_embedding = text_embedder.embed(text);
+        let query_embedding = text_embedder.aembed(text).await?;
 
         if query_embedding.is_empty() {
             return Ok(vec![]);
@@ -155,12 +155,21 @@ impl VectorStore for LanceDBVectorStore {
             .filter(|document| document.vector.is_some())
             .collect();
 
+        let vector_dimension = if !data.is_empty() {
+            data[0].vector.as_ref().map(|v| v.len()).unwrap_or_default()
+        } else {
+            0
+        };
+
         let schema = Arc::new(Schema::new(vec![
             Field::new("id", DataType::Utf8, false),
             Field::new("text", DataType::Utf8, true),
             Field::new(
                 "vector",
-                DataType::List(Arc::new(Field::new("item", DataType::Float64, true))),
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float32, true)),
+                    vector_dimension.try_into().unwrap(),
+                ),
                 true,
             ),
             Field::new("attributes", DataType::Utf8, false),
@@ -178,18 +187,19 @@ impl VectorStore for LanceDBVectorStore {
                             .map(|document| document.text.clone().unwrap_or_default())
                             .collect::<Vec<_>>(),
                     )),
-                    Arc::new(ListArray::from_iter_primitive::<Float64Type, _, _>(
+                    Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
                         data.iter()
                             .map(|document| {
                                 Some(
                                     document
                                         .vector
                                         .as_ref()
-                                        .map(|v| v.iter().map(|f| Some(f.clone())).collect::<Vec<_>>())
+                                        .map(|v| v.iter().map(|f| Some(*f)).collect::<Vec<_>>())
                                         .unwrap_or_default(),
                                 )
                             })
                             .collect::<Vec<_>>(),
+                        vector_dimension.try_into().unwrap(),
                     )),
                     Arc::new(StringArray::from(
                         data.iter()
@@ -205,6 +215,8 @@ impl VectorStore for LanceDBVectorStore {
         };
 
         if overwrite {
+            let _ = db_connection.drop_table(&self.collection_name).await;
+
             if let Some(batches) = batches {
                 let table = db_connection
                     .create_table(&self.collection_name, Box::new(batches))

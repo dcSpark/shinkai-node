@@ -3,16 +3,12 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BaseLLMCallback {
     pub response: Vec<String>,
 }
 
 impl BaseLLMCallback {
-    pub fn new() -> Self {
-        BaseLLMCallback { response: Vec::new() }
-    }
-
     pub fn on_llm_new_token(&mut self, token: &str) {
         self.response.push(token.to_string());
     }
@@ -29,7 +25,6 @@ pub enum MessageType {
 pub struct LLMParams {
     pub max_tokens: u32,
     pub temperature: f32,
-    pub response_format: HashMap<String, String>,
 }
 
 #[async_trait]
@@ -46,8 +41,7 @@ pub trait BaseLLM {
 
 #[async_trait]
 pub trait BaseTextEmbedding {
-    async fn aembed(&self, text: &str) -> Vec<f64>;
-    fn embed(&self, text: &str) -> Vec<f64>;
+    async fn aembed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
 }
 
 pub enum GlobalSearchPhase {

@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use crate::llm::llm::BaseTextEmbedding;
+use crate::llm::base::BaseTextEmbedding;
 
 pub struct VectorStoreSearchResult {
     pub document: VectorStoreDocument,
-    pub score: f64,
+    pub score: f32,
 }
 
 pub struct VectorStoreDocument {
     pub id: String,
     pub text: Option<String>,
-    pub vector: Option<Vec<f64>>,
+    pub vector: Option<Vec<f32>>,
     pub attributes: HashMap<String, String>,
 }
 

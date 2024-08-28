@@ -5,14 +5,14 @@ use polars::{frame::DataFrame, prelude::NamedFrom, series::Series};
 use crate::models::{Entity, Relationship};
 
 pub fn get_in_network_relationships(
-    selected_entities: &Vec<Entity>,
-    relationships: &Vec<Relationship>,
+    selected_entities: &[Entity],
+    relationships: &[Relationship],
     ranking_attribute: &str,
 ) -> Vec<Relationship> {
     let selected_entity_names: Vec<String> = selected_entities.iter().map(|entity| entity.title.clone()).collect();
 
     let selected_relationships: Vec<Relationship> = relationships
-        .clone()
+        .to_owned()
         .into_iter()
         .filter(|relationship| {
             selected_entity_names.contains(&relationship.source) && selected_entity_names.contains(&relationship.target)
@@ -28,8 +28,8 @@ pub fn get_in_network_relationships(
 }
 
 pub fn get_out_network_relationships(
-    selected_entities: &Vec<Entity>,
-    relationships: &Vec<Relationship>,
+    selected_entities: &[Entity],
+    relationships: &[Relationship],
     ranking_attribute: &str,
 ) -> Vec<Relationship> {
     let selected_entity_names: Vec<String> = selected_entities.iter().map(|e| e.title.clone()).collect();
@@ -51,22 +51,19 @@ pub fn get_out_network_relationships(
     sort_relationships_by_ranking_attribute(selected_relationships, selected_entities.to_vec(), ranking_attribute)
 }
 
-pub fn get_candidate_relationships(
-    selected_entities: &Vec<Entity>,
-    relationships: &Vec<Relationship>,
-) -> Vec<Relationship> {
+pub fn get_candidate_relationships(selected_entities: &[Entity], relationships: &[Relationship]) -> Vec<Relationship> {
     let selected_entity_names: Vec<String> = selected_entities.iter().map(|entity| entity.title.clone()).collect();
 
     relationships
         .iter()
-        .cloned()
         .filter(|relationship| {
             selected_entity_names.contains(&relationship.source) || selected_entity_names.contains(&relationship.target)
         })
+        .cloned()
         .collect()
 }
 
-pub fn get_entities_from_relationships(relationships: &Vec<Relationship>, entities: &Vec<Entity>) -> Vec<Entity> {
+pub fn get_entities_from_relationships(relationships: &[Relationship], entities: &[Entity]) -> Vec<Entity> {
     let selected_entity_names: Vec<String> = relationships
         .iter()
         .flat_map(|relationship| vec![relationship.source.clone(), relationship.target.clone()])
@@ -74,8 +71,8 @@ pub fn get_entities_from_relationships(relationships: &Vec<Relationship>, entiti
 
     entities
         .iter()
-        .cloned()
         .filter(|entity| selected_entity_names.contains(&entity.title))
+        .cloned()
         .collect()
 }
 
@@ -194,7 +191,7 @@ pub fn to_relationship_dataframe(
             .attributes
             .unwrap_or_default()
             .keys()
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>()
     } else {
         Vec::new()

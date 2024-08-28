@@ -14,7 +14,7 @@ use crate::{
         source_context::{build_text_unit_context, count_relationships},
     },
     input::retrieval::{community_reports::get_candidate_communities, text_units::get_candidate_text_units},
-    llm::llm::BaseTextEmbedding,
+    llm::base::BaseTextEmbedding,
     models::{CommunityReport, Entity, Relationship, TextUnit},
     vector_stores::lancedb::LanceDBVectorStore,
 };
@@ -194,7 +194,7 @@ impl LocalSearchMixedContext {
         }
 
         // build local (i.e. entity-relationship-covariate) context
-        let local_prop = 1 as f32 - community_prop - text_unit_prop;
+        let local_prop = 1_f32 - community_prop - text_unit_prop;
         let local_tokens = std::cmp::max((max_tokens as f32 * local_prop) as usize, 0);
         let (local_context, local_context_data) = self._build_local_context(
             selected_entities.clone(),
@@ -566,8 +566,10 @@ impl LocalSearchMixedContext {
 
         let mut context_data = context_data;
         if return_candidate_context {
-            let candidate_context_data =
-                get_candidate_text_units(&selected_entities, &self.text_units.values().cloned().collect())?;
+            let candidate_context_data = get_candidate_text_units(
+                &selected_entities,
+                &self.text_units.values().cloned().collect::<Vec<TextUnit>>(),
+            )?;
 
             let context_key = context_name.to_lowercase();
             if !context_data.contains_key(&context_key) {
