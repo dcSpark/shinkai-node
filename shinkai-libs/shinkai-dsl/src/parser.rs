@@ -10,10 +10,10 @@ pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
         panic!("Expected 'step_body' rule, found {:?}", pair.as_rule());
     }
 
-    let mut inner_pairs = pair.into_inner().peekable();
+    let inner_pairs = pair.into_inner().peekable();
     let mut bodies = Vec::new();
 
-    while let Some(inner_pair) = inner_pairs.next() {
+    for inner_pair in inner_pairs {
         bodies.push(parse_step_body_item(inner_pair));
     }
 
@@ -294,6 +294,8 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
     let mut workflow_name = String::new();
     let mut version = String::new();
     let mut steps = Vec::new();
+    let mut author = "@@not_defined.shinkai".to_string(); // Default value for author
+    let mut sticky = false; // Default value for sticky
 
     for pair in pairs {
         match pair.as_rule() {
@@ -309,6 +311,13 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
                         Rule::step => {
                             steps.push(parse_step(inner_pair)?);
                         }
+                        Rule::identity => {
+                            let identity = inner_pair.as_str().to_string();
+                            author = format!("@@{}", identity);
+                        }
+                        Rule::sticky_tag => {
+                            sticky = true;
+                        }
                         _ => return Err("Unexpected rule in workflow parsing".to_string()),
                     }
                 }
@@ -323,6 +332,8 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
         steps,
         raw: dsl_input.to_string(),
         description: None,
+        author,
+        sticky,
     })
 }
 

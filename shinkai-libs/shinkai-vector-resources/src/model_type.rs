@@ -64,6 +64,33 @@ impl EmbeddingModelType {
             },
         }
     }
+
+    // Returns the normalization factor for the embedding model to calibrate vector search with different embedding model types
+    // The reference model is snowflake-arctic-embed:xs
+    pub fn embedding_normalization_factor(&self) -> f32 {
+        match self {
+            EmbeddingModelType::TextEmbeddingsInference(_) => 1.0,
+            EmbeddingModelType::OpenAI(_) => 1.0,
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
+                OllamaTextEmbeddingsInference::AllMiniLML6v2 => 1.0,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => 1.0,
+                OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => 1.5,
+                OllamaTextEmbeddingsInference::Other(_) => 1.0,
+            },
+        }
+    }
+
+    pub fn vector_dimensions(&self) -> Result<usize, VRError> {
+        match self {
+            EmbeddingModelType::TextEmbeddingsInference(model) => {
+                Err(VRError::UnimplementedModelDimensions(format!("TextEmbeddingsInference: {}", model)))
+            },
+            EmbeddingModelType::OpenAI(model) => {
+                Err(VRError::UnimplementedModelDimensions(format!("OpenAI: {}", model)))
+            },
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.vector_dimensions(),
+        }
+    }
 }
 
 impl fmt::Display for EmbeddingModelType {
@@ -224,6 +251,20 @@ impl OllamaTextEmbeddingsInference {
             _ => Err(VRError::InvalidModelArchitecture),
         }
     }
+
+    /// Returns the vector dimensions for the embedding model
+    pub fn vector_dimensions(&self) -> Result<usize, VRError> {
+        match self {
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => Ok(384),
+            OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => Ok(768),
+            OllamaTextEmbeddingsInference::AllMiniLML6v2 => {
+                Err(VRError::UnimplementedModelDimensions(format!("{}", self)))
+            }
+            OllamaTextEmbeddingsInference::Other(model_name) => {
+                Err(VRError::UnimplementedModelDimensions(model_name.clone()))
+            }
+        }
+    }
 }
 
 impl fmt::Display for OllamaTextEmbeddingsInference {
@@ -234,5 +275,48 @@ impl fmt::Display for OllamaTextEmbeddingsInference {
             OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs => write!(f, "{}", Self::JINA_EMBEDDINGS_V2_BASE_ES),
             OllamaTextEmbeddingsInference::Other(name) => write!(f, "{}", name),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_snowflake_arctic_embed_xs() {
+        let model_str = "snowflake-arctic-embed:xs";
+        let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M));
+    }
+
+    #[test]
+    fn test_parse_jina_embeddings_v2_base_es() {
+        let model_str = "jina/jina-embeddings-v2-base-es:latest";
+        let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs));
+    }
+
+    #[test]
+    fn test_parse_snowflake_arctic_embed_xs_as_embedding_model_type() {
+        let model_str = "snowflake-arctic-embed:xs";
+        let parsed_model = EmbeddingModelType::from_string(model_str);
+        assert_eq!(
+            parsed_model,
+            Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_jina_embeddings_v2_base_es_as_embedding_model_type() {
+        let model_str = "jina/jina-embeddings-v2-base-es:latest";
+        let parsed_model = EmbeddingModelType::from_string(model_str);
+        assert_eq!(
+            parsed_model,
+            Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs
+            ))
+        );
     }
 }

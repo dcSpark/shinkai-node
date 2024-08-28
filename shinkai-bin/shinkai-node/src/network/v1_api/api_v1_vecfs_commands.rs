@@ -1,12 +1,16 @@
 use std::{env, fs, path::Path, sync::Arc};
 
-use super::{
-    node_api::APIError, node_error::NodeError,
-    subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
-};
 use crate::{
-    db::ShinkaiDB, llm_provider::parsing_helper::ParsingHelper, managers::IdentityManager,
-    network::subscription_manager::external_subscriber_manager::SharedFolderInfo, schemas::identity::Identity,
+    db::ShinkaiDB,
+    llm_provider::parsing_helper::ParsingHelper,
+    managers::IdentityManager,
+    network::{
+        node_api_router::APIError,
+        node_error::NodeError,
+        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
+        Node,
+    },
+    schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };
 use async_channel::Sender;
@@ -1105,6 +1109,30 @@ impl Node {
                     return Ok(());
                 }
             };
+        Self::process_and_save_files(
+            db,
+            vector_fs,
+            input_payload,
+            requester_name,
+            embedding_generator,
+            unstructured_api,
+            external_subscriber_manager,
+            res,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_and_save_files(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        input_payload: APIConvertFilesAndSaveToFolder,
+        requester_name: ShinkaiName,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+        unstructured_api: Arc<UnstructuredAPI>,
+        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        res: Sender<Result<Vec<Value>, APIError>>,
+    ) -> Result<(), NodeError> {
         let destination_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {

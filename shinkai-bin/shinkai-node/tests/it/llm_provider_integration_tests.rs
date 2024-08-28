@@ -1,8 +1,8 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
 };
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -15,7 +15,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use shinkai_vector_resources::utils::hash_string;
@@ -26,6 +26,7 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::{api_create_job, api_message_job, api_registration_device_node_profile_main};
+use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use mockito::Server;
 
@@ -36,7 +37,7 @@ fn setup() {
 
 #[test]
 fn node_llm_provider_registration() {
-    std::env::set_var("WELCOME_MESSAGE", "false");
+    unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     init_default_tracing();
     // WIP: need to find a way to test the agent registration
     setup();
@@ -116,16 +117,9 @@ fn node_llm_provider_registration() {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
-            // external_url: Some("http://localhost:3000".to_string()),
-            // external_url: Some("http://localhost:11434".to_string()),
-            // external_url: Some("https://api.openai.com".to_string()),
             external_url: Some(server.url()),
-            // api_key: Some("api_key".to_string()),
             api_key: Some("mockapikey".to_string()),
-            // api_key: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjE3LCJpYXQiOjE3MDEzMTg5ODZ9.jTLpbsAVITowuCMYdNgTyUHikGRlLjEqqOYHWMRNSz4".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            // model: LLMProviderInterface::Ollama(ollama),
-            // model: LLMProviderInterface::ShinkaiBackend(shinkai_backend),
             toolkit_permissions: vec![],
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],
@@ -148,6 +142,9 @@ fn node_llm_provider_registration() {
             node1_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         );
 
@@ -466,6 +463,8 @@ fn node_llm_provider_registration() {
                     parent: None,
                     workflow_code: None,
                     workflow_name: None,
+                    sheet_job_data: None,
+                    callback: None,
                 };
                 let body = serde_json::to_string(&job_message)
                     .map_err(|_| "Failed to serialize job message to JSON")

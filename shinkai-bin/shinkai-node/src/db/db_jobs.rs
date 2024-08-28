@@ -2,15 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::llm_provider::execution::prompts::subprompts::SubPromptType;
 use crate::llm_provider::job::{Job, JobLike, JobStepResult};
 use crate::network::ws_manager::WSUpdateHandler;
 
-use rocksdb::{IteratorMode, WriteBatch};
+use rocksdb::WriteBatch;
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
@@ -22,6 +23,7 @@ impl ShinkaiDB {
         llm_provider_id: String,
         scope: JobScope,
         is_hidden: bool,
+        associated_ui: Option<AssociatedUI>,
     ) -> Result<(), ShinkaiDBError> {
         let start = std::time::Instant::now();
 
@@ -88,6 +90,13 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
         batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "");
+
+        // Serialize and put associated_ui if it exists
+        if let Some(ui) = &associated_ui {
+            let associated_ui_key = format!("jobinbox_{}_associated_ui", job_id);
+            let associated_ui_value = serde_json::to_vec(ui)?;
+            batch.put_cf(cf_inbox, associated_ui_key.as_bytes(), &associated_ui_value);
+        }
 
         self.db.write(batch)?;
 
@@ -171,6 +180,7 @@ impl ShinkaiDB {
             step_history,
             unprocessed_messages,
             execution_context,
+            associated_ui,
         ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
@@ -185,6 +195,7 @@ impl ShinkaiDB {
             step_history: step_history.unwrap_or_else(Vec::new),
             unprocessed_messages,
             execution_context,
+            associated_ui,
         };
 
         let duration = start.elapsed();
@@ -212,6 +223,7 @@ impl ShinkaiDB {
             _,
             unprocessed_messages,
             execution_context,
+            associated_ui,
         ) = self.get_job_data(job_id, false)?;
 
         // Construct the job
@@ -226,6 +238,7 @@ impl ShinkaiDB {
             step_history: Vec::new(), // Empty step history for JobLike
             unprocessed_messages,
             execution_context,
+            associated_ui,
         };
 
         let duration = start.elapsed();
@@ -257,6 +270,7 @@ impl ShinkaiDB {
             Option<Vec<JobStepResult>>,
             Vec<String>,
             HashMap<String, String>,
+            Option<AssociatedUI>,
         ),
         ShinkaiDBError,
     > {
@@ -307,6 +321,14 @@ impl ShinkaiDB {
         // Reads all of the unprocessed messages by iterating
         let unprocessed_messages = self.get_unprocessed_messages(job_id)?;
 
+        // Try to read associated_ui
+        let associated_ui_value = self
+            .db
+            .get_cf(cf_jobs, format!("jobinbox_{}_associated_ui", job_id).as_bytes())
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_slice(&value).ok());
+
         Ok((
             scope,
             is_finished,
@@ -317,6 +339,7 @@ impl ShinkaiDB {
             step_history,
             unprocessed_messages,
             self.get_job_execution_context(job_id)?,
+            associated_ui_value,
         ))
     }
 
@@ -647,7 +670,8 @@ impl ShinkaiDB {
         parent_message_key: Option<String>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), ShinkaiDBError> {
-        self.unsafe_insert_inbox_message(message, parent_message_key, ws_manager).await?;
+        self.unsafe_insert_inbox_message(message, parent_message_key, ws_manager)
+            .await?;
         Ok(())
     }
 }

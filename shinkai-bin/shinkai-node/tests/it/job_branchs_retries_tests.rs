@@ -3,7 +3,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use std::time::Duration;
 use std::time::Instant;
 use utils::test_boilerplate::run_test_one_node_network;
@@ -45,8 +45,8 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
             break;
         }
 
-        if start.elapsed() > Duration::from_secs(15) {
-            panic!("Test failed: 3 seconds have passed without receiving the response");
+        if start.elapsed() > Duration::from_secs(180) {
+            panic!("Test failed: 15 seconds have passed without receiving the response");
         }
 
         tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping

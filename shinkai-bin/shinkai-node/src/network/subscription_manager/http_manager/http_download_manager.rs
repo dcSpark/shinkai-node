@@ -327,7 +327,7 @@ impl HttpDownloadManager {
                     // If save is successful, do nothing or handle success case
                 }
                 Err(e) => {
-                    return Err(format!("Error saving file in folder: {}", e).into());
+                    return Err(format!("Error saving file '{}' in folder: {}", job.info.path, e).into());
                 }
             }
 

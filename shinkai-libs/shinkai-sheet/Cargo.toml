@@ -1,0 +1,30 @@
+[package]
+name = "shinkai_sheet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1.0.117"
+futures = "0.3.30"
+tokio = { version = "1.36", features = ["full"] }
+dashmap = "5.5.3"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.6.1", features = ["v4"] }
+regex = "1"
+shinkai_dsl = { path = "../shinkai-dsl" }
+shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+async-channel = "1.6.1"
+async-recursion = "1.0.5"
+blake3 = "1.2.0"
+
+[dependencies.serde]
+version = "1.0.188"
+features = ["derive"]
+
+[[test]]
+name = "sheet_common_tests"
+path = "tests/sheet_common_tests.rs"
+
+[[test]]
+name = "sheet_one_row_advanced_tests"
+path = "tests/sheet_one_row_advanced_tests.rs"

@@ -961,6 +961,7 @@ impl VectorFS {
         source_file_map: Option<SourceFileMap>,
     ) -> Result<FSItem, VectorFSError> {
         let mut resource = resource;
+
         let vr_header = resource.as_trait_object().generate_resource_header();
         let source_db_key = vr_header.reference_string();
         let resource_name = SourceFileType::clean_string_of_extension(resource.as_trait_object().name());
@@ -1246,7 +1247,12 @@ impl VectorFS {
             let internals = internals_map
                 .get_mut(&writer.profile)
                 .ok_or_else(|| VectorFSError::ProfileNameNonExistent(writer.profile.to_string()))?;
-            if vr_header.resource_embedding_model_used == internals.default_embedding_model() {
+
+            if vr_header.resource_embedding_model_used == internals.default_embedding_model()
+                || internals
+                    .supported_embedding_models
+                    .contains(&vr_header.resource_embedding_model_used)
+            {
                 internals
                     .fs_core_resource
                     .mutate_node_at_path(writer.path.clone(), &mut mutator, true)?;

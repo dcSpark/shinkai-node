@@ -1,9 +1,8 @@
-use super::network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
 use super::utils::static_server::start_static_server;
-use crate::network::node::NodeCommand;
-use crate::network::node_api;
+use crate::network::node_api_router;
+use crate::network::node_commands::NodeCommand;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};
@@ -97,6 +96,12 @@ pub async fn initialize_node() -> Result<
         .cloned()
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.arb-sep-shinkai".to_string()));
 
+    let global_identity_name = if global_identity_name.is_empty() {
+        "@@localhost.arb-sep-shinkai".to_string()
+    } else {
+        global_identity_name
+    };
+
     // Initialization, creating Tokio runtime and fetching needed startup data
     let initial_llm_providers = fetch_llm_provider_env(global_identity_name.clone());
     let identity_secret_key_string =
@@ -178,6 +183,9 @@ pub async fn initialize_node() -> Result<
         Some(embedding_generator),
         Some(unstructured_api),
         node_env.ws_address,
+        node_env.default_embedding_model.clone(),
+        node_env.supported_embedding_models.clone(),
+        node_env.api_v2_key.clone(),
     )
     .await;
 
@@ -226,7 +234,7 @@ pub async fn initialize_node() -> Result<
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
     let api_server = tokio::spawn(async move {
-        if let Err(e) = node_api::run_api(
+        if let Err(e) = node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
             global_identity_name.clone().to_string(),
@@ -367,9 +375,7 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
         .clone()
         .expect("EMBEDDINGS_SERVER_URL not found in node_env");
     let api_key = node_env.embeddings_server_api_key.clone();
-    // TODO: Replace this hard-coded model to having the default being saved/read from the DB
-    let model = NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone();
-    RemoteEmbeddingGenerator::new(model, &api_url, api_key)
+    RemoteEmbeddingGenerator::new(node_env.default_embedding_model.clone(), &api_url, api_key)
 }
 
 /// Prints Useful Node information at startup

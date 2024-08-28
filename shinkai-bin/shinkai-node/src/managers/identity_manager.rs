@@ -83,6 +83,15 @@ impl IdentityManager {
         })
     }
 
+    pub fn get_main_identity(&self) -> Option<&Identity> {
+        self.local_identities.iter().find(|identity| match identity {
+            Identity::Standard(standard_identity) => {
+                standard_identity.full_identity_name.get_profile_name_string().unwrap_or_default() == "main"
+            }
+            _ => false,
+        })
+    }
+
     pub async fn add_profile_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
@@ -113,11 +122,18 @@ impl IdentityManager {
         Ok(())
     }
 
-    pub async fn modify_llm_provider_subidentity(&mut self, updated_llm_provider: SerializedLLMProvider) -> anyhow::Result<()> {
+    pub async fn modify_llm_provider_subidentity(
+        &mut self,
+        updated_llm_provider: SerializedLLMProvider,
+    ) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("modify_llm_provider_subidentity > updated_llm_provider: {:?}", updated_llm_provider).as_str(),
+            format!(
+                "modify_llm_provider_subidentity > updated_llm_provider: {:?}",
+                updated_llm_provider
+            )
+            .as_str(),
         );
 
         let mut found = false;
@@ -161,7 +177,9 @@ impl IdentityManager {
 
         let initial_count = self.local_identities.len();
         self.local_identities.retain(|identity| match identity {
-            Identity::LLMProvider(agent) => agent.full_identity_name.get_agent_name_string().unwrap() != llm_provider_id,
+            Identity::LLMProvider(agent) => {
+                agent.full_identity_name.get_agent_name_string().unwrap() != llm_provider_id
+            }
             _ => true,
         });
 
@@ -230,7 +248,11 @@ impl IdentityManager {
         }
     }
 
-    pub async fn search_local_llm_provider(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedLLMProvider> {
+    pub async fn search_local_llm_provider(
+        &self,
+        agent_id: &str,
+        profile: &ShinkaiName,
+    ) -> Option<SerializedLLMProvider> {
         let db_arc = self.db.upgrade()?;
         db_arc.get_llm_provider(agent_id, profile).ok().flatten()
     }
@@ -309,9 +331,7 @@ impl IdentityManager {
                         IdentityPermissions::None,
                     ))
                 }
-                Err(_) => {
-                    Err("Failed to get first address".to_string())
-                }
+                Err(_) => Err("Failed to get first address".to_string()),
             },
             Err(_) => Err(format!(
                 "Failed to get identity network manager for profile name: {}",
@@ -357,7 +377,7 @@ impl IdentityManagerTrait for IdentityManager {
                             Ok(key) => key,
                             Err(_) => return None,
                         };
-                        
+
                         Some(Identity::Standard(StandardIdentity::new(
                             node_name,
                             Some(first_address),

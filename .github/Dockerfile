@@ -1,6 +1,6 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
-RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld
+RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
 
 # Install nvm, npm and node
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh

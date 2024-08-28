@@ -7,3 +7,4 @@ pub mod shinkai_subscription;
 pub mod shinkai_subscription_req;
 pub mod shinkai_network;
 pub mod shinkai_proxy_builder_info;
+pub mod sheet;

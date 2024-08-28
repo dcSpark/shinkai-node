@@ -14,7 +14,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tra
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::db::db_cron_task::CronTask;
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 
 use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 

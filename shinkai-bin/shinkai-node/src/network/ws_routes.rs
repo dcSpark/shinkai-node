@@ -5,7 +5,6 @@ use futures::SinkExt;
 use futures::StreamExt;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
@@ -123,7 +122,6 @@ async fn process_shinkai_message(
             match e {
                 WebSocketManagerError::UserValidationFailed(_) => e,
                 WebSocketManagerError::AccessDenied(_) => e,
-                WebSocketManagerError::MissingSharedKey(_) => e,
                 _ => WebSocketManagerError::UserValidationFailed(format!("Failed to manage connections: {}", e)),
                 // Add additional error handling as needed
             }

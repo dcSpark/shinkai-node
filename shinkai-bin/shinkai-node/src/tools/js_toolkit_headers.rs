@@ -14,7 +14,7 @@ impl ToolConfig {
         match self {
             ToolConfig::OAuth(oauth) => oauth.name.clone(),
             ToolConfig::GenericHeader(header) => header.name.clone(),
-            ToolConfig::BasicConfig(config) => config.name.clone(),
+            ToolConfig::BasicConfig(config) => config.key_name.clone(),
         }
     }
 
@@ -32,7 +32,7 @@ impl ToolConfig {
         match self {
             ToolConfig::OAuth(oauth) => oauth.header.clone(),
             ToolConfig::GenericHeader(header) => header.header.clone(),
-            ToolConfig::BasicConfig(config) => config.key.clone(),
+            ToolConfig::BasicConfig(config) => config.key_value.clone().unwrap_or_default(),
         }
     }
 
@@ -67,8 +67,8 @@ pub struct OAuth {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BasicConfig {
-    pub name: String,
+    pub key_name: String,
     pub description: String,
     pub required: bool,
-    pub key: String,
+    pub key_value: Option<String>,
 }

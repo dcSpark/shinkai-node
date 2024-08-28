@@ -1,6 +1,6 @@
 use super::execution::{prompts::{prompts::Prompt, subprompts::{SubPrompt, SubPromptType}}, user_message_parser::ParsedUserMessage};
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope};
+use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::JobScope};
 use std::collections::HashMap;
 
 pub trait JobLike: Send + Sync {
@@ -11,6 +11,7 @@ pub trait JobLike: Send + Sync {
     fn parent_llm_provider_id(&self) -> &str;
     fn scope(&self) -> &JobScope;
     fn conversation_inbox_name(&self) -> &InboxName;
+    fn associated_ui(&self) -> Option<&AssociatedUI>; 
 }
 
 // Todo: Add a persistent_context: String
@@ -40,6 +41,8 @@ pub struct Job {
     /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
     /// Same as step_history. Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
     pub execution_context: HashMap<String, String>,
+    /// A link to the UI where the user can view the job e.g. Sheet UI
+    pub associated_ui: Option<AssociatedUI>,
 }
 
 impl JobLike for Job {
@@ -69,6 +72,10 @@ impl JobLike for Job {
 
     fn conversation_inbox_name(&self) -> &InboxName {
         &self.conversation_inbox_name
+    }
+
+    fn associated_ui(&self) -> Option<&AssociatedUI> {
+        self.associated_ui.as_ref()
     }
 }
 

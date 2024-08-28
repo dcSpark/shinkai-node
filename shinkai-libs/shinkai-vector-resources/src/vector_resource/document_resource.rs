@@ -372,7 +372,7 @@ impl VectorResourceCore for DocumentVectorResource {
             .embeddings
             .last()
             .cloned()
-            .unwrap_or_else(|| Embedding::new_empty());
+            .unwrap_or_else(Embedding::new_empty);
         self.nodes
             .resize_with((self.node_count + 1) as usize, || node_default.clone());
         self.embeddings

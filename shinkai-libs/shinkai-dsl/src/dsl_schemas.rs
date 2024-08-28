@@ -1,4 +1,5 @@
 use pest_derive::Parser;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::parser::parse_workflow;
@@ -7,13 +8,16 @@ use crate::parser::parse_workflow;
 #[grammar = "workflow.pest"]
 pub struct WorkflowParser;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Workflow {
     pub name: String,
     pub version: String,
     pub steps: Vec<Step>,
     pub raw: String,
     pub description: Option<String>,
+    // TODO: add input description to guide the LLMs
+    pub author: String,
+    pub sticky: bool,
 }
 
 impl Workflow {
@@ -27,18 +31,26 @@ impl Workflow {
         let workflow = parse_workflow(&dsl_input)?;
         Ok(Workflow {
             description: Some(description),
+            author: workflow.author,
+            sticky: workflow.sticky,
             ..workflow
         })
     }
+
+    /// Extracts all function names used in the raw workflow string.
+    pub fn extract_function_names(&self) -> Vec<String> {
+        let re = Regex::new(r"call\s+(\w+)\s*\(").unwrap();
+        re.captures_iter(&self.raw).map(|cap| cap[1].to_string()).collect()
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Step {
     pub name: String,
     pub body: Vec<StepBody>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "value", rename_all = "lowercase")]
 pub enum StepBody {
     Action(Action),
@@ -58,21 +70,21 @@ pub enum StepBody {
     Composite(Vec<StepBody>),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Action {
     ExternalFnCall(FunctionCall),
     Command { command: String, params: Vec<Param> },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct FunctionCall {
     pub name: String,
     pub args: Vec<Param>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(tag = "type", content = "value", rename_all = "lowercase")]
 pub enum Param {
     String(String),
     Number(i64),
@@ -82,7 +94,7 @@ pub enum Param {
     Range(i32, i32),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Expression {
     Binary {
         left: Box<Param>,
@@ -96,13 +108,13 @@ pub enum Expression {
     Simple(Box<Param>),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum ForLoopExpression {
     Split { source: Param, delimiter: String },
     Range { start: Box<Param>, end: Box<Param> },
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum ComparisonOperator {
     Equal,
     NotEqual,
@@ -112,7 +124,7 @@ pub enum ComparisonOperator {
     LessEqual,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum WorkflowValue {
     String(String),

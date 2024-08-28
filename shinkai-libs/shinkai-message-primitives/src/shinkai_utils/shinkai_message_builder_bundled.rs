@@ -105,6 +105,7 @@ impl ShinkaiMessageBuilder {
         let job_creation = JobCreationInfo {
             scope,
             is_hidden: Some(is_hidden),
+            associated_ui: None,
         };
         let body = serde_json::to_string(&job_creation).map_err(|_| "Failed to serialize job creation to JSON")?;
 
@@ -148,6 +149,8 @@ impl ShinkaiMessageBuilder {
             parent: Some(parent_hash),
             workflow_code,
             workflow_name,
+            sheet_job_data: None,
+            callback: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -187,6 +190,8 @@ impl ShinkaiMessageBuilder {
             parent: None,
             workflow_code: None, // the agent wont be sending you a workflow
             workflow_name: None, // the agent wont be sending you a workflow
+            sheet_job_data: None,
+            callback: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -205,7 +210,7 @@ impl ShinkaiMessageBuilder {
         .message_raw_content(body)
         .internal_metadata_with_schema(
             "".to_string(),
-            "".to_string(),
+            "main".to_string(),
             inbox,
             MessageSchemaType::JobMessageSchema,
             EncryptionMethod::None,

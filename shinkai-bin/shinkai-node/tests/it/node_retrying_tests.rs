@@ -8,14 +8,16 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::{APIError, SendResponseBodyData};
+use shinkai_node::network::node_commands::NodeCommand;
+use shinkai_node::network::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
+
+use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils;
 use super::utils::node_test_api::api_registration_device_node_profile_main;
@@ -99,6 +101,9 @@ fn node_retrying_test() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -118,6 +123,9 @@ fn node_retrying_test() {
             node2_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         )
         .await;

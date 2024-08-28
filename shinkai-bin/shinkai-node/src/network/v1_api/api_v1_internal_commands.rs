@@ -1,11 +1,12 @@
-use super::node::ProxyConnectionInfo;
-use super::ws_manager::WSUpdateHandler;
-use super::{node_error::NodeError, Node};
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
+use crate::network::node::ProxyConnectionInfo;
+use crate::network::node_error::NodeError;
+use crate::network::ws_manager::WSUpdateHandler;
+use crate::network::Node;
 use crate::schemas::{
     identity::{Identity, StandardIdentity},
     inbox_permission::InboxPermission,
@@ -440,6 +441,7 @@ impl Node {
                             let job_creation = JobCreationInfo {
                                 scope: job_scope,
                                 is_hidden: Some(false),
+                                associated_ui: None
                             };
 
                             let mut job_manager_locked = job_manager.lock().await;

@@ -18,14 +18,13 @@ use shinkai_message_primitives::shinkai_utils::{
         unsafe_deterministic_signature_keypair,
     },
 };
-use shinkai_node::network::{node::NodeCommand, node_api::APIError, Node};
+use shinkai_node::network::{node_commands::NodeCommand, node_api_router::APIError, Node};
 use shinkai_tcp_relayer::TCPProxy;
 use shinkai_vector_resources::utils::hash_string;
 use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
 
 use crate::it::utils::{
-    node_test_local::local_registration_profile_node, shinkai_testing_framework::ShinkaiTestingFramework,
-    vecfs_test_utils::remove_timestamps_from_shared_folder_cache_response,
+    node_test_local::local_registration_profile_node, shinkai_testing_framework::ShinkaiTestingFramework, test_boilerplate::{default_embedding_model, supported_embedding_models}, vecfs_test_utils::remove_timestamps_from_shared_folder_cache_response
 };
 
 use super::utils::db_handlers::setup;
@@ -117,6 +116,9 @@ fn tcp_proxy_test_identity() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -136,6 +138,9 @@ fn tcp_proxy_test_identity() {
             node2_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         )
         .await;
@@ -225,6 +230,7 @@ fn tcp_proxy_test_identity() {
                 Some(tcp_proxy_identity_sk),
                 Some(tcp_proxy_encryption_sk),
                 Some(tcp_proxy_identity_name.to_string()),
+                None,
                 None,
                 None,
             )
@@ -518,6 +524,9 @@ fn tcp_proxy_test_localhost() {
             None,
             None,
             None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            None,
         )
         .await;
 
@@ -537,6 +546,9 @@ fn tcp_proxy_test_localhost() {
             node2_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         )
         .await;
@@ -626,6 +638,7 @@ fn tcp_proxy_test_localhost() {
                 Some(tcp_proxy_identity_sk),
                 Some(tcp_proxy_encryption_sk),
                 Some(tcp_proxy_identity_name.to_string()),
+                None,
                 None,
                 None,
             )

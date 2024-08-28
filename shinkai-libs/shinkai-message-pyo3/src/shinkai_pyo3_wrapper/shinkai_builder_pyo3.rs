@@ -1171,6 +1171,7 @@ impl PyShinkaiMessageBuilder {
             let job_creation = JobCreationInfo {
                 scope: scope.inner.clone(),
                 is_hidden: Some(is_hidden),
+                associated_ui: None,
             };
 
             let body = match serde_json::to_string(&job_creation) {
@@ -1246,6 +1247,8 @@ impl PyShinkaiMessageBuilder {
                 parent: Some(parent),
                 workflow_code,
                 workflow_name,
+                sheet_job_data: None,
+                callback: None,
             };
 
             let body = match serde_json::to_string(&job_message) {

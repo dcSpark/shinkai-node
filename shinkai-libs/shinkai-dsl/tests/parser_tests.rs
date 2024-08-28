@@ -3,7 +3,7 @@ mod tests {
     use pest::Parser;
     use shinkai_dsl::{
         dsl_schemas::{
-            Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, WorkflowParser,
+            Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, Workflow, WorkflowParser,
             WorkflowValue,
         },
         parser::{parse_action, parse_expression, parse_step, parse_step_body, parse_step_body_item, parse_workflow},
@@ -284,5 +284,228 @@ mod tests {
             }
             _ => panic!("Expected Condition"),
         }
+    }
+
+    #[test]
+    fn test_parse_serialize_deserialize_workflow() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            }
+        "#;
+        let result = parse_workflow(input);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        // Serialize the workflow
+        let serialized_workflow = serde_json::to_string(&workflow).expect("Failed to serialize workflow");
+
+        // Deserialize the workflow
+        let deserialized_workflow: Workflow =
+            serde_json::from_str(&serialized_workflow).expect("Failed to deserialize workflow");
+
+        // Deep comparison
+        assert_eq!(workflow, deserialized_workflow);
+    }
+
+    #[test]
+    fn test_get_agility_story_workflow() {
+        pub const AGILITY_STORY_SYSTEM: &str = r#"
+        # IDENTITY and PURPOSE
+
+        You are an expert in the Agile framework. You deeply understand user story and acceptance criteria creation. You will be given a topic. Please write the appropriate information for what is requested. 
+
+        # STEPS
+
+        Please write a user story and acceptance criteria for the requested topic.
+
+        # OUTPUT INSTRUCTIONS
+
+        Output the results in JSON format as defined in this example:
+
+        {
+            "Topic": "Automating data quality automation",
+            "Story": "As a user, I want to be able to create a new user account so that I can access the system.",
+            "Criteria": "Given that I am a user, when I click the 'Create Account' button, then I should be prompted to enter my email address, password, and confirm password. When I click the 'Submit' button, then I should be redirected to the login page."
+        }
+
+        # INPUT:
+
+        INPUT:
+        "#;
+
+        let agility_escaped = AGILITY_STORY_SYSTEM.replace('"', "\\\"");
+
+        let raw_workflow = format!(
+            r#"
+                workflow Agility_story v0.1 {{
+                    step Main {{
+                        $SYSTEM = "{}"
+                        $RESULT = call opinionated_inference($INPUT, $SYSTEM)
+                    }}
+                }}
+            "#,
+            agility_escaped
+        );
+        // eprintln!("raw_workflow: {}\n\n", raw_workflow);
+
+        let result = parse_workflow(&raw_workflow);
+        assert!(result.is_ok());
+        let mut workflow = result.unwrap();
+        workflow.description = Some("Generates workflow based on the provided system.md.".to_string());
+
+        assert_eq!(workflow.name, "Agility_story");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 1);
+        assert_eq!(
+            workflow.description,
+            Some("Generates workflow based on the provided system.md.".to_string())
+        );
+
+        let step = &workflow.steps[0];
+        assert_eq!(step.name, "Main");
+        assert_eq!(step.body.len(), 1);
+
+        match &step.body[0] {
+            StepBody::Composite(composite_body) => {
+                assert_eq!(composite_body.len(), 2);
+
+                match &composite_body[0] {
+                    StepBody::RegisterOperation { register, value } => {
+                        assert_eq!(register, "$SYSTEM");
+                        match value {
+                            WorkflowValue::String(system_value) => assert_eq!(*system_value, agility_escaped),
+                            _ => panic!("Expected String value for $SYSTEM"),
+                        }
+                    }
+                    _ => panic!("Expected RegisterOperation for $SYSTEM"),
+                }
+
+                match &composite_body[1] {
+                    StepBody::RegisterOperation { register, value } => {
+                        assert_eq!(register, "$RESULT");
+                        match value {
+                            WorkflowValue::FunctionCall(fn_call) => {
+                                assert_eq!(fn_call.name, "opinionated_inference");
+                                assert_eq!(fn_call.args.len(), 2);
+                                match &fn_call.args[0] {
+                                    Param::Register(input) => assert_eq!(input, "$INPUT"),
+                                    _ => panic!("Expected Register for $INPUT"),
+                                }
+                                match &fn_call.args[1] {
+                                    Param::Register(system) => assert_eq!(system, "$SYSTEM"),
+                                    _ => panic!("Expected Register for $SYSTEM"),
+                                }
+                            }
+                            _ => panic!("Expected FunctionCall value for $RESULT"),
+                        }
+                    }
+                    _ => panic!("Expected RegisterOperation for $RESULT"),
+                }
+            }
+            _ => panic!("Expected Composite in step body"),
+        }
+    }
+
+    #[test]
+    fn test_parse_workflow_with_author_and_sticky() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            } @@nico.arb-sep-shinkai sticky
+        "#;
+        let result = parse_workflow(input);
+        eprintln!("{:?}", result);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        assert_eq!(workflow.name, "ExtensiveSummary");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 2);
+        assert_eq!(workflow.author, "@@nico.arb-sep-shinkai".to_string());
+        assert!(workflow.sticky);
+    }
+
+    #[test]
+    fn test_parse_workflow_with_author_no_sticky() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            } @@nico.arb-sep-shinkai
+        "#;
+        let result = parse_workflow(input);
+        eprintln!("{:?}", result);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        assert_eq!(workflow.name, "ExtensiveSummary");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 2);
+        assert_eq!(workflow.author, "@@nico.arb-sep-shinkai".to_string());
+        assert!(!workflow.sticky);
+    }
+
+    #[test]
+    fn test_parse_workflow_with_sticky_no_author() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
+                }
+            } sticky
+        "#;
+        let result = parse_workflow(input);
+        eprintln!("{:?}", result);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        assert_eq!(workflow.name, "ExtensiveSummary");
+        assert_eq!(workflow.version, "v0.1");
+        assert_eq!(workflow.steps.len(), 2);
+        assert_eq!(workflow.author, "@@not_defined.shinkai".to_string());
+        assert!(workflow.sticky);
+    }
+
+    #[test]
+    fn test_extract_function_names() {
+        let input = r#"
+            workflow ExtensiveSummary v0.1 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                }
+                step Summarize {
+                    $RESULT = call shinkai__weather_by_city($PROMPT, $EMBEDDINGS)
+                }
+            } @@nico.arb-sep-shinkai
+        "#;
+        let result = parse_workflow(input);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+
+        let function_names = workflow.extract_function_names();
+        assert_eq!(function_names, vec!["process_embeddings_in_job_scope", "shinkai__weather_by_city"]);
     }
 }

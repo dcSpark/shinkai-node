@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use async_channel::Sender;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use shinkai_message_primitives::{
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::APIAvailableSharedItems},
@@ -12,12 +15,15 @@ use shinkai_message_primitives::{
         signatures::signature_public_key_to_string,
     },
 };
+use utoipa::ToSchema;
 use warp::Buf;
 
-use super::{
-    node::NodeCommand,
-    node_api::{handle_node_command, APIError, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData},
-};
+use crate::network::node_api_router::handle_node_command;
+use crate::network::node_api_router::APIError;
+use crate::network::node_api_router::GetPublicKeysResponse;
+use crate::network::node_api_router::SendResponseBody;
+use crate::network::node_api_router::SendResponseBodyData;
+use crate::network::node_commands::NodeCommand;
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {
@@ -426,6 +432,21 @@ pub async fn search_workflows_handler(
     .await
 }
 
+pub async fn search_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISearchShinkaiTool {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 pub async fn add_workflow_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -471,6 +492,139 @@ pub async fn delete_workflow_handler(
     .await
 }
 
+pub async fn set_column_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISetColumn {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn remove_column_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveColumn {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn add_row_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAddRows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn remove_row_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveRows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn user_sheets_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUserSheets {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn create_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APICreateSheet {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn remove_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIRemoveSheet {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn set_cell_value_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APISetCellValue {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn get_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetSheet {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
 pub async fn get_workflow_info_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -494,6 +648,36 @@ pub async fn list_all_workflows_handler(
         node_commands_sender,
         message,
         |_node_commands_sender, message, res_sender| NodeCommand::APIListAllWorkflows {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn api_update_default_embedding_model_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateDefaultEmbeddingModel {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+pub async fn api_update_supported_embedding_models_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateSupportedEmbeddingModels {
             msg: message,
             res: res_sender,
         },
@@ -1009,6 +1193,48 @@ pub async fn get_notifications_before_timestamp_handler(
     .await
 }
 
+pub async fn list_all_shinkai_tools_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIListAllShinkaiTools {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn set_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    query_params: HashMap<String, String>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, move |_, message, res_sender| {
+        let tool_router_key = query_params.get("tool_name").cloned().unwrap_or_default();
+        NodeCommand::APISetShinkaiTool {
+            tool_router_key,
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn get_shinkai_tool_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetShinkaiTool {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
 pub async fn update_local_processing_preference_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1019,12 +1245,13 @@ pub async fn update_local_processing_preference_handler(
     .await
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
 pub struct APIUseRegistrationCodeSuccessResponse {
     pub message: String,
     pub node_name: String,
     pub encryption_public_key: String,
     pub identity_public_key: String,
+    pub api_v2_key: String,
 }
 
 pub async fn use_registration_code_handler(
@@ -1048,16 +1275,12 @@ pub async fn use_registration_code_handler(
                 "message": success_response.message,
                 "node_name": success_response.node_name,
                 "encryption_public_key": success_response.encryption_public_key,
-                "identity_public_key": success_response.identity_public_key
+                "identity_public_key": success_response.identity_public_key,
+                "api_v2_key": success_response.api_v2_key
             });
             let response = serde_json::json!({
                 "status": "success",
-                "data": data,
-                // TODO: remove the below repeated data  once the Apps have updated
-                "message": success_response.message,
-                "node_name": success_response.node_name,
-                "encryption_public_key": success_response.encryption_public_key,
-                "identity_public_key": success_response.identity_public_key
+                "data": data
             });
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
         }

@@ -1,3 +1,4 @@
+use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
@@ -6,13 +7,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 
-use super::shinkai_message::ShinkaiMessage;
+use super::shinkai_message::{NodeApiData, ShinkaiMessage};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
-    PreMessageSchema,
     CreateRegistrationCode,
     UseRegistrationCode,
     APIGetMessagesFromInboxRequest,
@@ -72,6 +72,21 @@ pub enum MessageSchemaType {
     RemoveWorkflow,
     GetWorkflow,
     ListWorkflows,
+    UpdateSupportedEmbeddingModels,
+    UpdateDefaultEmbeddingModel,
+    UserSheets,
+    SetColumn,
+    RemoveColumn,
+    RemoveSheet,
+    CreateEmptySheet,
+    SetCellValue,
+    GetSheet,
+    RemoveRows,
+    AddRows,
+    SetShinkaiTool,
+    ListAllShinkaiTools,
+    GetShinkaiTool,
+    SearchShinkaiTool,
 }
 
 impl MessageSchemaType {
@@ -79,7 +94,6 @@ impl MessageSchemaType {
         match s {
             "JobCreationSchema" => Some(Self::JobCreationSchema),
             "JobMessageSchema" => Some(Self::JobMessageSchema),
-            "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "UseRegistrationCode" => Some(Self::UseRegistrationCode),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
@@ -139,6 +153,21 @@ impl MessageSchemaType {
             "RemoveWorkflow" => Some(Self::RemoveWorkflow),
             "GetWorkflow" => Some(Self::GetWorkflow),
             "ListWorkflows" => Some(Self::ListWorkflows),
+            "UpdateSupportedEmbeddingModels" => Some(Self::UpdateSupportedEmbeddingModels),
+            "UpdateDefaultEmbeddingModel" => Some(Self::UpdateDefaultEmbeddingModel),
+            "UserSheets" => Some(Self::UserSheets),
+            "SetColumn" => Some(Self::SetColumn),
+            "RemoveColumn" => Some(Self::RemoveColumn),
+            "RemoveSheet" => Some(Self::RemoveSheet),
+            "CreateEmptySheet" => Some(Self::CreateEmptySheet),
+            "SetCellValue" => Some(Self::SetCellValue),
+            "GetSheet" => Some(Self::GetSheet),
+            "RemoveRows" => Some(Self::RemoveRows),
+            "AddRows" => Some(Self::AddRows),
+            "SetShinkaiTool" => Some(Self::SetShinkaiTool),
+            "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
+            "GetShinkaiTool" => Some(Self::GetShinkaiTool),
+            "SearchShinkaiTool" => Some(Self::SearchShinkaiTool),
             _ => None,
         }
     }
@@ -147,7 +176,6 @@ impl MessageSchemaType {
         match self {
             Self::JobCreationSchema => "JobCreationSchema",
             Self::JobMessageSchema => "JobMessageSchema",
-            Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::UseRegistrationCode => "UseRegistrationCode",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
@@ -206,6 +234,21 @@ impl MessageSchemaType {
             Self::RemoveWorkflow => "RemoveWorkflow",
             Self::GetWorkflow => "GetWorkflow",
             Self::ListWorkflows => "ListWorkflows",
+            Self::UpdateSupportedEmbeddingModels => "UpdateSupportedEmbeddingModels",
+            Self::UpdateDefaultEmbeddingModel => "UpdateDefaultEmbeddingModel",
+            Self::UserSheets => "UserSheets",
+            Self::SetColumn => "SetColumn",
+            Self::RemoveColumn => "RemoveColumn",
+            Self::RemoveSheet => "RemoveSheet",
+            Self::CreateEmptySheet => "CreateEmptySheet",
+            Self::SetCellValue => "SetCellValue",
+            Self::GetSheet => "GetSheet",
+            Self::RemoveRows => "RemoveRows",
+            Self::AddRows => "AddRows",
+            Self::SetShinkaiTool => "SetShinkaiTool",
+            Self::ListAllShinkaiTools => "ListAllShinkaiTools",
+            Self::GetShinkaiTool => "GetShinkaiTool",
+            Self::SearchShinkaiTool => "SearchShinkaiTool",
             Self::Empty => "",
         }
     }
@@ -221,21 +264,76 @@ pub struct SymmetricKeyExchange {
     pub shared_secret_key: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum AssociatedUI {
+    Sheet(String),
+    // Add more variants as needed
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
     pub is_hidden: Option<bool>,
+    pub associated_ui: Option<AssociatedUI>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum CallbackAction {
+    Job(JobMessage),
+    Sheet(SheetManagerAction),
+    // Cron(CronManagerAction),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct JobMessage {
-    // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
+    #[serde(default)]
     pub workflow_code: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_workflow_name")]
     pub workflow_name: Option<String>,
+    pub sheet_job_data: Option<String>,
+    pub callback: Option<Box<CallbackAction>>,
+}
+
+fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer).unwrap_or(None);
+    if let Some(ref s) = s {
+        if s == "undefined:::undefined" {
+            return Ok(None);
+        }
+    }
+    Ok(s)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct V2ChatMessage {
+    pub job_message: JobMessage,
+    pub sender: String,
+    pub sender_subidentity: String,
+    pub receiver: String,
+    pub receiver_subidentity: String,
+    pub node_api_data: NodeApiData,
+    pub inbox: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SheetManagerAction {
+    pub job_message_next: Option<JobMessage>,
+    // TODO: should this be m0re complex and have the actual desired action?
+    pub sheet_action: SheetJobAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SheetJobAction {
+    pub sheet_id: String,
+    pub row: RowUuid,
+    pub col: ColumnUuid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -495,9 +593,42 @@ pub struct TopicSubscription {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct APIAddWorkflow {
+pub struct APISetWorkflow {
     pub workflow_raw: String,
     pub description: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APISetColumnPayload {
+    pub sheet_id: String,
+    pub column: APIColumnDefinition,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APIRemoveColumnPayload {
+    pub sheet_id: String,
+    pub column_id: ColumnUuid,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APISetCellValuePayload {
+    pub sheet_id: String,
+    pub row: RowUuid,
+    pub col: ColumnUuid,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APIRemoveRowsPayload {
+    pub sheet_id: String,
+    pub row_indices: Vec<UuidString>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APIAddRowsPayload {
+    pub sheet_id: String,
+    pub number_of_rows: usize,
+    pub starting_row: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -531,6 +662,8 @@ pub struct WSMessageResponse {
 pub enum WSTopic {
     Inbox,
     SmartInboxes,
+    Sheet,
+    SheetList,
 }
 
 impl fmt::Display for WSTopic {
@@ -538,6 +671,8 @@ impl fmt::Display for WSTopic {
         match self {
             WSTopic::Inbox => write!(f, "inbox"),
             WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
+            WSTopic::Sheet => write!(f, "sheet"),
+            WSTopic::SheetList => write!(f, "sheet_list"),
         }
     }
 }

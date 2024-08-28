@@ -126,13 +126,14 @@ impl JobManager {
                     .await
                 {
                     Ok(reader) => reader,
-                    Err(_) => {
+                    Err(e) => {
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
                             &format!(
-                                "retrieve_all_resources_in_job_scope reader create failed: {}",
-                                folder_path
+                                "retrieve_all_resources_in_job_scope reader create failed: {} with error: {:?}",
+                                folder_path,
+                                e
                             ),
                         );
                         continue;

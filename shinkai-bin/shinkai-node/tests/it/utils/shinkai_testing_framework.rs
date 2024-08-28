@@ -14,8 +14,8 @@ use shinkai_message_primitives::{
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_node::network::{
-    node::NodeCommand,
-    node_api::APIError,
+    node_commands::NodeCommand,
+    node_api_router::APIError,
     subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination},
 };
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};

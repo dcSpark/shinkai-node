@@ -1,9 +1,14 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::ShinkaiDB;
+use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
+use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use shinkai_node::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
+use shinkai_node::tools::tool_router::ToolRouter;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tokio::sync::Mutex;
 
 use core::panic;
@@ -16,7 +21,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
@@ -48,7 +53,32 @@ pub struct TestEnvironment {
     pub node1_db: Arc<ShinkaiDB>,
     pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
+    pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
+    pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
+    pub node1_tool_router: Option<Arc<Mutex<ToolRouter>>>,
     pub node1_abort_handler: AbortHandle,
+}
+
+pub fn default_embedding_model() -> EmbeddingModelType {
+    env::var("DEFAULT_EMBEDDING_MODEL")
+        .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
+        .unwrap_or_else(|_| {
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M)
+        })
+}
+
+pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
+    env::var("SUPPORTED_EMBEDDING_MODELS")
+        .map(|s| {
+            s.split(',')
+                .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
+                .collect()
+        })
+        .unwrap_or_else(|_| {
+            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+            )]
+        })
 }
 
 pub fn run_test_one_node_network<F>(interactions_handler_logic: F)
@@ -82,6 +112,8 @@ where
         // Fetch the PROXY_ADDRESS environment variable
         let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
+        let api_v2_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
+
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -97,9 +129,12 @@ where
             false,
             vec![],
             node1_fs_db_path,
+            Some(RemoteEmbeddingGenerator::new_default()),
             None,
             None,
-            None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            Some(api_v2_key),
         )
         .await;
 
@@ -108,6 +143,9 @@ where
         let node1_db = node1_locked.db.clone();
         let node1_ext_subscription_manager = node1_locked.ext_subscription_manager.clone();
         let node1_my_subscriptions_manager = node1_locked.my_subscription_manager.clone();
+        let node1_sheet_manager = node1_locked.sheet_manager.clone();
+        let node1_callback_manager = node1_locked.callback_manager.clone();
+        let node1_tool_router = node1_locked.tool_router.clone();
         drop(node1_locked);
 
         eprintln!("Starting Node");
@@ -142,6 +180,9 @@ where
             node1_db,
             node1_ext_subscription_manager,
             node1_my_subscriptions_manager,
+            node1_sheet_manager,
+            node1_callback_manager,
+            node1_tool_router,
             node1_abort_handler,
         };
 

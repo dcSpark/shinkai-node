@@ -13,6 +13,7 @@ use shinkai_message_primitives::{
 };
 use tokio::sync::Mutex;
 
+use crate::network::ws_manager::WSMessageType;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::schemas::smart_inbox::LLMProviderSubset;
 use crate::schemas::{identity::StandardIdentity, inbox_permission::InboxPermission, smart_inbox::SmartInbox};
@@ -185,7 +186,7 @@ impl ShinkaiDB {
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
                 if let Ok(msg_string) = message.to_string() {
-                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, None, false).await;
+                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, WSMessageType::None, false).await;
                 }
             }
         }
@@ -474,7 +475,7 @@ impl ShinkaiDB {
         }
         shinkai_log(
             ShinkaiLogOption::Api,
-            ShinkaiLogLevel::Info,
+            ShinkaiLogLevel::Debug,
             &format!("Inboxes: {}", inboxes.join(", ")),
         );
         Ok(inboxes)
@@ -489,12 +490,6 @@ impl ShinkaiDB {
         let mut smart_inboxes = Vec::new();
 
         for inbox_id in inboxes {
-            shinkai_log(
-                ShinkaiLogOption::Api,
-                ShinkaiLogLevel::Info,
-                &format!("Inbox: {}", inbox_id),
-            );
-
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
@@ -510,6 +505,7 @@ impl ShinkaiDB {
             };
 
             let mut job_scope_value: Option<Value> = None;
+            let mut datetime_created = String::new();
 
             // Determine if the inbox is finished
             let is_finished = if inbox_id.starts_with("job_inbox::") {
@@ -518,6 +514,7 @@ impl ShinkaiDB {
                         let job = self.get_job(&unique_id)?;
                         let scope_value = job.scope.to_json_value_minimal()?;
                         job_scope_value = Some(scope_value);
+                        datetime_created.clone_from(&job.datetime_created);
                         job.is_finished || job.is_hidden
                     }
                     _ => false,
@@ -554,6 +551,7 @@ impl ShinkaiDB {
                 inbox_id: inbox_id.clone(),
                 custom_name,
                 last_message,
+                datetime_created,
                 is_finished,
                 job_scope: job_scope_value,
                 agent: agent_subset,

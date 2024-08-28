@@ -12,8 +12,10 @@ use shinkai_message_primitives::shinkai_utils::{
     shinkai_message_builder::ShinkaiMessageBuilder,
     signatures::{clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair},
 };
-use shinkai_node::network::{node::NodeCommand, Node};
+use shinkai_node::network::{node_commands::NodeCommand, Node};
 use tokio::runtime::Runtime;
+
+use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 fn setup() {
     let path = Path::new("db_tests/");
@@ -64,6 +66,9 @@ fn change_nodes_name_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         );
 
@@ -156,6 +161,9 @@ fn change_nodes_name_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         );
 

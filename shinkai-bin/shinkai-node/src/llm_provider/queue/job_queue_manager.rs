@@ -320,6 +320,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -351,6 +353,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -362,6 +366,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -463,6 +469,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -474,6 +482,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -485,6 +495,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -497,6 +509,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -509,6 +523,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -521,6 +537,8 @@ mod tests {
                 parent: None,
                 workflow_code: None,
                 workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );

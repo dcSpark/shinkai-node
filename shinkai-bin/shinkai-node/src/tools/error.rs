@@ -29,6 +29,9 @@ pub enum ToolError {
     ToolNotRunnable(String),
     ExecutionError(String),
     DatabaseError(String),
+    MissingEmbedding,
+    EmbeddingGenerationError(String),
+    MissingConfigError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -60,6 +63,9 @@ impl fmt::Display for ToolError {
             ToolError::ToolNotRunnable(ref t) => write!(f, "Tool is not runnable: {}", t),
             ToolError::ExecutionError(ref e) => write!(f, "Execution error: {}", e),
             ToolError::DatabaseError(ref e) => write!(f, "Database error: {}", e),
+            ToolError::MissingEmbedding => write!(f, "Missing embedding."),
+            ToolError::EmbeddingGenerationError(ref e) => write!(f, "Embedding generation error: {}", e),
+            ToolError::MissingConfigError(ref e) => write!(f, "Missing config error: {}", e),
         }
     }
 }
@@ -103,12 +109,6 @@ impl From<SerdeError> for ToolError {
 
 impl From<anyhow::Error> for ToolError {
     fn from(err: anyhow::Error) -> ToolError {
-        ToolError::ParseError(err.to_string())
-    }
-}
-
-impl From<shinkai_tools_runner::tools::quickjs_runtime::execution_error::ExecutionError> for ToolError {
-    fn from(err: shinkai_tools_runner::tools::quickjs_runtime::execution_error::ExecutionError) -> ToolError {
         ToolError::ParseError(err.to_string())
     }
 }

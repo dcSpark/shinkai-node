@@ -1,0 +1,52 @@
+name: Build shinkai-node Linux binary
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build binary
+    runs-on: ubuntu-22.04
+    steps:
+        - name: Checkout sources
+          uses: actions/checkout@v4
+    
+        - name: Cache cargo assets
+          id: cache
+          uses: actions/cache@v4
+          with:
+            path: |
+              ~/.cargo/bin/
+              ~/.cargo/registry/index/
+              ~/.cargo/registry/cache/
+              ~/.cargo/git/db/
+              target/
+            key: linux-build-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+        - name: Build
+          run: cargo build --release
+
+        - name: Upload binaries to release
+          uses: svenstaro/upload-release-action@v2
+          with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: target/release/shinkai_node
+            asset_name: shinkai-node-x86_64-unknown-linux-gnu
+            tag: ${{ github.ref }}
+            overwrite: true
+
+        - name: Prepare binary files
+          run: |
+            mkdir files-to-r2
+            cp target/release/shinkai_node files-to-r2/shinkai-node-${{ github.ref_name }}
+            cp target/release/shinkai_node files-to-r2/shinkai-node-latest
+
+        - name: Upload binaries to R2 bucket
+          uses: shallwefootball/s3-upload-action@master
+          with:
+            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
+            aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+            aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+            aws_bucket: shinkai-download
+            source_dir: files-to-r2
+            destination_dir: ./shinkai-node/binaries/x86_64-unknown-linux-gnu/

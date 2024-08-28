@@ -13,7 +13,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_vector_resources::utils::hash_string;
 use std::fs;
@@ -23,6 +23,7 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::{api_create_job, api_message_job, api_registration_device_node_profile_main};
+use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use mockito::Server;
 
@@ -133,6 +134,9 @@ fn workflow_integration_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         );
 
@@ -392,6 +396,9 @@ fn workflow_complex_integration_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
             None,
         );
 

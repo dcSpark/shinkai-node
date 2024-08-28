@@ -34,9 +34,6 @@ impl JSToolkit {
     }
 
     fn create_js_tool(toolkit_name: &str, definition: ToolDefinition) -> JSTool {
-        let config_set = definition.configurations.is_null()
-            || definition.configurations.as_object().map_or(true, |obj| obj.is_empty());
-
         let input_args = Self::extract_input_args(&definition);
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
@@ -60,7 +57,6 @@ impl JSToolkit {
             keywords: definition.keywords.clone(),
             input_args,
             activated: false,
-            config_set,
             embedding: None,
             result,
         }
@@ -98,12 +94,12 @@ impl JSToolkit {
                     .iter()
                     .map(|(key, value)| {
                         ToolConfig::BasicConfig(BasicConfig {
-                            name: key.clone(),
+                            key_name: key.clone(),
                             description: value["description"].as_str().unwrap_or("").to_string(),
                             required: definition.configurations["required"]
                                 .as_array()
                                 .map_or(false, |req| req.iter().any(|r| r == key)),
-                            key: key.clone(),
+                            key_value: None,
                         })
                     })
                     .collect()
@@ -191,10 +187,10 @@ mod tests {
         assert_eq!(tool.config.len(), 1);
         let config = &tool.config[0];
         if let ToolConfig::BasicConfig(basic_config) = config {
-            assert_eq!(basic_config.name, "apiKey");
+            assert_eq!(basic_config.key_name, "apiKey");
             assert_eq!(basic_config.description, "");
             assert!(basic_config.required);
-            assert_eq!(basic_config.key, "apiKey");
+            assert_eq!(basic_config.key_value, None);
         } else {
             panic!("Expected BasicConfig");
         }
