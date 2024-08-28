@@ -19,10 +19,11 @@ impl fmt::Display for UsageTypeInquiry {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct ShinkaiToolOffering {
-    pub name: String,
+    // pub name: String, // Note: maybe we should just use the one from the tool
     pub tool_key: String,
-    pub tool_description: String,
+    // pub tool_description: String, // Note: maybe we should just use the one from the tool
     pub usage_type: UsageType,
+    pub meta_description: Option<String>,
 }
 
 // Updated enum to include aliases for prices
@@ -113,18 +114,17 @@ mod tests {
     #[test]
     fn test_shinkai_tool_offering_to_json() {
         let offering = ShinkaiToolOffering {
-            name: "Test Tool".to_string(),
             tool_key: "test_tool".to_string(),
-            tool_description: "A tool for testing".to_string(),
             usage_type: UsageType::Both {
                 per_use_price: ToolPrice::Free,
                 download_price: ToolPrice::DirectDelegation("1000".to_string()),
             },
+            meta_description: Some("A tool for testing".to_string()),
         };
 
         let json = serde_json::to_string(&offering).expect("Failed to convert to JSON");
         println!("{}", json);
-        assert!(json.contains("\"name\":\"Test Tool\""));
+        assert!(json.contains("\"tool_key\":\"test_tool\""));
         assert!(json.contains("\"per_use_price\":\"Free\""));
         assert!(json.contains("\"download_price\":\"DirectDelegation\""));
     }
@@ -133,9 +133,7 @@ mod tests {
     fn test_shinkai_tool_offering_from_json() {
         let json = r#"
         {
-            "name": "Test Tool",
             "tool_key": "test_tool",
-            "tool_description": "A tool for testing",
             "usage_type": {
                 "Both": {
                     "per_use_price": "Free",
@@ -143,13 +141,13 @@ mod tests {
                         "DirectDelegation": "1000"
                     }
                 }
-            }
+            },
+            "meta_description": "A tool for testing"
         }"#;
 
         let offering: ShinkaiToolOffering = serde_json::from_str(json).expect("Failed to convert from JSON");
-        assert_eq!(offering.name, "Test Tool");
         assert_eq!(offering.tool_key, "test_tool");
-        assert_eq!(offering.tool_description, "A tool for testing");
+        assert_eq!(offering.meta_description, Some("A tool for testing".to_string()));
         if let UsageType::Both {
             per_use_price,
             download_price,

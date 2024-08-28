@@ -1,29 +1,19 @@
 use async_channel::{bounded, Receiver, Sender};
-use chrono::{DateTime, TimeZone, Utc};
-use serde_json::Value;
-use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus};
-use shinkai_vector_resources::utils::hash_string;
-use core::panic;
-use std::collections::HashMap;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription_req::SubscriptionPayment;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIVecFsRetrievePathSimplifiedJson, MessageSchemaType
-};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair 
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
+use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
+    Asset, AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType,
+};
 use shinkai_node::network::node_commands::NodeCommand;
-use shinkai_node::network::node_api_router::APIError;
 use shinkai_node::network::Node;
+use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
@@ -32,10 +22,9 @@ use super::utils::node_test_api::api_registration_device_node_profile_main;
 use super::utils::node_test_local::local_registration_profile_node;
 use crate::it::utils::db_handlers::setup;
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
-use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_success, create_folder, fetch_last_messages, generate_message_with_payload, make_folder_shareable, print_tree_simple, remove_folder, remove_item, remove_timestamps_from_shared_folder_cache_response, retrieve_file_info, show_available_shared_items, upload_file};
 
 #[test]
-fn subscription_manager_test() {
+fn micropayment_flow_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     setup();
@@ -47,6 +36,8 @@ fn subscription_manager_test() {
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main_profile_node2";
+
+        let api_v2_key = "Human";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -105,6 +96,7 @@ fn subscription_manager_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            Some(api_v2_key.to_string()),
         )
         .await;
 
@@ -127,6 +119,7 @@ fn subscription_manager_test() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
+            Some(api_v2_key.to_string()),
         )
         .await;
 
@@ -261,8 +254,10 @@ fn subscription_manager_test() {
             tokio::time::sleep(Duration::from_secs(3)).await;
 
             // TODO:
-            // Add tool to node1
-            // Add wallet to node2
+            // Add tool to node1 (Done automatically)
+            // and make it available with an offering (Done)
+
+            // Add wallet to node2 <- here
             // Add network tool to node2
             // node2 does a vector search and finds the tool to do X
             // it asks for a quote to node1
@@ -273,9 +268,34 @@ fn subscription_manager_test() {
             // node2 receives the result and stores it
             // done
 
+            let test_tool_key_name = "shinkai-tool-echo:::shinkai__echo";
             {
                 eprintln!("Add tool to node1");
-                
+                let shinkai_tool_offering = ShinkaiToolOffering {
+                    tool_key: test_tool_key_name.to_string(),
+                    usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                        asset: Asset {
+                            network_id: "mainnet".to_string(),
+                            asset_id: "USDC".to_string(),
+                            decimals: Some(6),
+                            contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
+                        },
+                        amount: "10500000".to_string(), // 10.5 USDC in atomic units (6 decimals)
+                    }])),
+                    meta_description: Some("Echo tool offering".to_string()),
+                };
+
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiSetToolOffering {
+                        bearer: api_v2_key.to_string(),
+                        tool_offering: shinkai_tool_offering,
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp: {:?}", resp);
             }
         });
 
