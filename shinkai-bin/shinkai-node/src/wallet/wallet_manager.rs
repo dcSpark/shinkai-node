@@ -4,29 +4,29 @@ use uuid::Uuid;
 
 use crate::network::agent_payments_manager::{
     invoices::{Invoice, InvoiceStatusEnum, Payment, PaymentStatusEnum},
-    shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering},
+    shinkai_tool_offering::ShinkaiToolOffering,
 };
 
-use super::wallet_traits::{CommonActions, IsWallet, SendActions};
+use super::{
+    local_ether_wallet::{LocalEthersWallet, WalletSource},
+    mixed::Network,
+    wallet_error::WalletError,
+    wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet},
+};
 
 /// Manages multiple wallets and their roles.
-pub struct WalletManager<T, U>
-where
-    T: SendActions + CommonActions + IsWallet,
-    U: CommonActions + IsWallet,
-{
+pub struct WalletManager {
     /// The wallet used for payments.
-    payment_wallet: T,
+    payment_wallet: Box<dyn PaymentWallet>,
     /// The wallet used for receiving payments.
-    receiving_wallet: U,
+    receiving_wallet: Box<dyn ReceivingWallet>,
 }
 
-impl<T, U> WalletManager<T, U>
-where
-    T: SendActions + CommonActions + IsWallet,
-    U: CommonActions + IsWallet,
-{
-    fn new(payment_wallet: T, receiving_wallet: U) -> Self {
+impl WalletManager {
+    fn new(
+        payment_wallet: Box<dyn PaymentWallet>,
+        receiving_wallet: Box<dyn ReceivingWallet>,
+    ) -> Self {
         WalletManager {
             payment_wallet,
             receiving_wallet,
@@ -65,5 +65,30 @@ where
 
     fn get_current_date() -> String {
         Utc::now().to_rfc3339()
+    }
+
+    pub fn create_local_ethers_wallet_manager(
+        network: Network,
+    ) -> Result<WalletManager, WalletError> {
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(LocalEthersWallet::create_wallet(network.clone())?);
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(LocalEthersWallet::create_wallet(network)?);
+
+        Ok(WalletManager {
+            payment_wallet,
+            receiving_wallet,
+        })
+    }
+
+    pub fn recover_local_ethers_wallet_manager(
+        network: Network,
+        source: WalletSource,
+    ) -> Result<WalletManager, WalletError> {
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(LocalEthersWallet::recover_wallet(network.clone(), source.clone())?);
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(LocalEthersWallet::recover_wallet(network, source)?);
+
+        Ok(WalletManager {
+            payment_wallet,
+            receiving_wallet,
+        })
     }
 }

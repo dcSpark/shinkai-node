@@ -1,8 +1,10 @@
 use std::fmt;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
+
 /// Represents an address in a wallet.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Address {
     /// The ID of the wallet that owns the address.
     pub wallet_id: String,
@@ -16,7 +18,7 @@ pub struct Address {
 
 /// Represents a list of balances for an address.
 /// For now we'll just track ETH, USDC and KAI.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AddressBalanceList {
     /// The list of balances.
     pub data: Vec<Balance>,
@@ -29,7 +31,7 @@ pub struct AddressBalanceList {
 }
 
 /// Represents a list of addresses in a wallet.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AddressList {
     /// The list of addresses.
     data: Vec<Address>,
@@ -41,8 +43,9 @@ pub struct AddressList {
     total_count: u32,
 }
 
+// TODO: remove this. it is duplicated
 /// Represents an asset onchain scoped to a particular network.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     /// The ID of the blockchain network.
     pub network_id: String,
@@ -54,7 +57,7 @@ pub struct Asset {
     pub contract_address: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AssetType {
     ETH,
     USDC,
@@ -117,7 +120,7 @@ impl Asset {
 }
 
 /// Represents the balance of an asset onchain.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Balance {
     /// The amount in the atomic units of the asset.
     pub amount: String,
@@ -128,7 +131,7 @@ pub struct Balance {
 }
 
 /// Represents a request to create a transfer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateTransferRequest {
     /// The amount to transfer.
     pub amount: String,
@@ -143,7 +146,7 @@ pub struct CreateTransferRequest {
 }
 
 /// Represents an error response from the Coinbase Developer Platform API.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelError {
     /// A short string representing the reported error. Can be used to handle errors programmatically.
     code: String,
@@ -152,7 +155,7 @@ pub struct ModelError {
 }
 
 /// Represents a blockchain network.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Network {
     /// The ID of the blockchain network.
     pub id: NetworkIdentifier,
@@ -283,13 +286,13 @@ impl Network {
 }
 
 /// Enum representing the protocol family of the blockchain network.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NetworkProtocolFamilyEnum {
     Evm,
 }
 
 /// Enum representing the ID of the blockchain network.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NetworkIdentifier {
     BaseSepolia,
     BaseMainnet,
@@ -316,7 +319,7 @@ impl fmt::Display for NetworkIdentifier {
 }
 
 /// Represents an onchain transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Transaction {
     /// The ID of the blockchain network.
     pub network_id: String,
@@ -337,7 +340,7 @@ pub struct Transaction {
 }
 
 /// Enum representing the status of the transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatusEnum {
     Pending,
     Signed,
@@ -347,13 +350,13 @@ pub enum TransactionStatusEnum {
 }
 
 /// Enum representing the type of transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionType {
     Transfer,
 }
 
 /// Represents a transfer of an asset from one address to another.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Transfer {
     /// The ID of the blockchain network.
     network_id: String,
@@ -388,7 +391,7 @@ pub struct Transfer {
 }
 
 /// Enum representing the status of the transfer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransferStatusEnum {
     Pending,
     Broadcast,
@@ -397,7 +400,7 @@ pub enum TransferStatusEnum {
 }
 
 /// Represents a list of transfers.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TransferList {
     /// The list of transfers.
     data: Vec<Transfer>,

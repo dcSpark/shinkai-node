@@ -1,16 +1,15 @@
-
 // Heavily inspured by the Coinbase SDK so we can easily connect to it
 // Add more about this ^
+
+use std::future::Future;
+use std::pin::Pin;
 
 use chrono::Utc;
 use ethers::types::U256;
 use uuid::Uuid;
 
 use super::{
-    mixed::{
-        Address, AddressBalanceList, Asset, Balance, CreateTransferRequest, Network, Transaction,
-        Transfer,
-    },
+    mixed::{Address, AddressBalanceList, Asset, Balance, CreateTransferRequest, Network, Transaction, Transfer},
     wallet_error::WalletError,
 };
 
@@ -30,22 +29,23 @@ pub struct Wallet {
 
 /// Trait for sending actions.
 pub trait SendActions {
-    async fn send_transaction(
+    fn send_transaction(
         &self,
         to_wallet: Address,
         token: Option<Asset>,
         send_amount: String,
         invoice_id: String,
-    ) -> Result<TransactionHash, WalletError>;
-    async fn sign_transaction(&self, tx: Transaction) -> Result<String, WalletError>;
+    ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send>>;
+    
+    fn sign_transaction(&self, tx: Transaction) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send>>;
 }
 
 /// Trait for common actions.
-#[async_trait::async_trait]
 pub trait CommonActions {
     fn get_address(&self) -> Address;
-    async fn get_balance(&self) -> Result<f64, WalletError>;
-    async fn check_balances(&self) -> Result<AddressBalanceList, WalletError>;
+    fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send>>;
+
+    fn check_balances(&self) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send>>;
 
     // fn get_main_balance(&self) -> Result<Balance, WalletError>;
     // fn get_transaction(&self, tx_hash: String) -> Result<Transaction, WalletError>;
@@ -59,3 +59,15 @@ pub trait CommonActions {
     //     request: CreateTransferRequest,
     // ) -> Result<Transfer, WalletError>;
 }
+
+/// Trait for payment wallet.
+pub trait PaymentWallet: SendActions + CommonActions + IsWallet {}
+impl<T> PaymentWallet for T where T: SendActions + CommonActions + IsWallet {}
+
+/// Trait that combines `CommonActions` and `IsWallet`.
+pub trait CommonIsWallet: CommonActions + IsWallet {}
+impl<T> CommonIsWallet for T where T: CommonActions + IsWallet {}
+
+/// Trait for receiving wallet.
+pub trait ReceivingWallet: CommonActions + IsWallet {}
+impl<T> ReceivingWallet for T where T: CommonActions + IsWallet {}
