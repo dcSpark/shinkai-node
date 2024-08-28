@@ -259,3 +259,26 @@ fn subscription_manager_test() {
             }
 
             tokio::time::sleep(Duration::from_secs(3)).await;
+
+            // TODO:
+            // Add tool to node1
+            // Add wallet to node2
+            // Add network tool to node2
+            // node2 does a vector search and finds the tool to do X
+            // it asks for a quote to node1
+            // node1 computes the quote and sends it to node2
+            // node2 receives the quote, makes the payment
+            // node 2 sends the payment receipt to node1 with the data to process X
+            // node1 processes X and sends the result to node2
+            // node2 receives the result and stores it
+            // done
+
+            {
+                eprintln!("Add tool to node1");
+                
+            }
+        });
+
+        let _ = tokio::join!(node1_handler, node2_handler, interactions_handler);
+    });
+}
