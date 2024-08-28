@@ -52,18 +52,7 @@ jobs:
         - name: Build
           run: cargo build --release
 
-        - name: Upload binaries to release
-          uses: svenstaro/upload-release-action@v2
-          env:
-            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
-          with:
-            repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: target/release/shinkai_node${{ env.EXTENSION }}
-            asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
-            tag: ${{ github.ref }}
-            overwrite: true
-
-        - name: Prepare binary files
+        - name: Prepare bundle files
           env:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           run: |
@@ -76,7 +65,7 @@ jobs:
             7z a -tzip v${{ needs.prebuild.outputs.version }}.zip . -sdel
             cp v${{ needs.prebuild.outputs.version }}.zip latest.zip
 
-        - name: Upload binaries to R2 bucket
+        - name: Upload bundle to R2 bucket
           uses: shallwefootball/s3-upload-action@master
           with:
             endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
@@ -86,7 +75,7 @@ jobs:
             source_dir: files-to-r2
             destination_dir: ./shinkai-node/binaries/production/${{ matrix.arch }}/
 
-        - name: Upload binaries to release
+        - name: Upload bundle to release
           uses: svenstaro/upload-release-action@v2
           env:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
