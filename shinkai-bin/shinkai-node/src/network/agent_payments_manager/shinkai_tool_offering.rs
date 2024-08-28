@@ -76,3 +76,58 @@ pub struct Asset {
 }
 
 // TODO: add the rest of the code here from the playground project
+
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_shinkai_tool_offering_to_json() {
+        let offering = ShinkaiToolOffering {
+            human_readable_name: "Test Tool".to_string(),
+            tool_key_name: "test_tool".to_string(),
+            tool_description: "A tool for testing".to_string(),
+            usage_type: UsageType::Both {
+                per_use_price: ToolPrice::Free,
+                download_price: ToolPrice::DirectDelegation("1000".to_string()),
+            },
+        };
+
+        let json = serde_json::to_string(&offering).expect("Failed to convert to JSON");
+        println!("{}", json);
+        assert!(json.contains("\"human_readable_name\":\"Test Tool\""));
+        assert!(json.contains("\"per_use_price\":\"Free\""));
+        assert!(json.contains("\"download_price\":\"DirectDelegation\""));
+    }
+
+    #[test]
+    fn test_shinkai_tool_offering_from_json() {
+        let json = r#"
+        {
+            "human_readable_name": "Test Tool",
+            "tool_key_name": "test_tool",
+            "tool_description": "A tool for testing",
+            "usage_type": {
+                "Both": {
+                    "per_use_price": "Free",
+                    "download_price": {
+                        "DirectDelegation": "1000"
+                    }
+                }
+            }
+        }"#;
+
+        let offering: ShinkaiToolOffering = serde_json::from_str(json).expect("Failed to convert from JSON");
+        assert_eq!(offering.human_readable_name, "Test Tool");
+        assert_eq!(offering.tool_key_name, "test_tool");
+        assert_eq!(offering.tool_description, "A tool for testing");
+        if let UsageType::Both { per_use_price, download_price } = offering.usage_type {
+            assert_eq!(per_use_price, ToolPrice::Free);
+            assert_eq!(download_price, ToolPrice::DirectDelegation("1000".to_string()));
+        } else {
+            panic!("UsageType did not match expected value");
+        }
+    }
+}

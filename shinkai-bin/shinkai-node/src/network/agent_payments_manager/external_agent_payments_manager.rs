@@ -1,5 +1,6 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
+use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
@@ -138,7 +139,7 @@ pub struct AgentOfferingsManager {
     pub my_signature_secret_key: SigningKey,
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
-    pub identity_manager: Weak<Mutex<IdentityManager>>,
+    pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     // pub shared_tools: Arc<DashMap<String, ShinkaiToolOffering>>, // (streamer_profile:::path, shared_folder)
     pub offerings_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
     pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
@@ -152,7 +153,7 @@ impl AgentOfferingsManager {
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
-        identity_manager: Weak<Mutex<IdentityManager>>,
+        identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -232,7 +233,7 @@ impl AgentOfferingsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        identity_manager: Weak<Mutex<IdentityManager>>,
+        identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         // shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         thread_number: usize,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
@@ -244,7 +245,7 @@ impl AgentOfferingsManager {
                 ShinkaiName,
                 SigningKey,
                 EncryptionStaticKey,
-                Weak<Mutex<IdentityManager>>,
+                Weak<Mutex<dyn IdentityManagerTrait + Send>>,
                 Weak<Mutex<Option<ProxyConnectionInfo>>>,
                 Weak<Mutex<ToolRouter>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send>>
@@ -257,6 +258,12 @@ impl AgentOfferingsManager {
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(thread_number));
         let process_job = Arc::new(process_job);
+
+        let is_testing = env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+
+        if is_testing {
+            return tokio::spawn(async {});
+        }
 
         tokio::spawn(async move {
             shinkai_log(
@@ -402,7 +409,7 @@ impl AgentOfferingsManager {
         _node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+        maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>> {
@@ -563,8 +570,117 @@ impl AgentOfferingsManager {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::Path};
+
+    use crate::{
+        lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
+        network::agent_payments_manager::shinkai_tool_offering::{Asset, AssetPayment, ToolPrice},
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
+        tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool},
+    };
+
     use super::*;
+    use async_trait::async_trait;
     use chrono::Utc;
+    use shinkai_message_primitives::{
+        shinkai_message::shinkai_message_schemas::IdentityPermissions,
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair, shinkai_logging::init_default_tracing,
+            signatures::unsafe_deterministic_signature_keypair,
+        },
+    };
+    use shinkai_tools_runner::built_in_tools;
+    use shinkai_vector_resources::{
+        embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+        model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
+    };
+
+    #[derive(Clone, Debug)]
+    struct MockIdentityManager {
+        dummy_standard_identity: Identity,
+        // Add any fields you need for your mock
+    }
+
+    impl MockIdentityManager {
+        pub fn new() -> Self {
+            let (_, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+            let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+            let dummy_standard_identity = Identity::Standard(StandardIdentity {
+                full_identity_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
+                addr: None,
+                node_encryption_public_key: node1_encryption_pk,
+                node_signature_public_key: node1_identity_pk,
+                profile_encryption_public_key: Some(node1_encryption_pk),
+                profile_signature_public_key: Some(node1_identity_pk),
+                identity_type: StandardIdentityType::Global,
+                permission_type: IdentityPermissions::Admin,
+            });
+
+            Self {
+                dummy_standard_identity,
+                // initialize other fields...
+            }
+        }
+    }
+
+    #[async_trait]
+    impl IdentityManagerTrait for MockIdentityManager {
+        fn find_by_identity_name(&self, _full_profile_name: ShinkaiName) -> Option<&Identity> {
+            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+                Some(&self.dummy_standard_identity)
+            } else {
+                None
+            }
+        }
+
+        async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+            if full_identity_name == "@@node1.shinkai/main" {
+                Some(self.dummy_standard_identity.clone())
+            } else {
+                None
+            }
+        }
+
+        fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
+            Box::new(self.clone())
+        }
+    }
+
+    fn setup() {
+        let path = Path::new("lance_db_tests/");
+        let _ = fs::remove_dir_all(path);
+
+        let path = Path::new("shinkai_db_tests/");
+        let _ = fs::remove_dir_all(path);
+    }
+
+    fn default_test_profile() -> ShinkaiName {
+        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap()
+    }
+
+    fn node_name() -> ShinkaiName {
+        ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap()
+    }
+
+    async fn setup_default_vector_fs() -> VectorFS {
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let fs_db_path = format!("db_tests/{}", "vector_fs");
+        let profile_list = vec![default_test_profile()];
+        let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+        )];
+
+        VectorFS::new(
+            generator,
+            supported_embedding_models,
+            profile_list,
+            &fs_db_path,
+            node_name(),
+        )
+        .await
+        .unwrap()
+    }
 
     #[test]
     fn test_unique_id() {
@@ -578,5 +694,97 @@ mod tests {
 
         // Assert that the unique_id is not empty
         assert!(!invoice_request.unique_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_agent_offerings_manager() -> Result<(), ShinkaiLanceDBError> {
+        init_default_tracing();
+        setup();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        // Initialize ShinkaiDB
+        let shinkai_db =
+            Arc::new(ShinkaiDB::new("shinkai_db_tests/shinkaidb").map_err(|e| ShinkaiLanceDBError::from(e))?);
+
+        let lance_db = Arc::new(Mutex::new(
+            LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
+        ));
+
+        let tools = built_in_tools::get_tools();
+
+        // Generate crypto keys
+        let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
+
+        // Create ToolRouter
+        let tool_router = Arc::new(Mutex::new(ToolRouter::new(lance_db.clone())));
+
+        // Create AgentOfferingsManager
+        let node_name = node_name();
+        let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
+            Arc::new(Mutex::new(MockIdentityManager::new()));
+        let proxy_connection_info = Arc::new(Mutex::new(None));
+        let vector_fs = Arc::new(setup_default_vector_fs().await);
+
+        let mut agent_offerings_manager = AgentOfferingsManager::new(
+            Arc::downgrade(&shinkai_db),
+            Arc::downgrade(&vector_fs),
+            Arc::downgrade(&identity_manager),
+            node_name.clone(),
+            my_signature_secret_key.clone(),
+            my_encryption_secret_key.clone(),
+            Arc::downgrade(&proxy_connection_info),
+            Arc::downgrade(&tool_router),
+        )
+        .await;
+
+        // Add tools to the database
+        for (name, definition) in tools {
+            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+            for tool in toolkit.tools {
+                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                let embedding = generator
+                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
+                    .await
+                    .unwrap();
+                shinkai_tool.set_embedding(embedding);
+
+                lance_db
+                    .lock()
+                    .await
+                    .set_tool(&shinkai_tool)
+                    .await
+                    .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+            }
+        }
+
+        // Make one of the tools shareable
+        let tool_key_name = "shinkai-tool-weather-by-city".to_string();
+        let shinkai_offering = ShinkaiToolOffering {
+            tool_key_name: tool_key_name.clone(),
+            human_readable_name: "Weather by City".to_string(),
+            tool_description: "Provides weather information for a given city".to_string(),
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                asset: Asset {
+                    network_id: "1".to_string(),
+                    asset_id: "ETH".to_string(),
+                    decimals: Some(18),
+                    contract_address: None,
+                },
+                amount: "0.01".to_string(),
+            }])),
+        };
+
+        agent_offerings_manager
+            .make_tool_shareable(shinkai_offering)
+            .await
+            .unwrap();
+
+        // Check available tools
+        let available_tools = agent_offerings_manager.available_tools().await.unwrap();
+        assert!(available_tools.contains(&"Weather by City".to_string()));
+
+        Ok(())
     }
 }
