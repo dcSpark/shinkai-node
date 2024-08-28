@@ -18,7 +18,6 @@ can it be done in one step? maybe we have rules per: tool, provider or overall s
 
 use std::sync::{Arc, Weak};
 
-use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use tokio::sync::Mutex;
@@ -26,15 +25,16 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
     db::ShinkaiDB,
-    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+    managers::identity_manager::IdentityManagerTrait,
     tools::{network_tool::NetworkTool, tool_router::ToolRouter},
     vector_fs::vector_fs::VectorFS,
 };
 
 use super::{
     crypto_invoice_manager::CryptoInvoiceManagerTrait,
-    external_agent_payments_manager::{AgentOfferingManagerError, InternalInvoiceRequest, Invoice},
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry},
+    external_agent_payments_manager::AgentOfferingManagerError,
+    invoices::{InternalInvoiceRequest, Invoice},
+    shinkai_tool_offering::UsageTypeInquiry,
 };
 
 pub struct MyAgentOfferingsManager {
@@ -283,16 +283,16 @@ mod tests {
     use crate::{
         db::ShinkaiDB,
         lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
-        managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+        managers::identity_manager::IdentityManagerTrait,
         network::agent_payments_manager::{
-            crypto_invoice_manager::CryptoInvoiceManager, shinkai_tool_offering::ToolPrice,
+            crypto_invoice_manager::CryptoInvoiceManager, invoices::InvoiceStatusEnum, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType}
         },
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::tool_router::ToolRouter,
         vector_fs::vector_fs::VectorFS,
     };
     use async_trait::async_trait;
-    use ed25519_dalek::SigningKey;
+    use chrono::Utc;
     use shinkai_message_primitives::{
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{
@@ -460,6 +460,8 @@ mod tests {
                 usage_type: UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
             },
             expiration_time: Utc::now() + chrono::Duration::hours(1), // Example expiration time
+            status: InvoiceStatusEnum::Pending,
+            payment: None,
         };
 
         // Call verify_invoice

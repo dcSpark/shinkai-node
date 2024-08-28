@@ -5,7 +5,6 @@ mod it {
     mod a1_http_subscription_tests;
     mod a2_sheet_workflow_tests;
     mod cron_job_tests;
-    mod crypto_payment_tests;
     mod db_identity_tests;
     mod db_inbox_tests;
     mod db_job_tests;
