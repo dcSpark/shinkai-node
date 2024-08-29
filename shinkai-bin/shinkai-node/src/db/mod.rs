@@ -24,3 +24,4 @@ pub mod db_uploaded_files_links;
 pub mod db_sheet;
 pub mod db_invoice;
 pub mod db_internal_invoice_request;
+pub mod db_wallets;
