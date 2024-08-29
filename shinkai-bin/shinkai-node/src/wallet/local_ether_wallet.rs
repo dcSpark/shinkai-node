@@ -1,11 +1,12 @@
-use async_trait::async_trait;
+use aes_gcm::aead::generic_array::GenericArray;
 use bip39::{Language, Mnemonic, Seed};
 use ethers::core::k256::ecdsa::SigningKey;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Address as EthersAddress, NameOrAddress};
 use ethers::utils::{format_units, hex};
 use ethers::{core::k256::SecretKey, prelude::*};
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -19,7 +20,7 @@ use crate::wallet::erc20_abi::ERC20_ABI;
 use crate::wallet::wallet_error::WalletError;
 
 use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network};
-use super::wallet_traits::{CommonActions, IsWallet, SendActions, TransactionHash};
+use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 
 pub type LocalWalletProvider = Provider<Http>;
 
@@ -32,6 +33,56 @@ pub struct LocalEthersWallet {
     pub provider: LocalWalletProvider,
 }
 
+impl Serialize for LocalEthersWallet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let wallet_bytes = self.wallet.signer().to_bytes();
+        let provider_url = self.provider.url().to_string();
+
+        let mut state = serializer.serialize_struct("LocalEthersWallet", 5)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("network", &self.network)?;
+        state.serialize_field("address", &self.address)?;
+        state.serialize_field("wallet_private_key", &hex::encode(wallet_bytes))?;
+        state.serialize_field("provider_url", &provider_url)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for LocalEthersWallet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct LocalEthersWalletData {
+            id: String,
+            network: Network,
+            address: Address,
+            wallet_private_key: String,
+            provider_url: String,
+        }
+
+        let data = LocalEthersWalletData::deserialize(deserializer)?;
+        let wallet_bytes = hex::decode(data.wallet_private_key).map_err(serde::de::Error::custom)?;
+        let wallet_secret_key =
+            SecretKey::from_bytes(GenericArray::from_slice(&wallet_bytes)).map_err(serde::de::Error::custom)?;
+        let wallet = EthersLocalWallet::from(wallet_secret_key).with_chain_id(data.network.chain_id);
+
+        let provider = Provider::<Http>::try_from(data.provider_url).map_err(serde::de::Error::custom)?;
+
+        Ok(LocalEthersWallet {
+            id: data.id,
+            network: data.network,
+            address: data.address,
+            wallet,
+            provider,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WalletSource {
     Mnemonic(String),
@@ -42,6 +93,10 @@ impl LocalEthersWallet {
     pub fn create_wallet(network: Network) -> Result<Self, WalletError> {
         let wallet = EthersLocalWallet::new(&mut rand::thread_rng()).with_chain_id(network.chain_id);
         let address = format!("0x{:x}", wallet.address());
+
+        // let wallet_bytes = wallet.signer().to_bytes();
+        // let wallet_secret_key = SecretKey::from_bytes(&wallet_bytes)?;
+        // let new_wallet = EthersLocalWallet::from(wallet_secret_key).with_chain_id(network.chain_id);
 
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
@@ -221,6 +276,15 @@ impl LocalEthersWallet {
 
 impl IsWallet for LocalEthersWallet {}
 
+impl PaymentWallet for LocalEthersWallet {
+    // No additional methods needed, as they are covered by SendActions and CommonActions
+}
+
+impl ReceivingWallet for LocalEthersWallet {
+    // No additional methods needed, as they are covered by SendActions and CommonActions
+}
+
+
 impl SendActions for LocalEthersWallet {
     fn send_transaction(
         &self,
@@ -246,7 +310,10 @@ impl SendActions for LocalEthersWallet {
         Box::pin(fut)
     }
 
-    fn sign_transaction(&self, tx: mixed::Transaction) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
+    fn sign_transaction(
+        &self,
+        tx: mixed::Transaction,
+    ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
         let self_clone = self.clone();
         let fut = async move {
             let typed_tx: TypedTransaction = tx.into();
@@ -294,7 +361,9 @@ impl CommonActions for LocalEthersWallet {
         })
     }
 
-    fn check_balances(&self) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
+    fn check_balances(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
         let self_clone = self.clone();
         Box::pin(async move {
             let mut balances = Vec::new();
@@ -467,6 +536,8 @@ impl CommonActions for LocalEthersWallet {
 #[cfg(test)]
 mod tests {
 
+    use crate::wallet::wallet_manager::WalletManager;
+
     use super::super::mixed::{Address, Asset, Network};
     use super::*;
     use ethers::utils::Anvil;
@@ -590,4 +661,24 @@ mod tests {
         // // Assert that the balance is 0 (initial balance)
         // assert_eq!(balance, U256::zero());
     }
+
+    #[test]
+    fn test_serialize_deserialize_wallet() {
+        let network = create_test_network();
+        let wallet = LocalEthersWallet::create_wallet(network.clone()).unwrap();
+
+        // Serialize the wallet
+        let serialized_wallet = serde_json::to_string(&wallet).unwrap();
+
+        // Deserialize the wallet
+        let deserialized_wallet: LocalEthersWallet = serde_json::from_str(&serialized_wallet).unwrap();
+
+        // Compare the original and deserialized wallets
+        assert_eq!(wallet.id, deserialized_wallet.id);
+        assert_eq!(wallet.network, deserialized_wallet.network);
+        assert_eq!(wallet.address, deserialized_wallet.address);
+        assert_eq!(wallet.wallet.address(), deserialized_wallet.wallet.address());
+        assert_eq!(wallet.provider.url(), deserialized_wallet.provider.url());
+    }
 }
+

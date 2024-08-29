@@ -76,6 +76,7 @@ arrow = "52.2"
 arrow-array = "52.2"
 arrow-schema = "52.2"
 bytes = "1.7.1"
+downcast-rs = "1.2.1"
 
 [dependencies.aws-sdk-s3]
 version = "1.24.0"

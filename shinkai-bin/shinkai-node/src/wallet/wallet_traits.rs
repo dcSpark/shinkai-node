@@ -4,14 +4,12 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use chrono::Utc;
-use ethers::types::U256;
-use uuid::Uuid;
-
 use super::{
-    mixed::{Address, AddressBalanceList, Asset, Balance, CreateTransferRequest, Network, Transaction, Transfer},
+    mixed::{Address, AddressBalanceList, Asset, Network, Transaction},
     wallet_error::WalletError,
 };
+
+use downcast_rs::{impl_downcast, Downcast};
 
 pub trait IsWallet {}
 
@@ -36,7 +34,7 @@ pub trait SendActions {
         send_amount: String,
         invoice_id: String,
     ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send>>;
-    
+
     fn sign_transaction(&self, tx: Transaction) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send>>;
 }
 
@@ -61,13 +59,13 @@ pub trait CommonActions {
 }
 
 /// Trait for payment wallet.
-pub trait PaymentWallet: SendActions + CommonActions + IsWallet + Send + Sync {}
-impl<T> PaymentWallet for T where T: SendActions + CommonActions + IsWallet + Send + Sync {}
+pub trait PaymentWallet: SendActions + CommonActions + IsWallet + Send + Sync + Downcast {}
+impl_downcast!(PaymentWallet);
 
 /// Trait that combines `CommonActions` and `IsWallet`.
 pub trait CommonIsWallet: CommonActions + IsWallet + Send + Sync {}
 impl<T> CommonIsWallet for T where T: CommonActions + IsWallet + Send + Sync {}
 
 /// Trait for receiving wallet.
-pub trait ReceivingWallet: CommonActions + IsWallet + Send + Sync {}
-impl<T> ReceivingWallet for T where T: CommonActions + IsWallet + Send + Sync {}
+pub trait ReceivingWallet: SendActions + CommonActions + IsWallet + Send + Sync + Downcast {}
+impl_downcast!(ReceivingWallet);

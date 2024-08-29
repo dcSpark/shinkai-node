@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+use downcast_rs::Downcast;
+use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use uuid::Uuid;
 
@@ -11,10 +13,17 @@ use super::{
     local_ether_wallet::{LocalEthersWallet, WalletSource},
     mixed::Network,
     wallet_error::WalletError,
-    wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet},
+    wallet_traits::{PaymentWallet, ReceivingWallet},
 };
 
-/// Manages multiple wallets and their roles.
+/// Enum to represent different wallet types.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+enum WalletEnum {
+    LocalEthersWallet(LocalEthersWallet),
+    // Add other wallet types here as needed
+}
+
 pub struct WalletManager {
     /// The wallet used for payments.
     payment_wallet: Box<dyn PaymentWallet>,
@@ -22,12 +31,53 @@ pub struct WalletManager {
     receiving_wallet: Box<dyn ReceivingWallet>,
 }
 
+impl Serialize for WalletManager {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("WalletManager", 2)?;
+        state.serialize_field(
+            "payment_wallet",
+            &self
+                .payment_wallet
+                .as_ref()
+                .downcast_ref::<LocalEthersWallet>()
+                .unwrap(),
+        )?;
+        state.serialize_field(
+            "receiving_wallet",
+            &self
+                .receiving_wallet
+                .as_ref()
+                .downcast_ref::<LocalEthersWallet>()
+                .unwrap(),
+        )?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for WalletManager {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct WalletManagerHelper {
+            payment_wallet: LocalEthersWallet,
+            receiving_wallet: LocalEthersWallet,
+        }
+
+        let helper = WalletManagerHelper::deserialize(deserializer)?;
+        Ok(WalletManager {
+            payment_wallet: Box::new(helper.payment_wallet),
+            receiving_wallet: Box::new(helper.receiving_wallet),
+        })
+    }
+}
+
 impl WalletManager {
-    fn new(
-        payment_wallet: Box<dyn PaymentWallet>,
-        receiving_wallet: Box<dyn ReceivingWallet>,
-    ) -> Self {
-        let h = "hello hello";
+    fn new(payment_wallet: Box<dyn PaymentWallet>, receiving_wallet: Box<dyn ReceivingWallet>) -> Self {
         WalletManager {
             payment_wallet,
             receiving_wallet,
@@ -68,9 +118,7 @@ impl WalletManager {
         Utc::now().to_rfc3339()
     }
 
-    pub fn create_local_ethers_wallet_manager(
-        network: Network,
-    ) -> Result<WalletManager, WalletError> {
+    pub fn create_local_ethers_wallet_manager(network: Network) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> = Box::new(LocalEthersWallet::create_wallet(network.clone())?);
         let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(LocalEthersWallet::create_wallet(network)?);
 
@@ -84,12 +132,78 @@ impl WalletManager {
         network: Network,
         source: WalletSource,
     ) -> Result<WalletManager, WalletError> {
-        let payment_wallet: Box<dyn PaymentWallet> = Box::new(LocalEthersWallet::recover_wallet(network.clone(), source.clone())?);
+        let payment_wallet: Box<dyn PaymentWallet> =
+            Box::new(LocalEthersWallet::recover_wallet(network.clone(), source.clone())?);
         let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(LocalEthersWallet::recover_wallet(network, source)?);
 
         Ok(WalletManager {
             payment_wallet,
             receiving_wallet,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::wallet::mixed::{Asset, NetworkIdentifier, NetworkProtocolFamilyEnum};
+
+    use super::*;
+
+    fn create_test_network() -> Network {
+        Network {
+            id: NetworkIdentifier::Anvil,
+            display_name: "Anvil".to_string(),
+            chain_id: 31337,
+            protocol_family: NetworkProtocolFamilyEnum::Evm,
+            is_testnet: true,
+            native_asset: Asset {
+                network_id: "Anvil".to_string(),
+                asset_id: "ETH".to_string(),
+                decimals: Some(18),
+                contract_address: None,
+            },
+        }
+    }
+
+    #[test]
+    fn test_wallet_manager_serialization() {
+        let network = create_test_network();
+        let wallet_manager = WalletManager::create_local_ethers_wallet_manager(network).unwrap();
+
+        // Serialize the wallet manager
+        let serialized_wallet_manager = serde_json::to_string(&wallet_manager).unwrap();
+
+        // Deserialize the wallet manager
+        let deserialized_wallet_manager: WalletManager = serde_json::from_str(&serialized_wallet_manager).unwrap();
+
+        // Compare the original and deserialized wallet managers
+        assert_eq!(
+            wallet_manager
+                .payment_wallet
+                .as_ref()
+                .downcast_ref::<LocalEthersWallet>()
+                .unwrap()
+                .id,
+            deserialized_wallet_manager
+                .payment_wallet
+                .as_ref()
+                .downcast_ref::<LocalEthersWallet>()
+                .unwrap()
+                .id
+        );
+        assert_eq!(
+            wallet_manager
+                .receiving_wallet
+                .as_ref()
+                .downcast_ref::<LocalEthersWallet>()
+                .unwrap()
+                .id,
+            deserialized_wallet_manager
+                .receiving_wallet
+                .as_ref()
+                .downcast_ref::<LocalEthersWallet>()
+                .unwrap()
+                .id
+        );
     }
 }
