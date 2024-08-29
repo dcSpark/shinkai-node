@@ -372,6 +372,13 @@ impl Node {
             }
         };
 
+        // Read wallet_manager from db if it exists, if not, None
+        let wallet_manager = match db_arc.read_wallet_manager() {
+            Ok(manager) => Some(manager),
+            Err(ShinkaiDBError::DataNotFound) => None,
+            Err(e) => panic!("Failed to read wallet manager from database: {}", e),
+        };
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -408,7 +415,7 @@ impl Node {
             default_embedding_model,
             supported_embedding_models,
             api_v2_key,
-            wallet_manager: Arc::new(Mutex::new(None)),
+            wallet_manager: Arc::new(Mutex::new(wallet_manager)),
         }))
     }
 
