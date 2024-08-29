@@ -9590,7 +9590,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.7.32"
+version = "0.7.33"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -9761,9 +9761,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.7.4"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "322caeb5044e8957591fd7a3bbf5c0287ac8cbe3cfc0e5d3bca0f53e5166250d"
+checksum = "e2bd2a80fe75152b566c80651b056911016249ba9cfbd49ea41221a7f1a878fb"
 dependencies = [
  "base64-simd",
  "copy_to_output",

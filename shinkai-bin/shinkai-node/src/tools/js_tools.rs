@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::thread;
+use std::path::PathBuf;
+use std::{env, thread};
 
 use super::js_toolkit_headers::ToolConfig;
 use crate::tools::argument::ToolArgument;
@@ -7,6 +8,7 @@ use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
 use shinkai_tools_runner::tools::run_result::RunResult;
+use shinkai_tools_runner::tools::shinkai_tools_backend_options::ShinkaiToolsBackendOptions;
 use shinkai_tools_runner::tools::tool::Tool;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
@@ -62,7 +64,19 @@ impl JSTool {
                 rt.block_on(async {
                     eprintln!("Running JSTool with config: {:?}", config);
                     eprintln!("Running JSTool with input: {}", input);
-                    let tool = Tool::new(code, config_json);
+                    let tool = Tool::new(
+                        code,
+                        config_json,
+                        Some(ShinkaiToolsBackendOptions {
+                            binary_path: PathBuf::from(env::var("SHINKAI_TOOLS_BACKEND_BINARY_PATH").unwrap_or_else(
+                                |_| "./shinkai-tools-runner-resources/shinkai-tools-backend".to_string(),
+                            )),
+                            api_port: env::var("SHINKAI_TOOLS_BACKEND_API_PORT")
+                                .unwrap_or_else(|_| "9650".to_string())
+                                .parse::<u16>()
+                                .unwrap_or(9650),
+                        }),
+                    );
                     tool.run(serde_json::from_str(&input).unwrap(), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
