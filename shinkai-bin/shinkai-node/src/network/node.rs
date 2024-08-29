@@ -122,8 +122,6 @@ pub struct Node {
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-    // Handle for the listen_and_reconnect task
-    pub listen_handle: Option<tokio::task::JoinHandle<()>>,
     // Websocket Manager
     pub ws_manager: Option<Arc<Mutex<WebSocketManager>>>,
     // Websocket Manager Trait
@@ -145,7 +143,7 @@ pub struct Node {
     // API V2 Key
     pub api_v2_key: String,
     // Wallet Manager
-    pub wallet_manager: Arc<Mutex<WalletManager>>,
+    pub wallet_manager: Arc<Mutex<Option<WalletManager>>>,
 }
 
 impl Node {
@@ -374,9 +372,6 @@ impl Node {
             }
         };
 
-        let wallet_manager =
-            WalletManager::create_local_ethers_wallet_manager(Network::new(NetworkIdentifier::BaseSepolia)).unwrap();
-
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -403,7 +398,6 @@ impl Node {
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
-            listen_handle: None,
             ws_manager,
             ws_address,
             ws_manager_trait,
@@ -414,7 +408,7 @@ impl Node {
             default_embedding_model,
             supported_embedding_models,
             api_v2_key,
-            wallet_manager: Arc::new(Mutex::new(wallet_manager)),
+            wallet_manager: Arc::new(Mutex::new(None)),
         }))
     }
 
