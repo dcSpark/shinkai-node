@@ -38,7 +38,7 @@ fn setup() {
 #[test]
 fn node_llm_provider_registration() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
-    init_default_tracing();
+    
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();

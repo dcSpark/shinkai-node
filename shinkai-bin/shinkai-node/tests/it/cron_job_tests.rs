@@ -39,7 +39,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_cron_job() {
-        init_default_tracing();
+        
         setup();
         let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
         let db_weak = Arc::downgrade(&db);
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_should_execute_cron_task() {
-        init_default_tracing();
+        
 
         use chrono::Timelike;
         use chrono::Utc;

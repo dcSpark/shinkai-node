@@ -68,7 +68,7 @@ pub async fn initialize_node() -> Result<
         }
     } else {
         // If TELEMETRY_ENDPOINT is not defined, initialize default tracing
-        init_default_tracing();
+        
     }
 
     let main_db: &str = "main_db";

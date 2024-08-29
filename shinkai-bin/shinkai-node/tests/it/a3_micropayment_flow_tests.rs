@@ -27,7 +27,7 @@ use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embe
 #[test]
 fn micropayment_flow_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     setup();
     let rt = Runtime::new().unwrap();
 

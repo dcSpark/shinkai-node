@@ -602,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_offerings_manager() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

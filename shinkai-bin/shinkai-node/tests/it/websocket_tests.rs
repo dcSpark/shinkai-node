@@ -153,7 +153,7 @@ fn setup() {
 
 #[tokio::test]
 async fn test_websocket() {
-    init_default_tracing();
+    
     // Setup
     setup();
 
@@ -466,7 +466,7 @@ async fn test_websocket() {
 
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
-    init_default_tracing();
+    
     // Setup
     setup();
 
@@ -659,7 +659,7 @@ async fn test_websocket_smart_inbox() {
 // Note: We need to mock up JobManager and change the depencency of SheetManager to a trait so we can swap between JobManager or the MockJobManager
 // #[tokio::test]
 // async fn test_websocket_sheet_update() {
-//     init_default_tracing();
+//     
 //     // Setup
 //     let agent_id = "agent".to_string();
 //     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));

@@ -37,25 +37,12 @@ use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use tracing::instrument;
-
 use super::chains::dsl_chain::dsl_inference_chain::DslChain;
 use super::chains::inference_chain_trait::{InferenceChainContext, InferenceChainResult};
 use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(
-        identity_secret_key,
-        generator,
-        unstructured_api,
-        vector_fs,
-        db,
-        ws_manager,
-        tool_router,
-        sheet_manager,
-        _callback_manager
-    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
@@ -266,15 +253,6 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(
-        identity_secret_key,
-        db,
-        vector_fs,
-        generator,
-        ws_manager,
-        tool_router,
-        sheet_manager
-    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,

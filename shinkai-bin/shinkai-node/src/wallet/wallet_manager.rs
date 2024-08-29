@@ -27,6 +27,7 @@ impl WalletManager {
         payment_wallet: Box<dyn PaymentWallet>,
         receiving_wallet: Box<dyn ReceivingWallet>,
     ) -> Self {
+        let h = "hello hello";
         WalletManager {
             payment_wallet,
             receiving_wallet,

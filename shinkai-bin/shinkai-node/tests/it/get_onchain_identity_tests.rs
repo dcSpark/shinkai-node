@@ -10,7 +10,7 @@ mod tests {
 
     #[test]
     fn test_get_identity_record() {
-        init_default_tracing();
+        
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let registry = ShinkaiRegistry::new(

@@ -89,7 +89,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_version_management() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

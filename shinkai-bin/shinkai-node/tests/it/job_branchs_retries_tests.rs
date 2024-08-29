@@ -56,7 +56,7 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
 #[test]
 fn job_branchs_retries_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

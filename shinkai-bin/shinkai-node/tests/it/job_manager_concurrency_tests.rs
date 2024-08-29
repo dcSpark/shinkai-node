@@ -104,7 +104,7 @@ async fn setup_default_vector_fs() -> VectorFS {
 
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    init_default_tracing();
+    
     utils::db_handlers::setup();
 
     let num_threads = 8;
@@ -255,7 +255,7 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequential_process_for_same_job_id() {
-    init_default_tracing();
+    
     super::utils::db_handlers::setup();
 
     let num_threads = 8;

@@ -25,7 +25,6 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use tracing::instrument;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -91,7 +90,6 @@ impl GenericInferenceChain {
     }
 
     #[async_recursion]
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
