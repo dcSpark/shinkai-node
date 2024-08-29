@@ -18,8 +18,6 @@ mod it {
     mod job_concurrency_in_seq_tests;
     mod job_image_analysis_tests;
     mod job_manager_concurrency_tests;
-    mod job_multi_page_cron_tests;
-    mod job_one_page_cron_tests;
     mod llm_provider_integration_tests;
     mod model_capabilities_manager_tests;
     mod node_integration_tests;
@@ -29,7 +27,6 @@ mod it {
     // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
-    mod planner_tests;
     // mod toolkit_tests;
     mod new_toolkit_tests;
     mod subscription_http_upload_tests;
