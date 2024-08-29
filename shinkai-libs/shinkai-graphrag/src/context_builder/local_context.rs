@@ -74,7 +74,7 @@ pub fn build_entity_context(
             new_context.push(entity.rank.unwrap_or(0).to_string());
 
             records
-                .entry("rank")
+                .entry(rank_description)
                 .or_insert_with(Vec::new)
                 .push(entity.rank.map(|r| r.to_string()).unwrap_or_default());
         }
@@ -111,10 +111,10 @@ pub fn build_entity_context(
 
     let mut data_series = Vec::new();
     for (header, data_values) in records {
-        if header == "rank" {
+        if include_entity_rank && header == rank_description {
             let data_values = data_values
                 .iter()
-                .map(|v| v.parse::<f64>().unwrap_or(0.0))
+                .map(|v| v.parse::<i32>().unwrap_or(0))
                 .collect::<Vec<_>>();
             let series = Series::new(header, data_values);
             data_series.push(series);

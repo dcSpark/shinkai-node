@@ -6,7 +6,7 @@ use shinkai_graphrag::{
     input::loaders::dfs::store_entity_semantic_embeddings,
     llm::base::LLMParams,
     search::local_search::{
-        mixed_context::{LocalSearchMixedContext, MixedContextBuilderParams},
+        mixed_context::{default_local_context_params, LocalSearchMixedContext},
         search::LocalSearch,
     },
     vector_stores::lancedb::LanceDBVectorStore,
@@ -99,27 +99,16 @@ async fn openai_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Create local search engine
-    let local_context_params = MixedContextBuilderParams {
-        text_unit_prop: 0.5,
-        community_prop: 0.1,
-        top_k_mapped_entities: 10,
-        top_k_relationships: 10,
-        include_entity_rank: true,
-        include_relationship_weight: true,
-        include_community_rank: false,
-        return_candidate_context: false,
-        max_tokens: 12_000,
-
-        query: "".to_string(),
-        include_entity_names: None,
-        exclude_entity_names: None,
-        rank_description: "number of relationships".to_string(),
-        relationship_ranking_attribute: "rank".to_string(),
-        use_community_summary: false,
-        min_community_rank: 0,
-        community_context_name: "Reports".to_string(),
-        column_delimiter: "|".to_string(),
-    };
+    let mut local_context_params = default_local_context_params();
+    local_context_params.text_unit_prop = 0.5;
+    local_context_params.community_prop = 0.1;
+    local_context_params.top_k_mapped_entities = 10;
+    local_context_params.top_k_relationships = 10;
+    local_context_params.include_entity_rank = true;
+    local_context_params.include_relationship_weight = true;
+    local_context_params.include_community_rank = false;
+    local_context_params.return_candidate_context = false;
+    local_context_params.max_tokens = 12_000;
 
     let llm_params = LLMParams {
         max_tokens: 2000,
@@ -144,7 +133,17 @@ async fn openai_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("Response: {:?}", result.response);
 
-    println!("Context: {:?}", result.context_data);
+    match result.context_data {
+        shinkai_graphrag::search::base::ContextData::Dictionary(dict) => {
+            for (entity, df) in dict.iter() {
+                println!("Data: {} ({})", entity, df.height());
+                println!("{:?}", df.head(Some(10)));
+            }
+        }
+        data => {
+            println!("Context data: {:?}", data);
+        }
+    }
 
     Ok(())
 }

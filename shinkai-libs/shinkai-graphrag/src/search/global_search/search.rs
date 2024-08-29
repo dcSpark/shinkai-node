@@ -100,8 +100,6 @@ impl GlobalSearch {
             context_builder_params,
         } = global_search_params;
 
-        let mut map_llm_params = map_llm_params;
-
         let map_system_prompt = map_system_prompt.unwrap_or(MAP_SYSTEM_PROMPT.to_string());
         let reduce_system_prompt = reduce_system_prompt.unwrap_or(REDUCE_SYSTEM_PROMPT.to_string());
         let general_knowledge_inclusion_prompt =
@@ -201,7 +199,7 @@ impl GlobalSearch {
         let start_time = Instant::now();
         let search_prompt = self.map_system_prompt.replace("{context_data}", context_data);
 
-        let mut search_messages = vec![
+        let search_messages = vec![
             HashMap::from([
                 ("role".to_string(), "system".to_string()),
                 ("content".to_string(), search_prompt.clone()),

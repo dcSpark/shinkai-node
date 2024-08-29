@@ -1,8 +1,8 @@
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionResponseFormat,
-        ChatCompletionResponseFormatType, CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs,
+        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, CreateChatCompletionRequestArgs,
+        CreateEmbeddingRequestArgs,
     },
     Client,
 };
@@ -195,6 +195,10 @@ impl BaseTextEmbedding for OpenAIEmbedding {
             let embedding = self._aembed_with_retry(&chunk).await?;
             chunk_embeddings.push(embedding);
             chunk_lens.push(chunk.len());
+        }
+
+        if chunk_embeddings.len() == 1 {
+            return Ok(chunk_embeddings.swap_remove(0));
         }
 
         let rows = chunk_embeddings.len();
