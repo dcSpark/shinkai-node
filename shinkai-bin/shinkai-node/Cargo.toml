@@ -20,7 +20,6 @@ doctest = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-prost-build = "0.8.0"
 reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "stream"] }
 shinkai_tools_runner = { version = "0.7.5" } # change to a crate later on
 
