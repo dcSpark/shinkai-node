@@ -61,13 +61,13 @@ pub trait CommonActions {
 }
 
 /// Trait for payment wallet.
-pub trait PaymentWallet: SendActions + CommonActions + IsWallet {}
-impl<T> PaymentWallet for T where T: SendActions + CommonActions + IsWallet {}
+pub trait PaymentWallet: SendActions + CommonActions + IsWallet + Send + Sync {}
+impl<T> PaymentWallet for T where T: SendActions + CommonActions + IsWallet + Send + Sync {}
 
 /// Trait that combines `CommonActions` and `IsWallet`.
-pub trait CommonIsWallet: CommonActions + IsWallet {}
-impl<T> CommonIsWallet for T where T: CommonActions + IsWallet {}
+pub trait CommonIsWallet: CommonActions + IsWallet + Send + Sync {}
+impl<T> CommonIsWallet for T where T: CommonActions + IsWallet + Send + Sync {}
 
 /// Trait for receiving wallet.
-pub trait ReceivingWallet: CommonActions + IsWallet {}
-impl<T> ReceivingWallet for T where T: CommonActions + IsWallet {}
+pub trait ReceivingWallet: CommonActions + IsWallet + Send + Sync {}
+impl<T> ReceivingWallet for T where T: CommonActions + IsWallet + Send + Sync {}

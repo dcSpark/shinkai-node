@@ -21,6 +21,8 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::ws_routes::run_ws_api;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::wallet::mixed::{Network, NetworkIdentifier};
+use crate::wallet::wallet_manager::WalletManager;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
@@ -143,9 +145,7 @@ pub struct Node {
     // API V2 Key
     pub api_v2_key: String,
     // Wallet Manager
-    // pub wallet_manager: Arc<Mutex<DynWalletManager<T,U>>>,
-
-    // TODO: how do we save the wallet manager?
+    pub wallet_manager: Arc<Mutex<WalletManager>>,
 }
 
 impl Node {
@@ -374,6 +374,9 @@ impl Node {
             }
         };
 
+        let wallet_manager =
+            WalletManager::create_local_ethers_wallet_manager(Network::new(NetworkIdentifier::BaseSepolia)).unwrap();
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -411,6 +414,7 @@ impl Node {
             default_embedding_model,
             supported_embedding_models,
             api_v2_key,
+            wallet_manager: Arc::new(Mutex::new(wallet_manager)),
         }))
     }
 
