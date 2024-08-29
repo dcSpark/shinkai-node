@@ -28,7 +28,7 @@ use crate::{
         identity::{Identity, StandardIdentity},
         smart_inbox::{SmartInbox, V2SmartInbox},
     },
-    tools::{network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}}, wallet::{local_ether_wallet::{LocalEthersWallet, WalletSource}, mixed::{Network, NetworkIdentifier}},
+    tools::{network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}}, wallet::{local_ether_wallet::{LocalEthersWallet, WalletSource}, mixed::{Network, NetworkIdentifier}, wallet_manager::WalletRole},
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -827,11 +827,13 @@ pub enum NodeCommand {
         bearer: String,
         network: NetworkIdentifier,
         source: WalletSource,
-        res: Sender<Result<LocalEthersWallet, APIError>>,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiCreateWallet {
         bearer: String,
         network: NetworkIdentifier,
-        res: Sender<Result<LocalEthersWallet, APIError>>,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
     },
 }

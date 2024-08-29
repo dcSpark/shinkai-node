@@ -2759,35 +2759,37 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::V2ApiRestoreWallet { bearer, network, source, res } => {
-            //     let db_clone = Arc::clone(&self.db);
-            //     let identity_manager_clone = self.identity_manager.clone();
-            //     tokio::spawn(async move {
-            //         let _ = Node::v2_api_restore_wallet(
-            //             db_clone,
-            //             identity_manager_clone,
-            //             bearer,
-            //             network,
-            //             source,
-            //             res,
-            //         )
-            //         .await;
-            //     });
-            // }
-            // NodeCommand::V2ApiCreateWallet { bearer, network, res } => {
-            //     let db_clone = Arc::clone(&self.db);
-            //     let identity_manager_clone = self.identity_manager.clone();
-            //     tokio::spawn(async move {
-            //         let _ = Node::v2_api_create_wallet(
-            //             db_clone,
-            //             identity_manager_clone,
-            //             bearer,
-            //             network,
-            //             res,
-            //         )
-            //         .await;
-            //     });
-            // }
+            NodeCommand::V2ApiRestoreWallet { bearer, network, source, role, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_restore_wallet(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        source,
+                        role,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiCreateWallet { bearer, network, role, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_create_wallet(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        role,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

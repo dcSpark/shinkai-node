@@ -13,6 +13,8 @@ use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_node::wallet::mixed::NetworkIdentifier;
+use shinkai_node::wallet::wallet_manager::WalletRole;
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -258,7 +260,7 @@ fn micropayment_flow_test() {
             // Add tool to node1 (Done automatically)
             // and make it available with an offering (Done)
 
-            // Add wallet to node2 <- here
+            // Add wallet to node2 and node1 <- here
             // Add network tool to node2
             // node2 does a vector search and finds the tool to do X
             // it asks for a quote to node1
@@ -343,15 +345,20 @@ fn micropayment_flow_test() {
                 }
             }
             {
-                // // Add wallet to node2
-                // let (sender, receiver) = async_channel::bounded(1);
-                // node2_commands_sender
-                //     .send(NodeCommand::V2ApiAddWallet {
-                //         bearer: api_v2_key.to_string(),
-                //         wallet: Wallet {
-                            
-                //         }
-                //     })
+                eprintln!("Add wallet to node2");
+                // Add wallet to node2
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiCreateWallet {
+                        bearer: api_v2_key.to_string(),
+                        network: NetworkIdentifier::BaseSepolia,
+                        role: WalletRole::Both,
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp add wallet to node2: {:?}", resp);
             }
         });
 
