@@ -34,7 +34,7 @@ use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_suc
 fn http_subscription_manager_test() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     unsafe { std::env::set_var("SUBSCRIPTION_HTTP_UPLOAD_INTERVAL_MINUTES", "1000") };
-    init_default_tracing();
+    
     setup();
     let rt = Runtime::new().unwrap();
 

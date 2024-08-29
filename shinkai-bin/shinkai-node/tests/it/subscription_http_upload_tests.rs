@@ -30,7 +30,7 @@ use super::utils::shinkai_testing_framework::ShinkaiTestingFramework;
 #[test]
 fn subscription_http_upload() {
     std::env::set_var("SUBSCRIPTION_HTTP_UPLOAD_INTERVAL_MINUTES", "1000");
-    init_default_tracing();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

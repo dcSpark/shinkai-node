@@ -8,20 +8,12 @@ default-run = "shinkai_node"
 
 [features]
 default = []
-stream = ["reqwest/stream"]
-telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "opentelemetry-otlp", "opentelemetry-semantic-conventions", "tracing-opentelemetry", "tonic"]
 console = ["console-subscriber"]
 dynamic-pdf-parser = ["shinkai_vector_resources/dynamic-pdf-parser"]
 static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]
 doctest = false
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[build-dependencies]
-reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "stream"] }
-shinkai_tools_runner = { version = "0.7.5" } # change to a crate later on
 
 [dependencies]
 async-trait = "0.1.74"
@@ -69,8 +61,6 @@ base64 = "0.13.0"
 ethers = "2.0"
 dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 num_cpus = "1.16.0"
 async-lock = "2.4.0"
 governor = "0.6.3"
@@ -90,35 +80,6 @@ bytes = "1.7.1"
 [dependencies.aws-sdk-s3]
 version = "1.24.0"
 features = ["behavior-version-latest"]
-
-[dependencies.opentelemetry]
-version = "0.21.0"
-optional = true
-features = ["trace", "metrics"]
-
-[dependencies.opentelemetry_sdk]
-version = "0.21.0"
-default-features = false
-features = ["trace", "rt-tokio"]
-optional = true
-
-[dependencies.opentelemetry-stdout]
-version = "0.2.0"
-features = ["trace", "metrics"]
-optional = true
-
-[dependencies.opentelemetry-otlp]
-version = "0.14.0"
-features = ["metrics", "http-proto", "reqwest-client"]
-optional = true
-
-[dependencies.opentelemetry-semantic-conventions]
-version = "0.13.0"
-optional = true
-
-[dependencies.tracing-opentelemetry]
-version = "0.22"
-optional = true
 
 [dependencies.tonic]
 version = "0.9.2"

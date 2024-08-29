@@ -37,7 +37,7 @@ use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_suc
 #[test]
 fn subscription_manager_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     setup();
     let rt = Runtime::new().unwrap();
 

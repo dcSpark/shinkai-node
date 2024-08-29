@@ -7,5 +7,3 @@ pub mod printer;
 pub mod qr_code_setup;
 pub mod update_global_identity;
 pub mod static_server;
-#[cfg(feature = "telemetry")]
-pub mod open_telemetry;

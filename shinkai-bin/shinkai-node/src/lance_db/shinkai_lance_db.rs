@@ -638,7 +638,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_and_basics() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -743,7 +743,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tools_and_workflows() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         // Set the environment variable to enable testing workflows
@@ -833,7 +833,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tool_and_update_config() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -910,7 +910,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_workflow_and_js_tool() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -978,7 +978,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_has_any_js_tools() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -1022,7 +1022,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_js_and_network_tools() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

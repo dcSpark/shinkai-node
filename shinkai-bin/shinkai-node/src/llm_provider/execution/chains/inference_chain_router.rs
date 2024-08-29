@@ -17,13 +17,11 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{Assoc
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use tracing::instrument;
 
 impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
     /// and then starts using the chosen chain.
     /// Returns the final String result from the inferencing, and a new execution context.
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
         db: Arc<ShinkaiDB>,

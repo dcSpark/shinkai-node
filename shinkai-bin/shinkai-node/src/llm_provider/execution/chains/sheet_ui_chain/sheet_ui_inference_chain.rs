@@ -28,7 +28,6 @@ use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tokio::task;
-use tracing::instrument;
 
 #[derive(Clone)]
 pub struct SheetUIInferenceChain {
@@ -94,7 +93,6 @@ impl SheetUIInferenceChain {
 
     // Note: this code is very similar to the one from Generic, maybe we could inject
     // the tool code handling in the future so we can reuse the code
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
