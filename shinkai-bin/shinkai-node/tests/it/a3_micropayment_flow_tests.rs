@@ -8,7 +8,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
-    Asset, AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType,
+    Asset, AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
@@ -285,9 +285,11 @@ fn micropayment_flow_test() {
             // node2 receives the result and stores it
             // done
 
-            let test_tool_key_name = "shinkai-tool-echo:::network__echo";
+            let test_network_tool_name = "@@node1_test.arb-sep-shinkai:::shinkai-tool-echo:::network__echo";
+            let test_local_tool_key_name = "local:::shinkai-tool-echo:::network__echo";
+
             let shinkai_tool_offering = ShinkaiToolOffering {
-                tool_key: test_tool_key_name.to_string(),
+                tool_key: test_local_tool_key_name.to_string(),
                 usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
                     asset: Asset {
                         network_id: "mainnet".to_string(),
@@ -302,8 +304,9 @@ fn micropayment_flow_test() {
 
             let shinkai_tool_header = ShinkaiToolHeader {
                 name: "network__echo".to_string(),
+                toolkit_name: "shinkai-tool-echo".to_string(),
                 description: "Echoes the input message".to_string(),
-                tool_router_key: test_tool_key_name.to_string(),
+                tool_router_key: test_local_tool_key_name.to_string(),
                 tool_type: "JS".to_string(),
                 formatted_tool_summary_for_ui:
                     "Tool Name: network__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message"
@@ -335,7 +338,7 @@ fn micropayment_flow_test() {
                 node1_commands_sender
                     .send(NodeCommand::V2ApiGetShinkaiTool {
                         bearer: api_v2_key.to_string(),
-                        payload: "shinkai-tool-echo:::shinkai__echo".to_string(),
+                        payload: "local:::shinkai-tool-echo:::shinkai__echo".to_string(),
                         res: sender,
                     })
                     .await
@@ -353,7 +356,7 @@ fn micropayment_flow_test() {
                     js_tool.name = "network__echo".to_string();
                 }
 
-                // Add the modified ShinkaiTool to node2
+                // Add the modified ShinkaiTool to node1
                 let (sender, receiver) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::V2ApiAddShinkaiTool {
@@ -364,7 +367,7 @@ fn micropayment_flow_test() {
                     .await
                     .unwrap();
                 let resp = receiver.recv().await.unwrap();
-                eprintln!("resp add modified shinkai tool to node2: {:?}", resp);
+                eprintln!("resp add modified shinkai tool to node1: {:?}", resp);
 
                 // Add Offering
                 let (sender, receiver) = async_channel::bounded(1);
@@ -441,6 +444,7 @@ fn micropayment_flow_test() {
                 // Manually create NetworkTool
                 let network_tool = NetworkTool {
                     name: shinkai_tool_header.name.clone(),
+                    toolkit_name: shinkai_tool_header.toolkit_name.clone(),
                     description: shinkai_tool_header.description.clone(),
                     version: shinkai_tool_header.version.clone(),
                     provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
@@ -477,7 +481,7 @@ fn micropayment_flow_test() {
                     .await
                     .unwrap();
                 let resp = receiver.recv().await.unwrap();
-                eprintln!("resp list all shinkai tools: {:?}", resp);
+                eprintln!("resp list all shinkai tools in node2: {:?}", resp);
 
                 // Assert that "network__echo" is in the list of tools
                 match resp {
@@ -529,7 +533,7 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Expected Ok, got Err: {:?}", e),
                 }
             }
-            
+
             //
             // Second Part of the Test
             //
@@ -542,6 +546,31 @@ fn micropayment_flow_test() {
             //
             //
 
+            {
+                eprintln!("Requesting invoice for 'network__echo' tool from node2");
+
+                // Request an invoice using the V2ApiRequestInvoice command
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiRequestInvoice {
+                        bearer: api_v2_key.to_string(),
+                        tool_key_name: test_network_tool_name.to_string(),
+                        usage: UsageTypeInquiry::PerUse,
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp request invoice: {:?}", resp);
+
+                // Handle the response
+                match resp {
+                    Ok(invoice) => eprintln!("Received invoice: {:?}", invoice),
+                    Err(e) => panic!("Failed to request invoice: {:?}", e),
+                }
+            }
+            // add sleep 5 seconds
+            tokio::time::sleep(Duration::from_secs(10000)).await;
 
             node1_abort_handler.abort();
             node2_abort_handler.abort();

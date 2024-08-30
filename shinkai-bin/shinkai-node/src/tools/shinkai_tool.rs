@@ -24,6 +24,7 @@ pub enum ShinkaiTool {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShinkaiToolHeader {
     pub name: String,
+    pub toolkit_name: String,
     pub description: String,
     pub tool_router_key: String,
     pub tool_type: String,
@@ -52,6 +53,7 @@ impl ShinkaiTool {
     pub fn to_header(&self) -> ShinkaiToolHeader {
         ShinkaiToolHeader {
             name: self.name(),
+            toolkit_name: self.toolkit_name(),
             description: self.description(),
             tool_router_key: self.tool_router_key(),
             tool_type: self.tool_type().to_string(),
@@ -68,27 +70,33 @@ impl ShinkaiTool {
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
         match self {
-            // so it generates name:::version
-            ShinkaiTool::Workflow(w, _) => Self::gen_router_key(w.workflow.author.clone(), self.name()),
+            ShinkaiTool::Workflow(w, _) => {
+                Self::gen_router_key("local".to_string(), w.workflow.author.clone(), w.get_name())
+            }
+            ShinkaiTool::Network(n, _) => {
+                Self::gen_router_key(n.provider.to_string(), n.toolkit_name.clone(), n.name.clone())
+            }
             _ => {
                 let (name, toolkit_name) = (
                     self.name(),
                     match self {
-                        ShinkaiTool::Rust(r, _) => r.toolkit_type_name(),
+                        ShinkaiTool::Rust(r, _) => r.toolkit_name(),
                         ShinkaiTool::JS(j, _) => j.toolkit_name.to_string(),
-                        ShinkaiTool::Network(n, _) => n.name.clone(),
+                        ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
-                Self::gen_router_key(name, toolkit_name)
+                Self::gen_router_key("local".to_string(), toolkit_name, name)
             }
         }
     }
 
     /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(name: String, toolkit_name: String) -> String {
+    pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
         // We replace any `/` in order to not have the names break VRPaths
-        format!("{}:::{}", toolkit_name, name).replace('/', "|").to_lowercase()
+        format!("{}:::{}:::{}", source, toolkit_name, name)
+            .replace('/', "|")
+            .to_lowercase()
     }
 
     /// Tool name
@@ -113,20 +121,10 @@ impl ShinkaiTool {
     /// Toolkit name the tool is from
     pub fn toolkit_name(&self) -> String {
         match self {
-            ShinkaiTool::Rust(r, _) => r.name.clone(),
-            ShinkaiTool::JS(j, _) => j.name.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_name(),
-            ShinkaiTool::Network(n, _) => n.name.clone(),
-        }
-    }
-
-    /// Toolkit name the tool is from
-    pub fn toolkit_type_name(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r, _) => r.toolkit_type_name().clone(),
+            ShinkaiTool::Rust(r, _) => r.toolkit_name(),
             ShinkaiTool::JS(j, _) => j.toolkit_name.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_name(),
-            ShinkaiTool::Network(n, _) => n.name.clone(),
+            ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
+            ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
         }
     }
 
@@ -155,7 +153,7 @@ impl ShinkaiTool {
         format!(
             "Tool Name: {}\nToolkit Name: {}\nDescription: {}",
             self.name(),
-            self.toolkit_type_name(),
+            self.toolkit_name(),
             self.description(),
         )
     }

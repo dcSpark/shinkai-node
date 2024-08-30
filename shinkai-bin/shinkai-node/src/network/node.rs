@@ -1,4 +1,5 @@
 use super::agent_payments_manager::crypto_invoice_manager::{CryptoInvoiceManager, CryptoInvoiceManagerTrait};
+use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{
     NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
@@ -148,7 +149,7 @@ pub struct Node {
     /// My Agent Payments Manager
     pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
     /// Ext Agent Payments Manager
-    pub ext_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+    pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
 }
 
 impl Node {
@@ -318,21 +319,7 @@ impl Node {
             .await,
         ));
 
-        // Create NetworkJobManager with a weak reference to this node
-        let network_manager = NetworkJobManager::new(
-            Arc::downgrade(&db_arc),
-            Arc::downgrade(&vector_fs_arc),
-            node_name.clone(),
-            clone_static_secret_key(&encryption_secret_key),
-            clone_signature_secret_key(&identity_secret_key),
-            identity_manager.clone(),
-            my_subscription_manager.clone(),
-            ext_subscriber_manager.clone(),
-            proxy_connection_info_weak.clone(),
-            ws_manager_trait.clone(),
-        )
-        .await;
-
+        // LanceDB
         let lance_db_path = format!("{}", main_db_path);
         // Note: do we need to push this to start bc of the default embedding model?
         let lance_db = LanceShinkaiDb::new(
@@ -346,6 +333,64 @@ impl Node {
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(lance_db.clone());
+
+        // Read wallet_manager from db if it exists, if not, None
+        let wallet_manager = match db_arc.read_wallet_manager() {
+            Ok(manager) => Some(manager),
+            Err(ShinkaiDBError::DataNotFound) => None,
+            Err(e) => panic!("Failed to read wallet manager from database: {}", e),
+        };
+
+        let wallet_manager = Arc::new(Mutex::new(wallet_manager));
+
+        let tool_router = Arc::new(Mutex::new(tool_router));
+
+        let my_agent_payments_manager = Arc::new(Mutex::new(
+            MyAgentOfferingsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager_trait),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                proxy_connection_info_weak.clone(),
+                Arc::downgrade(&tool_router),
+                Arc::downgrade(&wallet_manager),
+            )
+            .await,
+        ));
+
+        let ext_agent_payments_manager = Arc::new(Mutex::new(
+            ExtAgentOfferingsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager_trait),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                proxy_connection_info_weak.clone(),
+                Arc::downgrade(&tool_router),
+                Arc::downgrade(&wallet_manager),
+            )
+            .await,
+        ));
+
+        // Create NetworkJobManager with a weak reference to this node
+        let network_manager = NetworkJobManager::new(
+            Arc::downgrade(&db_arc),
+            Arc::downgrade(&vector_fs_arc),
+            node_name.clone(),
+            clone_static_secret_key(&encryption_secret_key),
+            clone_signature_secret_key(&identity_secret_key),
+            identity_manager.clone(),
+            my_subscription_manager.clone(),
+            ext_subscriber_manager.clone(),
+            Arc::downgrade(&my_agent_payments_manager),
+            Arc::downgrade(&ext_agent_payments_manager),
+            proxy_connection_info_weak.clone(),
+            ws_manager_trait.clone(),
+        )
+        .await;
 
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
@@ -376,47 +421,6 @@ impl Node {
                 }
             }
         };
-
-        // Read wallet_manager from db if it exists, if not, None
-        let wallet_manager = match db_arc.read_wallet_manager() {
-            Ok(manager) => Some(manager),
-            Err(ShinkaiDBError::DataNotFound) => None,
-            Err(e) => panic!("Failed to read wallet manager from database: {}", e),
-        };
-
-        let wallet_manager = Arc::new(Mutex::new(wallet_manager));
-
-        let tool_router = Arc::new(Mutex::new(tool_router));
-
-        let my_agent_payments_manager = Arc::new(Mutex::new(
-            MyAgentOfferingsManager::new(
-                Arc::downgrade(&db_arc),
-                Arc::downgrade(&vector_fs_arc),
-                Arc::downgrade(&identity_manager_trait),
-                node_name.clone(),
-                clone_signature_secret_key(&identity_secret_key),
-                clone_static_secret_key(&encryption_secret_key),
-                proxy_connection_info_weak.clone(),
-                Arc::downgrade(&tool_router),
-                Arc::downgrade(&wallet_manager),
-            )
-            .await,
-        ));
-
-        let ext_agent_payments_manager = Arc::new(Mutex::new(
-            MyAgentOfferingsManager::new(
-                Arc::downgrade(&db_arc),
-                Arc::downgrade(&vector_fs_arc),
-                Arc::downgrade(&identity_manager_trait),
-                node_name.clone(),
-                clone_signature_secret_key(&identity_secret_key),
-                clone_static_secret_key(&encryption_secret_key),
-                proxy_connection_info_weak.clone(),
-                Arc::downgrade(&tool_router),
-                Arc::downgrade(&wallet_manager),
-            )
-            .await,
-        ));
 
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),

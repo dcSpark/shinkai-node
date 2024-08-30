@@ -31,8 +31,8 @@ impl RustTool {
     }
 
     /// Default name of the rust toolkit
-    pub fn toolkit_type_name(&self) -> String {
-        self.name.clone()
+    pub fn toolkit_name(&self) -> String {
+        "rust-toolkit".to_string()
     }
 
     /// Convert to json
@@ -243,7 +243,7 @@ impl RustTool {
                     true,
                 ),
             ],
-            None
+            None,
         ));
 
         tools.push(RustTool::new(
@@ -255,7 +255,7 @@ impl RustTool {
                 "The map function".to_string(),
                 true,
             )],
-            None
+            None,
         ));
 
         tools

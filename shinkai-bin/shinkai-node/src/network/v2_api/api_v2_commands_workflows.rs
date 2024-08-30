@@ -424,16 +424,17 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-    
+
         // Save the new tool to the LanceShinkaiDb
         let save_result = {
             let lance_db_lock = lance_db.lock().await;
             lance_db_lock.set_tool(&new_tool).await
         };
-    
+
         match save_result {
             Ok(_) => {
-                let response = json!({ "status": "success", "message": "Tool added." });
+                let tool_key = new_tool.tool_router_key();
+                let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key) });
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }

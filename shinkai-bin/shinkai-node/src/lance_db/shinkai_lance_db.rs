@@ -1051,6 +1051,7 @@ mod tests {
         // Add Network tool
         let network_tool = NetworkTool {
             name: "network_tool_example".to_string(),
+            toolkit_name: "shinkai-tool-echo".to_string(),
             description: "A network tool example".to_string(),
             version: "1.0".to_string(),
             provider: ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),

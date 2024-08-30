@@ -2,6 +2,8 @@ use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
@@ -88,6 +90,7 @@ pub struct NetworkJobManager {
 
 impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
+    // TODO: change to Weak<Mutex<...>>
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -97,6 +100,8 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
+        external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
@@ -136,6 +141,8 @@ impl NetworkJobManager {
             identity_manager.clone(),
             my_subscription_manager,
             external_subscription_manager,
+            my_agent_offering_manager,
+            external_agent_offering_manager,
             network_job_queue_manager.clone(),
             proxy_connection_info,
             ws_manager.clone(),
@@ -148,6 +155,8 @@ impl NetworkJobManager {
              identity_manager,
              my_subscription_manager,
              external_subscription_manager,
+             my_agent_offering_manager,
+             external_agent_offering_manager,
              proxy_connection_info,
              ws_manager| {
                 Box::pin(NetworkJobManager::process_network_request_queued(
@@ -160,6 +169,8 @@ impl NetworkJobManager {
                     identity_manager,
                     my_subscription_manager,
                     external_subscription_manager,
+                    my_agent_offering_manager,
+                    external_agent_offering_manager,
                     proxy_connection_info,
                     ws_manager,
                 ))
@@ -184,6 +195,8 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
+        external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -197,6 +210,8 @@ impl NetworkJobManager {
                 Arc<Mutex<IdentityManager>>,                    // identity_manager
                 Arc<Mutex<MySubscriptionsManager>>,             // my_subscription_manager
                 Arc<Mutex<ExternalSubscriberManager>>,          // external_subscription_manager
+                Weak<Mutex<MyAgentOfferingsManager>>,           // my_agent_offering_manager
+                Weak<Mutex<ExtAgentOfferingsManager>>,          // external_agent_offering_manager
                 Weak<Mutex<Option<ProxyConnectionInfo>>>,       // proxy_connection_info
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>, // ws_manager
             ) -> Pin<Box<dyn Future<Output = Result<String, NetworkJobQueueError>> + Send>>
@@ -214,6 +229,8 @@ impl NetworkJobManager {
         let identity_manager_clone = identity_manager.clone();
         let my_subscription_manager_clone = my_subscription_manager.clone();
         let external_subscription_manager_clone = external_subscription_manager.clone();
+        let my_agent_offering_manager_clone = my_agent_offering_manager.clone();
+        let external_agent_offering_manager_clone = external_agent_offering_manager.clone();
 
         let job_processing_fn = Arc::new(job_processing_fn);
 
@@ -275,6 +292,8 @@ impl NetworkJobManager {
                     let identity_manager_clone_2 = identity_manager_clone.clone();
                     let my_subscription_manager_clone_2 = my_subscription_manager_clone.clone();
                     let external_subscription_manager_clone_2 = external_subscription_manager_clone.clone();
+                    let my_agent_offering_manager_clone_2 = my_agent_offering_manager_clone.clone();
+                    let external_agent_offering_manager_clone_2 = external_agent_offering_manager_clone.clone();
                     let proxy_connection_info = proxy_connection_info.clone();
                     let ws_manager = ws_manager.clone();
 
@@ -316,6 +335,8 @@ impl NetworkJobManager {
                                         identity_manager_clone_2,
                                         my_subscription_manager_clone_2,
                                         external_subscription_manager_clone_2,
+                                        my_agent_offering_manager_clone_2,
+                                        external_agent_offering_manager_clone_2,
                                         proxy_connection_info,
                                         ws_manager,
                                     )
@@ -347,7 +368,6 @@ impl NetworkJobManager {
                                         ),
                                     );
                                 }
-
 
                                 match result {
                                     Ok(_) => {
@@ -410,6 +430,8 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
+        external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<String, NetworkJobQueueError> {
@@ -444,6 +466,8 @@ impl NetworkJobManager {
                     identity_manager.clone(),
                     my_subscription_manager.clone(),
                     external_subscription_manager.clone(),
+                    my_agent_offering_manager.clone(),
+                    external_agent_offering_manager.clone(),
                     proxy_connection_info,
                     ws_manager,
                 )
@@ -771,6 +795,8 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
+        external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NetworkJobQueueError> {
@@ -860,6 +886,8 @@ impl NetworkJobManager {
             unsafe_sender_address,
             my_subscription_manager,
             external_subscription_manager,
+            my_agent_offering_manager,
+            external_agent_offering_manager,
             proxy_connection_info,
             ws_manager,
         )
