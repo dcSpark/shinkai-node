@@ -29,7 +29,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     db::ShinkaiDB,
     llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
     network::{
         node_api_router::{APIError, GetPublicKeysResponse},
         node_error::NodeError,

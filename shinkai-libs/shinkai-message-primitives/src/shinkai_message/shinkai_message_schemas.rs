@@ -87,6 +87,8 @@ pub enum MessageSchemaType {
     ListAllShinkaiTools,
     GetShinkaiTool,
     SearchShinkaiTool,
+    InvoiceRequest,
+
 }
 
 impl MessageSchemaType {
@@ -168,6 +170,7 @@ impl MessageSchemaType {
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
             "SearchShinkaiTool" => Some(Self::SearchShinkaiTool),
+            "InvoiceRequest" => Some(Self::InvoiceRequest),
             _ => None,
         }
     }
@@ -249,6 +252,7 @@ impl MessageSchemaType {
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
             Self::SearchShinkaiTool => "SearchShinkaiTool",
+            Self::InvoiceRequest => "InvoiceRequest",
             Self::Empty => "",
         }
     }
