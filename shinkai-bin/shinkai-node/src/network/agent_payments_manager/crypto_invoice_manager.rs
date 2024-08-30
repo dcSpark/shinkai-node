@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use ethers::prelude::*;
 use std::sync::Arc;
 
-use super::external_agent_payments_manager::AgentOfferingManagerError;
+use super::external_agent_offerings_manager::AgentOfferingManagerError;
 
 #[async_trait]
 pub trait CryptoInvoiceManagerTrait: Send + Sync {

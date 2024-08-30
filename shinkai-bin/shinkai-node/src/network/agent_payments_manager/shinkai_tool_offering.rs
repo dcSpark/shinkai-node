@@ -19,9 +19,7 @@ impl fmt::Display for UsageTypeInquiry {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct ShinkaiToolOffering {
-    // pub name: String, // Note: maybe we should just use the one from the tool
     pub tool_key: String,
-    // pub tool_description: String, // Note: maybe we should just use the one from the tool
     pub usage_type: UsageType,
     pub meta_description: Option<String>,
 }
@@ -95,7 +93,7 @@ pub struct AssetPayment {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     /// The ID of the blockchain network.
-    pub network_id: String,
+    pub network_id: String, // TODO: it needs to be an enum
     /// The ID for the asset on the network.
     pub asset_id: String,
     /// The number of decimals the asset supports. This is used to convert from atomic units to base units.

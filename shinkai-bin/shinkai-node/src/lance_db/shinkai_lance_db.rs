@@ -146,6 +146,7 @@ impl LanceShinkaiDb {
         let embedding = match shinkai_tool.get_embedding() {
             Some(embedding) => embedding.vector,
             None => {
+                eprintln!("Generating embedding for tool: {}", tool_key);
                 let embedding_string = shinkai_tool.format_embedding_string();
                 self.embedding_function
                     .request_embeddings(&embedding_string)
@@ -622,7 +623,6 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -1022,7 +1022,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_js_and_network_tools() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

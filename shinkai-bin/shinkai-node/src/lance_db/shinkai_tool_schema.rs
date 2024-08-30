@@ -14,7 +14,6 @@ impl ShinkaiToolSchema {
     /// - author: UTF-8 string (non-nullable)
     /// - version: UTF-8 string (non-nullable)
     /// - is_enabled: Boolean (non-nullable)
-    /// - config: UTF-8 string (nullable)
     /// - on_demand_price: 32-bit float (nullable)
     /// - is_network: Boolean (non-nullable)
     ///
@@ -38,7 +37,7 @@ impl ShinkaiToolSchema {
             Field::new(Self::author_field(), DataType::Utf8, false),
             Field::new(Self::version_field(), DataType::Utf8, false),
             Field::new(Self::is_enabled_field(), DataType::Boolean, false),
-            Field::new(Self::on_demand_price_field(), DataType::Float32, false),
+            Field::new(Self::on_demand_price_field(), DataType::Float32, true),
             Field::new(Self::is_network_field(), DataType::Boolean, false),
         ])))
     }

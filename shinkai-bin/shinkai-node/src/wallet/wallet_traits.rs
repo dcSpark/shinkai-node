@@ -1,6 +1,3 @@
-// Heavily inspured by the Coinbase SDK so we can easily connect to it
-// Add more about this ^
-
 use std::future::Future;
 use std::pin::Pin;
 

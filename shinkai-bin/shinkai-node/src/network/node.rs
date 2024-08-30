@@ -1,3 +1,5 @@
+use super::agent_payments_manager::crypto_invoice_manager::{CryptoInvoiceManager, CryptoInvoiceManagerTrait};
+use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{
     NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
 };
@@ -21,7 +23,6 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::ws_routes::run_ws_api;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::wallet::mixed::{Network, NetworkIdentifier};
 use crate::wallet::wallet_manager::WalletManager;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
@@ -144,6 +145,10 @@ pub struct Node {
     pub api_v2_key: String,
     // Wallet Manager
     pub wallet_manager: Arc<Mutex<Option<WalletManager>>>,
+    /// My Agent Payments Manager
+    pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+    /// Ext Agent Payments Manager
+    pub ext_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
 }
 
 impl Node {
@@ -272,7 +277,7 @@ impl Node {
             let manager = WebSocketManager::new(
                 db_weak,
                 node_name.clone(),
-                identity_manager_trait,
+                identity_manager_trait.clone(),
                 clone_static_secret_key(&encryption_secret_key),
             )
             .await;
@@ -379,6 +384,38 @@ impl Node {
             Err(e) => panic!("Failed to read wallet manager from database: {}", e),
         };
 
+        let wallet_manager = Arc::new(Mutex::new(wallet_manager));
+
+        let tool_router = Arc::new(Mutex::new(tool_router));
+
+        let my_agent_payments_manager = Arc::new(Mutex::new(
+            MyAgentOfferingsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager_trait),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                Arc::downgrade(&tool_router),
+                Arc::downgrade(&wallet_manager),
+            )
+            .await,
+        ));
+
+        let ext_agent_payments_manager = Arc::new(Mutex::new(
+            MyAgentOfferingsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager_trait),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                Arc::downgrade(&tool_router),
+                Arc::downgrade(&wallet_manager),
+            )
+            .await,
+        ));
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -411,11 +448,13 @@ impl Node {
             ws_server: None,
             callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
             sheet_manager: Arc::new(Mutex::new(sheet_manager)),
-            tool_router: Some(Arc::new(Mutex::new(tool_router))),
+            tool_router: Some(tool_router),
             default_embedding_model,
             supported_embedding_models,
             api_v2_key,
-            wallet_manager: Arc::new(Mutex::new(wallet_manager)),
+            wallet_manager,
+            my_agent_payments_manager,
+            ext_agent_payments_manager,
         }))
     }
 

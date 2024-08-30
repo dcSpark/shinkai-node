@@ -78,6 +78,13 @@ impl ToolRouter {
     }
 
     async fn add_static_workflows(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+        // Check if ONLY_TESTING_WORKFLOWS is set
+        if env::var("ONLY_TESTING_WORKFLOWS").unwrap_or_default() == "1"
+            || env::var("ONLY_TESTING_WORKFLOWS").unwrap_or_default().to_lowercase() == "true"
+        {
+            return Ok(()); // Return right away and don't add anything
+        }
+
         let lance_db = self.lance_db.lock().await;
         let model_type = generator.model_type();
         let start_time = Instant::now();
@@ -131,7 +138,15 @@ impl ToolRouter {
         let tools = built_in_tools::get_tools();
         let lance_db = self.lance_db.lock().await;
 
+        let only_testing_js_tools =
+            std::env::var("ONLY_TESTING_JS_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
+        let test_tool_key_name = "shinkai-tool-echo";
+
         for (name, definition) in tools {
+            if only_testing_js_tools && name != test_tool_key_name {
+                continue; // Skip tools that are not the test tool
+            }
+
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
                 let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
@@ -183,7 +198,9 @@ impl ToolRouter {
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let lance_db = self.lance_db.lock().await;
-        let tool_headers = lance_db.vector_search_enabled_tools(query, num_of_results, false).await?;
+        let tool_headers = lance_db
+            .vector_search_enabled_tools(query, num_of_results, false)
+            .await?;
         Ok(tool_headers)
     }
 

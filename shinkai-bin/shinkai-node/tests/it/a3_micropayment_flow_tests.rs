@@ -1,8 +1,8 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
@@ -12,7 +12,8 @@ use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
 };
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
-use shinkai_node::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_node::tools::network_tool::NetworkTool;
+use shinkai_node::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_node::wallet::mixed::NetworkIdentifier;
 use shinkai_node::wallet::wallet_manager::WalletRole;
 use shinkai_vector_resources::utils::hash_string;
@@ -29,7 +30,9 @@ use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embe
 #[test]
 fn micropayment_flow_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    
+    std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
+    std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
+
     setup();
     let rt = Runtime::new().unwrap();
 
@@ -256,14 +259,25 @@ fn micropayment_flow_test() {
 
             tokio::time::sleep(Duration::from_secs(3)).await;
 
+            // ASCII Art
+            eprintln!(
+                "
+                +--------------------------+       +--------------------------+
+                |  Node 1                  |       |  Node 2                  |
+                |  Agent Offering Provider |       |  Subscriber to Agent     |
+                |                          |       |  Offering                |
+                +--------------------------+       +--------------------------+
+                "
+            );
+
             // TODO:
             // Add tool to node1 (Done automatically)
             // and make it available with an offering (Done)
 
-            // Add wallet to node2 and node1 <- here
+            // Add wallet to node2 and node1
             // Add network tool to node2
             // node2 does a vector search and finds the tool to do X
-            // it asks for a quote to node1
+            // it asks for a quote to node1 <- here
             // node1 computes the quote and sends it to node2
             // node2 receives the quote, makes the payment
             // node 2 sends the payment receipt to node1 with the data to process X
@@ -271,28 +285,93 @@ fn micropayment_flow_test() {
             // node2 receives the result and stores it
             // done
 
-            let test_tool_key_name = "shinkai-tool-echo:::shinkai__echo";
+            let test_tool_key_name = "shinkai-tool-echo:::network__echo";
+            let shinkai_tool_offering = ShinkaiToolOffering {
+                tool_key: test_tool_key_name.to_string(),
+                usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                    asset: Asset {
+                        network_id: "mainnet".to_string(),
+                        asset_id: "USDC".to_string(),
+                        decimals: Some(6),
+                        contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
+                    },
+                    amount: "10500000".to_string(), // 10.5 USDC in atomic units (6 decimals)
+                }])),
+                meta_description: Some("Echo tool offering".to_string()),
+            };
+
+            let shinkai_tool_header = ShinkaiToolHeader {
+                name: "network__echo".to_string(),
+                description: "Echoes the input message".to_string(),
+                tool_router_key: test_tool_key_name.to_string(),
+                tool_type: "JS".to_string(),
+                formatted_tool_summary_for_ui:
+                    "Tool Name: network__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message"
+                        .to_string(),
+                author: "Shinkai".to_string(),
+                version: "v0.1".to_string(),
+                enabled: true,
+                config: Some(vec![]),
+                usage_type: None,
+                tool_offering: Some(shinkai_tool_offering.clone()),
+            };
+
             {
                 eprintln!("Add tool to node1");
-                let shinkai_tool_offering = ShinkaiToolOffering {
-                    tool_key: test_tool_key_name.to_string(),
-                    usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                        asset: Asset {
-                            network_id: "mainnet".to_string(),
-                            asset_id: "USDC".to_string(),
-                            decimals: Some(6),
-                            contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                        },
-                        amount: "10500000".to_string(), // 10.5 USDC in atomic units (6 decimals)
-                    }])),
-                    meta_description: Some("Echo tool offering".to_string()),
+                // List all Shinkai tools
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiListAllShinkaiTools {
+                        bearer: api_v2_key.to_string(),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp list all shinkai tools: {:?}", resp);
+
+                // Retrieve the shinkai_tool from node1
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiGetShinkaiTool {
+                        bearer: api_v2_key.to_string(),
+                        payload: "shinkai-tool-echo:::shinkai__echo".to_string(),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp get shinkai tool: {:?}", resp);
+
+                // Modify the tool_key
+                let mut shinkai_tool = match resp {
+                    Ok(tool) => serde_json::from_value::<ShinkaiTool>(tool).unwrap(),
+                    Err(e) => panic!("Failed to retrieve shinkai tool: {:?}", e),
                 };
 
+                if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+                    js_tool.name = "network__echo".to_string();
+                }
+
+                // Add the modified ShinkaiTool to node2
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiAddShinkaiTool {
+                        bearer: api_v2_key.to_string(),
+                        shinkai_tool,
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp add modified shinkai tool to node2: {:?}", resp);
+
+                // Add Offering
                 let (sender, receiver) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::V2ApiSetToolOffering {
                         bearer: api_v2_key.to_string(),
-                        tool_offering: shinkai_tool_offering,
+                        tool_offering: shinkai_tool_offering.clone(),
                         res: sender,
                     })
                     .await
@@ -313,36 +392,28 @@ fn micropayment_flow_test() {
                 let resp = receiver.recv().await.unwrap();
                 eprintln!("resp get all tool offerings: {:?}", resp);
 
-                let expected_response = vec![ShinkaiToolHeader {
-                    name: "shinkai__echo".to_string(),
-                    description: "Echoes the input message".to_string(),
-                    tool_router_key: "shinkai-tool-echo:::shinkai__echo".to_string(),
-                    tool_type: "JS".to_string(),
-                    formatted_tool_summary_for_ui: "Tool Name: shinkai__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message".to_string(),
-                    author: "Shinkai".to_string(),
-                    version: "v0.1".to_string(),
-                    enabled: true,
-                    config: Some(vec![]),
-                    usage_type: None,
-                    tool_offering: Some(ShinkaiToolOffering {
-                        tool_key: "shinkai-tool-echo:::shinkai__echo".to_string(),
-                        usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                            asset: Asset {
-                                network_id: "mainnet".to_string(),
-                                asset_id: "USDC".to_string(),
-                                decimals: Some(6),
-                                contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                            },
-                            amount: "10500000".to_string(), // 10.5 USDC in atomic units (6 decimals)
-                        }])),
-                        meta_description: Some("Echo tool offering".to_string()),
-                    }),
-                }];
-            
+                let expected_response = vec![shinkai_tool_header.clone()];
+
                 match resp {
                     Ok(actual_response) => assert_eq!(actual_response, expected_response),
                     Err(e) => panic!("Expected Ok, got Err: {:?}", e),
                 }
+            }
+            {
+                eprintln!("Add wallet to node1");
+                // Add wallet to node1
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiCreateWallet {
+                        bearer: api_v2_key.to_string(),
+                        network: NetworkIdentifier::BaseSepolia,
+                        role: WalletRole::Both,
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp add wallet to node1: {:?}", resp);
             }
             {
                 eprintln!("Add wallet to node2");
@@ -360,6 +431,107 @@ fn micropayment_flow_test() {
                 let resp = receiver.recv().await.unwrap();
                 eprintln!("resp add wallet to node2: {:?}", resp);
             }
+            // Note: add my_agent_payments_manager to node // done
+            // // add ext_agent_payments_manager to node // done
+            // add the method to add a network tool to the node in commands
+            {
+                eprintln!("Add network tool to node2");
+
+                // Convert ShinkaiToolHeader to ShinkaiTool
+                // Manually create NetworkTool
+                let network_tool = NetworkTool {
+                    name: shinkai_tool_header.name.clone(),
+                    description: shinkai_tool_header.description.clone(),
+                    version: shinkai_tool_header.version.clone(),
+                    provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+                    usage_type: shinkai_tool_offering.usage_type.clone(),
+                    activated: shinkai_tool_header.enabled,
+                    config: shinkai_tool_header.config.clone().unwrap_or_default(),
+                    input_args: vec![],
+                    embedding: None,
+                    restrictions: None,
+                };
+
+                let shinkai_tool = ShinkaiTool::Network(network_tool, true);
+
+                // Add the ShinkaiTool to node2
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiAddShinkaiTool {
+                        bearer: api_v2_key.to_string(),
+                        shinkai_tool,
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp add shinkai tool to node2: {:?}", resp);
+
+                // List all Shinkai tools
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiListAllShinkaiTools {
+                        bearer: api_v2_key.to_string(),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp list all shinkai tools: {:?}", resp);
+
+                // Assert that "network__echo" is in the list of tools
+                match resp {
+                    Ok(tools) => {
+                        let tool_names: Vec<String> = tools
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|tool| tool["name"].as_str().unwrap().to_string())
+                            .collect();
+                        assert!(
+                            tool_names.contains(&"network__echo".to_string()),
+                            "network__echo tool not found"
+                        );
+                    }
+                    Err(e) => panic!("Expected Ok, got Err: {:?}", e),
+                }
+            }
+            {
+                eprintln!("Search for 'echo' tool in node2");
+
+                // Search for the tool using the V2ApiSearchShinkaiTool command
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiSearchShinkaiTool {
+                        bearer: api_v2_key.to_string(),
+                        query: "echo".to_string(),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp search shinkai tool: {:?}", resp);
+
+                // Assert that "network__echo" is in the search results
+                match resp {
+                    Ok(tools) => {
+                        let tool_names: Vec<String> = tools
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|tool| tool["name"].as_str().unwrap().to_string())
+                            .collect();
+                        assert!(
+                            tool_names.contains(&"network__echo".to_string()),
+                            "network__echo tool not found in search results"
+                        );
+                    }
+                    Err(e) => panic!("Expected Ok, got Err: {:?}", e),
+                }
+            }
+
+            node1_abort_handler.abort();
+            node2_abort_handler.abort();
         });
 
         let _ = tokio::join!(node1_handler, node2_handler, interactions_handler);

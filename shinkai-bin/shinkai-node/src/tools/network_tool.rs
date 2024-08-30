@@ -17,6 +17,7 @@ pub struct NetworkTool {
     pub input_args: Vec<ToolArgument>,
     pub embedding: Option<Embedding>,
     pub restrictions: Option<String>, // Could be a JSON string or a more structured type
+    // ^ What was this for? I think it was *internal* user restrictions (e.g. max_requests_per_day, max_total_budget etc.)
 }
 // Asking Myself (AM): do we want transparency about knowing if it's a wrapped JSTool or Workflow?
 // TODO: add the same JS configuration to NetworkTool most likely we will use JSTool and Workflows (which is a subgroup)

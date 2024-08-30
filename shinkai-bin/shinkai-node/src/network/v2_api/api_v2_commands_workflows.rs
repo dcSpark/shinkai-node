@@ -77,7 +77,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using LanceShinkaiDb
-        match lance_db.lock().await.vector_search_all_tools(&query, 5, false).await {
+        match lance_db.lock().await.vector_search_all_tools(&query, 5, true).await {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
@@ -400,6 +400,42 @@ impl Node {
                         Ok(())
                     }
                 }
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add tool to LanceShinkaiDb: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_add_shinkai_tool(
+        db: Arc<ShinkaiDB>,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        bearer: String,
+        new_tool: ShinkaiTool,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+    
+        // Save the new tool to the LanceShinkaiDb
+        let save_result = {
+            let lance_db_lock = lance_db.lock().await;
+            lance_db_lock.set_tool(&new_tool).await
+        };
+    
+        match save_result {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Tool added." });
+                let _ = res.send(Ok(response)).await;
+                Ok(())
             }
             Err(err) => {
                 let api_error = APIError {

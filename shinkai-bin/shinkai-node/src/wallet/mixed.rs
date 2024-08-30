@@ -1,3 +1,6 @@
+// Heavily inspired by the Coinbase SDK so we can easily connect to it
+// Add more about this ^
+
 use std::fmt;
 use std::str::FromStr;
 
