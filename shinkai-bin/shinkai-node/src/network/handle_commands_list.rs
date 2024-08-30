@@ -2804,6 +2804,23 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiRequestInvoice { bearer, tool_key_name, usage, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let my_agent_payments_manager_clone = self.my_agent_payments_manager.clone();
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_request_invoice(
+                        db_clone,
+                        lance_db_clone,
+                        my_agent_payments_manager_clone,
+                        bearer,
+                        tool_key_name,
+                        usage,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

@@ -22,6 +22,7 @@ pub enum NetworkJobQueueError {
     VectorFSUpgradeFailed,
     InvalidVRPath(String),
     ProxyConnectionInfoUpgradeFailed,
+    ManagerUnavailable
 }
 
 // Implement std::fmt::Display for NetworkJobQueueError
@@ -45,6 +46,7 @@ impl fmt::Display for NetworkJobQueueError {
             NetworkJobQueueError::VectorFSUpgradeFailed => write!(f, "VectorFS upgrade failed"),
             NetworkJobQueueError::InvalidVRPath(ref err) => write!(f, "Invalid VR path: {}", err),
             NetworkJobQueueError::ProxyConnectionInfoUpgradeFailed => write!(f, "Proxy Connection Info upgrade failed"),
+            NetworkJobQueueError::ManagerUnavailable => write!(f, "Manager unavailable"),
         }
     }
 }

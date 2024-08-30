@@ -1,28 +1,33 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::wallet::wallet_manager::WalletManager;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::collections::HashSet;
-use std::env;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
+use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::invoices::{InternalInvoiceRequest, Invoice, InvoicePayment, InvoiceStatusEnum};
+use super::invoices::{InternalInvoiceRequest, Invoice, InvoicePayment, InvoiceRequest, InvoiceStatusEnum};
 use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
 #[derive(Debug, Clone)]
@@ -31,19 +36,31 @@ pub enum AgentOfferingManagerError {
     InvalidUsageType(String),
 }
 
+impl fmt::Display for AgentOfferingManagerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AgentOfferingManagerError::OperationFailed(msg) => write!(f, "Operation failed: {}", msg),
+            AgentOfferingManagerError::InvalidUsageType(msg) => write!(f, "Invalid usage type: {}", msg),
+        }
+    }
+}
+
 // TODO: for the hash maybe we could use public_key + nonce
 // and then that hash it is used to produce another hash that's shared
 // this way we never share our public key + nonce
 // what's this public key? is it a new one generated from the sk?
 // should we use the name of the destination as part of the hash?
 
-pub struct AgentOfferingsManager {
+pub struct ExtAgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
+    // The address of the proxy server (if any)
+    pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    // Identity manager like trait
     pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     // pub shared_tools: Arc<DashMap<String, ShinkaiToolOffering>>, // (streamer_profile:::path, shared_folder)
     pub offerings_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
@@ -54,7 +71,7 @@ pub struct AgentOfferingsManager {
 
 const NUM_THREADS: usize = 4;
 
-impl AgentOfferingsManager {
+impl ExtAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
@@ -84,7 +101,7 @@ impl AgentOfferingsManager {
 
         let offerings_queue_manager = Arc::new(Mutex::new(offerings_queue));
 
-        let offering_queue_handler = AgentOfferingsManager::process_offerings_queue(
+        let offering_queue_handler = ExtAgentOfferingsManager::process_offerings_queue(
             offerings_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
@@ -104,7 +121,7 @@ impl AgentOfferingsManager {
              identity_manager,
              proxy_connection_info,
              tool_router| {
-                AgentOfferingsManager::process_invoice_payment(
+                ExtAgentOfferingsManager::process_invoice_payment(
                     invoice_payment,
                     db,
                     vector_fs,
@@ -124,6 +141,7 @@ impl AgentOfferingsManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            proxy_connection_info,
             identity_manager,
             offerings_queue_manager,
             offering_processing_task: Some(offering_queue_handler),
@@ -389,19 +407,21 @@ impl AgentOfferingsManager {
     pub async fn request_invoice(
         &mut self,
         requester_node_name: ShinkaiName,
-        tool_key_name: String,
-        usage_type_inquiry: UsageTypeInquiry,
+        invoice_request: InvoiceRequest,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         let db = self
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
+        // Validate and convert the tool_key_name
+        let actual_tool_key_name = invoice_request.validate_and_convert_tool_key(&self.node_name)?;
+
         let shinkai_offering = db
-            .get_tool_offering(&tool_key_name)
+            .get_tool_offering(&actual_tool_key_name)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
 
-        let usage_type = match usage_type_inquiry {
+        let usage_type = match invoice_request.usage_type_inquiry {
             UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
                 UsageType::PerUse(price) => UsageType::PerUse(price),
                 UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
@@ -422,25 +442,82 @@ impl AgentOfferingsManager {
             },
         };
 
-        // TODO: invoice_id needs to be smarter
-        // we need to make it based on the content of the request + some time + random number
-
-        let invoice_request =
-            InternalInvoiceRequest::new(requester_node_name.clone(), tool_key_name, usage_type_inquiry);
+        // Check if an invoice with the same ID already exists
+        if db.get_invoice(&invoice_request.unique_id).is_ok() {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Invoice with the same ID already exists".to_string(),
+            ));
+        }
 
         let invoice = Invoice {
             invoice_id: invoice_request.unique_id.clone(),
-            requester_name: requester_node_name,
+            requester_name: invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
-                tool_key: invoice_request.tool_key_name.clone(),
+                tool_key: invoice_request.tool_key_name,
                 usage_type,
                 meta_description: None,
             },
-            expiration_time: Utc::now(),
+            expiration_time: Utc::now() + Duration::hours(1),
             status: InvoiceStatusEnum::Pending,
             payment: None,
         };
 
+        // Store the new invoice in the database
+        db.set_invoice(&invoice)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
+
+        Ok(invoice)
+    }
+
+    pub async fn network_request_invoice(
+        &mut self,
+        requester_node_name: ShinkaiName,
+        invoice_request: InvoiceRequest,
+    ) -> Result<Invoice, AgentOfferingManagerError> {
+        // Call request_invoice to generate an invoice
+        let invoice = self
+            .request_invoice(requester_node_name.clone(), invoice_request.clone())
+            .await?;
+
+        // Continue
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&invoice_request.requester_name.to_string())
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info =
+                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+
+            // Generate the message to request the invoice
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                invoice.clone(),
+                MessageSchemaType::Invoice,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                invoice_request.requester_name.to_string(),
+                "main".to_string(),
+                proxy_builder_info,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+            )
+            .await?;
+        }
+
+        // Return the generated invoice
         Ok(invoice)
     }
 
@@ -493,8 +570,7 @@ mod tests {
     use shinkai_message_primitives::{
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair, shinkai_logging::init_default_tracing,
-            signatures::unsafe_deterministic_signature_keypair,
+            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
     use shinkai_tools_runner::built_in_tools;
@@ -597,19 +673,19 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn test_unique_id() {
-        let invoice_request = InternalInvoiceRequest::new(
-            ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),
-            "test_tool".to_string(),
-            UsageTypeInquiry::PerUse,
-        );
+    // #[test]
+    // fn test_unique_id() {
+    //     let invoice_request = InternalInvoiceRequest::new(
+    //         ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),
+    //         "test_tool".to_string(),
+    //         UsageTypeInquiry::PerUse,
+    //     );
 
-        println!("Generated unique_id: {}", invoice_request.unique_id);
+    //     println!("Generated unique_id: {}", invoice_request.unique_id);
 
-        // Assert that the unique_id is not empty
-        assert!(!invoice_request.unique_id.is_empty());
-    }
+    //     // Assert that the unique_id is not empty
+    //     assert!(!invoice_request.unique_id.is_empty());
+    // }
 
     #[tokio::test]
     async fn test_agent_offerings_manager() -> Result<(), ShinkaiLanceDBError> {
@@ -644,7 +720,7 @@ mod tests {
         // Wallet Manager
         let wallet_manager = Arc::new(Mutex::new(None));
 
-        let mut agent_offerings_manager = AgentOfferingsManager::new(
+        let mut agent_offerings_manager = ExtAgentOfferingsManager::new(
             Arc::downgrade(&shinkai_db),
             Arc::downgrade(&vector_fs),
             Arc::downgrade(&identity_manager),

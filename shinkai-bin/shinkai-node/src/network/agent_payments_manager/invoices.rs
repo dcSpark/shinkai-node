@@ -5,7 +5,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry};
+use super::{external_agent_offerings_manager::AgentOfferingManagerError, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Invoice {
@@ -69,8 +69,37 @@ pub struct InvoiceRequest {
     pub unique_id: String,
 }
 
+impl InvoiceRequest {
+    pub fn validate_and_convert_tool_key(&self, node_name: &ShinkaiName) -> Result<String, AgentOfferingManagerError> {
+        // Extract the node name from the tool_key_name
+        let parts: Vec<&str> = self.tool_key_name.split(":::").collect();
+        if parts.len() < 3 {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Invalid tool_key_name format".to_string(),
+            ));
+        }
+
+        let node_name_part = parts[0];
+        let toolkit_name = parts[1];
+        let tool_name = parts[2];
+
+        // Validate that the node name part matches our node_name
+        if node_name_part != node_name.to_string() {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Node name in tool_key_name does not match our node_name".to_string(),
+            ));
+        }
+
+        // Convert the tool_key_name to the actual tool_key_name
+        let actual_tool_key_name = format!("local:::{}:::{}", toolkit_name, tool_name);
+
+        Ok(actual_tool_key_name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct InternalInvoiceRequest {
+    pub provider: ShinkaiName,
     pub requester_name: ShinkaiName,
     pub tool_key_name: String,
     pub usage_type_inquiry: UsageTypeInquiry,
@@ -80,7 +109,7 @@ pub struct InternalInvoiceRequest {
 }
 
 impl InternalInvoiceRequest {
-    pub fn new(requester_name: ShinkaiName, tool_key_name: String, usage_type_inquiry: UsageTypeInquiry) -> Self {
+    pub fn new(provider: ShinkaiName, requester_name: ShinkaiName, tool_key_name: String, usage_type_inquiry: UsageTypeInquiry) -> Self {
         // Generate a random number
         let random_number: u64 = rand::thread_rng().gen();
 
@@ -97,6 +126,7 @@ impl InternalInvoiceRequest {
         let secret_prehash = format!("{}{}", tool_key_name, random_number);
 
         Self {
+            provider,
             requester_name,
             tool_key_name,
             usage_type_inquiry,

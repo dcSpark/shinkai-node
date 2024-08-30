@@ -33,7 +33,7 @@ use crate::{
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
-    agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering,
+    agent_payments_manager::shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     v2_api::{
@@ -839,6 +839,12 @@ pub enum NodeCommand {
         bearer: String,
         network: NetworkIdentifier,
         role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRequestInvoice {
+        bearer: String,
+        tool_key_name: String,
+        usage: UsageTypeInquiry,
         res: Sender<Result<Value, APIError>>,
     },
 }
