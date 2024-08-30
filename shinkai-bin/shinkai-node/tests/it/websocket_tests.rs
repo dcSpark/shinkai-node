@@ -20,7 +20,6 @@ use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::aes_encryption_key_to_string;
 use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_node::db::ShinkaiDB;
@@ -91,6 +90,10 @@ impl IdentityManagerTrait for MockIdentityManager {
     fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
         Box::new(self.clone())
     }
+
+    async fn external_profile_to_global_identity(&self, _full_profile_name: &str) -> Result<StandardIdentity, String> {
+        unimplemented!()
+    }
 }
 
 fn decrypt_message(encrypted_hex: &str, shared_key: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -153,7 +156,6 @@ fn setup() {
 
 #[tokio::test]
 async fn test_websocket() {
-    
     // Setup
     setup();
 
@@ -466,7 +468,6 @@ async fn test_websocket() {
 
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
-    
     // Setup
     setup();
 
@@ -659,7 +660,7 @@ async fn test_websocket_smart_inbox() {
 // Note: We need to mock up JobManager and change the depencency of SheetManager to a trait so we can swap between JobManager or the MockJobManager
 // #[tokio::test]
 // async fn test_websocket_sheet_update() {
-//     
+//
 //     // Setup
 //     let agent_id = "agent".to_string();
 //     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));

@@ -396,6 +396,7 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
+                proxy_connection_info_weak.clone(),
                 Arc::downgrade(&tool_router),
                 Arc::downgrade(&wallet_manager),
             )
@@ -410,6 +411,7 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
+                proxy_connection_info_weak.clone(),
                 Arc::downgrade(&tool_router),
                 Arc::downgrade(&wallet_manager),
             )
@@ -1117,7 +1119,7 @@ impl Node {
         peer: (SocketAddr, ProfileName),
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         db: Arc<ShinkaiDB>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         save_to_db_flag: bool,
         retry: Option<u32>,
@@ -1136,7 +1138,7 @@ impl Node {
         tokio::spawn(async move {
             let start_time = Utc::now();
             let writer_start_time = Utc::now();
-            let writer = Node::get_writer(address, proxy_connection_info, maybe_identity_manager.clone()).await;
+            let writer = Node::get_writer(address, proxy_connection_info).await;
             let writer_end_time = Utc::now(); // End time for get_writer
             let writer_duration = writer_end_time - writer_start_time;
             shinkai_log(
@@ -1207,9 +1209,6 @@ impl Node {
     async fn get_writer(
         address: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        _identity_manager: Arc<Mutex<IdentityManager>>,
-        // node_name: ShinkaiName,
-        // identity_secret_key: SigningKey,
     ) -> Option<Arc<Mutex<WriteHalf<TcpStream>>>> {
         let proxy_connection = proxy_connection_info.lock().await;
         if let Some(proxy_info) = proxy_connection.as_ref() {
@@ -1301,7 +1300,7 @@ impl Node {
             data_to_send.extend_from_slice(&vr_kai_serialized);
 
             // Get the stream using the get_stream function
-            let writer = Node::get_writer(peer, proxy_connection_info, maybe_identity_manager).await;
+            let writer = Node::get_writer(peer, proxy_connection_info).await;
 
             if let Some(writer) = writer {
                 let mut writer = writer.lock().await;
@@ -1322,7 +1321,7 @@ impl Node {
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
         db: Arc<ShinkaiDB>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible

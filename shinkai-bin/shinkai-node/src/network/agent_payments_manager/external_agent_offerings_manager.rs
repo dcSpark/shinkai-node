@@ -553,6 +553,13 @@ mod tests {
         fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
             Box::new(self.clone())
         }
+
+        async fn external_profile_to_global_identity(
+            &self,
+            full_profile_name: &str,
+        ) -> Result<StandardIdentity, String> {
+            unimplemented!()
+        }
     }
 
     fn setup() {
@@ -606,7 +613,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_offerings_manager() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

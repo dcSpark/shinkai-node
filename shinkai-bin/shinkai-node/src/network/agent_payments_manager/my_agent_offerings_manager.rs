@@ -19,21 +19,32 @@ can it be done in one step? maybe we have rules per: tool, provider or overall s
 use std::sync::{Arc, Weak};
 
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::{
+    schemas::{shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType},
+    shinkai_utils::{
+        encryption::clone_static_secret_key,
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
+};
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
     db::ShinkaiDB,
-    managers::identity_manager::IdentityManagerTrait,
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+    network::{node::ProxyConnectionInfo, Node},
+    schemas::identity::StandardIdentity,
     tools::{network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader, tool_router::ToolRouter},
-    vector_fs::vector_fs::VectorFS, wallet::wallet_manager::WalletManager,
+    vector_fs::vector_fs::VectorFS,
+    wallet::wallet_manager::WalletManager,
 };
 
 use super::{
-    crypto_invoice_manager::CryptoInvoiceManagerTrait,
     external_agent_offerings_manager::AgentOfferingManagerError,
-    invoices::{InternalInvoiceRequest, Invoice},
+    invoices::{InternalInvoiceRequest, Invoice, InvoiceRequest},
     shinkai_tool_offering::UsageTypeInquiry,
 };
 
@@ -46,7 +57,11 @@ pub struct MyAgentOfferingsManager {
     pub my_signature_secret_key: SigningKey,
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
+    // The address of the proxy server (if any)
+    pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    // Tool router
     pub tool_router: Weak<Mutex<ToolRouter>>,
+    // Wallet manager
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
 }
@@ -60,7 +75,7 @@ impl MyAgentOfferingsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        // proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         // ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
@@ -73,6 +88,7 @@ impl MyAgentOfferingsManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            proxy_connection_info,
             identity_manager,
             tool_router,
             wallet_manager,
@@ -100,33 +116,6 @@ impl MyAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        // // Get the offering for the requested tool key name
-        // let shinkai_offering = db
-        //     .get_tool_offering(&network_tool.tool_router_key())
-        //     .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
-
-        // // Determine the appropriate usage type based on the inquiry and the available offering
-        // let usage_type = match usage_type_inquiry {
-        //     UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
-        //         UsageType::PerUse(price) => UsageType::PerUse(price),
-        //         UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
-        //         _ => {
-        //             return Err(AgentOfferingManagerError::InvalidUsageType(
-        //                 "Invalid usage type for PerUse inquiry".to_string(),
-        //             ))
-        //         }
-        //     },
-        //     UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
-        //         UsageType::Downloadable(price) => UsageType::Downloadable(price),
-        //         UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
-        //         _ => {
-        //             return Err(AgentOfferingManagerError::InvalidUsageType(
-        //                 "Invalid usage type for Downloadable inquiry".to_string(),
-        //             ))
-        //         }
-        //     },
-        // };
-
         // Create a new InternalInvoiceRequest
         let internal_invoice_request = InternalInvoiceRequest::new(
             network_tool.provider.clone(),
@@ -140,9 +129,52 @@ impl MyAgentOfferingsManager {
                 AgentOfferingManagerError::OperationFailed(format!("Failed to store internal invoice request: {:?}", e))
             })?;
 
-        // TODO: Add code to request an invoice
+        // Create the payload for the invoice request
+        let payload = InvoiceRequest {
+            requester_name: internal_invoice_request.requester_name.clone(),
+            tool_key_name: internal_invoice_request.tool_key_name.clone(),
+            usage_type_inquiry: internal_invoice_request.usage_type_inquiry.clone(),
+            date_time: internal_invoice_request.date_time,
+            unique_id: internal_invoice_request.unique_id.clone(),
+        };
 
-        // Return the generated invoice
+        // Continue
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&network_tool.provider.get_node_name_string())
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
+
+            // Generate the message to request the invoice
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                payload,
+                MessageSchemaType::InvoiceRequest,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                network_tool.provider.get_node_name_string(),
+                "main".to_string(),
+                proxy_builder_info,
+            ).map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            Self::send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+            )
+            .await?;
+        }
+
+        // Return the generated invoice request
         Ok(internal_invoice_request)
     }
 
@@ -290,6 +322,72 @@ impl MyAgentOfferingsManager {
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to add network tool: {:?}", e)))
     }
 
+    pub async fn send_message_to_peer(
+        message: ShinkaiMessage,
+        db: Weak<ShinkaiDB>,
+        receiver_identity: StandardIdentity,
+        my_encryption_secret_key: EncryptionStaticKey,
+        maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    ) -> Result<(), AgentOfferingManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Sending message to peer: {}",
+                receiver_identity.full_identity_name.extract_node()
+            )
+            .as_str(),
+        );
+        // Extract the receiver's socket address and profile name from the StandardIdentity
+        let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed(
+                format!(
+                    "Shinkai ID doesn't have a valid socket address: {}",
+                    receiver_identity.full_identity_name.extract_node()
+                )
+                .to_string(),
+            )
+        })?;
+        let receiver_profile_name = receiver_identity.full_identity_name.to_string();
+
+        // Upgrade the weak reference to Node
+        // Prepare the parameters for the send function
+        let my_encryption_sk = Arc::new(my_encryption_secret_key.clone());
+        let peer = (receiver_socket_addr, receiver_profile_name);
+        let db = db.upgrade().ok_or(AgentOfferingManagerError::OperationFailed(
+            "DB not available to be upgraded".to_string(),
+        ))?;
+        let maybe_identity_manager =
+            maybe_identity_manager
+                .upgrade()
+                .ok_or(AgentOfferingManagerError::OperationFailed(
+                    "IdentityManager not available to be upgraded".to_string(),
+                ))?;
+
+        let proxy_connection_info =
+            proxy_connection_info
+                .upgrade()
+                .ok_or(AgentOfferingManagerError::OperationFailed(
+                    "ProxyConnectionInfo not available to be upgraded".to_string(),
+                ))?;
+
+        // Call the send function
+        Node::send(
+            message,
+            my_encryption_sk,
+            peer,
+            proxy_connection_info,
+            db,
+            maybe_identity_manager,
+            None,
+            false,
+            None,
+        );
+
+        Ok(())
+    }
+
     // Fn: Receive the response from the provider and process it -> update the job
 
     // Note: Should be create a new type of ShinkaiTool "NetworkTool" that can be called by an LLM?
@@ -310,6 +408,42 @@ impl MyAgentOfferingsManager {
 
     // Thoughts
     // Should we add a way to scan previous invoices sent to the chain? if we reset the node but we wouldn't be able to know if they were already claimed.
+
+    async fn get_proxy_builder_info(
+        &self,
+        identity_manager_lock: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+    ) -> Option<ShinkaiProxyBuilderInfo> {
+        MyAgentOfferingsManager::get_proxy_builder_info_static(
+            identity_manager_lock,
+            self.proxy_connection_info.clone(),
+        )
+        .await
+    }
+
+    async fn get_proxy_builder_info_static(
+        identity_manager_lock: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    ) -> Option<ShinkaiProxyBuilderInfo> {
+        let identity_manager = identity_manager_lock.lock().await;
+        let proxy_connection_info = match proxy_connection_info.upgrade() {
+            Some(proxy_info) => proxy_info,
+            None => return None,
+        };
+
+        let proxy_connection_info = proxy_connection_info.lock().await;
+        if let Some(proxy_connection) = proxy_connection_info.as_ref() {
+            let proxy_name = proxy_connection.proxy_identity.clone().get_node_name_string();
+            match identity_manager.external_profile_to_global_identity(&proxy_name).await {
+                Ok(proxy_identity) => Some(ShinkaiProxyBuilderInfo {
+                    proxy_enc_public_key: proxy_identity.node_encryption_public_key,
+                }),
+                Err(_) => None,
+            }
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -391,6 +525,13 @@ mod tests {
         fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
             Box::new(self.clone())
         }
+
+        async fn external_profile_to_global_identity(
+            &self,
+            full_profile_name: &str,
+        ) -> Result<StandardIdentity, String> {
+            unimplemented!()
+        }
     }
 
     fn setup() {
@@ -463,6 +604,7 @@ mod tests {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            Arc::downgrade(&Arc::new(Mutex::new(None))),
             Arc::downgrade(&tool_router),
             Arc::downgrade(&wallet_manager),
         )

@@ -529,6 +529,19 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Expected Ok, got Err: {:?}", e),
                 }
             }
+            
+            //
+            // Second Part of the Test
+            //
+            //      _   _      _                      _
+            //     | \ | |    | |                    | |
+            //     |  \| | ___| |___      _____  _ __| | __
+            //     | . ` |/ _ \ __\ \ /\ / / _ \| '__| |/ /
+            //     | |\  |  __/ |_ \ V  V / (_) | |  |   <
+            //     |_| \_|\___|\__| \_/\_/ \___/|_|  |_|\_\
+            //
+            //
+
 
             node1_abort_handler.abort();
             node2_abort_handler.abort();
