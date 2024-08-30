@@ -94,30 +94,32 @@ impl LanceDBVectorStore {
                     continue;
                 }
 
-                let id = id_col.value(0).to_string();
-                let text = text_col.value(0).to_string();
-                let vector: Vec<f32> = vector_col
-                    .value(0)
-                    .as_any()
-                    .downcast_ref::<Float32Array>()
-                    .unwrap()
-                    .iter()
-                    .map(|value| value.unwrap())
-                    .collect();
-                let attributes: HashMap<String, String> = serde_json::from_str(attributes_col.value(0))?;
+                for i in 0..record.num_rows() {
+                    let id = id_col.value(i).to_string();
+                    let text = text_col.value(i).to_string();
+                    let vector: Vec<f32> = vector_col
+                        .value(i)
+                        .as_any()
+                        .downcast_ref::<Float32Array>()
+                        .unwrap()
+                        .iter()
+                        .map(|value| value.unwrap())
+                        .collect();
+                    let attributes: HashMap<String, String> = serde_json::from_str(attributes_col.value(i))?;
 
-                let distance = distance_col.value(0);
+                    let distance = distance_col.value(i);
 
-                let score = 1.0 - distance.abs();
+                    let score = 1.0 - distance.abs();
 
-                let doc = VectorStoreDocument {
-                    id,
-                    text: Some(text),
-                    vector: Some(vector),
-                    attributes,
-                };
+                    let doc = VectorStoreDocument {
+                        id,
+                        text: Some(text),
+                        vector: Some(vector),
+                        attributes,
+                    };
 
-                results.push(VectorStoreSearchResult { document: doc, score });
+                    results.push(VectorStoreSearchResult { document: doc, score });
+                }
             }
 
             return Ok(results);
@@ -233,7 +235,17 @@ impl VectorStore for LanceDBVectorStore {
                 self.document_collection = Some(table);
             }
         } else {
-            let table = db_connection.open_table(&self.collection_name).execute().await?;
+            let table = match db_connection.open_table(&self.collection_name).execute().await {
+                Ok(table) => table,
+                Err(_) => {
+                    let table = db_connection
+                        .create_empty_table(&self.collection_name, schema.clone())
+                        .execute()
+                        .await?;
+
+                    table
+                }
+            };
 
             if let Some(batches) = batches {
                 table.add(batches).execute().await?;

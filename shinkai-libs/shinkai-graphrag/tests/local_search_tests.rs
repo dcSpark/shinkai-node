@@ -126,12 +126,12 @@ async fn openai_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = search_engine.asearch("Tell me about Agent Mercer".to_string()).await?;
-    println!("Response: {:?}", result.response);
+    println!("Response: {:?}\n", result.response);
 
     let result = search_engine
         .asearch("Tell me about Dr. Jordan Hayes".to_string())
         .await?;
-    println!("Response: {:?}", result.response);
+    println!("Response: {:?}\n", result.response);
 
     match result.context_data {
         shinkai_graphrag::search::base::ContextData::Dictionary(dict) => {
