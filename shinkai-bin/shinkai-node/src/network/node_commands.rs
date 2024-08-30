@@ -733,6 +733,11 @@ pub enum NodeCommand {
         payload: Value,
         res: Sender<Result<ShinkaiTool, APIError>>,
     },
+    V2ApiAddShinkaiTool {
+        bearer: String,
+        shinkai_tool: ShinkaiTool,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiGetShinkaiTool {
         bearer: String,
         payload: String,

@@ -31,8 +31,10 @@ pub struct ShinkaiToolHeader {
     pub author: String,
     pub version: String,
     pub enabled: bool,
+    // pub input_args: Vec<ToolArgument>, // most likely we need to that this
     pub config: Option<Vec<ToolConfig>>,
     pub usage_type: Option<UsageType>, // includes pricing
+    // Note: do we need usage_type? it's already contained in the tool_offering
     pub tool_offering: Option<ShinkaiToolOffering>,
 }
 

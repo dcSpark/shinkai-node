@@ -26,13 +26,13 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use crate::{
     db::ShinkaiDB,
     managers::identity_manager::IdentityManagerTrait,
-    tools::{network_tool::NetworkTool, tool_router::ToolRouter},
-    vector_fs::vector_fs::VectorFS,
+    tools::{network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader, tool_router::ToolRouter},
+    vector_fs::vector_fs::VectorFS, wallet::wallet_manager::WalletManager,
 };
 
 use super::{
     crypto_invoice_manager::CryptoInvoiceManagerTrait,
-    external_agent_payments_manager::AgentOfferingManagerError,
+    external_agent_offerings_manager::AgentOfferingManagerError,
     invoices::{InternalInvoiceRequest, Invoice},
     shinkai_tool_offering::UsageTypeInquiry,
 };
@@ -47,7 +47,8 @@ pub struct MyAgentOfferingsManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub tool_router: Weak<Mutex<ToolRouter>>,
-    pub crypto_invoice_manager: Arc<dyn CryptoInvoiceManagerTrait + Send + Sync>,
+    pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
+    // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -62,7 +63,9 @@ impl MyAgentOfferingsManager {
         // proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         // ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
-        crypto_invoice_manager: Arc<dyn CryptoInvoiceManagerTrait + Send + Sync>,
+        wallet_manager: Weak<Mutex<Option<WalletManager>>>,
+        // crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
+        // Do I need the payment manager for the node?
     ) -> Self {
         Self {
             db,
@@ -72,7 +75,8 @@ impl MyAgentOfferingsManager {
             my_encryption_secret_key,
             identity_manager,
             tool_router,
-            crypto_invoice_manager,
+            wallet_manager,
+            // crypto_invoice_manager,
         }
     }
 
@@ -255,6 +259,37 @@ impl MyAgentOfferingsManager {
         result
     }
 
+    // New function to create and add a NetworkTool
+    pub async fn create_and_add_network_tool(
+        &self,
+        tool_header: ShinkaiToolHeader,
+        provider: ShinkaiName,
+    ) -> Result<(), AgentOfferingManagerError> {
+        let tool_router = self.tool_router.upgrade().ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Failed to upgrade tool_router reference".to_string())
+        })?;
+
+        // TODO: avoid the expects
+        let network_tool = NetworkTool::new(
+            tool_header.name,
+            tool_header.description,
+            tool_header.version,
+            provider,
+            tool_header.usage_type.expect("Usage type is required"),
+            true, // Assuming the tool is activated by default
+            tool_header.config.expect("Config is required"),
+            vec![], // TODO: Fix input_args
+            None,
+            None,
+        );
+
+        let tool_router_lock = tool_router.lock().await;
+        tool_router_lock
+            .add_network_tool(network_tool)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to add network tool: {:?}", e)))
+    }
+
     // Fn: Receive the response from the provider and process it -> update the job
 
     // Note: Should be create a new type of ShinkaiTool "NetworkTool" that can be called by an LLM?
@@ -285,7 +320,9 @@ mod tests {
         lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
         managers::identity_manager::IdentityManagerTrait,
         network::agent_payments_manager::{
-            crypto_invoice_manager::CryptoInvoiceManager, invoices::InvoiceStatusEnum, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType}
+            crypto_invoice_manager::CryptoInvoiceManager,
+            invoices::InvoiceStatusEnum,
+            shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType},
         },
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::tool_router::ToolRouter,
@@ -412,9 +449,12 @@ mod tests {
         let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
 
+        // Remove?
         // Create a real CryptoInvoiceManager with a provider using Base Sepolia
-        let provider_url = "https://sepolia.base.org";
-        let crypto_invoice_manager = Arc::new(CryptoInvoiceManager::new(provider_url).unwrap());
+        // let provider_url = "https://sepolia.base.org";
+        // let crypto_invoice_manager = Arc::new(CryptoInvoiceManager::new(provider_url).unwrap());
+
+        let wallet_manager: Arc<Mutex<Option<WalletManager>>> = Arc::new(Mutex::new(None));
 
         let manager = MyAgentOfferingsManager::new(
             Arc::downgrade(&db),
@@ -424,7 +464,7 @@ mod tests {
             my_signature_secret_key,
             my_encryption_secret_key,
             Arc::downgrade(&tool_router),
-            crypto_invoice_manager,
+            Arc::downgrade(&wallet_manager),
         )
         .await;
 

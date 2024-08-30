@@ -2660,6 +2660,20 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiAddShinkaiTool { bearer, shinkai_tool, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_shinkai_tool(
+                        db_clone,
+                        lance_db,
+                        bearer,
+                        shinkai_tool,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiGetShinkaiTool { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();

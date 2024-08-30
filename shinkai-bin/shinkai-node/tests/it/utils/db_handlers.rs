@@ -10,5 +10,4 @@ pub fn setup() {
 
     let lance_path = Path::new("lancedb_tests/");
     let _ = fs::remove_dir_all(lance_path);
-
 }

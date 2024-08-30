@@ -5,6 +5,7 @@ use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::wallet::wallet_manager::WalletManager;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use futures::Future;
@@ -48,6 +49,7 @@ pub struct AgentOfferingsManager {
     pub offerings_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
     pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub tool_router: Weak<Mutex<ToolRouter>>,
+    pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
 }
 
 const NUM_THREADS: usize = 4;
@@ -63,6 +65,7 @@ impl AgentOfferingsManager {
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
+        wallet_manager: Weak<Mutex<Option<WalletManager>>>,
         // need tool_router
     ) -> Self {
         let db_prefix = "shinkai__tool__offering_"; // dont change it
@@ -125,6 +128,7 @@ impl AgentOfferingsManager {
             offerings_queue_manager,
             offering_processing_task: Some(offering_queue_handler),
             tool_router,
+            wallet_manager,
         }
     }
 
@@ -631,6 +635,9 @@ mod tests {
         let proxy_connection_info = Arc::new(Mutex::new(None));
         let vector_fs = Arc::new(setup_default_vector_fs().await);
 
+        // Wallet Manager
+        let wallet_manager = Arc::new(Mutex::new(None));
+
         let mut agent_offerings_manager = AgentOfferingsManager::new(
             Arc::downgrade(&shinkai_db),
             Arc::downgrade(&vector_fs),
@@ -640,6 +647,7 @@ mod tests {
             my_encryption_secret_key.clone(),
             Arc::downgrade(&proxy_connection_info),
             Arc::downgrade(&tool_router),
+            Arc::downgrade(&wallet_manager),
         )
         .await;
 
