@@ -15,6 +15,7 @@ use super::{
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Invoice {
     pub invoice_id: String,
+    pub provider_name: ShinkaiName,
     pub requester_name: ShinkaiName,
     pub usage_type_inquiry: UsageTypeInquiry,
     pub shinkai_offering: ShinkaiToolOffering,
@@ -22,7 +23,7 @@ pub struct Invoice {
     pub invoice_date_time: DateTime<Utc>,
     pub expiration_time: DateTime<Utc>,
     pub status: InvoiceStatusEnum,
-    pub payment: Option<InvoicePayment>,
+    pub payment: Option<Payment>,
     pub address: PublicAddress,
     // Note: Maybe add something related to current estimated response times
     // average response time / congestion level or something like that
@@ -43,6 +44,7 @@ pub enum InvoiceStatusEnum {
     Failed,
 }
 
+// TODO: maybe we can merge this with the payment struct
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct InvoicePayment {
     pub invoice_id: String,
@@ -72,6 +74,7 @@ impl PartialOrd for InvoicePayment {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct InvoiceRequest {
     pub requester_name: ShinkaiName,
+    pub provider_name: ShinkaiName,
     pub tool_key_name: String,
     pub usage_type_inquiry: UsageTypeInquiry,
     pub request_date_time: DateTime<Utc>,
@@ -108,7 +111,7 @@ impl InvoiceRequest {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct InternalInvoiceRequest {
-    pub provider: ShinkaiName,
+    pub provider_name: ShinkaiName,
     pub requester_name: ShinkaiName,
     pub tool_key_name: String,
     pub usage_type_inquiry: UsageTypeInquiry,
@@ -140,7 +143,7 @@ impl InternalInvoiceRequest {
         let secret_prehash = format!("{}{}", tool_key_name, random_number);
 
         Self {
-            provider,
+            provider_name: provider,
             requester_name,
             tool_key_name,
             usage_type_inquiry,
@@ -152,6 +155,7 @@ impl InternalInvoiceRequest {
 
     pub fn to_invoice_request(&self) -> InvoiceRequest {
         InvoiceRequest {
+            provider_name: self.provider_name.clone(),
             requester_name: self.requester_name.clone(),
             tool_key_name: self.tool_key_name.clone(),
             usage_type_inquiry: self.usage_type_inquiry.clone(),
@@ -165,6 +169,7 @@ impl InternalInvoiceRequest {
 // or merge it with something else like invoice_payment?
 
 /// Enum representing the status of the payment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum PaymentStatusEnum {
     Pending,
     Confirmed,
@@ -172,6 +177,7 @@ pub enum PaymentStatusEnum {
 }
 
 /// Represents a payment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Payment {
     /// The transaction hash of the payment.
     transaction_hash: String,

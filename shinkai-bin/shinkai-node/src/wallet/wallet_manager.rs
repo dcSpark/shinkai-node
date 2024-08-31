@@ -9,7 +9,7 @@ use crate::network::agent_payments_manager::{
 
 use super::{
     local_ether_wallet::{LocalEthersWallet, WalletSource},
-    mixed::Network,
+    mixed::{self, Balance, Network, PublicAddress},
     wallet_error::WalletError,
     wallet_traits::{PaymentWallet, ReceivingWallet},
 };
@@ -106,7 +106,9 @@ impl WalletManager {
             .ok_or_else(|| WalletError::InvalidUsageType("Invalid usage type".to_string()))?;
 
         let asset_payment = match price {
-            ToolPrice::Payment(payments) => payments.first().ok_or_else(|| WalletError::InvalidPayment("No payments available".to_string()))?,
+            ToolPrice::Payment(payments) => payments
+                .first()
+                .ok_or_else(|| WalletError::InvalidPayment("No payments available".to_string()))?,
             _ => return Err(WalletError::InvalidPayment("Invalid payment type".to_string())),
         };
 
@@ -114,20 +116,15 @@ impl WalletManager {
         println!("Sending transaction to address: {:?}", invoice.address);
         println!("Sending transaction with asset: {:?}", asset_payment.asset);
 
-        // Convert shinkai_tool_offering::Asset to mixed::Asset
-        let mixed_asset = MixedAsset {
-            network_id: asset_payment.asset.network_id.clone(),
-            asset_id: asset_payment.asset.asset_id.clone(),
-            decimals: asset_payment.asset.decimals,
-            contract_address: asset_payment.asset.contract_address.clone(),
-        };
-
-        let transaction_hash = self.payment_wallet.send_transaction(
-            invoice.address,
-            Some(mixed_asset),
-            asset_payment.amount.clone(),
-            invoice.invoice_id.clone(),
-        ).await?;
+        let transaction_hash = self
+            .payment_wallet
+            .send_transaction(
+                invoice.address,
+                Some(asset_payment.asset.clone()),
+                asset_payment.amount.clone(),
+                invoice.invoice_id.clone(),
+            )
+            .await?;
 
         Ok(Payment::new(
             transaction_hash,
@@ -135,6 +132,14 @@ impl WalletManager {
             Some(Self::get_current_date()),
             PaymentStatusEnum::Confirmed,
         ))
+    }
+
+    pub async fn check_balance_payment_wallet(
+        &self,
+        public_address: PublicAddress,
+        asset: mixed::Asset,
+    ) -> Result<Balance, WalletError> {
+        self.payment_wallet.check_asset_balance(public_address, asset).await
     }
 
     pub fn update_payment_wallet(&mut self, new_payment_wallet: Box<dyn PaymentWallet>) {
@@ -192,7 +197,7 @@ mod tests {
             protocol_family: NetworkProtocolFamilyEnum::Evm,
             is_testnet: true,
             native_asset: Asset {
-                network_id: "Anvil".to_string(),
+                network_id: NetworkIdentifier::Anvil,
                 asset_id: "ETH".to_string(),
                 decimals: Some(18),
                 contract_address: None,

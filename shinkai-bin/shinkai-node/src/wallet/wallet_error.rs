@@ -24,6 +24,7 @@ pub enum WalletError {
     ConversionError(String),
     InvalidPayment(String),
     InvalidUsageType(String),
+    TransactionFailed(String),
     // Add other error types as needed
 }
 
@@ -53,6 +54,7 @@ impl fmt::Display for WalletError {
             WalletError::ConversionError(e) => write!(f, "ConversionError: {}", e),
             WalletError::InvalidPayment(e) => write!(f, "InvalidPayment: {}", e),
             WalletError::InvalidUsageType(e) => write!(f, "InvalidUsageType: {}", e),
+            WalletError::TransactionFailed(e) => write!(f, "TransactionFailed: {}", e),
         }
     }
 }
@@ -81,6 +83,7 @@ impl Error for WalletError {
             WalletError::ConversionError(_) => None,
             WalletError::InvalidUsageType(_) => None,
             WalletError::InvalidPayment(_) => None,
+            WalletError::TransactionFailed(_) => None,
         }
     }
 }
