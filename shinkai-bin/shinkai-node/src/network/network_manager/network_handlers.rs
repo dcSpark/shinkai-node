@@ -1125,7 +1125,13 @@ pub async fn handle_network_message_cases(
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
                             let mut my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            let _ = my_agent_offering_manager.process_invoice(invoice).await;
+                            // Process the invoice:
+                            // - verify the invoice
+                            // - pay the invoice
+                            // - wait for the payment confirmation
+                            // - send the receipt to the provider
+                            //
+                            my_agent_offering_manager.auto_pay_invoice(invoice).await?;
                         }
                         Err(e) => {
                             shinkai_log(

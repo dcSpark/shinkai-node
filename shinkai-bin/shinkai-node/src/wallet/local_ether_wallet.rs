@@ -19,7 +19,7 @@ use futures::TryFutureExt;
 use crate::wallet::erc20_abi::ERC20_ABI;
 use crate::wallet::wallet_error::WalletError;
 
-use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network};
+use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 
 pub type LocalWalletProvider = Provider<Http>;
@@ -108,7 +108,7 @@ impl LocalEthersWallet {
             wallet,
             address: Address {
                 wallet_id: Uuid::new_v4().to_string(),
-                network_id: network.id.to_string(),
+                network_id: network.id,
                 public_key: None,
                 address_id: address,
             },
@@ -143,7 +143,7 @@ impl LocalEthersWallet {
             wallet,
             address: Address {
                 wallet_id: Uuid::new_v4().to_string(),
-                network_id: network.id.to_string(),
+                network_id: network.id,
                 public_key: None,
                 address_id: address,
             },
@@ -152,7 +152,7 @@ impl LocalEthersWallet {
 
     pub async fn prepare_transaction_request(
         from_wallet: &LocalEthersWallet,
-        to_wallet: Address,
+        to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: U256,
         provider_url: String,
@@ -239,7 +239,7 @@ impl LocalEthersWallet {
 
     pub async fn internal_send_transaction(
         &self,
-        to_wallet: Address,
+        to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: U256,
         invoice_id: String,
@@ -284,11 +284,10 @@ impl ReceivingWallet for LocalEthersWallet {
     // No additional methods needed, as they are covered by SendActions and CommonActions
 }
 
-
 impl SendActions for LocalEthersWallet {
     fn send_transaction(
         &self,
-        to_wallet: Address,
+        to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: String,
         invoice_id: String,
@@ -338,6 +337,10 @@ impl From<mixed::Transaction> for TypedTransaction {
 }
 
 impl CommonActions for LocalEthersWallet {
+    fn get_payment_address(&self) -> PublicAddress {
+        self.address.clone().into()
+    }
+
     fn get_address(&self) -> Address {
         self.address.clone()
     }
@@ -634,10 +637,8 @@ mod tests {
         let invoice_id = "123";
         let tx_hash = wallet
             .internal_send_transaction(
-                Address {
-                    wallet_id: Uuid::new_v4().to_string(),
-                    network_id: network.id.to_string(),
-                    public_key: None,
+                PublicAddress {
+                    network_id: network.id,
                     address_id: target_address.to_string(),
                 },
                 None,
@@ -681,4 +682,3 @@ mod tests {
         assert_eq!(wallet.provider.url(), deserialized_wallet.provider.url());
     }
 }
-

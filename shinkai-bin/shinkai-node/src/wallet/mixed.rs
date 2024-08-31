@@ -7,21 +7,40 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 /// Represents an address in a wallet.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Address {
     /// The ID of the wallet that owns the address.
     pub wallet_id: String,
     /// The ID of the blockchain network.
-    pub network_id: String,
+    pub network_id: NetworkIdentifier,
     /// The public key from which the address is derived.
     pub public_key: Option<String>,
     /// The onchain address derived on the server-side.
     pub address_id: String,
 }
 
+impl From<Address> for PublicAddress {
+    fn from(address: Address) -> Self {
+        PublicAddress {
+            network_id: address.network_id,
+            address_id: address.address_id,
+        }
+    }
+}
+
+
+/// Represents an address in a wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicAddress {
+    /// The ID of the blockchain network.
+    pub network_id: NetworkIdentifier,
+    /// The onchain address derived on the server-side.
+    pub address_id: String,
+}
+
 /// Represents a list of balances for an address.
 /// For now we'll just track ETH, USDC and KAI.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddressBalanceList {
     /// The list of balances.
     pub data: Vec<Balance>,
@@ -34,7 +53,7 @@ pub struct AddressBalanceList {
 }
 
 /// Represents a list of addresses in a wallet.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddressList {
     /// The list of addresses.
     data: Vec<Address>,
@@ -48,7 +67,7 @@ pub struct AddressList {
 
 // TODO: remove this. it is duplicated
 /// Represents an asset onchain scoped to a particular network.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Asset {
     /// The ID of the blockchain network.
     pub network_id: String,
@@ -60,7 +79,7 @@ pub struct Asset {
     pub contract_address: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AssetType {
     ETH,
     USDC,
@@ -118,12 +137,14 @@ impl Asset {
     }
 
     pub fn get_address(&self) -> Option<ethers::types::Address> {
-        self.contract_address.as_ref().and_then(|addr| ethers::types::Address::from_str(addr).ok())
+        self.contract_address
+            .as_ref()
+            .and_then(|addr| ethers::types::Address::from_str(addr).ok())
     }
 }
 
 /// Represents the balance of an asset onchain.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Balance {
     /// The amount in the atomic units of the asset.
     pub amount: String,
@@ -134,7 +155,7 @@ pub struct Balance {
 }
 
 /// Represents a request to create a transfer.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateTransferRequest {
     /// The amount to transfer.
     pub amount: String,
@@ -149,7 +170,7 @@ pub struct CreateTransferRequest {
 }
 
 /// Represents an error response from the Coinbase Developer Platform API.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelError {
     /// A short string representing the reported error. Can be used to handle errors programmatically.
     code: String,
@@ -158,7 +179,7 @@ pub struct ModelError {
 }
 
 /// Represents a blockchain network.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Network {
     /// The ID of the blockchain network.
     pub id: NetworkIdentifier,
@@ -289,13 +310,13 @@ impl Network {
 }
 
 /// Enum representing the protocol family of the blockchain network.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NetworkProtocolFamilyEnum {
     Evm,
 }
 
 /// Enum representing the ID of the blockchain network.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NetworkIdentifier {
     BaseSepolia,
     BaseMainnet,

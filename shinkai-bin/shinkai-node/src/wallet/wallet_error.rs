@@ -22,6 +22,8 @@ pub enum WalletError {
     SigningError(String),
     MissingTransactionReceipt,
     ConversionError(String),
+    InvalidPayment(String),
+    InvalidUsageType(String),
     // Add other error types as needed
 }
 
@@ -49,6 +51,8 @@ impl fmt::Display for WalletError {
             WalletError::SigningError(e) => write!(f, "SigningError: {}", e),
             WalletError::MissingTransactionReceipt => write!(f, "MissingTransactionReceipt"),
             WalletError::ConversionError(e) => write!(f, "ConversionError: {}", e),
+            WalletError::InvalidPayment(e) => write!(f, "InvalidPayment: {}", e),
+            WalletError::InvalidUsageType(e) => write!(f, "InvalidUsageType: {}", e),
         }
     }
 }
@@ -75,6 +79,8 @@ impl Error for WalletError {
             WalletError::SigningError(_) => None,
             WalletError::MissingTransactionReceipt => None,
             WalletError::ConversionError(_) => None,
+            WalletError::InvalidUsageType(_) => None,
+            WalletError::InvalidPayment(_) => None,
         }
     }
 }
