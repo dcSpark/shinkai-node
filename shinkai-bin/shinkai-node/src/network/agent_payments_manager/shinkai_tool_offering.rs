@@ -24,6 +24,18 @@ pub struct ShinkaiToolOffering {
     pub meta_description: Option<String>,
 }
 
+impl ShinkaiToolOffering {
+    pub fn get_price_for_usage(&self, usage_type_inquiry: &UsageTypeInquiry) -> Option<&ToolPrice> {
+        match (usage_type_inquiry, &self.usage_type) {
+            (UsageTypeInquiry::PerUse, UsageType::PerUse(price)) => Some(price),
+            (UsageTypeInquiry::Downloadable, UsageType::Downloadable(price)) => Some(price),
+            (UsageTypeInquiry::PerUse, UsageType::Both { per_use_price, .. }) => Some(per_use_price),
+            (UsageTypeInquiry::Downloadable, UsageType::Both { download_price, .. }) => Some(download_price),
+            _ => None,
+        }
+    }
+}
+
 // Updated enum to include aliases for prices
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum UsageType {

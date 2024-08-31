@@ -6,6 +6,7 @@ use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
@@ -27,7 +28,7 @@ use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::invoices::{InternalInvoiceRequest, Invoice, InvoicePayment, InvoiceRequest, InvoiceStatusEnum};
+use super::invoices::{Invoice, InvoicePayment, InvoiceRequest, InvoiceStatusEnum};
 use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
 #[derive(Debug, Clone)]
@@ -42,6 +43,12 @@ impl fmt::Display for AgentOfferingManagerError {
             AgentOfferingManagerError::OperationFailed(msg) => write!(f, "Operation failed: {}", msg),
             AgentOfferingManagerError::InvalidUsageType(msg) => write!(f, "Invalid usage type: {}", msg),
         }
+    }
+}
+
+impl From<wallet_error::WalletError> for AgentOfferingManagerError {
+    fn from(error: wallet_error::WalletError) -> Self {
+        AgentOfferingManagerError::OperationFailed(format!("Wallet error: {:?}", error))
     }
 }
 
@@ -449,6 +456,18 @@ impl ExtAgentOfferingsManager {
             ));
         }
 
+        // Scoped block to get address and network
+        let public_address = {
+            let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
+            })?;
+            let wallet_manager_lock = wallet_manager.lock().await;
+            let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
+            })?;
+            wallet.receiving_wallet.get_payment_address()
+        };
+
         let invoice = Invoice {
             invoice_id: invoice_request.unique_id.clone(),
             requester_name: invoice_request.requester_name.clone(),
@@ -457,9 +476,13 @@ impl ExtAgentOfferingsManager {
                 usage_type,
                 meta_description: None,
             },
-            expiration_time: Utc::now() + Duration::hours(1),
+            expiration_time: Utc::now() + Duration::hours(12),
             status: InvoiceStatusEnum::Pending,
             payment: None,
+            address: public_address,
+            usage_type_inquiry: invoice_request.usage_type_inquiry,
+            request_date_time: invoice_request.request_date_time,
+            invoice_date_time: Utc::now(),
         };
 
         // Store the new invoice in the database

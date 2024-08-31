@@ -5,16 +5,25 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-use super::{external_agent_offerings_manager::AgentOfferingManagerError, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}};
+use crate::wallet::mixed::PublicAddress;
+
+use super::{
+    external_agent_offerings_manager::AgentOfferingManagerError,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Invoice {
     pub invoice_id: String,
     pub requester_name: ShinkaiName,
+    pub usage_type_inquiry: UsageTypeInquiry,
     pub shinkai_offering: ShinkaiToolOffering,
+    pub request_date_time: DateTime<Utc>,
+    pub invoice_date_time: DateTime<Utc>,
     pub expiration_time: DateTime<Utc>,
     pub status: InvoiceStatusEnum,
     pub payment: Option<InvoicePayment>,
+    pub address: PublicAddress,
     // Note: Maybe add something related to current estimated response times
     // average response time / congestion level or something like that
 }
@@ -65,7 +74,7 @@ pub struct InvoiceRequest {
     pub requester_name: ShinkaiName,
     pub tool_key_name: String,
     pub usage_type_inquiry: UsageTypeInquiry,
-    pub date_time: DateTime<Utc>,
+    pub request_date_time: DateTime<Utc>,
     pub unique_id: String,
 }
 
@@ -109,7 +118,12 @@ pub struct InternalInvoiceRequest {
 }
 
 impl InternalInvoiceRequest {
-    pub fn new(provider: ShinkaiName, requester_name: ShinkaiName, tool_key_name: String, usage_type_inquiry: UsageTypeInquiry) -> Self {
+    pub fn new(
+        provider: ShinkaiName,
+        requester_name: ShinkaiName,
+        tool_key_name: String,
+        usage_type_inquiry: UsageTypeInquiry,
+    ) -> Self {
         // Generate a random number
         let random_number: u64 = rand::thread_rng().gen();
 
@@ -141,7 +155,7 @@ impl InternalInvoiceRequest {
             requester_name: self.requester_name.clone(),
             tool_key_name: self.tool_key_name.clone(),
             usage_type_inquiry: self.usage_type_inquiry.clone(),
-            date_time: self.date_time,
+            request_date_time: self.date_time,
             unique_id: self.unique_id.clone(),
         }
     }

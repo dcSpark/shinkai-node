@@ -23,9 +23,7 @@ use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
     shinkai_utils::{
-        encryption::clone_static_secret_key,
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        shinkai_message_builder::ShinkaiMessageBuilder,
+        encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
     },
 };
@@ -210,11 +208,22 @@ impl MyAgentOfferingsManager {
         // Mocking the payment process
         println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
 
+        let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
+        })?;
+        let wallet_manager_lock = wallet_manager.lock().await;
+        let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
+        })?;
+
+        let payment = wallet.pay_invoice(invoice.clone()).await?;
+
         // Simulate payment processing delay
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // Simulate blockchain confirmation or update
         println!("Waiting for blockchain confirmation...");
+        // invoice.update_status(InvoiceStatusEnum::Paid);
 
         // Simulate blockchain update delay
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -364,6 +373,7 @@ mod tests {
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::tool_router::ToolRouter,
         vector_fs::vector_fs::VectorFS,
+        wallet::mixed::{Address, NetworkIdentifier, PublicAddress},
     };
     use async_trait::async_trait;
     use chrono::Utc;
@@ -519,7 +529,7 @@ mod tests {
             "shinkai_toolkit".to_string(),
             "A tool for testing".to_string(),
             "1.0".to_string(),
-            ShinkaiName::new("test_provider".to_string()).unwrap(),
+            ShinkaiName::new("@@test_provider.shinkai".to_string()).unwrap(),
             UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
             true,
             vec![],
@@ -538,6 +548,7 @@ mod tests {
         let invoice = Invoice {
             invoice_id: internal_invoice_request.unique_id.clone(),
             requester_name: internal_invoice_request.provider.clone(),
+            usage_type_inquiry: UsageTypeInquiry::PerUse,
             shinkai_offering: ShinkaiToolOffering {
                 tool_key: internal_invoice_request.tool_key_name.clone(),
                 usage_type: UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
@@ -546,6 +557,12 @@ mod tests {
             expiration_time: Utc::now() + chrono::Duration::hours(1), // Example expiration time
             status: InvoiceStatusEnum::Pending,
             payment: None,
+            address: PublicAddress {
+                network_id: NetworkIdentifier::BaseSepolia,
+                address_id: "0x1234567890123456789012345678901234567890".to_string(),
+            },
+            request_date_time: Utc::now(),
+            invoice_date_time: Utc::now(),
         };
 
         // Call verify_invoice

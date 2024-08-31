@@ -2,7 +2,7 @@ use std::fmt;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
 
-use crate::vector_fs::vector_fs_error::VectorFSError;
+use crate::{network::agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, vector_fs::vector_fs_error::VectorFSError};
 
 // Define your new error type
 #[derive(Debug)]
@@ -75,5 +75,11 @@ impl From<&str> for NetworkJobQueueError {
 impl From<VectorFSError> for NetworkJobQueueError {
     fn from(err: VectorFSError) -> NetworkJobQueueError {
         NetworkJobQueueError::Other(format!("VectorFS error: {}", err))
+    }
+}
+
+impl From<AgentOfferingManagerError> for NetworkJobQueueError {
+    fn from(err: AgentOfferingManagerError) -> NetworkJobQueueError {
+        NetworkJobQueueError::Other(format!("AgentOfferingManager error: {}", err))
     }
 }

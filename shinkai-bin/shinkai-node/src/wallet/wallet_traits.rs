@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use super::{
-    mixed::{Address, AddressBalanceList, Asset, Network, Transaction},
+    mixed::{Address, AddressBalanceList, Asset, Network, PublicAddress, Transaction},
     wallet_error::WalletError,
 };
 
@@ -26,7 +26,7 @@ pub struct Wallet {
 pub trait SendActions {
     fn send_transaction(
         &self,
-        to_wallet: Address,
+        to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: String,
         invoice_id: String,
@@ -37,6 +37,7 @@ pub trait SendActions {
 
 /// Trait for common actions.
 pub trait CommonActions {
+    fn get_payment_address(&self) -> PublicAddress;
     fn get_address(&self) -> Address;
     fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send>>;
 
@@ -64,5 +65,5 @@ pub trait CommonIsWallet: CommonActions + IsWallet + Send + Sync {}
 impl<T> CommonIsWallet for T where T: CommonActions + IsWallet + Send + Sync {}
 
 /// Trait for receiving wallet.
-pub trait ReceivingWallet: SendActions + CommonActions + IsWallet + Send + Sync + Downcast {}
+pub trait ReceivingWallet: CommonActions + IsWallet + Send + Sync + Downcast {}
 impl_downcast!(ReceivingWallet);
