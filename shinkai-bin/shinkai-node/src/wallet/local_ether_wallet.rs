@@ -1,9 +1,10 @@
 use aes_gcm::aead::generic_array::GenericArray;
+use bip32::{DerivationPath, XPrv};
 use bip39::{Language, Mnemonic, Seed};
 use ethers::core::k256::ecdsa::SigningKey;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::types::{Address as EthersAddress, NameOrAddress};
-use ethers::utils::{format_units, hex};
+use ethers::utils::{format_units, hex, to_checksum};
 use ethers::{core::k256::SecretKey, prelude::*};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -91,12 +92,9 @@ pub enum WalletSource {
 
 impl LocalEthersWallet {
     pub fn create_wallet(network: Network) -> Result<Self, WalletError> {
+        // TODO: instead of using a random number, we should randomly generate a mnemonic and use that
         let wallet = EthersLocalWallet::new(&mut rand::thread_rng()).with_chain_id(network.chain_id);
         let address = format!("0x{:x}", wallet.address());
-
-        // let wallet_bytes = wallet.signer().to_bytes();
-        // let wallet_secret_key = SecretKey::from_bytes(&wallet_bytes)?;
-        // let new_wallet = EthersLocalWallet::from(wallet_secret_key).with_chain_id(network.chain_id);
 
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
@@ -121,7 +119,14 @@ impl LocalEthersWallet {
                 let mnemonic = Mnemonic::from_phrase(&mnemonic, Language::English)
                     .map_err(|e| WalletError::Bip39Error(e.to_string()))?;
                 let seed = Seed::new(&mnemonic, "");
-                let secret_key = SecretKey::from_slice(&seed.as_bytes()[0..32])?;
+                let xprv = XPrv::new(&seed).map_err(|e| WalletError::Bip39Error(e.to_string()))?;
+                let derivation_path =
+                    DerivationPath::from_str("m/44'/60'/0'/0/0").map_err(|e| WalletError::Bip39Error(e.to_string()))?;
+                let child_xprv = derivation_path
+                    .into_iter()
+                    .fold(Ok(xprv), |acc, child| acc.and_then(|key| key.derive_child(child)))
+                    .map_err(|e| WalletError::Bip39Error(e.to_string()))?;
+                let secret_key = SecretKey::from_slice(child_xprv.private_key().to_bytes().as_slice())?;
 
                 EthersLocalWallet::from(secret_key).with_chain_id(network.chain_id)
             }
@@ -132,7 +137,8 @@ impl LocalEthersWallet {
             }
         };
 
-        let address = format!("0x{:x}", wallet.address());
+        let address = to_checksum(&wallet.address(), None);
+        println!("recovered wallet's address: {}", address);
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
 

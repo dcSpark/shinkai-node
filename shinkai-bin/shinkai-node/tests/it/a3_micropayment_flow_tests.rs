@@ -14,6 +14,7 @@ use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::tools::network_tool::NetworkTool;
 use shinkai_node::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_node::wallet::local_ether_wallet::WalletSource;
 use shinkai_node::wallet::mixed::NetworkIdentifier;
 use shinkai_node::wallet::wallet_manager::WalletRole;
 use shinkai_vector_resources::utils::hash_string;
@@ -297,7 +298,7 @@ fn micropayment_flow_test() {
                         decimals: Some(6),
                         contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
                     },
-                    amount: "10500000".to_string(), // 10.5 USDC in atomic units (6 decimals)
+                    amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
                 }])),
                 meta_description: Some("Echo tool offering".to_string()),
             };
@@ -423,20 +424,18 @@ fn micropayment_flow_test() {
                 // Add wallet to node2
                 let (sender, receiver) = async_channel::bounded(1);
                 node2_commands_sender
-                    .send(NodeCommand::V2ApiCreateWallet {
+                    .send(NodeCommand::V2ApiRestoreWallet {
                         bearer: api_v2_key.to_string(),
                         network: NetworkIdentifier::BaseSepolia,
+                        source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
                         role: WalletRole::Both,
                         res: sender,
                     })
                     .await
                     .unwrap();
                 let resp = receiver.recv().await.unwrap();
-                eprintln!("resp add wallet to node2: {:?}", resp);
+                eprintln!("resp restore wallet to node2: {:?}", resp);
             }
-            // Note: add my_agent_payments_manager to node // done
-            // // add ext_agent_payments_manager to node // done
-            // add the method to add a network tool to the node in commands
             {
                 eprintln!("Add network tool to node2");
 
