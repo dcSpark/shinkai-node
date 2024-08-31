@@ -34,6 +34,7 @@ use crate::{
     db::ShinkaiDB,
     managers::identity_manager::IdentityManagerTrait,
     network::{
+        agent_payments_manager::shinkai_tool_offering::ToolPrice,
         network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer},
         node::ProxyConnectionInfo,
     },
@@ -44,7 +45,7 @@ use crate::{
 
 use super::{
     external_agent_offerings_manager::AgentOfferingManagerError,
-    invoices::{InternalInvoiceRequest, Invoice},
+    invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment},
     shinkai_tool_offering::UsageTypeInquiry,
 };
 
@@ -204,7 +205,7 @@ impl MyAgentOfferingsManager {
     }
 
     // Fn: Pay an invoice and wait for the blockchain update of it
-    pub async fn pay_invoice(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+    pub async fn pay_invoice(&self, invoice: &Invoice) -> Result<Payment, AgentOfferingManagerError> {
         // Mocking the payment process
         println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
 
@@ -216,28 +217,77 @@ impl MyAgentOfferingsManager {
             AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
         })?;
 
-        let payment = wallet.pay_invoice(invoice.clone()).await?;
+        // Get the price for the usage type
+        let usage_type_inquiry = UsageTypeInquiry::PerUse; // or UsageTypeInquiry::Downloadable based on your context
+        let price = invoice
+            .shinkai_offering
+            .get_price_for_usage(&usage_type_inquiry)
+            .ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("Failed to get price for usage type".to_string())
+            })?;
 
-        // Simulate payment processing delay
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        // Assuming the price is of type ToolPrice::Payment
+        let asset_payment = match price {
+            ToolPrice::Payment(payments) => payments.first().ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("No payments found in ToolPrice".to_string())
+            })?,
+            _ => {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Unsupported ToolPrice type".to_string(),
+                ))
+            }
+        };
 
-        // Simulate blockchain confirmation or update
-        println!("Waiting for blockchain confirmation...");
-        // invoice.update_status(InvoiceStatusEnum::Paid);
+        let my_address = wallet.payment_wallet.get_address();
 
-        // Simulate blockchain update delay
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        // Check the balance before attempting to pay
+        let balance = match wallet
+            .check_balance_payment_wallet(my_address.clone().into(), asset_payment.asset.clone())
+            .await
+        {
+            Ok(balance) => balance,
+            Err(e) => {
+                eprintln!("Error checking balance: {:?}", e);
+                return Err(AgentOfferingManagerError::OperationFailed(format!(
+                    "Error checking balance: {:?}",
+                    e
+                )));
+            }
+        };
+        println!("wallet {} balance: {:?}", my_address.address_id.clone(), balance);
 
-        // Assume the payment was successful and the blockchain has confirmed the transaction
-        println!(
-            "Payment successful for invoice ID: {}. Blockchain update confirmed.",
-            invoice.invoice_id
-        );
+        let required_amount = asset_payment.amount.parse::<u128>().map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to parse required amount: {}", e))
+        })?;
+        println!("required_amount: {:?}", required_amount);
 
-        // In a real implementation, this is where you would handle the actual payment logic and blockchain integration.
-        // You might want to check the status of the transaction on the blockchain and confirm that it has been committed.
+        let available_amount = balance.amount.parse::<u128>().map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e))
+        })?;
 
-        Ok(())
+        if available_amount < required_amount {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Insufficient balance to pay the invoice".to_string(),
+            ));
+        }
+
+        let payment = match wallet.pay_invoice(invoice.clone()).await {
+            Ok(payment) => {
+                println!("Payment successful: {:?}", payment);
+                payment
+            }
+            Err(e) => {
+                eprintln!("Error paying invoice: {:?}", e);
+                return Err(AgentOfferingManagerError::OperationFailed(format!(
+                    "Error paying invoice: {:?}",
+                    e
+                )));
+            }
+        };
+
+        println!("Payment: {:?}", payment);
+
+        Ok(payment)
     }
 
     // Note: For Testing
@@ -252,33 +302,76 @@ impl MyAgentOfferingsManager {
         }
 
         // Step 2: Pay the invoice
-        self.pay_invoice(&invoice).await?;
+        let payment = self.pay_invoice(&invoice).await?;
+
+        // Create a new updated invoice with the payment information
+        let mut updated_invoice = invoice.clone();
+        updated_invoice.payment = Some(payment);
+        updated_invoice.update_status(InvoiceStatusEnum::Paid);
+
+        // Store the paid invoice in the database
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+        db.set_invoice(&updated_invoice).map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
+        })?;
 
         // Step 3: Send receipt and data to provider
-        self.send_receipt_and_data_to_provider(&invoice).await?;
+        self.send_receipt_and_data_to_provider(&updated_invoice).await?;
 
         Ok(())
     }
 
     // Fn: Send the receipt and the data for the job to the provider
     pub async fn send_receipt_and_data_to_provider(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
-        // Mocking the process of sending receipt and data to the provider
         println!(
             "Sending receipt for invoice ID: {} to provider: {}",
-            invoice.invoice_id, invoice.requester_name
+            invoice.invoice_id, invoice.provider_name
         );
 
-        // Simulate sending process delay
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&invoice.provider_name.to_string())
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info =
+                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
 
-        // Simulate a successful send
+            // Generate the message to send the receipt and data
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                invoice.clone(),
+                MessageSchemaType::PaidInvoice,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                invoice.provider_name.to_string(),
+                "main".to_string(),
+                proxy_builder_info,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+            )
+            .await?;
+        }
+
         println!(
             "Receipt and data successfully sent for invoice ID: {}",
             invoice.invoice_id
         );
-
-        // In a real implementation, you would send the actual receipt and relevant data
-        // to the provider using appropriate communication protocols (e.g., HTTP, gRPC, etc.).
 
         Ok(())
     }
@@ -547,7 +640,8 @@ mod tests {
         // Simulate receiving an invoice from the server
         let invoice = Invoice {
             invoice_id: internal_invoice_request.unique_id.clone(),
-            requester_name: internal_invoice_request.provider.clone(),
+            requester_name: internal_invoice_request.provider_name.clone(),
+            provider_name: internal_invoice_request.provider_name.clone(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             shinkai_offering: ShinkaiToolOffering {
                 tool_key: internal_invoice_request.tool_key_name.clone(),

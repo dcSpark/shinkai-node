@@ -8,14 +8,14 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
-    Asset, AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
+    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::tools::network_tool::NetworkTool;
 use shinkai_node::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_node::wallet::local_ether_wallet::WalletSource;
-use shinkai_node::wallet::mixed::NetworkIdentifier;
+use shinkai_node::wallet::mixed::{Asset, NetworkIdentifier};
 use shinkai_node::wallet::wallet_manager::WalletRole;
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
@@ -293,7 +293,7 @@ fn micropayment_flow_test() {
                 tool_key: test_local_tool_key_name.to_string(),
                 usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
                     asset: Asset {
-                        network_id: "mainnet".to_string(),
+                        network_id: NetworkIdentifier::BaseSepolia,
                         asset_id: "USDC".to_string(),
                         decimals: Some(6),
                         contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),

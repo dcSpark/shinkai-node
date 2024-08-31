@@ -2,6 +2,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::wallet::mixed::Asset;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum UsageTypeInquiry {
     PerUse,
@@ -100,21 +102,6 @@ pub struct AssetPayment {
     /// The amount to be paid in atomic units of the asset.
     pub amount: String,
 }
-
-/// Represents an asset onchain scoped to a particular network.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Asset {
-    /// The ID of the blockchain network.
-    pub network_id: String, // TODO: it needs to be an enum
-    /// The ID for the asset on the network.
-    pub asset_id: String,
-    /// The number of decimals the asset supports. This is used to convert from atomic units to base units.
-    pub decimals: Option<u32>,
-    /// The optional contract address for the asset. This will be specified for smart contract-based assets, for example ERC20s.
-    pub contract_address: Option<String>,
-}
-
-// TODO: add the rest of the code here from the playground project
 
 #[cfg(test)]
 mod tests {

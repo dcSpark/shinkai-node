@@ -28,7 +28,6 @@ impl From<Address> for PublicAddress {
     }
 }
 
-
 /// Represents an address in a wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicAddress {
@@ -65,12 +64,11 @@ pub struct AddressList {
     total_count: u32,
 }
 
-// TODO: remove this. it is duplicated
 /// Represents an asset onchain scoped to a particular network.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Asset {
     /// The ID of the blockchain network.
-    pub network_id: String,
+    pub network_id: NetworkIdentifier,
     /// The ID for the asset on the network.
     pub asset_id: String,
     /// The number of decimals the asset supports. This is used to convert from atomic units to base units.
@@ -90,43 +88,43 @@ impl Asset {
     pub fn new(asset_type: AssetType, network: &NetworkIdentifier) -> Option<Self> {
         match (asset_type, network) {
             (AssetType::ETH, _) => Some(Asset {
-                network_id: network.to_string(),
+                network_id: network.clone(),
                 asset_id: "ETH".to_string(),
                 decimals: Some(18),
                 contract_address: None,
             }),
             (AssetType::USDC, NetworkIdentifier::BaseSepolia) => Some(Asset {
-                network_id: "BaseSepolia".to_string(),
+                network_id: NetworkIdentifier::BaseSepolia,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".to_string()),
             }),
             (AssetType::USDC, NetworkIdentifier::BaseMainnet) => Some(Asset {
-                network_id: "BaseMainnet".to_string(),
+                network_id: NetworkIdentifier::BaseMainnet,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".to_string()),
             }),
             (AssetType::USDC, NetworkIdentifier::EthereumSepolia) => Some(Asset {
-                network_id: "EthereumSepolia".to_string(),
+                network_id: NetworkIdentifier::EthereumSepolia,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".to_string()),
             }),
             (AssetType::USDC, NetworkIdentifier::EthereumMainnet) => Some(Asset {
-                network_id: "EthereumMainnet".to_string(),
+                network_id: NetworkIdentifier::EthereumMainnet,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()),
             }),
             (AssetType::USDC, NetworkIdentifier::ArbitrumSepolia) => Some(Asset {
-                network_id: "ArbitrumSepolia".to_string(),
+                network_id: NetworkIdentifier::ArbitrumSepolia,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".to_string()),
             }),
             (AssetType::USDC, NetworkIdentifier::ArbitrumMainnet) => Some(Asset {
-                network_id: "ArbitrumMainnet".to_string(),
+                network_id: NetworkIdentifier::ArbitrumMainnet,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0xaf88d065e77c8cC2239327C5EDb3A432268e5831".to_string()),
@@ -202,11 +200,11 @@ impl Network {
         let (display_name, chain_id, protocol_family, is_testnet, native_asset) = match id {
             NetworkIdentifier::BaseSepolia => (
                 "Base Sepolia".to_string(),
-                11155111,
+                84532,
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: "BaseSepolia".to_string(),
+                    network_id: NetworkIdentifier::BaseSepolia,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -218,7 +216,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 false,
                 Asset {
-                    network_id: "BaseMainnet".to_string(),
+                    network_id: NetworkIdentifier::BaseMainnet,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -230,7 +228,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: "EthereumSepolia".to_string(),
+                    network_id: NetworkIdentifier::EthereumSepolia,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -242,7 +240,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 false,
                 Asset {
-                    network_id: "EthereumMainnet".to_string(),
+                    network_id: NetworkIdentifier::EthereumMainnet,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -254,7 +252,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: "ArbitrumSepolia".to_string(),
+                    network_id: NetworkIdentifier::ArbitrumSepolia,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -266,7 +264,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 false,
                 Asset {
-                    network_id: "ArbitrumMainnet".to_string(),
+                    network_id: NetworkIdentifier::ArbitrumMainnet,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -278,7 +276,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: "Anvil".to_string(),
+                    network_id: NetworkIdentifier::Anvil,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -298,7 +296,7 @@ impl Network {
 
     pub fn default_rpc(&self) -> &str {
         match self.id {
-            NetworkIdentifier::BaseSepolia => "https://base-sepolia.rpc.url",
+            NetworkIdentifier::BaseSepolia => "https://base-sepolia.blockpi.network/v1/rpc/public",
             NetworkIdentifier::BaseMainnet => "https://base-mainnet.rpc.url",
             NetworkIdentifier::EthereumSepolia => "https://ethereum-sepolia.rpc.url",
             NetworkIdentifier::EthereumMainnet => "https://ethereum-mainnet.rpc.url",

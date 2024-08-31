@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use super::{
-    mixed::{Address, AddressBalanceList, Asset, Network, PublicAddress, Transaction},
+    mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction},
     wallet_error::WalletError,
 };
 
@@ -42,6 +42,12 @@ pub trait CommonActions {
     fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send>>;
 
     fn check_balances(&self) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send>>;
+
+    fn check_asset_balance(
+        &self,
+        public_address: PublicAddress,
+        asset: Asset,
+    ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send>>;
 
     // fn get_main_balance(&self) -> Result<Balance, WalletError>;
     // fn get_transaction(&self, tx_hash: String) -> Result<Transaction, WalletError>;

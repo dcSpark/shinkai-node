@@ -413,7 +413,7 @@ impl ExtAgentOfferingsManager {
 
     pub async fn request_invoice(
         &mut self,
-        requester_node_name: ShinkaiName,
+        _requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         let db = self
@@ -470,6 +470,7 @@ impl ExtAgentOfferingsManager {
 
         let invoice = Invoice {
             invoice_id: invoice_request.unique_id.clone(),
+            provider_name: self.node_name.clone(),
             requester_name: invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
                 tool_key: invoice_request.tool_key_name,
@@ -583,9 +584,9 @@ mod tests {
 
     use crate::{
         lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
-        network::agent_payments_manager::shinkai_tool_offering::{Asset, AssetPayment, ToolPrice},
+        network::agent_payments_manager::shinkai_tool_offering::{AssetPayment, ToolPrice},
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
-        tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool},
+        tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool}, wallet::mixed::{Asset, NetworkIdentifier},
     };
 
     use super::*;
@@ -781,7 +782,7 @@ mod tests {
                         tool_key: shinkai_tool.tool_router_key(),
                         usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
                             asset: Asset {
-                                network_id: "1".to_string(),
+                                network_id: NetworkIdentifier::Anvil,
                                 asset_id: "ETH".to_string(),
                                 decimals: Some(18),
                                 contract_address: None,

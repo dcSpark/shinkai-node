@@ -163,27 +163,31 @@ impl LocalEthersWallet {
         send_amount: U256,
         provider_url: String,
         invoice_id: String,
-    ) -> Result<TransactionRequest, WalletError> {
-        let provider =
-            Provider::<Http>::try_from(provider_url).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
+    ) -> Result<TypedTransaction, WalletError> {
+        let provider = Provider::<Http>::try_from(provider_url)
+            .map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
         let chain_id = provider
             .get_chainid()
             .await
             .map_err(|e| WalletError::ProviderError(e.to_string()))?
             .low_u64();
+        println!("chain_id: {:?}", chain_id);
+        println!("provider: {:?}", provider);
 
-        let mut tx = TransactionRequest::new();
-        tx.to = Some(NameOrAddress::Address(
-            EthersAddress::from_str(&to_wallet.address_id).map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-        ));
+        let mut tx = Eip1559TransactionRequest::new().chain_id(chain_id);
 
         if let Some(token) = token {
+            println!("token: {:?}", token);
             let contract_address = token
                 .contract_address
                 .ok_or_else(|| WalletError::MissingContractAddress(token.asset_id.clone()))?
                 .parse::<EthersAddress>()
                 .map_err(|e| WalletError::InvalidAddress(e.to_string()))?;
-            let contract = Contract::new(contract_address, ERC20_ABI.clone(), Arc::new(provider.clone()));
+            let contract = Contract::new(
+                contract_address,
+                ERC20_ABI.clone(),
+                Arc::new(provider.clone()),
+            );
             let call = contract
                 .method::<(EthersAddress, U256), bool>(
                     "transfer",
@@ -194,42 +198,34 @@ impl LocalEthersWallet {
                     ),
                 )
                 .map_err(|e| WalletError::ContractError(e.to_string()))?;
-            tx = call.tx.into();
+            
+            // Encode the function call data
+            let data = call.tx.data().ok_or_else(|| WalletError::ContractError("Failed to encode data".to_string()))?.0.to_vec();
+            
+            tx = tx.to(NameOrAddress::Address(contract_address)).data(data);
         } else {
-            tx.value = Some(send_amount);
+            tx = tx.to(NameOrAddress::Address(
+                EthersAddress::from_str(&to_wallet.address_id)
+                    .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+            ))
+            .value(send_amount)
+            .data(format!("kai:{}", invoice_id).into_bytes());
         }
 
-        tx.chain_id = Some(chain_id.into());
-        let from_address = from_wallet.wallet.address();
-        let nonce = provider
-            .get_transaction_count(from_address, None)
-            .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-        tx.from = Some(from_address);
-        tx.nonce = Some(nonce);
+        // Set max fee per gas and max priority fee per gas
+        let max_fee_per_gas = provider.get_gas_price().await.map_err(|e| WalletError::ProviderError(e.to_string()))?;
+        let max_priority_fee_per_gas = U256::from(2_000_000_000); // 2 Gwei
 
-        let gas_price = provider
-            .get_gas_price()
-            .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-        tx.gas_price = Some(gas_price);
+        // Ensure max_fee_per_gas is at least max_priority_fee_per_gas
+        let adjusted_max_fee_per_gas = std::cmp::max(max_fee_per_gas, max_priority_fee_per_gas);
 
-        // Add "kai:" prefix to the invoice ID and include it in the transaction data
-        let data_with_prefix = format!("kai:{}", invoice_id);
-        tx.data = Some(data_with_prefix.into_bytes().into());
+        tx = tx.max_fee_per_gas(adjusted_max_fee_per_gas).max_priority_fee_per_gas(max_priority_fee_per_gas);
 
-        // Convert TransactionRequest to TypedTransaction
-        let typed_tx: TypedTransaction = tx.clone().into();
+        // Debug prints
+        println!("Max Fee Per Gas: {:?}", tx.max_fee_per_gas);
+        println!("Max Priority Fee Per Gas: {:?}", tx.max_priority_fee_per_gas);
 
-        // Estimate gas instead of hardcoding
-        let gas_estimate = provider
-            .estimate_gas(&typed_tx, None)
-            .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-        tx.gas = Some(gas_estimate);
-        eprintln!("Tx: {:?}", tx);
-
-        Ok(tx)
+        Ok(tx.into())
     }
 
     pub async fn internal_sign_transaction(&self, tx_request: TypedTransaction) -> Result<Signature, WalletError> {
@@ -273,6 +269,11 @@ impl LocalEthersWallet {
 
         if let Some(receipt) = receipt {
             let tx_hash = receipt.transaction_hash;
+            println!("tx_hash: {:?}", tx_hash);
+            let tx_result = receipt.status.unwrap_or(U64::from(0)); // Convert 0 to U64
+            if tx_result == U64::from(0) { // Convert 0 to U64
+                return Err(WalletError::TransactionFailed(tx_hash.to_string()));
+            }
             Ok(tx_hash)
         } else {
             Err(WalletError::MissingTransactionReceipt)
@@ -309,7 +310,7 @@ impl SendActions for LocalEthersWallet {
             let tx_hash = self_clone
                 .internal_send_transaction(to_wallet, token, send_amount_u256, invoice_id)
                 .await?;
-            Ok(tx_hash.to_string())
+            Ok(format!("0x{:x}", tx_hash))
         };
 
         Box::pin(fut)
@@ -454,6 +455,54 @@ impl CommonActions for LocalEthersWallet {
             })
         })
     }
+
+    fn check_asset_balance(
+        &self,
+        public_address: PublicAddress,
+        asset: Asset,
+    ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send + 'static>> {
+        println!("Checking asset balance for {:?}", asset);
+        println!("Public address: {:?}", public_address);
+
+        let provider = self.provider.clone();
+        let address = match EthersAddress::from_str(&public_address.address_id) {
+            Ok(addr) => addr,
+            Err(e) => return Box::pin(async move { Err(WalletError::InvalidAddress(e.to_string())) }),
+        };
+
+        Box::pin(async move {
+            let balance = if let Some(ref contract_address) = asset.contract_address {
+                let contract_address = contract_address
+                    .parse::<EthersAddress>()
+                    .map_err(|e| WalletError::InvalidAddress(e.to_string()))?;
+                let contract = Contract::new(contract_address, ERC20_ABI.clone(), Arc::new(provider));
+                let balance: U256 = contract
+                    .method::<EthersAddress, U256>("balanceOf", address)
+                    .map_err(|e| WalletError::ContractError(e.to_string()))?
+                    .call()
+                    .await
+                    .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+                Balance {
+                    amount: balance.to_string(),
+                    decimals: asset.decimals,
+                    asset,
+                }
+            } else {
+                let balance_wei = provider
+                    .get_balance(address, None)
+                    .await
+                    .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+                Balance {
+                    amount: balance_wei.to_string(),
+                    decimals: Some(18),
+                    asset,
+                }
+            };
+
+            Ok(balance)
+        })
+    }
+
     //     fn check_balance(&self) -> Result<AddressBalanceList, String> {
     //         // Implement balance checking logic
     //     }
@@ -560,7 +609,7 @@ mod tests {
             protocol_family: NetworkProtocolFamilyEnum::Evm,
             is_testnet: true,
             native_asset: Asset {
-                network_id: "Anvil".to_string(),
+                network_id: NetworkIdentifier::Anvil,
                 asset_id: "ETH".to_string(),
                 decimals: Some(18),
                 contract_address: None,

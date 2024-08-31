@@ -1143,6 +1143,17 @@ pub async fn handle_network_message_cases(
                         }
                     }
                 }
+                MessageSchemaType::PaidInvoice => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("{} > PaidInvoice Received from: {:?} to: {:?}", receiver_address, requester, receiver),
+                    );
+                    println!("PaidInvoice Received from: {:?} to {:?}", requester, receiver);
+                    
+                }
                 _ => {
                     // Ignore other schemas
                     shinkai_log(
