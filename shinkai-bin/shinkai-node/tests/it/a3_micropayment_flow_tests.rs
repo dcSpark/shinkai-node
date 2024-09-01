@@ -7,6 +7,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
+use shinkai_node::network::agent_payments_manager::invoices::Invoice;
 use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
     AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
@@ -545,6 +546,7 @@ fn micropayment_flow_test() {
             //
             //
 
+            let invoice_id: String;
             {
                 eprintln!("Requesting invoice for 'network__echo' tool from node2");
 
@@ -564,8 +566,69 @@ fn micropayment_flow_test() {
 
                 // Handle the response
                 match resp {
-                    Ok(invoice) => eprintln!("Received invoice: {:?}", invoice),
+                    Ok(invoice_resp) => {
+                        eprintln!("Received invoice: {:?}", invoice_resp);
+                        invoice_id = invoice_resp["unique_id"].as_str().unwrap().to_string();
+                    }
                     Err(e) => panic!("Failed to request invoice: {:?}", e),
+                }
+            }
+            // TODO: we need to wait for the invoice to be created and received by node2!
+            {
+                eprintln!("Waiting for invoice to be created and received by node2");
+
+                let mut found_invoice = false;
+                for _ in 0..20 {
+                    let (sender, receiver) = async_channel::bounded(1);
+                    node2_commands_sender
+                        .send(NodeCommand::V2ApiListInvoices {
+                            bearer: api_v2_key.to_string(),
+                            res: sender,
+                        })
+                        .await
+                        .unwrap();
+                    let resp = receiver.recv().await.unwrap();
+                    eprintln!("resp list invoices: {:?}", resp);
+
+                    if let Ok(invoices) = resp {
+                        if let Some(invoices_array) = invoices.as_array() {
+                            if invoices_array
+                                .iter()
+                                .any(|inv| inv["invoice_id"].as_str() == Some(&invoice_id))
+                            {
+                                found_invoice = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+
+                if !found_invoice {
+                    panic!("Invoice not found after waiting");
+                }
+            }
+            {
+                eprintln!("Paying invoice for 'network__echo' tool from node2");
+
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiPayInvoice {
+                        bearer: api_v2_key.to_string(),
+                        invoice_id: invoice_id.clone(),
+                        data_for_tool: serde_json::json!({ "input_message": "Hello, Shinkai!" }),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp pay invoice: {:?}", resp);
+
+                // Handle the response
+                match resp {
+                    Ok(payment_receipt) => eprintln!("Payment successful: {:?}", payment_receipt),
+                    Err(e) => panic!("Failed to pay invoice: {:?}", e),
                 }
             }
             // add sleep 5 seconds

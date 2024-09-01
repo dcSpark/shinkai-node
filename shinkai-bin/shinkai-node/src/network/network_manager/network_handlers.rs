@@ -1125,6 +1125,7 @@ pub async fn handle_network_message_cases(
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
+                            my_agent_offering_manager.store_invoice(&invoice).await?;
                             // Process the invoice:
                             // - verify the invoice
                             // - pay the invoice

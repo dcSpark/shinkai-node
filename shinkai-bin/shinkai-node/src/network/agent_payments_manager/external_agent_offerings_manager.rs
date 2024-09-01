@@ -484,6 +484,7 @@ impl ExtAgentOfferingsManager {
             usage_type_inquiry: invoice_request.usage_type_inquiry,
             request_date_time: invoice_request.request_date_time,
             invoice_date_time: Utc::now(),
+            tool_data: None,
         };
 
         // Store the new invoice in the database
