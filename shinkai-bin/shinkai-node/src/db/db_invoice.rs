@@ -4,6 +4,7 @@ use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 
 impl ShinkaiDB {
     pub fn set_invoice(&self, invoice: &Invoice) -> Result<(), ShinkaiDBError> {
+        // TODO: find a way that we can store the invoice with sorting capabilities
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
         let prefix = format!("tool_micropayments_tool_invoice_abcdefg_prefix_{}", invoice.invoice_id);
         let invoice_bytes = serde_json::to_vec(&invoice)

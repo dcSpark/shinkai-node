@@ -290,7 +290,18 @@ impl MyAgentOfferingsManager {
         Ok(payment)
     }
 
-    // Note: For Testing
+    pub async fn store_invoice(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        db.set_invoice(invoice)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+    }
+
+    // Note: Only For Testing (!!!)
+    // We want to have a way to confirm payment from the user perspective
     // Fn: Automatically verify and pay an invoice, then send receipt and data to the provider
     pub async fn auto_pay_invoice(&self, invoice: Invoice) -> Result<(), AgentOfferingManagerError> {
         // Step 1: Verify the invoice
@@ -341,6 +352,8 @@ impl MyAgentOfferingsManager {
             let receiver_public_key = standard_identity.node_encryption_public_key;
             let proxy_builder_info =
                 get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+
+            // TODO: we need to expand the payload to include the data that the provider needs to process the job
 
             // Generate the message to send the receipt and data
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -466,7 +479,7 @@ mod tests {
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::tool_router::ToolRouter,
         vector_fs::vector_fs::VectorFS,
-        wallet::mixed::{Address, NetworkIdentifier, PublicAddress},
+        wallet::mixed::{NetworkIdentifier, PublicAddress},
     };
     use async_trait::async_trait;
     use chrono::Utc;

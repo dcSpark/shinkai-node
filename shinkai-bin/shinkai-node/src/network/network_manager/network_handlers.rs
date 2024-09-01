@@ -1124,14 +1124,14 @@ pub async fn handle_network_message_cases(
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
-                            let mut my_agent_offering_manager = my_agent_offering_manager.lock().await;
+                            let my_agent_offering_manager = my_agent_offering_manager.lock().await;
                             // Process the invoice:
                             // - verify the invoice
                             // - pay the invoice
                             // - wait for the payment confirmation
                             // - send the receipt to the provider
-                            //
-                            my_agent_offering_manager.auto_pay_invoice(invoice).await?;
+                            // Note: Only for testing purposes
+                            // my_agent_offering_manager.auto_pay_invoice(invoice).await?;
                         }
                         Err(e) => {
                             shinkai_log(
@@ -1152,7 +1152,8 @@ pub async fn handle_network_message_cases(
                         &format!("{} > PaidInvoice Received from: {:?} to: {:?}", receiver_address, requester, receiver),
                     );
                     println!("PaidInvoice Received from: {:?} to {:?}", requester, receiver);
-                    
+
+
                 }
                 _ => {
                     // Ignore other schemas

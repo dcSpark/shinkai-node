@@ -14,8 +14,6 @@ use super::{
     wallet_traits::{PaymentWallet, ReceivingWallet},
 };
 
-use crate::wallet::mixed::Asset as MixedAsset;
-
 /// Enum to represent different wallet roles. Useful for the API.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum WalletRole {
