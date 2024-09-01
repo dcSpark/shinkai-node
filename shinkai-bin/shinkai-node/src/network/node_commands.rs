@@ -28,7 +28,8 @@ use crate::{
         identity::{Identity, StandardIdentity},
         smart_inbox::{SmartInbox, V2SmartInbox},
     },
-    tools::{network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}}, wallet::{local_ether_wallet::{LocalEthersWallet, WalletSource}, mixed::{Network, NetworkIdentifier}, wallet_manager::WalletRole},
+    tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    wallet::{local_ether_wallet::WalletSource, mixed::NetworkIdentifier, wallet_manager::WalletRole},
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -36,9 +37,7 @@ use super::{
     agent_payments_manager::shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    v2_api::{
-        api_v2_handlers_ext_agent_offers::GetToolOfferingRequest, api_v2_handlers_general::InitialRegistrationRequest,
-    },
+    v2_api::api_v2_handlers_general::InitialRegistrationRequest,
 };
 
 pub enum NodeCommand {
@@ -808,7 +807,6 @@ pub enum NodeCommand {
         payload: APIAddOllamaModels,
         res: Sender<Result<(), APIError>>,
     },
-    // New Stuff
     V2ApiGetToolOffering {
         bearer: String,
         tool_key_name: String,
@@ -845,6 +843,16 @@ pub enum NodeCommand {
         bearer: String,
         tool_key_name: String,
         usage: UsageTypeInquiry,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiPayInvoice {
+        bearer: String,
+        invoice_id: String,
+        data_for_tool: Value,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListInvoices {
+        bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

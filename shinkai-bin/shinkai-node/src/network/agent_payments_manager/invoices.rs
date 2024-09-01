@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use crate::wallet::mixed::PublicAddress;
@@ -25,6 +26,7 @@ pub struct Invoice {
     pub status: InvoiceStatusEnum,
     pub payment: Option<Payment>,
     pub address: PublicAddress,
+    pub tool_data: Option<Value>, // expected to have all of the required input_args: Vec<ToolArgument>,
     // Note: Maybe add something related to current estimated response times
     // average response time / congestion level or something like that
 }

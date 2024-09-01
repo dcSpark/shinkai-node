@@ -19,6 +19,7 @@ can it be done in one step? maybe we have rules per: tool, provider or overall s
 use std::sync::{Arc, Weak};
 
 use ed25519_dalek::SigningKey;
+use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
@@ -298,6 +299,55 @@ impl MyAgentOfferingsManager {
 
         db.set_invoice(invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+    }
+
+    pub async fn pay_invoice_and_send_receipt(
+        &self,
+        invoice_id: String,
+        tool_data: Value,
+    ) -> Result<(), AgentOfferingManagerError> {
+        // TODO: check that the invoice is valid (exists) and still valid (not expired)
+
+        // Step 0: Get the invoice from the database
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        let invoice = db.get_invoice(&invoice_id).map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e))
+        })?;
+
+        // Step 1: Verify the invoice
+        let is_valid = self.verify_invoice(&invoice).await?;
+        if !is_valid {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Invoice verification failed".to_string(),
+            ));
+        }
+
+        // Step 2: Pay the invoice
+        let payment = self.pay_invoice(&invoice).await?;
+
+        // Create a new updated invoice with the payment information
+        let mut updated_invoice = invoice.clone();
+        updated_invoice.payment = Some(payment);
+        updated_invoice.update_status(InvoiceStatusEnum::Paid);
+        updated_invoice.tool_data = Some(tool_data);
+
+        // Store the paid invoice in the database
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+        db.set_invoice(&updated_invoice).map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
+        })?;
+
+        // Step 3: Send receipt and data to provider
+        self.send_receipt_and_data_to_provider(&updated_invoice).await?;
+
+        Ok(())
     }
 
     // Note: Only For Testing (!!!)
@@ -670,6 +720,7 @@ mod tests {
             },
             request_date_time: Utc::now(),
             invoice_date_time: Utc::now(),
+            tool_data: None,
         };
 
         // Call verify_invoice
