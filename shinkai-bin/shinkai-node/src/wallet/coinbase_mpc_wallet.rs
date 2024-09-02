@@ -35,18 +35,18 @@ pub struct CoinbaseMPCWallet {
     pub address: Address,
     pub config: CoinbaseMPCWalletConfig,
     pub lance_db: Weak<Mutex<LanceShinkaiDb>>, // Added field to store Weak reference
-    // pub wallet: Wallet<SigningKey>,
-    // pub provider: LocalWalletProvider,
+                                               // pub wallet: Wallet<SigningKey>,
+                                               // pub provider: LocalWalletProvider,
 
-    // Note: do we need access to ToolRouter? (maybe not, since we can call the Coinbase SDK directly)
-    // Should we create a new manager that calls the Coinbase MPC SDK directly? (Probably)
-    // So we still need access to lancedb so we can get the code for each tool
-    // If we use lancedb each time (it's slightly slower) but we can have everything in sync
+                                               // Note: do we need access to ToolRouter? (maybe not, since we can call the Coinbase SDK directly)
+                                               // Should we create a new manager that calls the Coinbase MPC SDK directly? (Probably)
+                                               // So we still need access to lancedb so we can get the code for each tool
+                                               // If we use lancedb each time (it's slightly slower) but we can have everything in sync
 
-    // We could have an UI in Settings, where we can select the Coinbase Wallet or the Ethers Local Wallet
+                                               // We could have an UI in Settings, where we can select the Coinbase Wallet or the Ethers Local Wallet
 
-    // Note: maybe we should create a new struct that holds the information about Config + Params + Results (for each tool)
-    // based on what we have in the typescript tools
+                                               // Note: maybe we should create a new struct that holds the information about Config + Params + Results (for each tool)
+                                               // based on what we have in the typescript tools
 }
 
 impl CoinbaseMPCWallet {
@@ -302,25 +302,23 @@ impl CommonActions for CoinbaseMPCWallet {
     fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
         let lance_db = self.lance_db.clone(); // Use the Weak reference
-        
+
         Box::pin(async move {
             let params = serde_json::json!({
                 "walletId": config.wallet_id,
             });
 
-            let response = CoinbaseMPCWallet::call_function(
-                config,
-                lance_db,
-                ShinkaiToolCoinbase::GetBalance,
-                params,
-            ).await?;
+            let response =
+                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
 
             let balance_str = response
                 .get("balance")
                 .and_then(|v| v.as_str())
                 .ok_or(WalletError::ConfigNotFound)?;
 
-            let balance: f64 = balance_str.parse().map_err(|e| WalletError::ConversionError(e.to_string()))?;
+            let balance: f64 = balance_str
+                .parse()
+                .map_err(|e: std::num::ParseFloatError| WalletError::ConversionError(e.to_string()))?;
             Ok(balance)
         })
     }
@@ -336,46 +334,48 @@ impl CommonActions for CoinbaseMPCWallet {
                 "walletId": config.wallet_id,
             });
 
-            let response = CoinbaseMPCWallet::call_function(
-                config,
-                lance_db,
-                ShinkaiToolCoinbase::GetBalance,
-                params,
-            ).await?;
+            let response =
+                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
 
             let balances = response
                 .get("balances")
                 .and_then(|v| v.as_array())
                 .ok_or(WalletError::ConfigNotFound)?;
 
-            let data: Vec<Balance> = balances
-                .iter()
-                .map(|balance| {
-                    let address = balance.get("address").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                    let amount = balance.get("amount").and_then(|v| v.as_str()).unwrap_or_default().parse::<f64>().unwrap_or(0.0);
-                    let decimals = balance.get("decimals").and_then(|v| v.as_u64()).unwrap_or(18);
-                    let asset = balance.get("asset").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                    Balance { address, amount, decimals, asset }
-                })
-                .collect();
+            // let data: Vec<Balance> = balances
+            //     .iter()
+            //     .map(|balance| {
+            //         let amount = balance
+            //             .get("amount")
+            //             .and_then(|v| v.as_str())
+            //             .unwrap_or_default()
+            //             .parse::<f64>()
+            //             .unwrap_or(0.0);
+            //         let decimals = balance.get("decimals").and_then(|v| v.as_u64()).map(|d| d as u32);
+            //         let asset = balance
+            //             .get("asset")
+            //             .and_then(|v| v.as_str())
+            //             .unwrap_or_default()
+            //             .to_string();
+            //         Balance {
+            //             amount: amount.to_string(),
+            //             decimals,
+            //             asset,
+            //         }
+            //     })
+            //     .collect();
 
-            let has_more = response
-                .get("has_more")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let has_more = response.get("has_more").and_then(|v| v.as_bool()).unwrap_or(false);
 
             let next_page = response
                 .get("next_page")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
-            let total_count = response
-                .get("total_count")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+            let total_count = response.get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
 
             let address_balance_list = AddressBalanceList {
-                data,
+                data: vec![],
                 has_more,
                 next_page,
                 total_count,
@@ -400,12 +400,8 @@ impl CommonActions for CoinbaseMPCWallet {
                 "asset": asset.asset_id,
             });
 
-            let response = CoinbaseMPCWallet::call_function(
-                config,
-                lance_db,
-                ShinkaiToolCoinbase::GetBalance,
-                params,
-            ).await?;
+            let response =
+                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
 
             let amount = response
                 .get("amount")
@@ -414,15 +410,11 @@ impl CommonActions for CoinbaseMPCWallet {
                 .parse::<f64>()
                 .map_err(|e| WalletError::ConversionError(e.to_string()))?;
 
-            let decimals = response
-                .get("decimals")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(18);
+            let decimals = response.get("decimals").and_then(|v| v.as_u64()).unwrap_or(18);
 
             let balance = Balance {
-                address: public_address.address_id,
-                amount,
-                decimals,
+                amount: amount.to_string(),
+                decimals: Some(decimals as u32),
                 asset: asset.asset_id,
             };
 
