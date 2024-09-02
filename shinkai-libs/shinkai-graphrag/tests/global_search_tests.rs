@@ -6,7 +6,7 @@ use shinkai_graphrag::{
     search::global_search::search::{GlobalSearch, GlobalSearchParams},
 };
 use utils::{
-    ollama::Ollama,
+    ollama::OllamaChat,
     openai::{num_tokens, ChatOpenAI},
 };
 
@@ -15,9 +15,9 @@ mod utils;
 // #[tokio::test]
 async fn ollama_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let base_url = "http://localhost:11434";
-    let model_type = "llama3.1";
+    let model = "llama3.1";
 
-    let llm = Ollama::new(base_url.to_string(), model_type.to_string());
+    let llm = OllamaChat::new(base_url, model);
 
     // Load community reports
     // Download dataset: https://microsoft.github.io/graphrag/data/operation_dulce/dataset.zip
@@ -113,7 +113,7 @@ async fn openai_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("GRAPHRAG_API_KEY").unwrap();
     let llm_model = std::env::var("GRAPHRAG_LLM_MODEL").unwrap();
 
-    let llm = ChatOpenAI::new(Some(api_key), llm_model, 5);
+    let llm = ChatOpenAI::new(Some(api_key), &llm_model, 5);
 
     // Load community reports
     // Download dataset: https://microsoft.github.io/graphrag/data/operation_dulce/dataset.zip

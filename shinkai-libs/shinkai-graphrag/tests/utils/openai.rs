@@ -21,10 +21,10 @@ pub struct ChatOpenAI {
 }
 
 impl ChatOpenAI {
-    pub fn new(api_key: Option<String>, model: String, max_retries: usize) -> Self {
+    pub fn new(api_key: Option<String>, model: &str, max_retries: usize) -> Self {
         ChatOpenAI {
             api_key,
-            model,
+            model: model.to_string(),
             max_retries,
         }
     }
@@ -136,10 +136,10 @@ pub struct OpenAIEmbedding {
 }
 
 impl OpenAIEmbedding {
-    pub fn new(api_key: Option<String>, model: String, max_tokens: usize, max_retries: usize) -> Self {
+    pub fn new(api_key: Option<String>, model: &str, max_tokens: usize, max_retries: usize) -> Self {
         OpenAIEmbedding {
             api_key,
-            model,
+            model: model.to_string(),
             max_tokens,
             max_retries,
         }

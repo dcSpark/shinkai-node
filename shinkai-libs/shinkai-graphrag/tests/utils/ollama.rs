@@ -2,34 +2,45 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use shinkai_graphrag::llm::base::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
+use shinkai_graphrag::llm::base::{
+    BaseLLM, BaseLLMCallback, BaseTextEmbedding, GlobalSearchPhase, LLMParams, MessageType,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct OllamaResponse {
+pub struct OllamaChatResponse {
     pub model: String,
     pub created_at: String,
-    pub message: OllamaMessage,
+    pub message: OllamaChatMessage,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct OllamaMessage {
+pub struct OllamaChatMessage {
     pub role: String,
     pub content: String,
 }
 
-pub struct Ollama {
-    base_url: String,
-    model_type: String,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OllamaEmbeddingResponse {
+    pub model: String,
+    pub embeddings: Vec<Vec<f32>>,
 }
 
-impl Ollama {
-    pub fn new(base_url: String, model_type: String) -> Self {
-        Ollama { base_url, model_type }
+pub struct OllamaChat {
+    base_url: String,
+    model: String,
+}
+
+impl OllamaChat {
+    pub fn new(base_url: &str, model: &str) -> Self {
+        OllamaChat {
+            base_url: base_url.to_string(),
+            model: model.to_string(),
+        }
     }
 }
 
 #[async_trait]
-impl BaseLLM for Ollama {
+impl BaseLLM for OllamaChat {
     async fn agenerate(
         &self,
         messages: MessageType,
@@ -87,14 +98,46 @@ impl BaseLLM for Ollama {
         };
 
         let payload = json!({
-            "model": self.model_type,
+            "model": self.model,
             "messages": messages_json,
             "stream": false,
         });
 
         let response = client.post(chat_url).json(&payload).send().await?;
-        let response = response.json::<OllamaResponse>().await?;
+        let response = response.json::<OllamaChatResponse>().await?;
 
         Ok(response.message.content)
+    }
+}
+
+pub struct OllamaEmbedding {
+    base_url: String,
+    model: String,
+}
+
+impl OllamaEmbedding {
+    pub fn new(base_url: &str, model: &str) -> Self {
+        OllamaEmbedding {
+            base_url: base_url.to_string(),
+            model: model.to_string(),
+        }
+    }
+}
+
+#[async_trait]
+impl BaseTextEmbedding for OllamaEmbedding {
+    async fn aembed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        let client = Client::new();
+        let embedding_url = format!("{}{}", &self.base_url, "/api/embedding");
+
+        let payload = json!({
+            "model": self.model,
+            "input": text,
+        });
+
+        let response = client.post(embedding_url).json(&payload).send().await?;
+        let response = response.json::<OllamaEmbeddingResponse>().await?;
+
+        Ok(response.embeddings.first().cloned().unwrap_or_default())
     }
 }

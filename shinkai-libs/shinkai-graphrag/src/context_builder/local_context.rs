@@ -405,7 +405,10 @@ fn _filter_relationships(
     let relationship_budget = top_k_relationships * selected_entities.len();
     out_network_relationships.truncate(relationship_budget);
 
-    Vec::new()
+    let mut selected_relationships = in_network_relationships;
+    selected_relationships.extend(out_network_relationships);
+
+    selected_relationships
 }
 
 pub fn get_candidate_context(
