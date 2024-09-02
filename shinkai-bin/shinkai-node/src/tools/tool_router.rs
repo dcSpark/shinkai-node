@@ -204,6 +204,18 @@ impl ToolRouter {
         Ok(tool_headers)
     }
 
+    pub async fn vector_search_enabled_tools_with_network(
+        &self,
+        query: &str,
+        num_of_results: u64,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        let lance_db = self.lance_db.lock().await;
+        let tool_headers = lance_db
+            .vector_search_enabled_tools(query, num_of_results, true)
+            .await?;
+        Ok(tool_headers)
+    }
+
     pub async fn vector_search_all_tools(
         &self,
         query: &str,
@@ -297,12 +309,52 @@ impl ToolRouter {
                 });
             }
             ShinkaiTool::Network(network_tool, _) => {
-                // TOOD: implement this
+                // Should this create an invoice request?
+
+                // TODO:
+                // 1. Push for the InvoiceRequest
+                // 2. Get the response (with the goal of showing it in the UI)
+                // 2. Use WS to show that in the UI and get user confirmation
+                // 3. Wait until the user has confirmed (or timed out after 2 minutes? without user feedback not about the entire operation)
+                // 4. Run the network tool
+                // 5. Wait for the WS to get the Invoice (Result)
+                // 6. Return the result on this fn
+
                 unimplemented!("WIP")
             }
         }
 
         Err(LLMProviderError::FunctionNotFound(function_name))
+    }
+
+    /// This function is used to call a JS function directly
+    /// It's very handy for agent-to-agent communication
+    pub async fn call_js_function(
+        &self,
+        function_args: Value,
+        js_tool_name: &str,
+    ) -> Result<String, LLMProviderError> { 
+        let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
+
+        if shinkai_tool.is_none() {
+            return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string()));
+        }
+
+        let shinkai_tool = shinkai_tool.unwrap();
+        let function_config = shinkai_tool.get_config_from_env();
+
+        let js_tool = match shinkai_tool {
+            ShinkaiTool::JS(js_tool, _) => js_tool,
+            _ => return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string())),
+        };
+
+        let result = js_tool
+            .run(function_args, function_config)
+            .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+        let result_str = serde_json::to_string(&result)
+            .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+
+        return Ok(result_str);
     }
 
     pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {

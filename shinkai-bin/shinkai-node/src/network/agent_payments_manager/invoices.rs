@@ -27,9 +27,24 @@ pub struct Invoice {
     pub payment: Option<Payment>,
     pub address: PublicAddress,
     pub tool_data: Option<Value>, // expected to have all of the required input_args: Vec<ToolArgument>,
+    pub response_date_time: Option<DateTime<Utc>>, // when the response was sent back to the requester
+    pub result_str: Option<String>, // depending on the tool, the result varies
     // Note: Maybe add something related to current estimated response times
     // average response time / congestion level or something like that
 }
+
+impl Ord for Invoice {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.invoice_date_time.cmp(&other.invoice_date_time)
+    }
+}
+
+impl PartialOrd for Invoice {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 
 impl Invoice {
     /// Updates the status of the invoice.
@@ -44,32 +59,7 @@ pub enum InvoiceStatusEnum {
     Pending,
     Paid,
     Failed,
-}
-
-// TODO: maybe we can merge this with the payment struct
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct InvoicePayment {
-    pub invoice_id: String,
-    pub date_time: DateTime<Utc>,
-    pub signed_invoice: String, // necessary? it acts like a written contract
-    pub payment_id: String,
-    pub payment_amount: String,
-    pub payment_time: DateTime<Utc>,
-    pub requester_node_name: ShinkaiName,
-    // TODO: add payload and other stuff to be able to perform the job
-    // This is sent by the requester by verified by us before getting added
-}
-
-impl Ord for InvoicePayment {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.date_time.cmp(&other.date_time)
-    }
-}
-
-impl PartialOrd for InvoicePayment {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    Processed,
 }
 
 // TODO: Maybe create a trait that's shared between the two structs?

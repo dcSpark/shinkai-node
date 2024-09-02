@@ -163,7 +163,7 @@ impl GenericInferenceChain {
 
                 // Search in JS Tools
                 let results = tool_router
-                    .vector_search_enabled_tools(&user_message.clone(), 3)
+                    .vector_search_enabled_tools_with_network(&user_message.clone(), 3)
                     .await
                     .unwrap();
                 for result in results {
@@ -245,6 +245,8 @@ impl GenericInferenceChain {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
+
+                // Note: here we can add logic to handle the case that we have network tools
 
                 // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
                 let function_response = match tool_router
