@@ -304,14 +304,13 @@ impl CommonActions for CoinbaseMPCWallet {
         let lance_db = self.lance_db.clone(); // Use the Weak reference
         
         Box::pin(async move {
-            let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
             let params = serde_json::json!({
                 "walletId": config.wallet_id,
             });
 
             let response = CoinbaseMPCWallet::call_function(
                 config,
-                lance_db_strong,
+                lance_db,
                 ShinkaiToolCoinbase::GetBalance,
                 params,
             ).await?;
@@ -322,6 +321,111 @@ impl CommonActions for CoinbaseMPCWallet {
                 .ok_or(WalletError::ConfigNotFound)?;
 
             let balance: f64 = balance_str.parse().map_err(|e| WalletError::ConversionError(e.to_string()))?;
+            Ok(balance)
+        })
+    }
+
+    fn check_balances(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
+        let config = self.config.clone();
+        let lance_db = self.lance_db.clone(); // Use the Weak reference
+
+        Box::pin(async move {
+            let params = serde_json::json!({
+                "walletId": config.wallet_id,
+            });
+
+            let response = CoinbaseMPCWallet::call_function(
+                config,
+                lance_db,
+                ShinkaiToolCoinbase::GetBalance,
+                params,
+            ).await?;
+
+            let balances = response
+                .get("balances")
+                .and_then(|v| v.as_array())
+                .ok_or(WalletError::ConfigNotFound)?;
+
+            let data: Vec<Balance> = balances
+                .iter()
+                .map(|balance| {
+                    let address = balance.get("address").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    let amount = balance.get("amount").and_then(|v| v.as_str()).unwrap_or_default().parse::<f64>().unwrap_or(0.0);
+                    let decimals = balance.get("decimals").and_then(|v| v.as_u64()).unwrap_or(18);
+                    let asset = balance.get("asset").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    Balance { address, amount, decimals, asset }
+                })
+                .collect();
+
+            let has_more = response
+                .get("has_more")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            let next_page = response
+                .get("next_page")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            let total_count = response
+                .get("total_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+
+            let address_balance_list = AddressBalanceList {
+                data,
+                has_more,
+                next_page,
+                total_count,
+            };
+
+            Ok(address_balance_list)
+        })
+    }
+
+    fn check_asset_balance(
+        &self,
+        public_address: PublicAddress,
+        asset: Asset,
+    ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send + 'static>> {
+        let config = self.config.clone();
+        let lance_db = self.lance_db.clone(); // Use the Weak reference
+
+        Box::pin(async move {
+            let params = serde_json::json!({
+                "walletId": config.wallet_id,
+                "publicAddress": public_address.address_id,
+                "asset": asset.asset_id,
+            });
+
+            let response = CoinbaseMPCWallet::call_function(
+                config,
+                lance_db,
+                ShinkaiToolCoinbase::GetBalance,
+                params,
+            ).await?;
+
+            let amount = response
+                .get("amount")
+                .and_then(|v| v.as_str())
+                .ok_or(WalletError::ConfigNotFound)?
+                .parse::<f64>()
+                .map_err(|e| WalletError::ConversionError(e.to_string()))?;
+
+            let decimals = response
+                .get("decimals")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(18);
+
+            let balance = Balance {
+                address: public_address.address_id,
+                amount,
+                decimals,
+                asset: asset.asset_id,
+            };
+
             Ok(balance)
         })
     }
