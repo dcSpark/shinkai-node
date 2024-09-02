@@ -1,6 +1,8 @@
 use ethers::{core::k256::elliptic_curve, utils::hex::FromHexError};
 use std::{error::Error, fmt};
 
+use crate::lance_db::shinkai_lancedb_error::ShinkaiLanceDBError;
+
 #[derive(Debug)]
 pub enum WalletError {
     UuidError(uuid::Error),
@@ -25,6 +27,9 @@ pub enum WalletError {
     InvalidPayment(String),
     InvalidUsageType(String),
     TransactionFailed(String),
+    ConfigNotFound,
+    FunctionExecutionError(String),
+    FunctionNotFound(String),
     // Add other error types as needed
 }
 
@@ -55,6 +60,9 @@ impl fmt::Display for WalletError {
             WalletError::InvalidPayment(e) => write!(f, "InvalidPayment: {}", e),
             WalletError::InvalidUsageType(e) => write!(f, "InvalidUsageType: {}", e),
             WalletError::TransactionFailed(e) => write!(f, "TransactionFailed: {}", e),
+            WalletError::ConfigNotFound => write!(f, "ConfigNotFound"),
+            WalletError::FunctionExecutionError(e) => write!(f, "FunctionExecutionError: {}", e),
+            WalletError::FunctionNotFound(e) => write!(f, "FunctionNotFound: {}", e),
         }
     }
 }
@@ -84,6 +92,9 @@ impl Error for WalletError {
             WalletError::InvalidUsageType(_) => None,
             WalletError::InvalidPayment(_) => None,
             WalletError::TransactionFailed(_) => None,
+            WalletError::ConfigNotFound => None,
+            WalletError::FunctionExecutionError(_) => None,
+            WalletError::FunctionNotFound(_) => None,
         }
     }
 }
@@ -103,5 +114,11 @@ impl From<elliptic_curve::Error> for WalletError {
 impl From<FromHexError> for WalletError {
     fn from(error: FromHexError) -> Self {
         WalletError::HexError(error)
+    }
+}
+
+impl From<ShinkaiLanceDBError> for WalletError {
+    fn from(error: ShinkaiLanceDBError) -> Self {
+        WalletError::FunctionExecutionError(error.to_string())
     }
 }

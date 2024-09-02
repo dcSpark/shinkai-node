@@ -8,22 +8,25 @@ use ethers::utils::{format_units, hex, to_checksum};
 use ethers::{core::k256::SecretKey, prelude::*};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use ethers::signers::LocalWallet as EthersLocalWallet;
 use futures::TryFutureExt;
 
+use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use crate::tools::js_toolkit_headers::ToolConfig;
+use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::wallet::erc20_abi::ERC20_ABI;
 use crate::wallet::wallet_error::WalletError;
 
 use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
-
-pub type LocalWalletProvider = Provider<Http>;
 
 #[derive(Debug, Clone)]
 pub struct CoinbaseMPCWallet {
@@ -44,9 +47,241 @@ pub struct CoinbaseMPCWallet {
     // based on what we have in the typescript tools
 }
 
-// List of required tools
-// 1- shinkai-tool-coinbase-create-wallet
-// 2- shinkai-tool-coinbase-get-my-address
-// 3- shinkai-tool-coinbase-get-balance
-// 4- shinkai-tool-coinbase-get-transactions
-// 5- shinkai-tool-coinbase-send-tx
+impl CoinbaseMPCWallet {
+    pub async fn create_wallet(
+        network: Network,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        config: Option<CoinbaseMPCWalletConfig>,
+    ) -> Result<Self, WalletError> {
+        let config = match config {
+            Some(cfg) => cfg,
+            None => {
+                let db = lance_db.lock().await;
+                let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
+                let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
+
+                // Extract the required configuration from the JSTool
+                let mut name = String::new();
+                let mut private_key = String::new();
+                let mut use_server_signer = String::new();
+                if let ShinkaiTool::JS(js_tool, _) = shinkai_tool {
+                    for cfg in js_tool.config {
+                        match cfg {
+                            ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
+                                "name" => name = basic_config.key_value.clone().unwrap_or_default(),
+                                "private_key" => private_key = basic_config.key_value.clone().unwrap_or_default(),
+                                "useServerSigner" => {
+                                    use_server_signer = basic_config.key_value.clone().unwrap_or_default()
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        }
+                    }
+                } else {
+                    return Err(WalletError::ConfigNotFound);
+                }
+
+                CoinbaseMPCWalletConfig {
+                    name,
+                    private_key,
+                    wallet_id: None,
+                    use_server_signer: Some(use_server_signer),
+                }
+            }
+        };
+
+        // Call the function to create the wallet
+        let params = serde_json::json!({
+            "name": config.name,
+            "private_key": config.private_key,
+            "use_server_signer": config.use_server_signer,
+        });
+
+        let response = Self::call_function(config, lance_db.clone(), ShinkaiToolCoinbase::CreateWallet, params).await?;
+
+        // Extract the necessary fields from the response
+        let wallet_id = response
+            .get("walletId")
+            .and_then(|v| v.as_str())
+            .ok_or(WalletError::ConfigNotFound)?
+            .to_string();
+        let address_id = response
+            .get("address")
+            .and_then(|v| v.as_str())
+            .ok_or(WalletError::ConfigNotFound)?
+            .to_string();
+
+        // Use the extracted fields to create the wallet
+        let wallet = CoinbaseMPCWallet {
+            id: wallet_id.clone(),
+            network: network.clone(),
+            address: Address {
+                wallet_id: wallet_id,
+                network_id: network.id,
+                public_key: None,
+                address_id,
+            },
+        };
+
+        Ok(wallet)
+    }
+
+    pub async fn restore_wallet(
+        network: Network,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        config: Option<CoinbaseMPCWalletConfig>,
+        wallet_id: String,
+    ) -> Result<Self, WalletError> {
+        let config = match config {
+            Some(cfg) => cfg,
+            None => {
+                let db = lance_db.lock().await;
+                let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
+                let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
+
+                // Extract the required configuration from the JSTool
+                let mut name = String::new();
+                let mut private_key = String::new();
+                let mut use_server_signer = String::new();
+                if let ShinkaiTool::JS(js_tool, _) = shinkai_tool {
+                    for cfg in js_tool.config {
+                        match cfg {
+                            ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
+                                "name" => name = basic_config.key_value.clone().unwrap_or_default(),
+                                "private_key" => private_key = basic_config.key_value.clone().unwrap_or_default(),
+                                "useServerSigner" => {
+                                    use_server_signer = basic_config.key_value.clone().unwrap_or_default()
+                                }
+                                "walletId" => {
+                                    if basic_config.key_value.is_none() {
+                                        return Err(WalletError::ConfigNotFound);
+                                    }
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        }
+                    }
+                } else {
+                    return Err(WalletError::ConfigNotFound);
+                }
+
+                CoinbaseMPCWalletConfig {
+                    name,
+                    private_key,
+                    wallet_id: Some(wallet_id.clone()),
+                    use_server_signer: Some(use_server_signer),
+                }
+            }
+        };
+
+        // Call the function to restore the wallet
+        let params = serde_json::json!({
+            "name": config.name,
+            "private_key": config.private_key,
+            "use_server_signer": config.use_server_signer,
+            "wallet_id": wallet_id,
+        });
+
+        let response = Self::call_function(config, lance_db.clone(), ShinkaiToolCoinbase::CreateWallet, params).await?;
+
+        // Extract the necessary fields from the response
+        let address_id = response
+            .get("address")
+            .and_then(|v| v.as_str())
+            .ok_or(WalletError::ConfigNotFound)?
+            .to_string();
+
+        // Use the extracted fields to create the wallet
+        let wallet = CoinbaseMPCWallet {
+            id: wallet_id.clone(),
+            network: network.clone(),
+            address: Address {
+                wallet_id: wallet_id,
+                network_id: network.id,
+                public_key: None,
+                address_id,
+            },
+        };
+
+        Ok(wallet)
+    }
+
+    pub async fn call_function(
+        config: CoinbaseMPCWalletConfig,
+        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        function_name: ShinkaiToolCoinbase,
+        params: Value,
+    ) -> Result<Value, WalletError> {
+        let db = lance_db.lock().await;
+        let tool_id = function_name.definition_id();
+        let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
+        let mut function_config = shinkai_tool.get_config_from_env();
+
+        // Convert function_config from String to Value
+        let mut function_config_value: Value = match function_config {
+            Some(config_str) => {
+                serde_json::from_str(&config_str).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?
+            }
+            None => Value::Object(serde_json::Map::new()),
+        };
+
+        // Overwrite function_config_value with values from config
+        function_config_value["name"] = Value::String(config.name);
+        function_config_value["privateKey"] = Value::String(config.private_key);
+        if let Some(use_server_signer) = config.use_server_signer {
+            function_config_value["useServerSigner"] = Value::String(use_server_signer);
+        }
+        if let Some(wallet_id) = config.wallet_id {
+            function_config_value["walletId"] = Value::String(wallet_id);
+        }
+
+        // Convert function_config_value back to String
+        let function_config_str = serde_json::to_string(&function_config_value)
+            .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+
+        if let ShinkaiTool::JS(js_tool, _) = shinkai_tool {
+            let result = js_tool
+                .run(params, Some(function_config_str))
+                .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+            let result_str =
+                serde_json::to_string(&result).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+            return Ok(
+                serde_json::from_str(&result_str).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?
+            );
+        }
+
+        Err(WalletError::FunctionNotFound(tool_id.to_string()))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoinbaseMPCWalletConfig {
+    pub name: String,
+    pub private_key: String,
+    pub wallet_id: Option<String>,
+    pub use_server_signer: Option<String>,
+}
+
+pub enum ShinkaiToolCoinbase {
+    CreateWallet,
+    GetMyAddress,
+    GetBalance,
+    GetTransactions,
+    SendTx,
+    CallFaucet,
+}
+
+impl ShinkaiToolCoinbase {
+    pub fn definition_id(&self) -> &'static str {
+        match self {
+            ShinkaiToolCoinbase::CreateWallet => "shinkai-tool-coinbase-create-wallet",
+            ShinkaiToolCoinbase::GetMyAddress => "shinkai-tool-coinbase-get-my-address",
+            ShinkaiToolCoinbase::GetBalance => "shinkai-tool-coinbase-get-balance",
+            ShinkaiToolCoinbase::GetTransactions => "shinkai-tool-coinbase-get-transactions",
+            ShinkaiToolCoinbase::SendTx => "shinkai-tool-coinbase-send-tx",
+            ShinkaiToolCoinbase::CallFaucet => "shinkai-tool-coinbase-call-faucet",
+        }
+    }
+}
