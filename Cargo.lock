@@ -710,6 +710,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-compression"
+version = "0.4.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fec134f64e2bc57411226dfc4e52dec859ddfc7e711fc5e07b612584f000e4aa"
+dependencies = [
+ "flate2",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "async-executor"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9761,9 +9774,13 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
+<<<<<<< HEAD
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2bd2a80fe75152b566c80651b056911016249ba9cfbd49ea41221a7f1a878fb"
+=======
+version = "0.0.0"
+>>>>>>> 4436b3e9... fixes
 dependencies = [
  "base64-simd",
  "copy_to_output",
@@ -11545,6 +11562,7 @@ version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4378d202ff965b011c64817db11d5829506d3404edeadb61f190d111da3f231c"
 dependencies = [
+ "async-compression",
  "bytes",
  "futures-channel",
  "futures-util",

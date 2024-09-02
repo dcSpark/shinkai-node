@@ -553,6 +553,17 @@ pub enum NodeCommand {
         payload: APIConvertFilesAndSaveToFolder,
         res: Sender<Result<Vec<Value>, APIError>>,
     },
+    V2ApiDownloadFileFromInbox {
+        bearer: String,
+        inbox_name: String,
+        filename: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiListFilesInInbox {
+        bearer: String,
+        inbox_name: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
     V2ApiVecFSCreateFolder {
         bearer: String,
         payload: APIVecFsCreateFolder,

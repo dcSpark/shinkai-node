@@ -83,3 +83,4 @@ lancedb_storage_debug_my_local_ai
 storage_debug_serve_mode
 shinkai-bin/shinkai-node/lancedb_tests
 shinkai-tools-runner-resources
+shinkai-bin/shinkai-node/shinkai_db_tests

@@ -2694,6 +2694,20 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiDownloadFileFromInbox { bearer, inbox_name, filename, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_download_file_from_inbox(db_clone, vector_fs_clone, bearer, inbox_name, filename, res).await;
+                });
+            }
+            NodeCommand::V2ApiListFilesInInbox { bearer, inbox_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_files_in_inbox(db_clone, vector_fs_clone, bearer, inbox_name, res).await;
+                });
+            }
             _ => (),
         }
     }
