@@ -1255,22 +1255,6 @@ impl Node {
                 return Ok(());
             }
         }
-        {
-            // remove inbox
-            match vector_fs.db.remove_inbox(&input_payload.file_inbox) {
-                Ok(files) => files,
-                Err(err) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("{}", err),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            }
-        }
 
         // We need to force ext_manager to update their cache
         {

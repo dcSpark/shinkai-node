@@ -865,4 +865,65 @@ impl Node {
             }
         }
     }
+
+    pub async fn v2_api_download_file_from_inbox(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        bearer: String,
+        inbox_name: String,
+        filename: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the file from the inbox
+        match vector_fs.db.get_file_from_inbox(inbox_name, filename) {
+            Ok(file_data) => {
+                let _ = res.send(Ok(file_data)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve file from inbox: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_list_files_in_inbox(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        bearer: String,
+        inbox_name: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // List the files in the inbox
+        match vector_fs.db.get_all_filenames_from_inbox(inbox_name) {
+            Ok(file_list) => {
+                let _ = res.send(Ok(file_list)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list files in inbox: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
 }

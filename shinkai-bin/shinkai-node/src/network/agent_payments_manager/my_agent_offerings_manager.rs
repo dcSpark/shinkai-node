@@ -351,6 +351,7 @@ impl MyAgentOfferingsManager {
     }
 
     // Note: Only For Testing (!!!)
+    // tODO: it could be re-purposed for auto-payment if we have a preset of rules and whitelisted tools
     // We want to have a way to confirm payment from the user perspective
     // Fn: Automatically verify and pay an invoice, then send receipt and data to the provider
     pub async fn auto_pay_invoice(&self, invoice: Invoice) -> Result<(), AgentOfferingManagerError> {
@@ -402,8 +403,6 @@ impl MyAgentOfferingsManager {
             let receiver_public_key = standard_identity.node_encryption_public_key;
             let proxy_builder_info =
                 get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
-
-            // TODO: we need to expand the payload to include the data that the provider needs to process the job
 
             // Generate the message to send the receipt and data
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -721,6 +720,8 @@ mod tests {
             request_date_time: Utc::now(),
             invoice_date_time: Utc::now(),
             tool_data: None,
+            response_date_time: None,
+            result_str: None,
         };
 
         // Call verify_invoice

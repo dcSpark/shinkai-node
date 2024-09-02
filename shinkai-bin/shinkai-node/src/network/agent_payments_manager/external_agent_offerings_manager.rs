@@ -1,4 +1,6 @@
 use crate::db::{ShinkaiDB, Topic};
+use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
@@ -28,7 +30,7 @@ use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::invoices::{Invoice, InvoicePayment, InvoiceRequest, InvoiceStatusEnum};
+use super::invoices::{Invoice, InvoiceRequest, InvoiceStatusEnum};
 use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
 #[derive(Debug, Clone)]
@@ -70,7 +72,7 @@ pub struct ExtAgentOfferingsManager {
     // Identity manager like trait
     pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     // pub shared_tools: Arc<DashMap<String, ShinkaiToolOffering>>, // (streamer_profile:::path, shared_folder)
-    pub offerings_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
+    pub offerings_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
     pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub tool_router: Weak<Mutex<ToolRouter>>,
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
@@ -93,7 +95,7 @@ impl ExtAgentOfferingsManager {
         // need tool_router
     ) -> Self {
         let db_prefix = "shinkai__tool__offering_"; // dont change it
-        let offerings_queue = JobQueueManager::<InvoicePayment>::new(
+        let offerings_queue = JobQueueManager::<Invoice>::new(
             db.clone(),
             Topic::AnyQueuesPrefixed.as_str(),
             Some(db_prefix.to_string()),
@@ -160,7 +162,7 @@ impl ExtAgentOfferingsManager {
     // TODO: Should be split this into two? one for invoices and one for actual tool jobs?
     #[allow(clippy::too_many_arguments)]
     pub async fn process_offerings_queue(
-        offering_queue_manager: Arc<Mutex<JobQueueManager<InvoicePayment>>>,
+        offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
@@ -172,7 +174,7 @@ impl ExtAgentOfferingsManager {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         tool_router: Weak<Mutex<ToolRouter>>,
         process_job: impl Fn(
-                InvoicePayment,
+                Invoice,
                 Weak<ShinkaiDB>,
                 Weak<VectorFS>,
                 ShinkaiName,
@@ -239,11 +241,8 @@ impl ExtAgentOfferingsManager {
                 };
                 // TODO: Sort jobs by paid and then by inquiry
 
-                for invoice_payment in jobs_sorted {
-                    eprintln!(
-                        ">> (process_offerings_queue) Processing job_offering: {:?}",
-                        invoice_payment
-                    );
+                for invoice in jobs_sorted {
+                    eprintln!(">> (process_offerings_queue) Processing job_offering: {:?}", invoice);
                     let offering_queue_manager = Arc::clone(&offering_queue_manager);
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = semaphore.clone();
@@ -255,7 +254,7 @@ impl ExtAgentOfferingsManager {
                     let identity_manager = identity_manager.clone();
                     let process_job = process_job.clone();
                     let proxy_connection_info = proxy_connection_info.clone();
-                    let invoice_payment = invoice_payment.clone();
+                    let invoice = invoice.clone();
                     let tool_router = tool_router.clone();
 
                     let handle = tokio::spawn(async move {
@@ -264,7 +263,7 @@ impl ExtAgentOfferingsManager {
                         // Acquire the lock, process the job, and immediately release the lock
                         let result = {
                             let result = process_job(
-                                invoice_payment.clone(),
+                                invoice.clone(),
                                 db.clone(),
                                 vector_fs.clone(),
                                 node_name.clone(),
@@ -278,14 +277,14 @@ impl ExtAgentOfferingsManager {
                             if let Ok(Some(_)) = offering_queue_manager
                                 .lock()
                                 .await
-                                .dequeue(invoice_payment.invoice_id.as_str())
+                                .dequeue(invoice.invoice_id.as_str())
                                 .await
                             {
                                 result
                             } else {
                                 Err(AgentOfferingManagerError::OperationFailed(format!(
                                     "Failed to dequeue job: {}",
-                                    invoice_payment.invoice_id.as_str()
+                                    invoice.invoice_id.as_str()
                                 )))
                             }
                         };
@@ -307,7 +306,7 @@ impl ExtAgentOfferingsManager {
                         }
 
                         drop(_permit);
-                        processing_jobs.lock().await.remove(&invoice_payment.invoice_id);
+                        processing_jobs.lock().await.remove(&invoice.invoice_id);
                     });
                     handles.push(handle);
                 }
@@ -336,7 +335,7 @@ impl ExtAgentOfferingsManager {
 
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
-        invoice_payment: InvoicePayment,
+        invoice: Invoice,
         db: Weak<ShinkaiDB>,
         _vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
@@ -485,6 +484,8 @@ impl ExtAgentOfferingsManager {
             request_date_time: invoice_request.request_date_time,
             invoice_date_time: Utc::now(),
             tool_data: None,
+            result_str: None,
+            response_date_time: None,
         };
 
         // Store the new invoice in the database
@@ -549,22 +550,59 @@ impl ExtAgentOfferingsManager {
     pub async fn confirm_invoice_payment_and_process(
         &mut self,
         requester_node_name: ShinkaiName,
-        invoice_id: String,
-        signed_invoice: String, // TODO: maybe not required? we could just look into the db
-        prehash_validation: String,
-        process_data: Value,
-        payment_id: String,
-        payment_amount: String,
-    ) -> Result<InvoicePayment, AgentOfferingManagerError> {
-        let invoice_payment = InvoicePayment {
-            invoice_id,
-            date_time: Utc::now(),
-            signed_invoice,
-            payment_id,
-            payment_amount,
-            payment_time: Utc::now(),
-            requester_node_name,
-        };
+        invoice: Invoice,
+        // prehash_validation: String, // TODO: connect later on
+    ) -> Result<Invoice, AgentOfferingManagerError> {
+        // Step 1: verify that the invoice is actually real
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        let mut local_invoice = db
+            .get_invoice(&invoice.invoice_id)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
+
+        // Step 2: verify that the invoice is actually paid
+        // For that we grab the tx_hash and we check that it was paid
+        // We also need to check that a previous tx_hash wasn't reused (!)
+        // Also check matching amounts
+
+        // TODO: ^
+
+        // Step 3: we extract the data_payload and then we call the tool with it
+        let data_payload = invoice.tool_data.unwrap_or_default();
+        {
+            let tool_router = self.tool_router.upgrade().ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("Failed to upgrade tool_router reference".to_string())
+            })?;
+            let tool_router_lock = tool_router.lock().await;
+
+            // js tool name
+            let local_tool_key = local_invoice.shinkai_offering.convert_tool_to_local().map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!(
+                    "Failed to convert tool_key to local tool_key: {:?}",
+                    e
+                ))
+            })?;
+
+            let result = tool_router_lock
+                .call_js_function(data_payload, &local_tool_key)
+                .await
+                .map_err(|e: LLMProviderError| {
+                    AgentOfferingManagerError::OperationFailed(format!("LLMProviderError: {:?}", e))
+                })?;
+
+            println!("result: {:?}", result);
+
+            local_invoice.result_str = Some(result);
+            local_invoice.status = InvoiceStatusEnum::Processed;
+            local_invoice.response_date_time = Some(Utc::now());
+
+            db.set_invoice(&local_invoice).map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e))
+            })?;
+        }
 
         // TODO: we need the transaction_id and then call the crypto service to verify the payment
         // Note: how do we know that this identity actually was the one that paid for it? -> prehash validation
@@ -575,7 +613,56 @@ impl ExtAgentOfferingsManager {
         // What happens if you want to crawl a website, but the website is down? should we refund the payment?
         // What happens if the job is done, but the requester is not happy with the result? should we refund the payment?
 
-        Ok(invoice_payment)
+        Ok(local_invoice)
+    }
+
+    pub async fn network_confirm_invoice_payment_and_process(
+        &mut self,
+        requester_node_name: ShinkaiName,
+        invoice: Invoice,
+    ) -> Result<(), AgentOfferingManagerError> {
+        // Call confirm_invoice_payment_and_process to process the invoice
+        let local_invoice = self.confirm_invoice_payment_and_process(requester_node_name.clone(), invoice.clone()).await?;
+
+        // Continue
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&requester_node_name.to_string())
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info =
+                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+
+            // Send result back to requester
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                local_invoice.clone(),
+                MessageSchemaType::InvoiceResult,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                requester_node_name.to_string(),
+                "main".to_string(),
+                proxy_builder_info,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -587,7 +674,8 @@ mod tests {
         lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
         network::agent_payments_manager::shinkai_tool_offering::{AssetPayment, ToolPrice},
         schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
-        tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool}, wallet::mixed::{Asset, NetworkIdentifier},
+        tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool},
+        wallet::mixed::{Asset, NetworkIdentifier},
     };
 
     use super::*;

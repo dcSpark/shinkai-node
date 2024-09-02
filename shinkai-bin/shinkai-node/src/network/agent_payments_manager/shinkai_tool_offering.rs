@@ -36,6 +36,19 @@ impl ShinkaiToolOffering {
             _ => None,
         }
     }
+
+    pub fn convert_tool_to_local(&self) -> Result<String, String> {
+        let parts: Vec<&str> = self.tool_key.split(":::").collect();
+        if parts.len() < 3 {
+            return Err("Invalid tool_key format".to_string());
+        }
+
+        let toolkit_name = parts[1];
+        let tool_name = parts[2];
+
+        let local_tool_key = format!("local:::{}:::{}", toolkit_name, tool_name);
+        Ok(local_tool_key)
+    }
 }
 
 // Updated enum to include aliases for prices
@@ -155,5 +168,17 @@ mod tests {
         } else {
             panic!("UsageType did not match expected value");
         }
+    }
+
+    #[test]
+    fn test_convert_tool_to_local() {
+        let offering = ShinkaiToolOffering {
+            tool_key: "node1:::toolkit1:::tool1".to_string(),
+            usage_type: UsageType::PerUse(ToolPrice::Free),
+            meta_description: None,
+        };
+
+        let result = offering.convert_tool_to_local();
+        assert_eq!(result.unwrap(), "local:::toolkit1:::tool1");
     }
 }

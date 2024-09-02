@@ -89,7 +89,8 @@ pub enum MessageSchemaType {
     SearchShinkaiTool,
     InvoiceRequest,
     Invoice,
-    PaidInvoice
+    PaidInvoice,
+    InvoiceResult
 }
 
 impl MessageSchemaType {
@@ -174,6 +175,7 @@ impl MessageSchemaType {
             "InvoiceRequest" => Some(Self::InvoiceRequest),
             "Invoice" => Some(Self::Invoice),
             "PaidInvoice" => Some(Self::PaidInvoice),
+            "InvoiceResult" => Some(Self::InvoiceResult),
             _ => None,
         }
     }
@@ -258,6 +260,7 @@ impl MessageSchemaType {
             Self::InvoiceRequest => "InvoiceRequest",
             Self::Invoice => "Invoice",
             Self::PaidInvoice => "PaidInvoice",
+            Self::InvoiceResult => "InvoiceResult",
             Self::Empty => "",
         }
     }

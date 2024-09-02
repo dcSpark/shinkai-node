@@ -617,7 +617,7 @@ fn micropayment_flow_test() {
                     .send(NodeCommand::V2ApiPayInvoice {
                         bearer: api_v2_key.to_string(),
                         invoice_id: invoice_id.clone(),
-                        data_for_tool: serde_json::json!({ "input_message": "Hello, Shinkai!" }),
+                        data_for_tool: serde_json::json!({ "message": "Hello, Shinkai!" }),
                         res: sender,
                     })
                     .await
@@ -631,6 +631,11 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Failed to pay invoice: {:?}", e),
                 }
             }
+            // TODO?: I need another loop command to check if the result was processed by node1?
+            // Note: do I need to store that?
+
+            // TODO: Check in node2 if it received the response from node1 of the tool execution
+
             // add sleep 5 seconds
             tokio::time::sleep(Duration::from_secs(10000)).await;
 

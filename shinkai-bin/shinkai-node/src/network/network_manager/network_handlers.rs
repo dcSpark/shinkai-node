@@ -3,7 +3,8 @@ use crate::{
     managers::IdentityManager,
     network::{
         agent_payments_manager::{
-            external_agent_offerings_manager::ExtAgentOfferingsManager, invoices::{Invoice, InvoiceRequest},
+            external_agent_offerings_manager::ExtAgentOfferingsManager,
+            invoices::{Invoice, InvoiceRequest},
             my_agent_offerings_manager::MyAgentOfferingsManager,
         },
         node::ProxyConnectionInfo,
@@ -1150,11 +1151,79 @@ pub async fn handle_network_message_cases(
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
-                        &format!("{} > PaidInvoice Received from: {:?} to: {:?}", receiver_address, requester, receiver),
+                        &format!(
+                            "{} > PaidInvoice Received from: {:?} to: {:?}",
+                            receiver_address, requester, receiver
+                        ),
                     );
                     println!("PaidInvoice Received from: {:?} to {:?}", requester, receiver);
 
+                    let ext_agent_offering_manager = if let Some(manager) = external_agent_offering_manager.upgrade() {
+                        manager
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            "Failed to upgrade external_agent_offering_manager",
+                        );
+                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                    };
 
+                    let content = message.get_message_content().unwrap_or("".to_string());
+                    match serde_json::from_str::<Invoice>(&content) {
+                        Ok(invoice) => {
+                            let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
+                            ext_agent_offering_manager
+                                .network_confirm_invoice_payment_and_process(requester, invoice)
+                                .await?;
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to deserialize JSON to Invoice: {}", e),
+                            );
+                            eprintln!("Failed to deserialize JSON to Invoice: {}", e);
+                        }
+                    }
+                }
+                MessageSchemaType::InvoiceResult => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("{} > InvoiceResult Received from: {:?} to: {:?}", receiver_address, requester, receiver),
+                    );
+                    println!("InvoiceResult Received from: {:?} to {:?}", requester, receiver);
+
+                    let my_agent_offering_manager = if let Some(manager) = my_agent_offering_manager.upgrade() {
+                        manager
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            "Failed to upgrade my_agent_offering_manager",
+                        );
+                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                    };
+
+                    let content = message.get_message_content().unwrap_or("".to_string());
+                    match serde_json::from_str::<Invoice>(&content) {
+                        Ok(invoice_result) => {
+                            println!("Invoice result received: {:?}", invoice_result);
+                            let my_agent_offering_manager = my_agent_offering_manager.lock().await;
+                            // my_agent_offering_manager.store_invoice_result(invoice_result).await?;
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to deserialize JSON to InvoiceResult: {}", e),
+                            );
+                            eprintln!("Failed to deserialize JSON to InvoiceResult: {}", e);
+                        }
+                    }
                 }
                 _ => {
                     // Ignore other schemas
