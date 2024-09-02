@@ -157,15 +157,15 @@ impl LocalEthersWallet {
     }
 
     pub async fn prepare_transaction_request(
-        from_wallet: &LocalEthersWallet,
+        _from_wallet: &LocalEthersWallet,
         to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: U256,
         provider_url: String,
         invoice_id: String,
     ) -> Result<TypedTransaction, WalletError> {
-        let provider = Provider::<Http>::try_from(provider_url)
-            .map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
+        let provider =
+            Provider::<Http>::try_from(provider_url).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
         let chain_id = provider
             .get_chainid()
             .await
@@ -183,11 +183,7 @@ impl LocalEthersWallet {
                 .ok_or_else(|| WalletError::MissingContractAddress(token.asset_id.clone()))?
                 .parse::<EthersAddress>()
                 .map_err(|e| WalletError::InvalidAddress(e.to_string()))?;
-            let contract = Contract::new(
-                contract_address,
-                ERC20_ABI.clone(),
-                Arc::new(provider.clone()),
-            );
+            let contract = Contract::new(contract_address, ERC20_ABI.clone(), Arc::new(provider.clone()));
             let call = contract
                 .method::<(EthersAddress, U256), bool>(
                     "transfer",
@@ -198,28 +194,39 @@ impl LocalEthersWallet {
                     ),
                 )
                 .map_err(|e| WalletError::ContractError(e.to_string()))?;
-            
+
             // Encode the function call data
-            let data = call.tx.data().ok_or_else(|| WalletError::ContractError("Failed to encode data".to_string()))?.0.to_vec();
-            
+            let data = call
+                .tx
+                .data()
+                .ok_or_else(|| WalletError::ContractError("Failed to encode data".to_string()))?
+                .0
+                .to_vec();
+
             tx = tx.to(NameOrAddress::Address(contract_address)).data(data);
         } else {
-            tx = tx.to(NameOrAddress::Address(
-                EthersAddress::from_str(&to_wallet.address_id)
-                    .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-            ))
-            .value(send_amount)
-            .data(format!("kai:{}", invoice_id).into_bytes());
+            tx = tx
+                .to(NameOrAddress::Address(
+                    EthersAddress::from_str(&to_wallet.address_id)
+                        .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+                ))
+                .value(send_amount)
+                .data(format!("kai:{}", invoice_id).into_bytes());
         }
 
         // Set max fee per gas and max priority fee per gas
-        let max_fee_per_gas = provider.get_gas_price().await.map_err(|e| WalletError::ProviderError(e.to_string()))?;
-        let max_priority_fee_per_gas = U256::from(2_000_000_000); // 2 Gwei
+        let max_fee_per_gas = provider
+            .get_gas_price()
+            .await
+            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+        let max_priority_fee_per_gas = U256::from(2_000_000_000); // 2 Gwei // TODO: If we delete this, it should still work (automatically calculated by the network?)
 
         // Ensure max_fee_per_gas is at least max_priority_fee_per_gas
         let adjusted_max_fee_per_gas = std::cmp::max(max_fee_per_gas, max_priority_fee_per_gas);
 
-        tx = tx.max_fee_per_gas(adjusted_max_fee_per_gas).max_priority_fee_per_gas(max_priority_fee_per_gas);
+        tx = tx
+            .max_fee_per_gas(adjusted_max_fee_per_gas)
+            .max_priority_fee_per_gas(max_priority_fee_per_gas);
 
         // Debug prints
         println!("Max Fee Per Gas: {:?}", tx.max_fee_per_gas);
@@ -271,7 +278,8 @@ impl LocalEthersWallet {
             let tx_hash = receipt.transaction_hash;
             println!("tx_hash: {:?}", tx_hash);
             let tx_result = receipt.status.unwrap_or(U64::from(0)); // Convert 0 to U64
-            if tx_result == U64::from(0) { // Convert 0 to U64
+            if tx_result == U64::from(0) {
+                // Convert 0 to U64
                 return Err(WalletError::TransactionFailed(tx_hash.to_string()));
             }
             Ok(tx_hash)
