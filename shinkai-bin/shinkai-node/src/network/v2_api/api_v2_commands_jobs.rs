@@ -9,7 +9,9 @@ use shinkai_message_primitives::{
         llm_providers::serialized_llm_provider::SerializedLLMProvider,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
-    shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage},
+    shinkai_message::shinkai_message_schemas::{
+        APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+    },
 };
 
 use tokio::sync::Mutex;
@@ -332,6 +334,60 @@ impl Node {
         // Convert the retrieved messages to V2ChatMessage
         let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
             Ok(v2_messages) => v2_messages.into_iter().filter_map(|msg| msg.first().cloned()).collect(),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Send the converted messages back to the requester
+        if let Err(_) = res.send(Ok(v2_chat_messages)).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Failed to send messages".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_get_last_messages_from_inbox_with_branches(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+        res: Sender<Result<Vec<Vec<V2ChatMessage>>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the last messages from the inbox
+        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), limit, offset_key.clone()) {
+            Ok(messages) => messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the retrieved messages to Vec<Vec<V2ChatMessage>>
+        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+            Ok(v2_messages) => v2_messages,
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

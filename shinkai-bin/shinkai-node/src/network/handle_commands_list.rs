@@ -1946,6 +1946,26 @@ impl Node {
                         .await;
                 });
             }
+            NodeCommand::V2ApiGetLastMessagesFromInboxWithBranches {
+                bearer,
+                inbox_name,
+                limit,
+                offset_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_get_last_messages_from_inbox_with_branches(
+                        db_clone,
+                        bearer,
+                        inbox_name,
+                        limit,
+                        offset_key,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiGetAllSmartInboxes { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();

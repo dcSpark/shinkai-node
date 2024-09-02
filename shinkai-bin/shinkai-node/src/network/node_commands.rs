@@ -520,6 +520,13 @@ pub enum NodeCommand {
         offset_key: Option<String>,
         res: Sender<Result<Vec<V2ChatMessage>, APIError>>,
     },
+    V2ApiGetLastMessagesFromInboxWithBranches {
+        bearer: String,
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+        res: Sender<Result<Vec<Vec<V2ChatMessage>>, APIError>>,
+    },
     V2ApiCreateJob {
         bearer: String,
         job_creation_info: JobCreationInfo,
