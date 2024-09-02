@@ -12,7 +12,7 @@ use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -33,6 +33,8 @@ pub struct CoinbaseMPCWallet {
     pub id: String,
     pub network: Network,
     pub address: Address,
+    pub config: CoinbaseMPCWalletConfig,
+    pub lance_db: Weak<Mutex<LanceShinkaiDb>>, // Added field to store Weak reference
     // pub wallet: Wallet<SigningKey>,
     // pub provider: LocalWalletProvider,
 
@@ -50,13 +52,14 @@ pub struct CoinbaseMPCWallet {
 impl CoinbaseMPCWallet {
     pub async fn create_wallet(
         network: Network,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Weak<Mutex<LanceShinkaiDb>>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<Self, WalletError> {
-        let config = match config {
+        let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
+        let mut config = match config {
             Some(cfg) => cfg,
             None => {
-                let db = lance_db.lock().await;
+                let db = lance_db_strong.lock().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
 
@@ -94,11 +97,17 @@ impl CoinbaseMPCWallet {
         // Call the function to create the wallet
         let params = serde_json::json!({
             "name": config.name,
-            "private_key": config.private_key,
-            "use_server_signer": config.use_server_signer,
+            "privateKey": config.private_key,
+            "useServerSigner": config.use_server_signer,
         });
 
-        let response = Self::call_function(config, lance_db.clone(), ShinkaiToolCoinbase::CreateWallet, params).await?;
+        let response = Self::call_function(
+            config.clone(),
+            lance_db.clone(),
+            ShinkaiToolCoinbase::CreateWallet,
+            params,
+        )
+        .await?;
 
         // Extract the necessary fields from the response
         let wallet_id = response
@@ -112,9 +121,13 @@ impl CoinbaseMPCWallet {
             .ok_or(WalletError::ConfigNotFound)?
             .to_string();
 
+        // Update the config with the wallet_id
+        config.wallet_id = Some(wallet_id.clone());
+
         // Use the extracted fields to create the wallet
         let wallet = CoinbaseMPCWallet {
             id: wallet_id.clone(),
+            config,
             network: network.clone(),
             address: Address {
                 wallet_id: wallet_id,
@@ -122,6 +135,7 @@ impl CoinbaseMPCWallet {
                 public_key: None,
                 address_id,
             },
+            lance_db, // Store the Weak reference
         };
 
         Ok(wallet)
@@ -129,14 +143,15 @@ impl CoinbaseMPCWallet {
 
     pub async fn restore_wallet(
         network: Network,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Weak<Mutex<LanceShinkaiDb>>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<Self, WalletError> {
+        let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
         let config = match config {
             Some(cfg) => cfg,
             None => {
-                let db = lance_db.lock().await;
+                let db = lance_db_strong.lock().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
 
@@ -179,12 +194,18 @@ impl CoinbaseMPCWallet {
         // Call the function to restore the wallet
         let params = serde_json::json!({
             "name": config.name,
-            "private_key": config.private_key,
-            "use_server_signer": config.use_server_signer,
-            "wallet_id": wallet_id,
+            "privateKey": config.private_key,
+            "useServerSigner": config.use_server_signer,
+            "walletId": wallet_id,
         });
 
-        let response = Self::call_function(config, lance_db.clone(), ShinkaiToolCoinbase::CreateWallet, params).await?;
+        let response = Self::call_function(
+            config.clone(),
+            lance_db.clone(),
+            ShinkaiToolCoinbase::CreateWallet,
+            params,
+        )
+        .await?;
 
         // Extract the necessary fields from the response
         let address_id = response
@@ -197,12 +218,14 @@ impl CoinbaseMPCWallet {
         let wallet = CoinbaseMPCWallet {
             id: wallet_id.clone(),
             network: network.clone(),
+            config,
             address: Address {
                 wallet_id: wallet_id,
                 network_id: network.id,
                 public_key: None,
                 address_id,
             },
+            lance_db, // Store the Weak reference
         };
 
         Ok(wallet)
@@ -210,14 +233,15 @@ impl CoinbaseMPCWallet {
 
     pub async fn call_function(
         config: CoinbaseMPCWalletConfig,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Weak<Mutex<LanceShinkaiDb>>, // Changed to Weak
         function_name: ShinkaiToolCoinbase,
         params: Value,
     ) -> Result<Value, WalletError> {
-        let db = lance_db.lock().await;
+        let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
+        let db = lance_db_strong.lock().await;
         let tool_id = function_name.definition_id();
         let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
-        let mut function_config = shinkai_tool.get_config_from_env();
+        let function_config = shinkai_tool.get_config_from_env();
 
         // Convert function_config from String to Value
         let mut function_config_value: Value = match function_config {
@@ -253,6 +277,53 @@ impl CoinbaseMPCWallet {
         }
 
         Err(WalletError::FunctionNotFound(tool_id.to_string()))
+    }
+}
+
+impl IsWallet for CoinbaseMPCWallet {}
+
+impl PaymentWallet for CoinbaseMPCWallet {
+    // No additional methods needed, as they are covered by SendActions and CommonActions
+}
+
+impl ReceivingWallet for CoinbaseMPCWallet {
+    // No additional methods needed, as they are covered by SendActions and CommonActions
+}
+
+impl CommonActions for CoinbaseMPCWallet {
+    fn get_payment_address(&self) -> PublicAddress {
+        self.address.clone().into()
+    }
+
+    fn get_address(&self) -> Address {
+        self.address.clone()
+    }
+
+    fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
+        let config = self.config.clone();
+        let lance_db = self.lance_db.clone(); // Use the Weak reference
+        
+        Box::pin(async move {
+            let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
+            let params = serde_json::json!({
+                "walletId": config.wallet_id,
+            });
+
+            let response = CoinbaseMPCWallet::call_function(
+                config,
+                lance_db_strong,
+                ShinkaiToolCoinbase::GetBalance,
+                params,
+            ).await?;
+
+            let balance_str = response
+                .get("balance")
+                .and_then(|v| v.as_str())
+                .ok_or(WalletError::ConfigNotFound)?;
+
+            let balance: f64 = balance_str.parse().map_err(|e| WalletError::ConversionError(e.to_string()))?;
+            Ok(balance)
+        })
     }
 }
 
