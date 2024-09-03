@@ -7,4 +7,8 @@ pub fn setup() {
 
     let lance_path = Path::new("lance_db_tests/");
     let _ = fs::remove_dir_all(lance_path);
+
+    let lance_path = Path::new("lancedb_tests/");
+    let _ = fs::remove_dir_all(lance_path);
+
 }

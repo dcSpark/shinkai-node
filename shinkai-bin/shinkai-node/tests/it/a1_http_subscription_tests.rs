@@ -331,7 +331,7 @@ fn http_subscription_manager_test() {
                     node1_profile_name,
                     "/shinkai_sharing_http_test/internal_folder_1",
                     file_path,
-                    0,
+                    1,
                 )
                 .await;
             }
