@@ -355,16 +355,6 @@ impl Sheet {
         self.columns.iter().map(|(index, def)| (index.clone(), def)).collect()
     }
 
-    fn get_column_formula(&self, col: UuidString) -> Option<String> {
-        self.columns.get(&col).and_then(|col_def| {
-            if let ColumnBehavior::Formula(formula) = &col_def.behavior {
-                Some(formula.clone())
-            } else {
-                None
-            }
-        })
-    }
-
     /// This function retrieves the input cells for a given column in a specific row.
     /// Inputs for a column are other cells that the column depends on, based on its behavior.
     /// For example, if the column has a formula, the input cells are those referenced in the formula.

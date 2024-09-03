@@ -9,12 +9,13 @@ mod tests {
     use shinkai_message_primitives::shinkai_message::shinkai_message::{
         ExternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage,
     };
-    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, RegistrationCodeRequest};
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobCreationInfo, JobMessage, RegistrationCodeRequest};
     use shinkai_message_primitives::shinkai_utils::encryption::{
         encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
         EncryptionMethod,
     };
     use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
     use shinkai_message_primitives::shinkai_utils::signatures::{
         signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
     };
@@ -22,7 +23,6 @@ mod tests {
     use shinkai_message_wasm::shinkai_wasm_wrappers::inbox_name_wrapper::InboxNameWrapper;
     use shinkai_message_wasm::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
     use shinkai_message_wasm::{ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper};
-    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_test::*;
 
@@ -1594,5 +1594,73 @@ mod tests {
             content["max_files_to_scan"].as_i64(),
             max_files_to_scan.map(|m| m as i64)
         );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_job_creation() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let scope = JobScope::new_default();
+        let scope_jsvalue = serde_wasm_bindgen::to_value(&scope).unwrap();
+        let associated_ui = serde_wasm_bindgen::to_value(&AssociatedUI::Sheet("sheet_id".to_string())).unwrap();
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
+        let sender_subidentity = ShinkaiNameString::from("main");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "receiver_subidentity".to_string();
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::job_creation(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            scope_jsvalue,
+            false,
+            associated_ui,
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &message_result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("job_creation() returned an error: {:?}", e);
+        }
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Deserialize the body and check its content
+        let body = match message.body {
+            MessageBody::Unencrypted(body) => body,
+            _ => panic!("Unexpected MessageBody variant"),
+        };
+
+        let job_creation_info: JobCreationInfo = match body.message_data {
+            MessageData::Unencrypted(data) => serde_json::from_str(&data.message_raw_content).unwrap(),
+            _ => panic!("Unexpected MessageData variant"),
+        };
+        assert_eq!(job_creation_info.scope, scope);
+        assert_eq!(job_creation_info.is_hidden, Some(false));
+        assert_eq!(job_creation_info.associated_ui, Some(AssociatedUI::Sheet("sheet_id".to_string())));
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata;
+        assert_eq!(internal_metadata.sender_subidentity, sender_subidentity.to_string());
+        assert_eq!(internal_metadata.recipient_subidentity, receiver_subidentity);
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
     }
 }

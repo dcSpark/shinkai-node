@@ -13,7 +13,7 @@ use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 fn create_new_job(db: &mut ShinkaiDB, job_id: String, agent_id: String, scope: JobScope) {
-    match db.create_new_job(job_id, agent_id, scope, false) {
+    match db.create_new_job(job_id, agent_id, scope, false, None) {
         Ok(_) => (),
         Err(e) => panic!("Failed to create a new job: {}", e),
     }

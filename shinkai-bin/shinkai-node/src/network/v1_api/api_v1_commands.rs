@@ -892,6 +892,20 @@ impl Node {
                             identity_type: standard_identity_type,
                             permission_type,
                         };
+
+                        let api_v2_key = match db.read_api_v2_key() {
+                            Ok(Some(api_key)) => api_key,
+                            Ok(None) | Err(_) => {
+                                let api_error = APIError {
+                                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                                    error: "Unauthorized".to_string(),
+                                    message: "Invalid bearer token".to_string(),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        };
+
                         let mut subidentity_manager = identity_manager.lock().await;
                         match subidentity_manager.add_profile_subidentity(subidentity).await {
                             Ok(_) => {
@@ -900,6 +914,7 @@ impl Node {
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
+                                    api_v2_key
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -984,6 +999,19 @@ impl Node {
                             permission_type,
                         };
 
+                        let api_v2_key = match db.read_api_v2_key() {
+                            Ok(Some(api_key)) => api_key,
+                            Ok(None) | Err(_) => {
+                                let api_error = APIError {
+                                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                                    error: "Unauthorized".to_string(),
+                                    message: "Invalid bearer token".to_string(),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        };
+
                         let mut identity_manager_mut = identity_manager.lock().await;
                         match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
@@ -1009,6 +1037,7 @@ impl Node {
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
+                                    api_v2_key,
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }

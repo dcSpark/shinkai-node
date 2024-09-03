@@ -243,8 +243,9 @@ pub async fn initial_registration_handler(
 )]
 pub async fn get_local_processing_preference_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetLocalProcessingPreference {
@@ -273,9 +274,10 @@ pub async fn get_local_processing_preference_handler(
 )]
 pub async fn update_local_processing_preference_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     preference: bool,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiUpdateLocalProcessingPreference {
@@ -304,8 +306,9 @@ pub async fn update_local_processing_preference_handler(
 )]
 pub async fn get_default_embedding_model_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetDefaultEmbeddingModel {
@@ -333,8 +336,9 @@ pub async fn get_default_embedding_model_handler(
 )]
 pub async fn get_supported_embedding_models_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetSupportedEmbeddingModels {
@@ -363,9 +367,10 @@ pub async fn get_supported_embedding_models_handler(
 )]
 pub async fn update_default_embedding_model_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     model_name: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiUpdateDefaultEmbeddingModel {
@@ -395,9 +400,10 @@ pub async fn update_default_embedding_model_handler(
 )]
 pub async fn update_supported_embedding_models_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     models: Vec<String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiUpdateSupportedEmbeddingModels {
@@ -427,9 +433,10 @@ pub async fn update_supported_embedding_models_handler(
 )]
 pub async fn add_llm_provider_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     agent: SerializedLLMProvider,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiAddLlmProvider {
@@ -459,9 +466,10 @@ pub async fn add_llm_provider_handler(
 )]
 pub async fn remove_llm_provider_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     llm_provider_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiRemoveLlmProvider {
@@ -491,9 +499,10 @@ pub async fn remove_llm_provider_handler(
 )]
 pub async fn modify_llm_provider_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     agent: SerializedLLMProvider,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiModifyLlmProvider {
@@ -523,9 +532,10 @@ pub async fn modify_llm_provider_handler(
 )]
 pub async fn change_node_name_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     new_name: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiChangeNodesName {
@@ -554,8 +564,9 @@ pub async fn change_node_name_handler(
 )]
 pub async fn is_pristine_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiIsPristine {
@@ -583,8 +594,9 @@ pub async fn is_pristine_handler(
 )]
 pub async fn scan_ollama_models_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiScanOllamaModels {
@@ -613,9 +625,10 @@ pub async fn scan_ollama_models_handler(
 )]
 pub async fn add_ollama_models_handler(
     sender: Sender<NodeCommand>,
-    bearer: String,
+    authorization: String,
     payload: APIAddOllamaModels,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiAddOllamaModels {

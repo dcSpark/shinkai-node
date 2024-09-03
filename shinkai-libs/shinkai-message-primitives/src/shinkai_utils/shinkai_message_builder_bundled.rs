@@ -105,6 +105,7 @@ impl ShinkaiMessageBuilder {
         let job_creation = JobCreationInfo {
             scope,
             is_hidden: Some(is_hidden),
+            associated_ui: None,
         };
         let body = serde_json::to_string(&job_creation).map_err(|_| "Failed to serialize job creation to JSON")?;
 

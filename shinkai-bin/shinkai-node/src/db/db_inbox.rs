@@ -475,7 +475,7 @@ impl ShinkaiDB {
         }
         shinkai_log(
             ShinkaiLogOption::Api,
-            ShinkaiLogLevel::Info,
+            ShinkaiLogLevel::Debug,
             &format!("Inboxes: {}", inboxes.join(", ")),
         );
         Ok(inboxes)

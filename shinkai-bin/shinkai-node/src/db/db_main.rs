@@ -185,6 +185,22 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)
     }
 
+    /// Required for intra-communications between node UI and node
+    pub fn read_api_v2_key(&self) -> Result<Option<String>, ShinkaiDBError> {
+        let cf = self.get_cf_handle(Topic::NodeAndUsers)?;
+        match self.db.get_cf(cf, b"api_v2_key") {
+            Ok(Some(value)) => Ok(Some(String::from_utf8(value).map_err(|_| ShinkaiDBError::InvalidData)?)),
+            Ok(None) => Ok(None),
+            Err(_) => Err(ShinkaiDBError::FailedFetchingValue),
+        }
+    }
+
+    /// Sets the api_v2_key value
+    pub fn set_api_v2_key(&self, key: &str) -> Result<(), Error> {
+        let cf = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        self.db.put_cf(cf, b"api_v2_key", key.as_bytes())
+    }
+
     /// Returns the first half of the blake3 hash of the folder name value
     pub fn user_profile_to_half_hash(profile: ShinkaiName) -> String {
         let full_hash = blake3::hash(profile.full_name.as_bytes()).to_hex().to_string();

@@ -1,6 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::job_manager::JobManagerTrait;
 use crate::network::ws_manager::{WSMessageType, WSUpdateHandler};
 use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::sheet::{
@@ -34,7 +34,7 @@ pub struct SheetManager {
     pub sheets: HashMap<String, (Sheet, Sender<SheetUpdate>)>,
     pub db: Weak<ShinkaiDB>,
     pub user_profile: ShinkaiName,
-    pub job_manager: Option<Arc<Mutex<JobManager>>>,
+    pub job_manager: Option<Arc<Mutex<dyn JobManagerTrait + Send>>>,
     pub update_handles: Vec<JoinHandle<()>>,
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     pub receivers: HashMap<String, Receiver<SheetUpdate>>, // to avoid premature drops
@@ -86,7 +86,7 @@ impl SheetManager {
         })
     }
 
-    pub fn set_job_manager(&mut self, job_manager: Arc<Mutex<JobManager>>) {
+    pub fn set_job_manager(&mut self, job_manager: Arc<Mutex<dyn JobManagerTrait + Send>>) {
         self.job_manager = Some(job_manager);
     }
 
@@ -205,7 +205,7 @@ impl SheetManager {
 
     async fn create_and_chain_job_messages(
         jobs: Vec<WorkflowSheetJobData>,
-        job_manager: &Arc<Mutex<JobManager>>,
+        job_manager: &Arc<Mutex<dyn JobManagerTrait + Send>>,
         user_profile: &ShinkaiName,
     ) -> Result<(), String> {
         let mut job_messages: Vec<(JobMessage, WorkflowSheetJobData)> = Vec::new();
@@ -214,12 +214,13 @@ impl SheetManager {
             let job_creation_info = JobCreationInfo {
                 scope: JobScope::new_default(),
                 is_hidden: Some(true),
+                associated_ui: None,
             };
 
             let mut job_manager = job_manager.lock().await;
             let agent_id = job_data.llm_provider_name.clone();
             let job_id = job_manager
-                .process_job_creation(job_creation_info, user_profile, &agent_id)
+                .create_job(job_creation_info, user_profile, &agent_id)
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -255,7 +256,7 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-                .add_job_message_to_job_queue(first_job_message, user_profile)
+                .queue_job_message(first_job_message, user_profile)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -293,7 +294,6 @@ impl SheetManager {
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
-        // Create and chain JobMessages, and add the first one to the job queue
         // Create and chain JobMessages, and add the first one to the job queue
         if let Some(job_manager) = &self.job_manager {
             Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;

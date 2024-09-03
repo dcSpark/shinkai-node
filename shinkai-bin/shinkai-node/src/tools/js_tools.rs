@@ -1,4 +1,6 @@
-use std::thread;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::{env, thread};
 
 use super::js_toolkit_headers::ToolConfig;
 use crate::tools::argument::ToolArgument;
@@ -6,6 +8,7 @@ use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
 use shinkai_tools_runner::tools::run_result::RunResult;
+use shinkai_tools_runner::tools::shinkai_tools_backend_options::ShinkaiToolsBackendOptions;
 use shinkai_tools_runner::tools::tool::Tool;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
@@ -34,29 +37,24 @@ impl JSTool {
         let code = self.js_code.clone();
         let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
-        // Validate extra_config against self.config
-        if let Some(extra) = &extra_config {
-            let extra_json: JsonValue =
-                serde_json::from_str(extra).map_err(|e| ToolError::SerializationError(e.to_string()))?;
-            for config in &self.config {
-                if let ToolConfig::BasicConfig(basic_config) = config {
-                    if basic_config.required && !extra_json.get(&basic_config.key_name).is_some() {
-                        return Err(ToolError::MissingConfigError(basic_config.key_name.clone()));
-                    }
+        // Create a hashmap with key_name and key_value
+        let config: HashMap<String, String> = self
+            .config
+            .iter()
+            .filter_map(|c| {
+                if let ToolConfig::BasicConfig(basic_config) = c {
+                    basic_config
+                        .key_value
+                        .clone()
+                        .map(|value| (basic_config.key_name.clone(), value))
+                } else {
+                    None
                 }
-            }
-        } else {
-            for config in &self.config {
-                if let ToolConfig::BasicConfig(basic_config) = config {
-                    if basic_config.required {
-                        return Err(ToolError::MissingConfigError(basic_config.key_name.clone()));
-                    }
-                }
-            }
-        }
+            })
+            .collect();
 
-        // Use extra_config directly without serializing again
-        let config = extra_config.unwrap_or_else(|| "{}".to_string());
+        // Convert the config hashmap to a JSON value
+        let config_json = serde_json::to_value(&config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
         // Create a new thread with its own Tokio runtime
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
@@ -64,11 +62,22 @@ impl JSTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    let mut tool = Tool::new();
-                    tool.load_from_code(&code, &config)
-                        .await
-                        .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
-                    tool.run(&input, None)
+                    eprintln!("Running JSTool with config: {:?}", config);
+                    eprintln!("Running JSTool with input: {}", input);
+                    let tool = Tool::new(
+                        code,
+                        config_json,
+                        Some(ShinkaiToolsBackendOptions {
+                            binary_path: PathBuf::from(env::var("SHINKAI_TOOLS_BACKEND_BINARY_PATH").unwrap_or_else(
+                                |_| "./shinkai-tools-runner-resources/shinkai-tools-backend".to_string(),
+                            )),
+                            api_port: env::var("SHINKAI_TOOLS_BACKEND_API_PORT")
+                                .unwrap_or_else(|_| "9650".to_string())
+                                .parse::<u16>()
+                                .unwrap_or(9650),
+                        }),
+                    );
+                    tool.run(serde_json::from_str(&input).unwrap(), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })

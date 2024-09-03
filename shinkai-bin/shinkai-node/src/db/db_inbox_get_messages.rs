@@ -65,6 +65,7 @@ impl ShinkaiDB {
         }
     }
 
+    #[allow(dead_code)]
     fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash_for_pagination();
@@ -126,14 +127,12 @@ impl ShinkaiDB {
             }
         }
 
-        let mut start_index = 0;
         // If an until_offset_hash_key is provided, find its position in the keys vector
         if let Some(ref until_hash) = until_offset_hash_key {
             // Iterate over keys to find the key that contains the until_offset_hash_key
-            for (index, key) in keys.iter().enumerate() {
+            for (_index, key) in keys.iter().enumerate() {
                 if let Some((_, hash_key)) = key.rsplit_once(":::") {
                     if hash_key == until_hash {
-                        start_index = index;
                         current_key = key.clone().into();
                         break;
                     }

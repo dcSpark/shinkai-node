@@ -279,6 +279,21 @@ impl ShinkaiTool {
         let deserialized: Self = serde_json::from_str(json).map_err(|e| ToolError::ParseError(e.to_string()))?;
         Ok(deserialized)
     }
+
+    /// Check if the tool is Rust-based
+    pub fn is_rust_based(&self) -> bool {
+        matches!(self, ShinkaiTool::Rust(_, _))
+    }
+
+    /// Check if the tool is JS-based
+    pub fn is_js_based(&self) -> bool {
+        matches!(self, ShinkaiTool::JS(_, _))
+    }
+
+    /// Check if the tool is Workflow-based
+    pub fn is_workflow_based(&self) -> bool {
+        matches!(self, ShinkaiTool::Workflow(_, _))
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
