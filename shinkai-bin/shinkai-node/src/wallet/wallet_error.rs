@@ -30,6 +30,7 @@ pub enum WalletError {
     ConfigNotFound,
     FunctionExecutionError(String),
     FunctionNotFound(String),
+    ToolNotFound(String),
     // Add other error types as needed
 }
 
@@ -63,6 +64,7 @@ impl fmt::Display for WalletError {
             WalletError::ConfigNotFound => write!(f, "ConfigNotFound"),
             WalletError::FunctionExecutionError(e) => write!(f, "FunctionExecutionError: {}", e),
             WalletError::FunctionNotFound(e) => write!(f, "FunctionNotFound: {}", e),
+            WalletError::ToolNotFound(e) => write!(f, "ToolNotFound: {}", e),
         }
     }
 }
@@ -95,6 +97,7 @@ impl Error for WalletError {
             WalletError::ConfigNotFound => None,
             WalletError::FunctionExecutionError(_) => None,
             WalletError::FunctionNotFound(_) => None,
+            WalletError::ToolNotFound(_) => None,
         }
     }
 }

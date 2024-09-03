@@ -140,12 +140,21 @@ impl ToolRouter {
 
         let only_testing_js_tools =
             std::env::var("ONLY_TESTING_JS_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
-        let test_tool_key_name = "shinkai-tool-echo";
+        let allowed_tools = vec![
+            "shinkai-tool-echo",
+            "shinkai-tool-coinbase-create-wallet",
+            "shinkai-tool-coinbase-get-my-address",
+            "shinkai-tool-coinbase-get-balance",
+            "shinkai-tool-coinbase-get-transactions",
+            "shinkai-tool-coinbase-send-tx",
+            "shinkai-tool-coinbase-call-faucet",
+        ];
 
         for (name, definition) in tools {
-            if only_testing_js_tools && name != test_tool_key_name {
-                continue; // Skip tools that are not the test tool
+            if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
+                continue; // Skip tools that are not in the allowed list
             }
+            println!("Adding JS tool: {}", name);
 
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
