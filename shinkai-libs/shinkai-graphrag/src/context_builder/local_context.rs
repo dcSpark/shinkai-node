@@ -41,7 +41,7 @@ pub fn build_entity_context(
             .attributes
             .unwrap_or_default()
             .keys()
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>()
     } else {
         Vec::new()
@@ -134,8 +134,8 @@ pub fn build_entity_context(
 }
 
 pub fn build_relationship_context(
-    selected_entities: &Vec<Entity>,
-    relationships: &Vec<Relationship>,
+    selected_entities: &[Entity],
+    relationships: &[Relationship],
     num_tokens_fn: fn(&str) -> usize,
     include_relationship_weight: bool,
     max_tokens: usize,
@@ -146,8 +146,8 @@ pub fn build_relationship_context(
 ) -> anyhow::Result<(String, DataFrame)> {
     // Filter relationships based on the criteria
     let selected_relationships = _filter_relationships(
-        &selected_entities,
-        &relationships,
+        selected_entities,
+        relationships,
         top_k_relationships,
         relationship_ranking_attribute,
     );
@@ -173,7 +173,7 @@ pub fn build_relationship_context(
             .attributes
             .unwrap_or_default()
             .keys()
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>()
     } else {
         Vec::new()
@@ -271,8 +271,8 @@ pub fn build_relationship_context(
 }
 
 fn _filter_relationships(
-    selected_entities: &Vec<Entity>,
-    relationships: &Vec<Relationship>,
+    selected_entities: &[Entity],
+    relationships: &[Relationship],
     top_k_relationships: usize,
     relationship_ranking_attribute: &str,
 ) -> Vec<Relationship> {
@@ -307,7 +307,7 @@ fn _filter_relationships(
 
     let out_network_entity_names: HashSet<String> = out_network_source_names
         .into_iter()
-        .chain(out_network_target_names.into_iter())
+        .chain(out_network_target_names)
         .collect();
 
     let mut out_network_entity_links: HashMap<String, usize> = HashMap::new();
@@ -412,9 +412,9 @@ fn _filter_relationships(
 }
 
 pub fn get_candidate_context(
-    selected_entities: &Vec<Entity>,
-    entities: &Vec<Entity>,
-    relationships: &Vec<Relationship>,
+    selected_entities: &[Entity],
+    entities: &[Entity],
+    relationships: &[Relationship],
     include_entity_rank: bool,
     entity_rank_description: &str,
     include_relationship_weight: bool,

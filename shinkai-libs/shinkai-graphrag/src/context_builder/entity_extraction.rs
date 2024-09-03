@@ -10,7 +10,7 @@ use crate::{
 pub async fn map_query_to_entities(
     query: &str,
     text_embedding_vectorstore: &LanceDBVectorStore,
-    text_embedder: &Box<dyn BaseTextEmbedding + Send + Sync>,
+    text_embedder: &(dyn BaseTextEmbedding + Send + Sync),
     all_entities: &Vec<Entity>,
     embedding_vectorstore_key: &str,
     include_entity_names: Option<Vec<String>>,
@@ -18,8 +18,8 @@ pub async fn map_query_to_entities(
     k: usize,
     oversample_scaler: usize,
 ) -> anyhow::Result<Vec<Entity>> {
-    let include_entity_names = include_entity_names.unwrap_or_else(Vec::new);
-    let exclude_entity_names: HashSet<String> = exclude_entity_names.unwrap_or_else(Vec::new).into_iter().collect();
+    let include_entity_names = include_entity_names.unwrap_or_default();
+    let exclude_entity_names: HashSet<String> = exclude_entity_names.unwrap_or_default().into_iter().collect();
     let mut matched_entities = Vec::new();
 
     if !query.is_empty() {
@@ -28,7 +28,7 @@ pub async fn map_query_to_entities(
             .await?;
 
         for result in search_results {
-            if let Some(matched) = get_entity_by_key(all_entities, &embedding_vectorstore_key, &result.document.id) {
+            if let Some(matched) = get_entity_by_key(all_entities, embedding_vectorstore_key, &result.document.id) {
                 matched_entities.push(matched);
             }
         }

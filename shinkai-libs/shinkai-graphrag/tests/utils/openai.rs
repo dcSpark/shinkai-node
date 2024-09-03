@@ -9,9 +9,7 @@ use async_openai::{
 use async_trait::async_trait;
 use ndarray::{Array1, Array2, Axis};
 use ndarray_stats::SummaryStatisticsExt;
-use shinkai_graphrag::llm::base::{
-    BaseLLM, BaseLLMCallback, BaseTextEmbedding, GlobalSearchPhase, LLMParams, MessageType,
-};
+use shinkai_graphrag::llm::base::{BaseLLM, BaseLLMCallback, BaseTextEmbedding, LLMParams, MessageType};
 use tiktoken_rs::{get_bpe_from_tokenizer, tokenizer::Tokenizer};
 
 pub struct ChatOpenAI {
@@ -106,11 +104,11 @@ impl ChatOpenAI {
 
         let response = client.chat().create(request).await?;
 
-        if let Some(choice) = response.choices.get(0) {
+        if let Some(choice) = response.choices.first() {
             return Ok(choice.message.content.clone().unwrap_or_default());
         }
 
-        return Ok(String::new());
+        Ok(String::new())
     }
 }
 
@@ -122,7 +120,6 @@ impl BaseLLM for ChatOpenAI {
         streaming: bool,
         callbacks: Option<Vec<BaseLLMCallback>>,
         llm_params: LLMParams,
-        _search_phase: Option<GlobalSearchPhase>,
     ) -> anyhow::Result<String> {
         self.agenerate(messages, streaming, callbacks, llm_params).await
     }
@@ -175,8 +172,7 @@ impl OpenAIEmbedding {
 
         let response = client.embeddings().create(request).await?;
         let embedding = response
-            .data
-            .get(0)
+            .data.first()
             .map(|data| data.embedding.clone())
             .unwrap_or_default();
 
@@ -248,7 +244,7 @@ fn batched<T>(iterable: impl Iterator<Item = T>, n: usize) -> impl Iterator<Item
     })
 }
 
-fn chunk_text<'a>(text: &'a str, max_tokens: usize) -> impl Iterator<Item = String> + 'a {
+fn chunk_text(text: &str, max_tokens: usize) -> impl Iterator<Item = String> + '_ {
     let token_encoder = Tokenizer::Cl100kBase;
     let bpe = get_bpe_from_tokenizer(token_encoder).unwrap();
     let tokens = bpe.encode_with_special_tokens(text);

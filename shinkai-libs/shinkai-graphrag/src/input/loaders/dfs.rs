@@ -104,29 +104,26 @@ pub fn read_entities(
     let mut entities = Vec::new();
     for (idx, row) in rows.iter().enumerate() {
         let report = Entity {
-            id: get_field(&row, id_col, &column_names)
+            id: get_field(row, id_col, &column_names)
                 .map(|id| id.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             short_id: Some(
                 short_id_col
-                    .map(|short_id| get_field(&row, short_id, &column_names))
-                    .flatten()
+                    .and_then(|short_id| get_field(row, short_id, &column_names))
                     .map(|short_id| short_id.to_string())
                     .unwrap_or(idx.to_string()),
             ),
-            title: get_field(&row, title_col, &column_names)
+            title: get_field(row, title_col, &column_names)
                 .map(|title| title.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             entity_type: type_col
-                .map(|type_col| get_field(&row, type_col, &column_names))
-                .flatten()
+                .and_then(|type_col| get_field(row, type_col, &column_names))
                 .map(|entity_type| entity_type.to_string()),
             description: description_col
-                .map(|description_col| get_field(&row, description_col, &column_names))
-                .flatten()
+                .and_then(|description_col| get_field(row, description_col, &column_names))
                 .map(|description| description.to_string()),
             name_embedding: name_embedding_col.map(|name_embedding_col| {
-                get_field(&row, name_embedding_col, &column_names)
+                get_field(row, name_embedding_col, &column_names)
                     .map(|name_embedding| match name_embedding {
                         AnyValue::List(series) => series
                             .f64()
@@ -136,10 +133,10 @@ pub fn read_entities(
                             .collect::<Vec<f64>>(),
                         value => vec![value.to_string().parse::<f64>().unwrap_or(0.0)],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             description_embedding: description_embedding_col.map(|description_embedding_col| {
-                get_field(&row, description_embedding_col, &column_names)
+                get_field(row, description_embedding_col, &column_names)
                     .map(|description_embedding| match description_embedding {
                         AnyValue::List(series) => series
                             .f64()
@@ -149,10 +146,10 @@ pub fn read_entities(
                             .collect::<Vec<f64>>(),
                         value => vec![value.to_string().parse::<f64>().unwrap_or(0.0)],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             graph_embedding: graph_embedding_col.map(|graph_embedding_col| {
-                get_field(&row, graph_embedding_col, &column_names)
+                get_field(row, graph_embedding_col, &column_names)
                     .map(|graph_embedding| match graph_embedding {
                         AnyValue::List(series) => series
                             .f64()
@@ -162,10 +159,10 @@ pub fn read_entities(
                             .collect::<Vec<f64>>(),
                         value => vec![value.to_string().parse::<f64>().unwrap_or(0.0)],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             community_ids: community_col.map(|community_col| {
-                get_field(&row, community_col, &column_names)
+                get_field(row, community_col, &column_names)
                     .map(|community_ids| match community_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -175,10 +172,10 @@ pub fn read_entities(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             text_unit_ids: text_unit_ids_col.map(|text_unit_ids_col| {
-                get_field(&row, text_unit_ids_col, &column_names)
+                get_field(row, text_unit_ids_col, &column_names)
                     .map(|text_unit_ids| match text_unit_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -188,10 +185,10 @@ pub fn read_entities(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             document_ids: document_ids_col.map(|document_ids_col| {
-                get_field(&row, document_ids_col, &column_names)
+                get_field(row, document_ids_col, &column_names)
                     .map(|document_ids| match document_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -201,13 +198,11 @@ pub fn read_entities(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
-            rank: rank_col
-                .map(|rank_col| {
-                    get_field(&row, rank_col, &column_names).map(|v| v.to_string().parse::<i32>().unwrap_or(0))
-                })
-                .flatten(),
+            rank: rank_col.and_then(|rank_col| {
+                get_field(row, rank_col, &column_names).map(|v| v.to_string().parse::<i32>().unwrap_or(0))
+            }),
             attributes: None,
         };
         entities.push(report);
@@ -281,33 +276,30 @@ pub fn read_community_reports(
     let mut reports = Vec::new();
     for (idx, row) in rows.iter().enumerate() {
         let report = CommunityReport {
-            id: get_field(&row, id_col, &column_names)
+            id: get_field(row, id_col, &column_names)
                 .map(|id| id.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             short_id: Some(
                 short_id_col
-                    .map(|short_id| get_field(&row, short_id, &column_names))
-                    .flatten()
+                    .and_then(|short_id| get_field(row, short_id, &column_names))
                     .map(|short_id| short_id.to_string())
                     .unwrap_or(idx.to_string()),
             ),
-            title: get_field(&row, title_col, &column_names)
+            title: get_field(row, title_col, &column_names)
                 .map(|title| title.to_string())
-                .unwrap_or(String::new()),
-            community_id: get_field(&row, community_col, &column_names)
+                .unwrap_or_default(),
+            community_id: get_field(row, community_col, &column_names)
                 .map(|community| community.to_string())
-                .unwrap_or(String::new()),
-            summary: get_field(&row, summary_col, &column_names)
+                .unwrap_or_default(),
+            summary: get_field(row, summary_col, &column_names)
                 .map(|summary| summary.to_string())
-                .unwrap_or(String::new()),
-            full_content: get_field(&row, content_col, &column_names)
+                .unwrap_or_default(),
+            full_content: get_field(row, content_col, &column_names)
                 .map(|content| content.to_string())
-                .unwrap_or(String::new()),
-            rank: rank_col
-                .map(|rank_col| {
-                    get_field(&row, rank_col, &column_names).map(|v| v.to_string().parse::<f64>().unwrap_or(0.0))
-                })
-                .flatten(),
+                .unwrap_or_default(),
+            rank: rank_col.and_then(|rank_col| {
+                get_field(row, rank_col, &column_names).map(|v| v.to_string().parse::<f64>().unwrap_or(0.0))
+            }),
             summary_embedding: None,
             full_content_embedding: None,
             attributes: None,
@@ -360,11 +352,11 @@ pub fn read_relationships(
     })
     .collect::<HashSet<String>>();
 
-    attributes_cols.as_ref().map(|cols| {
+    if let Some(cols) = attributes_cols.as_ref() {
         cols.iter().for_each(|col| {
             column_names.insert(col.to_string());
         });
-    });
+    }
 
     let column_names = column_names.into_iter().collect::<Vec<String>>();
 
@@ -391,28 +383,26 @@ pub fn read_relationships(
     let mut relationships = Vec::new();
     for (idx, row) in rows.iter().enumerate() {
         let report = Relationship {
-            id: get_field(&row, id_col, &column_names)
+            id: get_field(row, id_col, &column_names)
                 .map(|id| id.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             short_id: Some(
                 short_id_col
-                    .map(|short_id| get_field(&row, short_id, &column_names))
-                    .flatten()
+                    .and_then(|short_id| get_field(row, short_id, &column_names))
                     .map(|short_id| short_id.to_string())
                     .unwrap_or(idx.to_string()),
             ),
-            source: get_field(&row, source_col, &column_names)
+            source: get_field(row, source_col, &column_names)
                 .map(|source| source.to_string())
-                .unwrap_or(String::new()),
-            target: get_field(&row, target_col, &column_names)
+                .unwrap_or_default(),
+            target: get_field(row, target_col, &column_names)
                 .map(|target| target.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             description: description_col
-                .map(|description| get_field(&row, description, &column_names))
-                .flatten()
+                .and_then(|description| get_field(row, description, &column_names))
                 .map(|description| description.to_string()),
             description_embedding: description_embedding_col.map(|description_embedding_col| {
-                get_field(&row, description_embedding_col, &column_names)
+                get_field(row, description_embedding_col, &column_names)
                     .map(|description_embedding| match description_embedding {
                         AnyValue::List(series) => series
                             .f64()
@@ -422,15 +412,13 @@ pub fn read_relationships(
                             .collect::<Vec<f64>>(),
                         value => vec![value.to_string().parse::<f64>().unwrap_or(0.0)],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
-            weight: weight_col
-                .map(|weight_col| {
-                    get_field(&row, weight_col, &column_names).map(|v| v.to_string().parse::<f64>().unwrap_or(0.0))
-                })
-                .flatten(),
+            weight: weight_col.and_then(|weight_col| {
+                get_field(row, weight_col, &column_names).map(|v| v.to_string().parse::<f64>().unwrap_or(0.0))
+            }),
             text_unit_ids: text_unit_ids_col.map(|text_unit_ids_col| {
-                get_field(&row, text_unit_ids_col, &column_names)
+                get_field(row, text_unit_ids_col, &column_names)
                     .map(|text_unit_ids| match text_unit_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -440,10 +428,10 @@ pub fn read_relationships(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             document_ids: document_ids_col.map(|document_ids_col| {
-                get_field(&row, document_ids_col, &column_names)
+                get_field(row, document_ids_col, &column_names)
                     .map(|document_ids| match document_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -453,12 +441,12 @@ pub fn read_relationships(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             attributes: attributes_cols.as_ref().map(|cols| {
                 cols.iter()
                     .map(|col| {
-                        get_field(&row, col, &column_names)
+                        get_field(row, col, &column_names)
                             .map(|v| (col.to_string(), v.to_string()))
                             .unwrap_or((String::new(), String::new()))
                     })
@@ -511,11 +499,11 @@ pub fn read_text_units(
     })
     .collect::<HashSet<String>>();
 
-    attributes_cols.as_ref().map(|cols| {
+    if let Some(cols) = attributes_cols.as_ref() {
         cols.iter().for_each(|col| {
             column_names.insert(col.to_string());
         });
-    });
+    }
 
     let column_names = column_names.into_iter().collect::<Vec<String>>();
 
@@ -542,21 +530,20 @@ pub fn read_text_units(
     let mut text_units = Vec::new();
     for (idx, row) in rows.iter().enumerate() {
         let report = TextUnit {
-            id: get_field(&row, id_col, &column_names)
+            id: get_field(row, id_col, &column_names)
                 .map(|id| id.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             short_id: Some(
                 short_id_col
-                    .map(|short_id| get_field(&row, short_id, &column_names))
-                    .flatten()
+                    .and_then(|short_id| get_field(row, short_id, &column_names))
                     .map(|short_id| short_id.to_string())
                     .unwrap_or(idx.to_string()),
             ),
-            text: get_field(&row, text_col, &column_names)
+            text: get_field(row, text_col, &column_names)
                 .map(|text| text.to_string())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
             entity_ids: entities_col.map(|entities_col| {
-                get_field(&row, entities_col, &column_names)
+                get_field(row, entities_col, &column_names)
                     .map(|entity_ids| match entity_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -566,10 +553,10 @@ pub fn read_text_units(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             relationship_ids: relationships_col.map(|relationships_col| {
-                get_field(&row, relationships_col, &column_names)
+                get_field(row, relationships_col, &column_names)
                     .map(|relationship_ids| match relationship_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -579,10 +566,10 @@ pub fn read_text_units(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             text_embedding: embedding_col.map(|embedding_col| {
-                get_field(&row, embedding_col, &column_names)
+                get_field(row, embedding_col, &column_names)
                     .map(|embedding| match embedding {
                         AnyValue::List(series) => series
                             .f64()
@@ -592,15 +579,13 @@ pub fn read_text_units(
                             .collect::<Vec<f64>>(),
                         value => vec![value.to_string().parse::<f64>().unwrap_or(0.0)],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
-            n_tokens: tokens_col
-                .map(|tokens_col| {
-                    get_field(&row, tokens_col, &column_names).map(|v| v.to_string().parse::<i32>().unwrap_or(0))
-                })
-                .flatten(),
+            n_tokens: tokens_col.and_then(|tokens_col| {
+                get_field(row, tokens_col, &column_names).map(|v| v.to_string().parse::<i32>().unwrap_or(0))
+            }),
             document_ids: document_ids_col.map(|document_ids_col| {
-                get_field(&row, document_ids_col, &column_names)
+                get_field(row, document_ids_col, &column_names)
                     .map(|document_ids| match document_ids {
                         AnyValue::List(series) => series
                             .str()
@@ -610,12 +595,12 @@ pub fn read_text_units(
                             .collect::<Vec<String>>(),
                         value => vec![value.to_string()],
                     })
-                    .unwrap_or_else(|| Vec::new())
+                    .unwrap_or_default()
             }),
             attributes: attributes_cols.as_ref().map(|cols| {
                 cols.iter()
                     .map(|col| {
-                        get_field(&row, col, &column_names)
+                        get_field(row, col, &column_names)
                             .map(|v| (col.to_string(), v.to_string()))
                             .unwrap_or((String::new(), String::new()))
                     })
@@ -638,11 +623,7 @@ pub fn read_text_units(
     Ok(unique_text_units)
 }
 
-fn get_field<'a>(
-    row: &'a Vec<AnyValue<'a>>,
-    column_name: &'a str,
-    column_names: &'a Vec<String>,
-) -> Option<AnyValue<'a>> {
+fn get_field<'a>(row: &'a [AnyValue<'a>], column_name: &'a str, column_names: &'a [String]) -> Option<AnyValue<'a>> {
     match column_names.iter().position(|x| x == column_name) {
         Some(index) => row.get(index).cloned(),
         None => None,

@@ -35,16 +35,10 @@ pub trait BaseLLM {
         streaming: bool,
         callbacks: Option<Vec<BaseLLMCallback>>,
         llm_params: LLMParams,
-        search_phase: Option<GlobalSearchPhase>,
     ) -> anyhow::Result<String>;
 }
 
 #[async_trait]
 pub trait BaseTextEmbedding {
     async fn aembed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
-}
-
-pub enum GlobalSearchPhase {
-    Map,
-    Reduce,
 }

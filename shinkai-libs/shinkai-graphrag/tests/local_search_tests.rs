@@ -18,7 +18,7 @@ use utils::{
 
 mod utils;
 
-#[tokio::test]
+// #[tokio::test]
 async fn ollama_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let base_url = "http://localhost:11434";
     let llm_model = "llama3.1";
@@ -116,7 +116,7 @@ async fn ollama_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     local_context_params.max_tokens = 12_000;
 
     let llm_params = LLMParams {
-        max_tokens: 2000,
+        max_tokens: 12_000,
         temperature: 0.0,
     };
 
@@ -153,7 +153,7 @@ async fn ollama_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::test]
+// #[tokio::test]
 async fn openai_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("GRAPHRAG_API_KEY").unwrap();
     let llm_model = std::env::var("GRAPHRAG_LLM_MODEL").unwrap();

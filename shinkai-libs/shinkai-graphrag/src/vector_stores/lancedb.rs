@@ -133,7 +133,7 @@ impl VectorStore for LanceDBVectorStore {
     async fn similarity_search_by_text(
         &self,
         text: &str,
-        text_embedder: &Box<dyn BaseTextEmbedding + Send + Sync>,
+        text_embedder: &(dyn BaseTextEmbedding + Send + Sync),
         k: usize,
     ) -> anyhow::Result<Vec<VectorStoreSearchResult>> {
         let query_embedding = text_embedder.aembed(text).await?;
@@ -238,12 +238,10 @@ impl VectorStore for LanceDBVectorStore {
             let table = match db_connection.open_table(&self.collection_name).execute().await {
                 Ok(table) => table,
                 Err(_) => {
-                    let table = db_connection
+                    db_connection
                         .create_empty_table(&self.collection_name, schema.clone())
                         .execute()
-                        .await?;
-
-                    table
+                        .await?
                 }
             };
 

@@ -40,7 +40,7 @@ pub fn to_community_report_dataframe(
     let attribute_cols: Vec<String> = reports[0]
         .attributes
         .as_ref()
-        .map(|attrs| attrs.keys().filter(|&col| !header.contains(&col)).cloned().collect())
+        .map(|attrs| attrs.keys().filter(|&col| !header.contains(col)).cloned().collect())
         .unwrap_or_default();
 
     header.extend(attribute_cols.iter().cloned());

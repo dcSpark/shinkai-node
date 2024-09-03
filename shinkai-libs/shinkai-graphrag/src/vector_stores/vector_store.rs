@@ -18,7 +18,7 @@ pub trait VectorStore {
     fn similarity_search_by_text(
         &self,
         text: &str,
-        text_embedder: &Box<dyn BaseTextEmbedding + Send + Sync>,
+        text_embedder: &(dyn BaseTextEmbedding + Send + Sync),
         k: usize,
     ) -> impl std::future::Future<Output = anyhow::Result<Vec<VectorStoreSearchResult>>> + Send;
 

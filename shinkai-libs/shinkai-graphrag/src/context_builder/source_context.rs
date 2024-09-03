@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use polars::frame::DataFrame;
 use polars::prelude::NamedFrom;
@@ -23,6 +23,9 @@ pub fn build_text_unit_context(
 
     let mut text_units = text_units;
 
+    let mut unique_ids = HashSet::new();
+    text_units.retain(|unit| unique_ids.insert(unit.id.clone()));
+
     if shuffle_data {
         let mut rng = StdRng::seed_from_u64(random_state);
         text_units.shuffle(&mut rng);
@@ -35,8 +38,7 @@ pub fn build_text_unit_context(
         text_unit
             .attributes
             .unwrap_or_default()
-            .keys()
-            .map(|s| s.clone())
+            .keys().cloned()
             .collect::<Vec<String>>()
     } else {
         Vec::new()

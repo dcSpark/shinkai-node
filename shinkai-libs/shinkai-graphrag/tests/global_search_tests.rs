@@ -58,19 +58,19 @@ async fn ollama_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
         include_community_weight: true,
         community_weight_name: String::from("occurrence weight"),
         normalize_community_weight: true,
-        max_tokens: 5000, // change this based on the token limit you have on your model (if you are using a model with 8k limit, a good setting could be 5000)
+        max_tokens: 12_000, // change this based on the token limit you have on your model (if you are using a model with 8k limit, a good setting could be 5000)
         context_name: String::from("Reports"),
         column_delimiter: String::from("|"),
     };
 
     // LLM params are ignored for Ollama
     let map_llm_params = LLMParams {
-        max_tokens: 1000,
+        max_tokens: 12_000,
         temperature: 0.0,
     };
 
     let reduce_llm_params = LLMParams {
-        max_tokens: 2000,
+        max_tokens: 12_000,
         temperature: 0.0,
     };
 
@@ -86,7 +86,7 @@ async fn ollama_global_search_test() -> Result<(), Box<dyn std::error::Error>> {
         allow_general_knowledge: false,
         general_knowledge_inclusion_prompt: None,
         callbacks: None,
-        max_data_tokens: 5000,
+        max_data_tokens: 12_000,
         map_llm_params,
         reduce_llm_params,
         context_builder_params,

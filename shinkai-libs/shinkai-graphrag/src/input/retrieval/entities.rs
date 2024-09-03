@@ -10,7 +10,7 @@ pub fn get_entity_by_key(entities: &Vec<Entity>, key: &str, value: &str) -> Opti
         match key {
             "id" => {
                 if entity.id == value
-                    || is_valid_uuid(value) && entity.id == Uuid::parse_str(value).unwrap().to_string().replace("-", "")
+                    || is_valid_uuid(value) && entity.id == Uuid::parse_str(value).unwrap().to_string().replace('-', "")
                 {
                     return Some(entity.clone());
                 }
@@ -19,7 +19,7 @@ pub fn get_entity_by_key(entities: &Vec<Entity>, key: &str, value: &str) -> Opti
                 if entity.short_id.as_ref().unwrap_or(&"".to_string()) == value
                     || is_valid_uuid(value)
                         && entity.short_id.as_ref().unwrap_or(&"".to_string())
-                            == Uuid::parse_str(value).unwrap().to_string().replace("-", "").as_str()
+                            == Uuid::parse_str(value).unwrap().to_string().replace('-', "").as_str()
                 {
                     return Some(entity.clone());
                 }
@@ -45,7 +45,7 @@ pub fn get_entity_by_key(entities: &Vec<Entity>, key: &str, value: &str) -> Opti
     None
 }
 
-pub fn get_entity_by_name(entities: &Vec<Entity>, entity_name: &str) -> Vec<Entity> {
+pub fn get_entity_by_name(entities: &[Entity], entity_name: &str) -> Vec<Entity> {
     entities
         .iter()
         .filter(|entity| entity.title == entity_name)
@@ -73,7 +73,7 @@ pub fn to_entity_dataframe(
             .attributes
             .unwrap_or_default()
             .keys()
-            .map(|s| s.clone())
+            .cloned()
             .collect::<Vec<String>>()
     } else {
         Vec::new()

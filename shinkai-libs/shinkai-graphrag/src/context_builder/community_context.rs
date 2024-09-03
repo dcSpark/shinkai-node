@@ -365,7 +365,7 @@ impl Batch {
     fn init_batch(
         &mut self,
         context_name: &str,
-        header: &Vec<String>,
+        header: &[String],
         column_delimiter: &str,
         num_tokens_fn: fn(&str) -> usize,
     ) {
@@ -379,7 +379,7 @@ impl Batch {
         all_context_text: &mut Vec<String>,
         all_context_records: &mut Vec<DataFrame>,
         entities: Option<Vec<Entity>>,
-        header: &Vec<String>,
+        header: &[String],
         community_weight_name: &str,
         community_rank_name: &str,
         include_community_weight: bool,
@@ -399,7 +399,7 @@ impl Batch {
 
         let mut record_df = Self::_convert_report_context_to_df(
             self.batch_records.clone(),
-            header.clone(),
+            header.to_owned(),
             weight_column,
             rank_column,
         )?;
@@ -422,6 +422,10 @@ impl Batch {
         let mut current_context_text = String::new();
         buffer.set_position(0);
         buffer.read_to_string(&mut current_context_text)?;
+
+        if all_context_text.contains(&current_context_text) {
+            return Ok(());
+        }
 
         all_context_text.push(current_context_text);
         all_context_records.push(record_df);
@@ -451,7 +455,7 @@ impl Batch {
 
         let record_df = DataFrame::new(data_series)?;
 
-        return Self::_rank_report_context(record_df, weight_column, rank_column);
+        Self::_rank_report_context(record_df, weight_column, rank_column)
     }
 
     fn _rank_report_context(

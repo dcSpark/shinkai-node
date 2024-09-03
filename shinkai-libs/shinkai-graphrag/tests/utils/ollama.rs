@@ -2,9 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use shinkai_graphrag::llm::base::{
-    BaseLLM, BaseLLMCallback, BaseTextEmbedding, GlobalSearchPhase, LLMParams, MessageType,
-};
+use shinkai_graphrag::llm::base::{BaseLLM, BaseLLMCallback, BaseTextEmbedding, LLMParams, MessageType};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OllamaChatResponse {
@@ -46,8 +44,7 @@ impl BaseLLM for OllamaChat {
         messages: MessageType,
         _streaming: bool,
         _callbacks: Option<Vec<BaseLLMCallback>>,
-        _llm_params: LLMParams,
-        search_phase: Option<GlobalSearchPhase>,
+        llm_params: LLMParams,
     ) -> anyhow::Result<String> {
         let client = Client::new();
         let chat_url = format!("{}{}", &self.base_url, "/api/chat");
@@ -55,51 +52,16 @@ impl BaseLLM for OllamaChat {
         let messages_json = match messages {
             MessageType::String(message) => json![message],
             MessageType::Strings(messages) => json!(messages),
-            MessageType::Dictionary(messages) => {
-                let messages = match search_phase {
-                    Some(GlobalSearchPhase::Map) => {
-                        // Filter out system messages and convert them to user messages
-                        messages
-                            .into_iter()
-                            .filter(|map| map.get_key_value("role").is_some_and(|(_, v)| v == "system"))
-                            .map(|map| {
-                                map.into_iter()
-                                    .map(|(key, value)| {
-                                        if key == "role" {
-                                            return (key, "user".to_string());
-                                        }
-                                        (key, value)
-                                    })
-                                    .collect()
-                            })
-                            .collect()
-                    }
-                    Some(GlobalSearchPhase::Reduce) => {
-                        // Convert roles to user
-                        messages
-                            .into_iter()
-                            .map(|map| {
-                                map.into_iter()
-                                    .map(|(key, value)| {
-                                        if key == "role" {
-                                            return (key, "user".to_string());
-                                        }
-                                        (key, value)
-                                    })
-                                    .collect()
-                            })
-                            .collect()
-                    }
-                    _ => messages,
-                };
-
-                json!(messages)
-            }
+            MessageType::Dictionary(messages) => json!(messages),
         };
 
         let payload = json!({
             "model": self.model,
             "messages": messages_json,
+            "options": {
+                "num_ctx": llm_params.max_tokens,
+                "temperature": llm_params.temperature,
+            },
             "stream": false,
         });
 

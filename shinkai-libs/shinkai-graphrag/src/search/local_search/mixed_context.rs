@@ -106,7 +106,7 @@ impl LocalSearchMixedContext {
 
         if let Some(units) = text_units {
             for unit in units {
-                context.text_units.insert(unit.id.clone(), unit);
+                context.text_units.insert(unit.id.replace('"', ""), unit);
             }
         }
 
@@ -118,7 +118,7 @@ impl LocalSearchMixedContext {
 
         if let Some(relations) = relationships {
             for relation in relations {
-                context.relationships.insert(relation.id.clone(), relation);
+                context.relationships.insert(relation.id.replace('"', ""), relation);
             }
         }
 
@@ -162,7 +162,7 @@ impl LocalSearchMixedContext {
         let selected_entities = map_query_to_entities(
             &query,
             &self.entity_text_embeddings,
-            &self.text_embedder,
+            &*self.text_embedder,
             &self.entities.values().cloned().collect::<Vec<Entity>>(),
             &self.embedding_vectorstore_key,
             Some(include_entity_names),
@@ -399,7 +399,7 @@ impl LocalSearchMixedContext {
 
             let (relationship_context, relationship_context_data) = build_relationship_context(
                 &added_entities,
-                &self.relationships.values().cloned().collect(),
+                &self.relationships.values().cloned().collect::<Vec<_>>(),
                 self.num_tokens_fn,
                 include_relationship_weight,
                 max_tokens,
@@ -429,8 +429,8 @@ impl LocalSearchMixedContext {
         final_context_data.insert("entities".to_string(), entity_context_data.clone());
 
         if return_candidate_context {
-            let entities = self.entities.values().cloned().collect();
-            let relationships = self.relationships.values().cloned().collect();
+            let entities = self.entities.values().cloned().collect::<Vec<_>>();
+            let relationships = self.relationships.values().cloned().collect::<Vec<_>>();
 
             let candidate_context_data = get_candidate_context(
                 &selected_entities,
@@ -493,16 +493,16 @@ impl LocalSearchMixedContext {
                     {
                         let mut selected_unit = self.text_units[text_id].clone();
                         let num_relationships = count_relationships(&selected_unit, entity, &self.relationships);
-                        selected_unit
-                            .attributes
-                            .as_mut()
-                            .unwrap_or(&mut HashMap::new())
-                            .insert("entity_order".to_string(), index.to_string());
-                        selected_unit
-                            .attributes
-                            .as_mut()
-                            .unwrap_or(&mut HashMap::new())
-                            .insert("num_relationships".to_string(), num_relationships.to_string());
+
+                        if selected_unit.attributes.is_none() {
+                            selected_unit.attributes = Some(HashMap::new());
+                        }
+
+                        if let Some(attributes) = &mut selected_unit.attributes {
+                            attributes.insert("entity_order".to_string(), index.to_string());
+                            attributes.insert("num_relationships".to_string(), num_relationships.to_string());
+                        }
+
                         selected_text_units.push(selected_unit);
                     }
                 }

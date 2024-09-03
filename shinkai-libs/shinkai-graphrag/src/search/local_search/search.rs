@@ -56,7 +56,7 @@ impl LocalSearch {
         let start_time = Instant::now();
 
         let mut context_builder_params = self.context_builder_params.clone();
-        context_builder_params.query = query.clone();
+        context_builder_params.query.clone_from(&query);
 
         let (context_text, context_records) = self.context_builder.build_context(context_builder_params).await?;
 
@@ -83,7 +83,6 @@ impl LocalSearch {
                 false,
                 None,
                 self.llm_params.clone(),
-                None,
             )
             .await?;
 

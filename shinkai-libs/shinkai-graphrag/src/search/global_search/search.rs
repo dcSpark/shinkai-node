@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::context_builder::community_context::{CommunityContextBuilderParams, GlobalCommunityContext};
-use crate::context_builder::context_builder::ConversationHistory;
-use crate::llm::base::{BaseLLM, BaseLLMCallback, GlobalSearchPhase, LLMParams, MessageType};
+use crate::context_builder::conversation_history::ConversationHistory;
+use crate::llm::base::{BaseLLM, BaseLLMCallback, LLMParams, MessageType};
 use crate::search::base::{ContextData, ContextText, KeyPoint, ResponseType};
 use crate::search::global_search::prompts::NO_DATA_ANSWER;
 
@@ -149,7 +149,7 @@ impl GlobalSearch {
         let map_responses: Vec<_> = join_all(
             context_chunks
                 .iter()
-                .map(|data| self._map_response_single_batch(data, &query, self.map_llm_params.clone())),
+                .map(|data| self._map_response_single_batch(data, self.map_llm_params.clone())),
         )
         .await;
 
@@ -193,7 +193,6 @@ impl GlobalSearch {
     async fn _map_response_single_batch(
         &self,
         context_data: &str,
-        query: &str,
         llm_params: LLMParams,
     ) -> anyhow::Result<SearchResult> {
         let start_time = Instant::now();
@@ -206,19 +205,13 @@ impl GlobalSearch {
             ]),
             HashMap::from([
                 ("role".to_string(), "user".to_string()),
-                ("content".to_string(), query.to_string()),
+                ("content".to_string(), "Respond using JSON".to_string()),
             ]),
         ];
 
         let search_response = self
             .llm
-            .agenerate(
-                MessageType::Dictionary(search_messages),
-                false,
-                None,
-                llm_params,
-                Some(GlobalSearchPhase::Map),
-            )
+            .agenerate(MessageType::Dictionary(search_messages), false, None, llm_params)
             .await?;
 
         let processed_response = self.parse_search_response(&search_response);
@@ -234,6 +227,7 @@ impl GlobalSearch {
     }
 
     fn parse_search_response(&self, search_response: &str) -> Vec<KeyPoint> {
+        let search_response = &search_response.replace("{{", "{").replace("}}", "}");
         let parsed_elements: Value = serde_json::from_str(search_response).unwrap_or_default();
 
         if let Some(points) = parsed_elements.get("points") {
@@ -372,7 +366,6 @@ impl GlobalSearch {
                 true,
                 llm_callbacks,
                 llm_params,
-                Some(GlobalSearchPhase::Reduce),
             )
             .await?;
 

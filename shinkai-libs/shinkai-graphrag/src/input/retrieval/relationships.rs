@@ -12,11 +12,11 @@ pub fn get_in_network_relationships(
     let selected_entity_names: Vec<String> = selected_entities.iter().map(|entity| entity.title.clone()).collect();
 
     let selected_relationships: Vec<Relationship> = relationships
-        .to_owned()
-        .into_iter()
+        .iter()
         .filter(|relationship| {
             selected_entity_names.contains(&relationship.source) && selected_entity_names.contains(&relationship.target)
         })
+        .cloned()
         .collect();
 
     if selected_relationships.len() <= 1 {
