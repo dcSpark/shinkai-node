@@ -163,7 +163,7 @@ impl LanceShinkaiDb {
         // add an if using env REINSTALL_TOOLS so we inject some configuration data for certain tools and also we make it enabled
         if env::var("REINSTALL_TOOLS").is_ok() {
             if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
-                if tool_key.starts_with("shinkai-tool-coinbase") {
+                if tool_key.starts_with("local:::shinkai-tool-coinbase") {
                     if let (Ok(api_name), Ok(private_key), Ok(wallet_id), Ok(use_server_signer)) = (
                         env::var("COINBASE_API_NAME"),
                         env::var("COINBASE_API_PRIVATE_KEY"),

@@ -29,7 +29,10 @@ use crate::{
         smart_inbox::{SmartInbox, V2SmartInbox},
     },
     tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
-    wallet::{local_ether_wallet::WalletSource, mixed::NetworkIdentifier, wallet_manager::WalletRole},
+    wallet::{
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
+        wallet_manager::WalletRole,
+    },
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -826,16 +829,31 @@ pub enum NodeCommand {
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
     },
-    V2ApiRestoreWallet {
+    V2ApiRestoreLocalEthersWallet {
         bearer: String,
         network: NetworkIdentifier,
         source: WalletSource,
         role: WalletRole,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiCreateWallet {
+    V2ApiCreateLocalEthersWallet {
         bearer: String,
         network: NetworkIdentifier,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCreateCoinbaseMPCWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        config: Option<CoinbaseMPCWalletConfig>,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRestoreCoinbaseMPCWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        config: Option<CoinbaseMPCWalletConfig>,
+        wallet_id: String,
         role: WalletRole,
         res: Sender<Result<Value, APIError>>,
     },

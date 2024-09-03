@@ -7,7 +7,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::agent_payments_manager::invoices::Invoice;
 use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
     AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
@@ -409,7 +408,7 @@ fn micropayment_flow_test() {
                 // Add wallet to node1
                 let (sender, receiver) = async_channel::bounded(1);
                 node1_commands_sender
-                    .send(NodeCommand::V2ApiCreateWallet {
+                    .send(NodeCommand::V2ApiCreateLocalEthersWallet {
                         bearer: api_v2_key.to_string(),
                         network: NetworkIdentifier::BaseSepolia,
                         role: WalletRole::Both,
@@ -422,20 +421,40 @@ fn micropayment_flow_test() {
             }
             {
                 eprintln!("Add wallet to node2");
+                // Local Ethers Wallet
+                // // Add wallet to node2
+                // let (sender, receiver) = async_channel::bounded(1);
+                // node2_commands_sender
+                //     .send(NodeCommand::V2ApiRestoreWallet {
+                //         bearer: api_v2_key.to_string(),
+                //         network: NetworkIdentifier::BaseSepolia,
+                //         source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
+                //         role: WalletRole::Both,
+                //         res: sender,
+                //     })
+                //     .await
+                //     .unwrap();
+                // let resp = receiver.recv().await.unwrap();
+                // eprintln!("resp restore wallet to node2: {:?}", resp);
+
+                // Coinbase MPC Wallet
                 // Add wallet to node2
                 let (sender, receiver) = async_channel::bounded(1);
                 node2_commands_sender
-                    .send(NodeCommand::V2ApiRestoreWallet {
+                    .send(NodeCommand::V2ApiRestoreCoinbaseMPCWallet {
                         bearer: api_v2_key.to_string(),
                         network: NetworkIdentifier::BaseSepolia,
-                        source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
+                        config: None,
+                        wallet_id: std::env::var("COINBASE_API_WALLET_ID").unwrap(),
                         role: WalletRole::Both,
                         res: sender,
                     })
                     .await
                     .unwrap();
+
                 let resp = receiver.recv().await.unwrap();
                 eprintln!("resp restore wallet to node2: {:?}", resp);
+                panic!("end test");
             }
             {
                 eprintln!("Add network tool to node2");

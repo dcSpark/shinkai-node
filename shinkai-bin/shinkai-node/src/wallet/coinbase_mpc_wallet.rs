@@ -72,7 +72,7 @@ impl CoinbaseMPCWallet {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
                                 "name" => name = basic_config.key_value.clone().unwrap_or_default(),
-                                "private_key" => private_key = basic_config.key_value.clone().unwrap_or_default(),
+                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default(),
                                 "useServerSigner" => {
                                     use_server_signer = basic_config.key_value.clone().unwrap_or_default()
                                 }
@@ -153,7 +153,7 @@ impl CoinbaseMPCWallet {
             None => {
                 let db = lance_db_strong.lock().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
-                let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
+                let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ToolNotFound(tool_id.to_string()))?;
 
                 // Extract the required configuration from the JSTool
                 let mut name = String::new();
@@ -164,7 +164,7 @@ impl CoinbaseMPCWallet {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
                                 "name" => name = basic_config.key_value.clone().unwrap_or_default(),
-                                "private_key" => private_key = basic_config.key_value.clone().unwrap_or_default(),
+                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default(),
                                 "useServerSigner" => {
                                     use_server_signer = basic_config.key_value.clone().unwrap_or_default()
                                 }
@@ -377,8 +377,8 @@ impl CommonActions for CoinbaseMPCWallet {
             let address_balance_list = AddressBalanceList {
                 data: vec![],
                 has_more,
-                next_page,
-                total_count,
+                next_page: next_page.expect("REASON"),
+                total_count: total_count as u32,
             };
 
             Ok(address_balance_list)
@@ -415,11 +415,62 @@ impl CommonActions for CoinbaseMPCWallet {
             let balance = Balance {
                 amount: amount.to_string(),
                 decimals: Some(decimals as u32),
-                asset: asset.asset_id,
+                asset,
             };
 
             Ok(balance)
         })
+    }
+}
+
+impl SendActions for CoinbaseMPCWallet {
+    fn send_transaction(
+        &self,
+        to_wallet: PublicAddress,
+        token: Option<Asset>,
+        send_amount: String,
+        invoice_id: String,
+    ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send + 'static>> {
+        let send_amount_u256 = U256::from_dec_str(&send_amount);
+        let send_amount_u256 = match send_amount_u256 {
+            Ok(amount) => amount,
+            Err(e) => return Box::pin(async move { Err(WalletError::ConversionError(e.to_string())) }),
+        };
+
+        let config = self.config.clone();
+        let lance_db = self.lance_db.clone(); // Use the Weak reference
+
+        let fut = async move {
+            let params = serde_json::json!({
+                "recipient_address": to_wallet.address_id,
+                "assetId": token.map_or("".to_string(), |t| t.asset_id),
+                "amount": send_amount_u256.to_string(),
+            });
+
+            let response = CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::SendTx, params).await?;
+
+            let tx_hash = response
+                .get("transactionHash")
+                .and_then(|v| v.as_str())
+                .ok_or(WalletError::ConfigNotFound)?
+                .to_string();
+
+            Ok(tx_hash)
+        };
+
+        Box::pin(fut)
+    }
+
+    fn sign_transaction(
+        &self,
+        tx: mixed::Transaction,
+    ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
+        let fut = async move {
+            // Mock implementation for signing a transaction
+            Ok("mock_signature".to_string())
+        };
+
+        Box::pin(fut)
     }
 }
 
@@ -443,12 +494,12 @@ pub enum ShinkaiToolCoinbase {
 impl ShinkaiToolCoinbase {
     pub fn definition_id(&self) -> &'static str {
         match self {
-            ShinkaiToolCoinbase::CreateWallet => "shinkai-tool-coinbase-create-wallet",
-            ShinkaiToolCoinbase::GetMyAddress => "shinkai-tool-coinbase-get-my-address",
-            ShinkaiToolCoinbase::GetBalance => "shinkai-tool-coinbase-get-balance",
-            ShinkaiToolCoinbase::GetTransactions => "shinkai-tool-coinbase-get-transactions",
-            ShinkaiToolCoinbase::SendTx => "shinkai-tool-coinbase-send-tx",
-            ShinkaiToolCoinbase::CallFaucet => "shinkai-tool-coinbase-call-faucet",
+            ShinkaiToolCoinbase::CreateWallet => "local:::shinkai-tool-coinbase-create-wallet:::shinkai__coinbase_wallet_creator",
+            ShinkaiToolCoinbase::GetMyAddress => "local:::shinkai-tool-coinbase-get-my-address:::shinkai__coinbase_address_getter",
+            ShinkaiToolCoinbase::GetBalance => "local:::shinkai-tool-coinbase-get-balance:::shinkai__coinbase_balance_getter",
+            ShinkaiToolCoinbase::GetTransactions => "local:::shinkai-tool-coinbase-get-transactions:::shinkai__coinbase_transactions_getter",
+            ShinkaiToolCoinbase::SendTx => "local:::shinkai-tool-coinbase-send-tx:::shinkai__coinbase_tx_sender",
+            ShinkaiToolCoinbase::CallFaucet => "local:::shinkai-tool-coinbase-call-faucet:::shinkai__coinbase_faucet_caller",
         }
     }
 }

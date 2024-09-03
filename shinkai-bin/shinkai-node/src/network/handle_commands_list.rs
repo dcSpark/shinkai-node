@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::network::{node_commands::NodeCommand, Node};
+use crate::{lance_db, network::{node_commands::NodeCommand, Node}};
 
 impl Node {
     pub async fn handle_command(&self, command: NodeCommand) {
@@ -2668,7 +2668,7 @@ impl Node {
                     let _ = Node::v2_api_set_tool_offering(db_clone, lance_db, bearer, tool_offering, res).await;
                 });
             }
-            NodeCommand::V2ApiRestoreWallet {
+            NodeCommand::V2ApiRestoreLocalEthersWallet {
                 bearer,
                 network,
                 source,
@@ -2678,12 +2678,19 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let wallet_manager_clone = self.wallet_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_restore_wallet(db_clone, wallet_manager_clone, bearer, network, source, role, res)
-                            .await;
+                    let _ = Node::v2_api_restore_local_ethers_wallet(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        source,
+                        role,
+                        res,
+                    )
+                    .await;
                 });
             }
-            NodeCommand::V2ApiCreateWallet {
+            NodeCommand::V2ApiCreateLocalEthersWallet {
                 bearer,
                 network,
                 role,
@@ -2692,8 +2699,65 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let wallet_manager_clone = self.wallet_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_create_wallet(db_clone, wallet_manager_clone, bearer, network, role, res).await;
+                    let _ = Node::v2_api_create_local_ethers_wallet(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        role,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiRestoreCoinbaseMPCWallet {
+                bearer,
+                network,
+                config,
+                wallet_id,
+                role,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db = self.lance_db.clone();
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_restore_coinbase_mpc_wallet(
+                        db_clone,
+                        lance_db,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        config,
+                        wallet_id,
+                        role,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiCreateCoinbaseMPCWallet {
+                bearer,
+                network,
+                config,
+                role,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db = self.lance_db.clone();
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_create_coinbase_mpc_wallet(
+                        db_clone,
+                        lance_db,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        config,
+                        role,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiRequestInvoice {
@@ -2746,14 +2810,31 @@ impl Node {
                     let _ = Node::v2_api_list_invoices(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiDownloadFileFromInbox { bearer, inbox_name, filename, res } => {
+            NodeCommand::V2ApiDownloadFileFromInbox {
+                bearer,
+                inbox_name,
+                filename,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_download_file_from_inbox(db_clone, vector_fs_clone, bearer, inbox_name, filename, res).await;
+                    let _ = Node::v2_api_download_file_from_inbox(
+                        db_clone,
+                        vector_fs_clone,
+                        bearer,
+                        inbox_name,
+                        filename,
+                        res,
+                    )
+                    .await;
                 });
             }
-            NodeCommand::V2ApiListFilesInInbox { bearer, inbox_name, res } => {
+            NodeCommand::V2ApiListFilesInInbox {
+                bearer,
+                inbox_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
