@@ -82,9 +82,7 @@ shinkai-bin/shinkai-node/lance_db_tests
 lancedb_storage_debug_my_local_ai
 storage_debug_serve_mode
 shinkai-bin/shinkai-node/lancedb_tests
-<<<<<<< HEAD
 shinkai-tools-runner-resources
-=======
->>>>>>> 22f7914b (add tests)
 shinkai-bin/shinkai-node/shinkai_db_tests
 shinkai-tools-runner-resources
+storage_debug_agent_provider

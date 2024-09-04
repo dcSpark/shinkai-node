@@ -14,7 +14,6 @@ use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::tools::network_tool::NetworkTool;
 use shinkai_node::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_node::wallet::local_ether_wallet::WalletSource;
 use shinkai_node::wallet::mixed::{Asset, NetworkIdentifier};
 use shinkai_node::wallet::wallet_manager::WalletRole;
 use shinkai_vector_resources::utils::hash_string;
@@ -28,8 +27,17 @@ use super::utils::node_test_local::local_registration_profile_node;
 use crate::it::utils::db_handlers::setup;
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
+#[cfg(feature = "console")]
+use console_subscriber;
+
 #[test]
 fn micropayment_flow_test() {
+    #[cfg(feature = "console")]
+    {
+        console_subscriber::init();
+        eprintln!("> tokio-console is enabled");
+    }
+
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
     std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
