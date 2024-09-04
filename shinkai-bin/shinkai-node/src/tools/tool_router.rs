@@ -10,12 +10,15 @@ use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslC
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
+use crate::network::agent_payments_manager::shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType};
 use crate::tools::error::ToolError;
 use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::tools::workflow_tool::WorkflowTool;
+use crate::wallet::mixed::{Asset, NetworkIdentifier};
 use crate::workflows::sm_executor::AsyncFunction;
 use serde_json::Value;
 use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -160,6 +163,48 @@ impl ToolRouter {
             for tool in toolkit.tools {
                 let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
                 lance_db.set_tool(&shinkai_tool).await?;
+            }
+        }
+
+        // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
+        if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
+            let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                asset: Asset {
+                    network_id: NetworkIdentifier::BaseSepolia,
+                    asset_id: "USDC".to_string(),
+                    decimals: Some(6),
+                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
+                },
+                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            }]));
+
+            // Manually create NetworkTool
+            let network_tool = NetworkTool {
+                name: "network__echo".to_string(),
+                toolkit_name: "shinkai-tool-echo".to_string(),
+                description: "Echoes the input message".to_string(),
+                version: "v0.1".to_string(),
+                provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                usage_type: usage_type.clone(),
+                activated: true,
+                config: vec![],
+                input_args: vec![],
+                embedding: None,
+                restrictions: None,
+            };
+
+            let shinkai_tool = ShinkaiTool::Network(network_tool, true);
+            lance_db.set_tool(&shinkai_tool).await?;
+        }
+
+        // Check if ADD_TESTING_NETWORK_ECHO is set
+        if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
+            if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
+                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
+                    js_tool.name = "network__echo".to_string();
+                    let modified_tool = ShinkaiTool::JS(js_tool, true);
+                    lance_db.set_tool(&modified_tool).await?;
+                }
             }
         }
 
@@ -338,11 +383,7 @@ impl ToolRouter {
 
     /// This function is used to call a JS function directly
     /// It's very handy for agent-to-agent communication
-    pub async fn call_js_function(
-        &self,
-        function_args: Value,
-        js_tool_name: &str,
-    ) -> Result<String, LLMProviderError> { 
+    pub async fn call_js_function(&self, function_args: Value, js_tool_name: &str) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
 
         if shinkai_tool.is_none() {
@@ -360,8 +401,8 @@ impl ToolRouter {
         let result = js_tool
             .run(function_args, function_config)
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-        let result_str = serde_json::to_string(&result)
-            .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+        let result_str =
+            serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 
         return Ok(result_str);
     }

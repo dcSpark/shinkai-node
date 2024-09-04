@@ -86,3 +86,4 @@ shinkai-tools-runner-resources
 shinkai-bin/shinkai-node/shinkai_db_tests
 shinkai-tools-runner-resources
 storage_debug_agent_provider
+agent_provider
