@@ -32,9 +32,9 @@ pub enum WalletRole {
 /// Enum to represent different wallet types.
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
-enum WalletEnum {
+pub enum WalletEnum {
     LocalEthersWallet(LocalEthersWallet),
-    // Add other wallet types here as needed
+    CoinbaseMPCWallet(CoinbaseMPCWallet),
 }
 
 pub struct WalletManager {
@@ -50,22 +50,8 @@ impl Serialize for WalletManager {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("WalletManager", 2)?;
-        state.serialize_field(
-            "payment_wallet",
-            &self
-                .payment_wallet
-                .as_ref()
-                .downcast_ref::<LocalEthersWallet>()
-                .unwrap(),
-        )?;
-        state.serialize_field(
-            "receiving_wallet",
-            &self
-                .receiving_wallet
-                .as_ref()
-                .downcast_ref::<LocalEthersWallet>()
-                .unwrap(),
-        )?;
+        state.serialize_field("payment_wallet", &self.payment_wallet.to_wallet_enum())?;
+        state.serialize_field("receiving_wallet", &self.receiving_wallet.to_wallet_enum())?;
         state.end()
     }
 }
@@ -77,14 +63,20 @@ impl<'de> Deserialize<'de> for WalletManager {
     {
         #[derive(Deserialize)]
         struct WalletManagerHelper {
-            payment_wallet: LocalEthersWallet,
-            receiving_wallet: LocalEthersWallet,
+            payment_wallet: WalletEnum,
+            receiving_wallet: WalletEnum,
         }
 
         let helper = WalletManagerHelper::deserialize(deserializer)?;
         Ok(WalletManager {
-            payment_wallet: Box::new(helper.payment_wallet),
-            receiving_wallet: Box::new(helper.receiving_wallet),
+            payment_wallet: match helper.payment_wallet {
+                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
+                WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+            },
+            receiving_wallet: match helper.receiving_wallet {
+                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
+                WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+            },
         })
     }
 }

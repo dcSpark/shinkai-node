@@ -21,6 +21,7 @@ use crate::wallet::erc20_abi::ERC20_ABI;
 use crate::wallet::wallet_error::WalletError;
 
 use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
+use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 
 pub type LocalWalletProvider = Provider<Http>;
@@ -292,11 +293,15 @@ impl LocalEthersWallet {
 impl IsWallet for LocalEthersWallet {}
 
 impl PaymentWallet for LocalEthersWallet {
-    // No additional methods needed, as they are covered by SendActions and CommonActions
+    fn to_wallet_enum(&self) -> WalletEnum {
+        WalletEnum::LocalEthersWallet(self.clone())
+    }
 }
 
 impl ReceivingWallet for LocalEthersWallet {
-    // No additional methods needed, as they are covered by SendActions and CommonActions
+    fn to_wallet_enum(&self) -> WalletEnum {
+        WalletEnum::LocalEthersWallet(self.clone())
+    }
 }
 
 impl SendActions for LocalEthersWallet {

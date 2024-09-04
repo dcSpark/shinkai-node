@@ -454,7 +454,6 @@ fn micropayment_flow_test() {
 
                 let resp = receiver.recv().await.unwrap();
                 eprintln!("resp restore wallet to node2: {:?}", resp);
-                panic!("end test");
             }
             {
                 eprintln!("Add network tool to node2");
