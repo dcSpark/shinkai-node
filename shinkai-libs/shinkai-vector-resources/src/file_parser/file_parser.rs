@@ -11,7 +11,7 @@ use crate::source::TextChunkingStrategy;
 use crate::source::VRSourceReference;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResourceCore};
 #[cfg(feature = "desktop-only")]
-use async_recursion::async_recursion;
+use std::{future::Future, pin::Pin};
 
 #[cfg(feature = "desktop-only")]
 #[derive(Clone)]
@@ -207,7 +207,7 @@ impl ShinkaiFileParser {
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
-            &text_groups,
+            text_groups,
             generator.box_clone(),
             31,
             max_node_text_size,
@@ -269,72 +269,73 @@ impl ShinkaiFileParser {
         Ok(resource)
     }
 
-    #[async_recursion]
     #[cfg(feature = "desktop-only")]
     /// Recursively processes all text groups & their sub groups into DocumentResources.
     /// This method assumes your text groups already have embeddings generated for them.
-    async fn process_new_doc_resource_with_embeddings_already_generated(
+    fn process_new_doc_resource_with_embeddings_already_generated<'a>(
         text_groups: Vec<TextGroup>,
-        generator: &dyn EmbeddingGenerator,
-        name: &str,
+        generator: &'a dyn EmbeddingGenerator,
+        name: &'a str,
         desc: Option<String>,
         source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
+        parsing_tags: &'a Vec<DataTag>,
         resource_embedding: Option<Embedding>,
-    ) -> Result<BaseVectorResource, VRError> {
-        let name = ShinkaiFileParser::clean_name(name);
-        let max_embedding_token_count = generator.model_type().max_input_token_count();
-        let resource_desc = Self::_setup_resource_description(
-            desc,
-            &text_groups,
-            max_embedding_token_count,
-            max_embedding_token_count.checked_div(2).unwrap_or(100),
-        );
-        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
-        doc.set_embedding_model_used(generator.model_type());
+    ) -> Pin<Box<dyn Future<Output = Result<BaseVectorResource, VRError>> + Send + 'a>> {
+        Box::pin(async move {
+            let name = ShinkaiFileParser::clean_name(name);
+            let max_embedding_token_count = generator.model_type().max_input_token_count();
+            let resource_desc = Self::_setup_resource_description(
+                desc,
+                &text_groups,
+                max_embedding_token_count,
+                max_embedding_token_count.checked_div(2).unwrap_or(100),
+            );
+            let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
+            doc.set_embedding_model_used(generator.model_type());
 
-        // Sets the keywords
-        let keywords = Self::extract_keywords(&text_groups, 25);
-        doc.keywords_mut().set_keywords(keywords.clone());
-        doc.keywords_mut().update_keywords_embedding(generator).await?;
-        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
-        match resource_embedding {
-            Some(embedding) => doc.set_resource_embedding(embedding),
-            None => {
-                doc.update_resource_embedding(generator, None).await?;
-            }
-        }
-
-        // Add each text group as either Vector Resource Nodes,
-        // or data-holding Nodes depending on if each has any sub-groups
-        for grouped_text in &text_groups {
-            let (_, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
-            if has_sub_groups {
-                let new_doc = Self::process_new_doc_resource_with_embeddings_already_generated(
-                    grouped_text.sub_groups.clone(),
-                    generator,
-                    &new_name,
-                    None,
-                    source.clone(),
-                    parsing_tags,
-                    grouped_text.embedding.clone(),
-                )
-                .await?;
-                doc.append_vector_resource_node_auto(new_doc, metadata)?;
-            } else {
-                if grouped_text.text.len() <= 2 {
-                    continue;
+            // Sets the keywords
+            let keywords = Self::extract_keywords(&text_groups, 25);
+            doc.keywords_mut().set_keywords(keywords.clone());
+            doc.keywords_mut().update_keywords_embedding(generator).await?;
+            // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
+            match resource_embedding {
+                Some(embedding) => doc.set_resource_embedding(embedding),
+                None => {
+                    doc.update_resource_embedding(generator, None).await?;
                 }
-                if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
+            }
+
+            // Add each text group as either Vector Resource Nodes,
+            // or data-holding Nodes depending on if each has any sub-groups
+            for grouped_text in &text_groups {
+                let (_, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+                if has_sub_groups {
+                    let new_doc = Self::process_new_doc_resource_with_embeddings_already_generated(
+                        grouped_text.sub_groups.clone(),
+                        generator,
+                        &new_name,
+                        None,
+                        source.clone(),
+                        parsing_tags,
+                        grouped_text.embedding.clone(),
+                    )
+                    .await?;
+                    doc.append_vector_resource_node_auto(new_doc, metadata)?;
                 } else {
-                    let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
-                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
+                    if grouped_text.text.len() <= 2 {
+                        continue;
+                    }
+                    if let Some(embedding) = &grouped_text.embedding {
+                        doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
+                    } else {
+                        let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
+                        doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
+                    }
                 }
             }
-        }
 
-        Ok(BaseVectorResource::Document(doc))
+            Ok(BaseVectorResource::Document(doc))
+        })
     }
 
     #[cfg(feature = "desktop-only")]

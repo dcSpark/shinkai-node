@@ -14,7 +14,6 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
@@ -95,7 +94,6 @@ impl GenericInferenceChain {
         }
     }
 
-    #[async_recursion]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,

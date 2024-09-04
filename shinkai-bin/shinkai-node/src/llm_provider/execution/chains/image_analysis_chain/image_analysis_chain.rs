@@ -1,4 +1,3 @@
-use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{
     inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
 };
@@ -30,7 +29,6 @@ pub struct CronExecutionState {
 }
 
 impl JobManager {
-    #[async_recursion]
     pub async fn image_analysis_chain(
         _db: Arc<ShinkaiDB>,
         full_job: Job,

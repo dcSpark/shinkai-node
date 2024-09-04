@@ -9182,7 +9182,6 @@ dependencies = [
  "arrow-schema 52.2.0",
  "async-channel",
  "async-lock",
- "async-recursion",
  "async-std",
  "async-trait",
  "aws-config",
@@ -9268,7 +9267,6 @@ name = "shinkai_sheet"
 version = "0.1.0"
 dependencies = [
  "async-channel",
- "async-recursion",
  "blake3",
  "chrono",
  "dashmap",
@@ -9362,7 +9360,6 @@ name = "shinkai_vector_resources"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-recursion",
  "async-trait",
  "base64 0.13.1",
  "blake3",
