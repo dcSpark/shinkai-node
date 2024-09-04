@@ -425,7 +425,7 @@ fn micropayment_flow_test() {
                 // // Add wallet to node2
                 // let (sender, receiver) = async_channel::bounded(1);
                 // node2_commands_sender
-                //     .send(NodeCommand::V2ApiRestoreWallet {
+                //     .send(NodeCommand::V2ApiRestoreLocalEthersWallet {
                 //         bearer: api_v2_key.to_string(),
                 //         network: NetworkIdentifier::BaseSepolia,
                 //         source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
@@ -454,6 +454,11 @@ fn micropayment_flow_test() {
 
                 let resp = receiver.recv().await.unwrap();
                 eprintln!("resp restore wallet to node2: {:?}", resp);
+
+                // Check if the response is an error and panic if it is
+                if let Err(e) = resp {
+                    panic!("Failed to restore wallet: {:?}", e);
+                }
             }
             {
                 eprintln!("Add network tool to node2");
@@ -475,6 +480,9 @@ fn micropayment_flow_test() {
                 };
 
                 let shinkai_tool = ShinkaiTool::Network(network_tool, true);
+
+                let serialized_shinkai_tool = serde_json::to_value(&shinkai_tool).unwrap();
+                eprintln!("serialized_shinkai_tool: {:?}", serialized_shinkai_tool);
 
                 // Add the ShinkaiTool to node2
                 let (sender, receiver) = async_channel::bounded(1);

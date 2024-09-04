@@ -15,6 +15,11 @@ static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 [lib]
 doctest = false
 
+[build-dependencies]
+reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "stream"] }
+# shinkai_tools_runner = { version = "0.7.5" } # change to a crate later on
+shinkai_tools_runner = { path = "../../../shinkai-tool/libs/shinkai-tools-runner", features = ["built-in-tools"] }
+
 [dependencies]
 async-trait = "0.1.74"
 futures = "0.3.30"

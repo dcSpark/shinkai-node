@@ -213,7 +213,16 @@ impl MyAgentOfferingsManager {
         let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
             AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
         })?;
+
         let wallet_manager_lock = wallet_manager.lock().await;
+
+        // Check that wallet_manager is not None
+        if wallet_manager_lock.is_none() {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Wallet manager is None".to_string(),
+            ));
+        }
+        
         let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
             AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
         })?;
@@ -314,9 +323,9 @@ impl MyAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        let invoice = db.get_invoice(&invoice_id).map_err(|e| {
-            AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e))
-        })?;
+        let invoice = db
+            .get_invoice(&invoice_id)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
         // Step 1: Verify the invoice
         let is_valid = self.verify_invoice(&invoice).await?;

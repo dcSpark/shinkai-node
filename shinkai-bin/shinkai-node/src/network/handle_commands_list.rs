@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{lance_db, network::{node_commands::NodeCommand, Node}};
+use crate::{
+    lance_db,
+    network::{node_commands::NodeCommand, Node},
+};
 
 impl Node {
     pub async fn handle_command(&self, command: NodeCommand) {
@@ -1960,12 +1963,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_get_last_messages_from_inbox_with_branches(
-                        db_clone,
-                        bearer,
-                        inbox_name,
-                        limit,
-                        offset_key,
-                        res,
+                        db_clone, bearer, inbox_name, limit, offset_key, res,
                     )
                     .await;
                 });
@@ -2620,21 +2618,42 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiDownloadFileFromInbox { bearer, inbox_name, filename, res } => {
+            NodeCommand::V2ApiDownloadFileFromInbox {
+                bearer,
+                inbox_name,
+                filename,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_download_file_from_inbox(db_clone, vector_fs_clone, bearer, inbox_name, filename, res).await;
+                    let _ = Node::v2_api_download_file_from_inbox(
+                        db_clone,
+                        vector_fs_clone,
+                        bearer,
+                        inbox_name,
+                        filename,
+                        res,
+                    )
+                    .await;
                 });
             }
-            NodeCommand::V2ApiListFilesInInbox { bearer, inbox_name, res } => {
+            NodeCommand::V2ApiListFilesInInbox {
+                bearer,
+                inbox_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_list_files_in_inbox(db_clone, vector_fs_clone, bearer, inbox_name, res).await;
                 });
             }
-            NodeCommand::V2ApiGetToolOffering { bearer, tool_key_name, res } => {
+            NodeCommand::V2ApiGetToolOffering {
+                bearer,
+                tool_key_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_tool_offering(db_clone, bearer, tool_key_name, res).await;
@@ -2808,37 +2827,6 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_list_invoices(db_clone, bearer, res).await;
-                });
-            }
-            NodeCommand::V2ApiDownloadFileFromInbox {
-                bearer,
-                inbox_name,
-                filename,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_download_file_from_inbox(
-                        db_clone,
-                        vector_fs_clone,
-                        bearer,
-                        inbox_name,
-                        filename,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            NodeCommand::V2ApiListFilesInInbox {
-                bearer,
-                inbox_name,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_list_files_in_inbox(db_clone, vector_fs_clone, bearer, inbox_name, res).await;
                 });
             }
             _ => (),
