@@ -3,7 +3,7 @@ use std::pin::Pin;
 
 use super::{
     mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction},
-    wallet_error::WalletError,
+    wallet_error::WalletError, wallet_manager::WalletEnum,
 };
 
 use downcast_rs::{impl_downcast, Downcast};
@@ -63,7 +63,10 @@ pub trait CommonActions {
 }
 
 /// Trait for payment wallet.
-pub trait PaymentWallet: SendActions + CommonActions + IsWallet + Send + Sync + Downcast {}
+pub trait PaymentWallet: SendActions + CommonActions + IsWallet + Send + Sync + Downcast {
+    fn to_wallet_enum(&self) -> WalletEnum;
+}
+
 impl_downcast!(PaymentWallet);
 
 /// Trait that combines `CommonActions` and `IsWallet`.
@@ -71,5 +74,8 @@ pub trait CommonIsWallet: CommonActions + IsWallet + Send + Sync {}
 impl<T> CommonIsWallet for T where T: CommonActions + IsWallet + Send + Sync {}
 
 /// Trait for receiving wallet.
-pub trait ReceivingWallet: CommonActions + IsWallet + Send + Sync + Downcast {}
+pub trait ReceivingWallet: CommonActions + IsWallet + Send + Sync + Downcast {
+    fn to_wallet_enum(&self) -> WalletEnum;
+}
+
 impl_downcast!(ReceivingWallet);

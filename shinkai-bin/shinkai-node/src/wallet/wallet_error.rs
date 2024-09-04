@@ -31,6 +31,8 @@ pub enum WalletError {
     FunctionExecutionError(String),
     FunctionNotFound(String),
     ToolNotFound(String),
+    LanceDBError(String),
+    ParsingError(String),
     // Add other error types as needed
 }
 
@@ -65,6 +67,8 @@ impl fmt::Display for WalletError {
             WalletError::FunctionExecutionError(e) => write!(f, "FunctionExecutionError: {}", e),
             WalletError::FunctionNotFound(e) => write!(f, "FunctionNotFound: {}", e),
             WalletError::ToolNotFound(e) => write!(f, "ToolNotFound: {}", e),
+            WalletError::LanceDBError(e) => write!(f, "LanceDBError: {}", e),
+            WalletError::ParsingError(e) => write!(f, "ParsingError: {}", e),
         }
     }
 }
@@ -74,7 +78,7 @@ impl Error for WalletError {
         match self {
             WalletError::UuidError(e) => Some(e),
             WalletError::InvalidRpcUrl(_) => None,
-            WalletError::Bip39Error(e) => None,
+            WalletError::Bip39Error(_) => None,
             WalletError::EllipticCurveError(e) => Some(e),
             WalletError::HexError(e) => Some(e),
             WalletError::ProviderError(_) => None,
@@ -98,6 +102,8 @@ impl Error for WalletError {
             WalletError::FunctionExecutionError(_) => None,
             WalletError::FunctionNotFound(_) => None,
             WalletError::ToolNotFound(_) => None,
+            WalletError::LanceDBError(_) => None,
+            WalletError::ParsingError(_) => None,
         }
     }
 }
