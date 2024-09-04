@@ -29,7 +29,16 @@ pub fn wallet_routes(
         .and(warp::body::json())
         .and_then(create_local_wallet_handler);
 
-    restore_local_wallet_route.or(create_local_wallet_route)
+    let pay_invoice_route = warp::path("pay_invoice")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(pay_invoice_handler);
+
+    restore_local_wallet_route
+        .or(create_local_wallet_route)
+        .or(pay_invoice_route)
 }
 
 #[derive(Deserialize)]
@@ -114,11 +123,52 @@ pub async fn create_local_wallet_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct PayInvoiceRequest {
+    pub invoice_id: String,
+    pub data_for_tool: Value,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/pay_invoice",
+    request_body = PayInvoiceRequest,
+    responses(
+        (status = 200, description = "Successfully paid invoice", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn pay_invoice_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: PayInvoiceRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiPayInvoice {
+            bearer,
+            invoice_id: payload.invoice_id,
+            data_for_tool: payload.data_for_tool,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 // #[derive(OpenApi)]
 // #[openapi(
 //     paths(
 //         restore_local_wallet_handler,
 //         create_local_wallet_handler,
+//         pay_invoice_handler,
 //     ),
 //     components(
 //         schemas(Value, APIError)
