@@ -39,6 +39,7 @@ pub enum MessageType {
     ShinkaiMessage,
     Stream,
     Sheet,
+    ToolPaymentRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +106,7 @@ pub trait WSUpdateHandler {
 pub enum WSMessageType {
     Metadata(WSMetadata),
     Sheet(CellUpdateInfo),
+    // ToolPaymentRequest(ToolPaymentRequest),
     None,
 }
 
@@ -265,6 +267,7 @@ impl WebSocketManager {
             }
             WSTopic::Sheet => true,
             WSTopic::SheetList => true,
+            WSTopic::ToolPaymentRequest => true,
         }
     }
 
