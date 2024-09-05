@@ -36,9 +36,17 @@ pub fn wallet_routes(
         .and(warp::body::json())
         .and_then(pay_invoice_handler);
 
+    let restore_coinbase_mpc_wallet_route = warp::path("restore_coinbase_mpc_wallet")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(restore_coinbase_mpc_wallet_handler);
+
     restore_local_wallet_route
         .or(create_local_wallet_route)
         .or(pay_invoice_route)
+        .or(restore_coinbase_mpc_wallet_route)
 }
 
 #[derive(Deserialize)]
@@ -163,12 +171,57 @@ pub async fn pay_invoice_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct RestoreCoinbaseMPCWalletRequest {
+    pub network: NetworkIdentifier,
+    pub config: Option<CoinbaseMPCWalletConfig>,
+    pub wallet_id: String,
+    pub role: WalletRole,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/restore_coinbase_mpc_wallet",
+    request_body = RestoreCoinbaseMPCWalletRequest,
+    responses(
+        (status = 200, description = "Successfully restored Coinbase MPC wallet", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn restore_coinbase_mpc_wallet_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RestoreCoinbaseMPCWalletRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRestoreCoinbaseMPCWallet {
+            bearer,
+            network: payload.network,
+            config: payload.config,
+            wallet_id: payload.wallet_id,
+            role: payload.role,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 // #[derive(OpenApi)]
 // #[openapi(
 //     paths(
 //         restore_local_wallet_handler,
 //         create_local_wallet_handler,
 //         pay_invoice_handler,
+//         restore_coinbase_mpc_wallet_handler,
 //     ),
 //     components(
 //         schemas(Value, APIError)

@@ -206,6 +206,29 @@ impl ToolRouter {
 
             let shinkai_tool = ShinkaiTool::Network(network_tool, true);
             lance_db.set_tool(&shinkai_tool).await?;
+
+             // Manually create another NetworkTool
+             let youtube_tool = NetworkTool {
+                name: "youtube_transcript_with_timestamps".to_string(),
+                toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
+                description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
+                version: "v0.1".to_string(),
+                provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                usage_type: usage_type.clone(),
+                activated: true,
+                config: vec![],
+                input_args: vec![ToolArgument {
+                    name: "youtube_link".to_string(),
+                    arg_type: "string".to_string(),
+                    description: "The URL of the YouTube video".to_string(),
+                    is_required: true,
+                }],
+                embedding: None,
+                restrictions: None,
+            };
+
+            let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
+            lance_db.set_tool(&shinkai_tool).await?;
         }
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
@@ -213,6 +236,14 @@ impl ToolRouter {
             if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
                 if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
+                    let modified_tool = ShinkaiTool::JS(js_tool, true);
+                    lance_db.set_tool(&modified_tool).await?;
+                }
+            }
+
+            if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript").await? {
+                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
+                    js_tool.name = "youtube_transcript_with_timestamps".to_string();
                     let modified_tool = ShinkaiTool::JS(js_tool, true);
                     lance_db.set_tool(&modified_tool).await?;
                 }

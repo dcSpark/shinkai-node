@@ -228,12 +228,14 @@ impl CoinbaseMPCWallet {
         };
 
         // Call the function to restore the wallet
-        let params = serde_json::json!({
-            "name": config.name,
-            "privateKey": config.private_key,
-            "useServerSigner": config.use_server_signer,
-            "walletId": wallet_id,
-        });
+        // let params = serde_json::json!({
+        //     "name": config.name,
+        //     "privateKey": config.private_key,
+        //     "useServerSigner": config.use_server_signer,
+        //     "walletId": wallet_id,
+        // });
+
+        let params = serde_json::json!({});
 
         let response = match Self::call_function(
             config.clone(),

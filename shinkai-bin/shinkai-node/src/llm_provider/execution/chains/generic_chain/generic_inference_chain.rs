@@ -179,7 +179,7 @@ impl GenericInferenceChain {
                 // }
 
                 // Get the specific Shinkai tool
-                if let Some(tool) = tool_router.get_tool_by_name("@@agent_provider.arb-sep-shinkai:::shinkai-tool-echo:::network__echo").await.unwrap() {
+                if let Some(tool) = tool_router.get_tool_by_name("@@agent_provider.arb-sep-shinkai:::shinkai-tool-youtube-transcript:::youtube_transcript_with_timestamps").await.unwrap() {
                     tools.push(tool);
                 }
                 eprintln!("tool: {:?}", tools);

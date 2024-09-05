@@ -12,6 +12,7 @@ use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
 };
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
+use shinkai_node::tools::argument::ToolArgument;
 use shinkai_node::tools::network_tool::NetworkTool;
 use shinkai_node::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_node::wallet::mixed::{Asset, NetworkIdentifier};
@@ -320,6 +321,12 @@ fn micropayment_flow_test() {
                 formatted_tool_summary_for_ui:
                     "Tool Name: network__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message"
                         .to_string(),
+                input_args: vec![ToolArgument {
+                    arg_type: "string".to_string(),
+                    description: "".to_string(),
+                    is_required: true,
+                    name: "message".to_string(),
+                }],
                 author: "Shinkai".to_string(),
                 version: "v0.1".to_string(),
                 enabled: true,

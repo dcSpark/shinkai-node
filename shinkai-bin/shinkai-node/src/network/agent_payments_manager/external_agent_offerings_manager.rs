@@ -825,7 +825,7 @@ mod tests {
         let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
 
         // Create ToolRouter
-        let tool_router = Arc::new(Mutex::new(ToolRouter::new(lance_db.clone())));
+        let tool_router = Arc::new(ToolRouter::new(lance_db.clone()));
 
         // Create AgentOfferingsManager
         let node_name = node_name();

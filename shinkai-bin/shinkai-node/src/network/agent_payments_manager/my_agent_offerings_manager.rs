@@ -693,7 +693,7 @@ mod tests {
             LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
         ));
 
-        let tool_router = Arc::new(Mutex::new(ToolRouter::new(lance_db.clone())));
+        let tool_router = Arc::new(ToolRouter::new(lance_db.clone()));
         let node_name = ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap();
 
         let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);

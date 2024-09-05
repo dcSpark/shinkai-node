@@ -161,7 +161,7 @@ impl LanceShinkaiDb {
 
         // For Debugging
         // add an if using env REINSTALL_TOOLS so we inject some configuration data for certain tools and also we make it enabled
-        if env::var("REINSTALL_TOOLS").is_ok() {
+        if env::var("REINSTALL_TOOLS").is_ok() || env::var("INITIAL_CONF").is_ok() {
             if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
                 if tool_key.starts_with("local:::shinkai-tool-coinbase") {
                     if let (Ok(api_name), Ok(private_key), Ok(wallet_id), Ok(use_server_signer)) = (
@@ -180,6 +180,25 @@ impl LanceShinkaiDb {
                                     basic_config.key_value = Some(wallet_id.clone());
                                 } else if basic_config.key_name == "useServerSigner" {
                                     basic_config.key_value = Some(use_server_signer.clone());
+                                }
+                            }
+                        }
+                        shinkai_tool.enable();
+                    }
+                } else if tool_key.starts_with("local:::shinkai-tool-youtube-transcript") {
+                    if let (Ok(api_url), Ok(api_key), Ok(model)) = (
+                        env::var("YOUTUBE_TRANSCRIPT_API_URL"),
+                        env::var("YOUTUBE_TRANSCRIPT_API_KEY"),
+                        env::var("YOUTUBE_TRANSCRIPT_API_MODEL"),
+                    ) {
+                        for config in &mut js_tool.config {
+                            if let ToolConfig::BasicConfig(ref mut basic_config) = config {
+                                if basic_config.key_name == "apiUrl" {
+                                    basic_config.key_value = Some(api_url.clone());
+                                } else if basic_config.key_name == "apiKey" {
+                                    basic_config.key_value = Some(api_key.clone());
+                                } else if basic_config.key_name == "model" {
+                                    basic_config.key_value = Some(model.clone());
                                 }
                             }
                         }
