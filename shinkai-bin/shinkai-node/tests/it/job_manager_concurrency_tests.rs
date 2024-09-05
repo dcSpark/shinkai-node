@@ -210,7 +210,7 @@ async fn test_process_job_queue_concurrency() {
     .await;
 
     // Enqueue multiple jobs
-    for i in 0..8 {
+    for i in 0..2 * num_threads {
         let job = JobForProcessing::new(
             JobMessage {
                 job_id: format!("job_id::{}::false", i).to_string(),

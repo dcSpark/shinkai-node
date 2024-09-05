@@ -235,7 +235,6 @@ impl JobManager {
                 "Starting job queue processing loop",
             );
 
-            let mut handles = Vec::new();
             loop {
                 let mut continue_immediately = false;
 
@@ -287,7 +286,7 @@ impl JobManager {
                     let sheet_manager = sheet_manager.clone();
                     let callback_manager = callback_manager.clone();
 
-                    let handle = tokio::spawn(async move {
+                    tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
 
                         // Acquire the lock, dequeue the job, and immediately release the lock
@@ -339,12 +338,7 @@ impl JobManager {
                         drop(_permit);
                         processing_jobs.lock().await.remove(&job_id);
                     });
-                    handles.push(handle);
                 }
-
-                let handles_to_join = std::mem::take(&mut handles);
-                futures::future::join_all(handles_to_join).await;
-                handles.clear();
 
                 // If job_ids_to_process was equal to max_parallel_jobs, loop again immediately
                 // without waiting for a new job from receiver.recv().await
