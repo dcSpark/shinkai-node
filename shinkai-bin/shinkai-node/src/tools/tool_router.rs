@@ -500,7 +500,7 @@ impl ToolRouter {
                     // Check if the invoice is paid
                     match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
                         Ok(invoice) => {
-                            if invoice.status == InvoiceStatusEnum::Paid {
+                            if invoice.status == InvoiceStatusEnum::Processed {
                                 invoice_result = invoice;
                                 break;
                             }
@@ -517,8 +517,24 @@ impl ToolRouter {
                     tokio::time::sleep(interval).await;
                 }
 
+                eprintln!("invoice_result: {:?}", invoice_result);
+
+                // Try to parse the result_str and extract the "data" field
+                let response = match serde_json::from_str::<serde_json::Value>(&invoice_result.result_str.clone().unwrap_or_default()) {
+                    Ok(parsed) => {
+                        if let Some(data) = parsed.get("data") {
+                            data.to_string()
+                        } else {
+                            invoice_result.result_str.clone().unwrap_or_default()
+                        }
+                    }
+                    Err(_) => invoice_result.result_str.clone().unwrap_or_default(),
+                };
+
+                eprintln!("parsed response: {:?}", response);
+
                 return Ok(FunctionCallResponse {
-                    response: invoice_result.result_str.unwrap_or_default(),
+                    response,
                     function_call,
                 });
 

@@ -326,7 +326,7 @@ impl MyAgentOfferingsManager {
         &self,
         invoice_id: String,
         tool_data: Value,
-    ) -> Result<(), AgentOfferingManagerError> {
+    ) -> Result<Invoice, AgentOfferingManagerError> {
         // TODO: check that the invoice is valid (exists) and still valid (not expired)
 
         // Step 0: Get the invoice from the database
@@ -368,7 +368,7 @@ impl MyAgentOfferingsManager {
         // Step 3: Send receipt and data to provider
         self.send_receipt_and_data_to_provider(&updated_invoice).await?;
 
-        Ok(())
+        Ok(updated_invoice)
     }
 
     // Note: Only For Testing (!!!)
