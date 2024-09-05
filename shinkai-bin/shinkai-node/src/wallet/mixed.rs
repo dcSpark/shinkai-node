@@ -97,7 +97,7 @@ impl Asset {
                 network_id: NetworkIdentifier::BaseSepolia,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
-                contract_address: Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".to_string()),
+                contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
             }),
             (AssetType::USDC, NetworkIdentifier::BaseMainnet) => Some(Asset {
                 network_id: NetworkIdentifier::BaseMainnet,
