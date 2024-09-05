@@ -107,7 +107,7 @@ impl GenericInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -159,7 +159,7 @@ impl GenericInferenceChain {
         let mut tools = vec![];
         if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
             if let Some(tool_router) = &tool_router {
-                let tool_router = tool_router.lock().await;
+                
 
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
@@ -182,6 +182,7 @@ impl GenericInferenceChain {
                 if let Some(tool) = tool_router.get_tool_by_name("@@agent_provider.arb-sep-shinkai:::shinkai-tool-echo:::network__echo").await.unwrap() {
                     tools.push(tool);
                 }
+                eprintln!("tool: {:?}", tools);
                 // TODO: add an env so we always use the same tool (Network + Payments)
             }
         }
@@ -266,8 +267,6 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .lock()
-                    .await
                     .call_function(function_call, &context, shinkai_tool.unwrap())
                     .await
                 {

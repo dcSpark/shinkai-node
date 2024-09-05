@@ -55,7 +55,7 @@ pub struct TestEnvironment {
     pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
-    pub node1_tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub node1_tool_router: Option<Arc<ToolRouter>>,
     pub node1_abort_handler: AbortHandle,
 }
 

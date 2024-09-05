@@ -4,7 +4,6 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::db::db_network_tool_notification::NetworkToolNotification;
 use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
@@ -287,7 +286,7 @@ impl ToolRouter {
     }
 
     pub async fn workflow_search(
-        &mut self,
+        &self,
         name_query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {

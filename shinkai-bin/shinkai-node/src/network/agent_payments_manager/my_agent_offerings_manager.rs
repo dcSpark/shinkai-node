@@ -62,7 +62,7 @@ pub struct MyAgentOfferingsManager {
     // The address of the proxy server (if any)
     pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     // Tool router
-    pub tool_router: Weak<Mutex<ToolRouter>>,
+    pub tool_router: Weak<ToolRouter>,
     // Wallet manager
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
@@ -79,7 +79,7 @@ impl MyAgentOfferingsManager {
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         // ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Weak<Mutex<ToolRouter>>,
+        tool_router: Weak<ToolRouter>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
         // crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
         // Do I need the payment manager for the node?
@@ -222,7 +222,7 @@ impl MyAgentOfferingsManager {
                 "Wallet manager is None".to_string(),
             ));
         }
-        
+
         let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
             AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
         })?;
@@ -310,7 +310,6 @@ impl MyAgentOfferingsManager {
         db.set_invoice(invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
     }
-
 
     /// Store the invoice result (for the network)
     pub async fn store_invoice_result(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
@@ -466,8 +465,6 @@ impl MyAgentOfferingsManager {
         })?;
 
         let result = tool_router
-            .lock()
-            .await
             .add_network_tool(network_tool)
             .await
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to add network tool: {:?}", e)));
@@ -500,8 +497,7 @@ impl MyAgentOfferingsManager {
             None,
         );
 
-        let tool_router_lock = tool_router.lock().await;
-        tool_router_lock
+        tool_router
             .add_network_tool(network_tool)
             .await
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to add network tool: {:?}", e)))

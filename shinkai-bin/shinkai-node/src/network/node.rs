@@ -133,7 +133,7 @@ pub struct Node {
     // Websocket Server
     pub ws_server: Option<tokio::task::JoinHandle<()>>,
     // Tool Router. Option so it is less painful to test
-    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub tool_router: Option<Arc<ToolRouter>>,
     // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
     pub callback_manager: Arc<Mutex<JobCallbackManager>>,
     // Sheet Manager.
@@ -343,7 +343,7 @@ impl Node {
 
         let wallet_manager = Arc::new(Mutex::new(wallet_manager));
 
-        let tool_router = Arc::new(Mutex::new(tool_router));
+        let tool_router = Arc::new(tool_router);
 
         let my_agent_payments_manager = Arc::new(Mutex::new(
             MyAgentOfferingsManager::new(
@@ -540,18 +540,13 @@ impl Node {
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
-                let current_version = tool_router
-                    .lock()
-                    .await
-                    .get_current_lancedb_version()
-                    .await
-                    .unwrap_or(None);
+                let current_version = tool_router.get_current_lancedb_version().await.unwrap_or(None);
                 if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
-                    if let Err(e) = tool_router.lock().await.force_reinstall_all(generator).await {
+                    if let Err(e) = tool_router.force_reinstall_all(generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }
                 } else {
-                    if let Err(e) = tool_router.lock().await.initialization(generator).await {
+                    if let Err(e) = tool_router.initialization(generator).await {
                         eprintln!("ToolRouter initialization failed: {:?}", e);
                     }
                 }

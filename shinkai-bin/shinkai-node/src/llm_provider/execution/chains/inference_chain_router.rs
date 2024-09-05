@@ -35,7 +35,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,

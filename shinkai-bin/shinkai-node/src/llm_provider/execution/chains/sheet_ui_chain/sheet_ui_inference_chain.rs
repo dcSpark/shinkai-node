@@ -110,7 +110,7 @@ impl SheetUIInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         sheet_id: String,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
@@ -165,8 +165,6 @@ impl SheetUIInferenceChain {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
             if let Some(tool_router) = &tool_router {
-                let tool_router = tool_router.lock().await;
-
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
                 // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
@@ -310,8 +308,6 @@ impl SheetUIInferenceChain {
                     match tool_router
                         .as_ref()
                         .unwrap()
-                        .lock()
-                        .await
                         .call_function(function_call, &context, shinkai_tool.unwrap())
                         .await
                     {

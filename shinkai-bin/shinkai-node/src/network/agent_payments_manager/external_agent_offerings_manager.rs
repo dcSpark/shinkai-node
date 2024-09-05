@@ -74,7 +74,7 @@ pub struct ExtAgentOfferingsManager {
     // pub shared_tools: Arc<DashMap<String, ShinkaiToolOffering>>, // (streamer_profile:::path, shared_folder)
     pub offerings_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
     pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
-    pub tool_router: Weak<Mutex<ToolRouter>>,
+    pub tool_router: Weak<ToolRouter>,
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
 }
 
@@ -90,7 +90,7 @@ impl ExtAgentOfferingsManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        tool_router: Weak<Mutex<ToolRouter>>,
+        tool_router: Weak<ToolRouter>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
         // need tool_router
     ) -> Self {
@@ -172,7 +172,7 @@ impl ExtAgentOfferingsManager {
         // shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         thread_number: usize,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        tool_router: Weak<Mutex<ToolRouter>>,
+        tool_router: Weak<ToolRouter>,
         process_job: impl Fn(
                 Invoice,
                 Weak<ShinkaiDB>,
@@ -182,7 +182,7 @@ impl ExtAgentOfferingsManager {
                 EncryptionStaticKey,
                 Weak<Mutex<dyn IdentityManagerTrait + Send>>,
                 Weak<Mutex<Option<ProxyConnectionInfo>>>,
-                Weak<Mutex<ToolRouter>>,
+                Weak<ToolRouter>,
             ) -> Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send>>
             + Send
             + Sync
@@ -343,7 +343,7 @@ impl ExtAgentOfferingsManager {
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        tool_router: Weak<Mutex<ToolRouter>>,
+        tool_router: Weak<ToolRouter>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>> {
         Box::pin(async move {
             // Actually do the work by calling tool_router
@@ -532,7 +532,10 @@ impl ExtAgentOfferingsManager {
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
-            eprintln!("sending message to peer {:?}", invoice_request.requester_name.to_string());
+            eprintln!(
+                "sending message to peer {:?}",
+                invoice_request.requester_name.to_string()
+            );
             send_message_to_peer(
                 message,
                 self.db.clone(),
@@ -577,7 +580,6 @@ impl ExtAgentOfferingsManager {
             let tool_router = self.tool_router.upgrade().ok_or_else(|| {
                 AgentOfferingManagerError::OperationFailed("Failed to upgrade tool_router reference".to_string())
             })?;
-            let tool_router_lock = tool_router.lock().await;
 
             // js tool name
             let local_tool_key = local_invoice.shinkai_offering.convert_tool_to_local().map_err(|e| {
@@ -587,7 +589,7 @@ impl ExtAgentOfferingsManager {
                 ))
             })?;
 
-            let result = tool_router_lock
+            let result = tool_router
                 .call_js_function(data_payload, &local_tool_key)
                 .await
                 .map_err(|e: LLMProviderError| {
@@ -600,9 +602,8 @@ impl ExtAgentOfferingsManager {
             local_invoice.status = InvoiceStatusEnum::Processed;
             local_invoice.response_date_time = Some(Utc::now());
 
-            db.set_invoice(&local_invoice).map_err(|e| {
-                AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e))
-            })?;
+            db.set_invoice(&local_invoice)
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
 
         // TODO: we need the transaction_id and then call the crypto service to verify the payment
@@ -623,7 +624,9 @@ impl ExtAgentOfferingsManager {
         invoice: Invoice,
     ) -> Result<(), AgentOfferingManagerError> {
         // Call confirm_invoice_payment_and_process to process the invoice
-        let local_invoice = self.confirm_invoice_payment_and_process(requester_node_name.clone(), invoice.clone()).await?;
+        let local_invoice = self
+            .confirm_invoice_payment_and_process(requester_node_name.clone(), invoice.clone())
+            .await?;
 
         // Continue
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {

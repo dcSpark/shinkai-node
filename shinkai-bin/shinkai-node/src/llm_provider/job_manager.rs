@@ -14,6 +14,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -67,7 +68,7 @@ pub struct JobManager {
     // Websocket manager for sending updates to the frontend
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     // Tool router for managing installed tools
-    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub tool_router: Option<Arc<ToolRouter>>,
     // Sheet manager for managing installed sheets
     pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Job callback manager for handling job callbacks
@@ -89,7 +90,7 @@ impl JobManager {
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
@@ -213,7 +214,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
@@ -227,7 +228,7 @@ impl JobManager {
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-                Option<Arc<Mutex<ToolRouter>>>,
+                Option<Arc<ToolRouter>>,
                 Arc<Mutex<SheetManager>>,
                 Arc<Mutex<JobCallbackManager>>,
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
@@ -366,13 +367,9 @@ impl JobManager {
                     handles.push(handle);
                 }
 
-                let handles_to_join = std::mem::take(&mut handles);
-                futures::future::join_all(handles_to_join).await;
-                handles.clear();
-
-                // If job_ids_to_process was equal to max_parallel_jobs, loop again immediately
-                // without waiting for a new job from receiver.recv().await
-                if continue_immediately {
+                // Check if we can process more jobs
+                let available_permits = semaphore.available_permits();
+                if available_permits > 0 {
                     continue;
                 }
 
@@ -404,8 +401,18 @@ impl JobManager {
                                     let agent_id = agent_name
                                         .get_agent_name_string()
                                         .ok_or(LLMProviderError::LLMProviderNotFound)?;
-                                    let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| LLMProviderError::ContentParseFailed)?;
+                                    let mut job_creation: JobCreationInfo =
+                                        serde_json::from_str(&data.message_raw_content)
+                                            .map_err(|_| LLMProviderError::ContentParseFailed)?;
+
+                                    // Delete later
+                                    // Treat empty string in associated_ui as None
+                                    if let Some(AssociatedUI::Sheet(ref sheet)) = job_creation.associated_ui {
+                                        if sheet.is_empty() {
+                                            job_creation.associated_ui = None;
+                                        }
+                                    }
+
                                     self.process_job_creation(job_creation, &profile, &agent_id).await
                                 }
                                 MessageSchemaType::JobMessageSchema => {

@@ -332,6 +332,8 @@ async fn test_sequential_process_for_same_job_id() {
         None,
         sheet_manager.clone(),
         callback_manager.clone(),
+        None,
+        None,
         move |job,
               _db,
               _vector_fs,

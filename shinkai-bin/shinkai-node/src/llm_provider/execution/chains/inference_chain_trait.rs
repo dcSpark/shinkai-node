@@ -66,7 +66,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn score_results(&self) -> &HashMap<String, ScoreResult>;
     fn raw_files(&self) -> &RawFiles;
     fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>;
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>>;
+    fn tool_router(&self) -> Option<Arc<ToolRouter>>;
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
@@ -149,7 +149,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.ws_manager_trait.clone()
     }
 
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+    fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         self.tool_router.clone()
     }
 
@@ -189,7 +189,7 @@ pub struct InferenceChainContext {
     pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub tool_router: Option<Arc<ToolRouter>>,
     pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -210,7 +210,7 @@ impl InferenceChainContext {
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -398,7 +398,7 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).ws_manager_trait()
     }
 
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+    fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         (**self).tool_router()
     }
 
@@ -562,7 +562,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         None
     }
 
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+    fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         unimplemented!()
     }
 

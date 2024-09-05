@@ -55,7 +55,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
@@ -103,7 +103,6 @@ impl JobManager {
         // Note: remove later on. This code is for the meantime only while we add embeddings to tools so they can get added at the first Shinkai start
         {
             if let Some(tool_router) = tool_router.clone() {
-                let tool_router = tool_router.lock().await;
                 let _ = tool_router.initialization(Box::new(generator.clone())).await;
             }
         }
@@ -274,7 +273,7 @@ impl JobManager {
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -366,7 +365,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -375,7 +374,6 @@ impl JobManager {
             parse_workflow(code)?
         } else if let Some(name) = &job_message.workflow_name {
             if let Some(tool_router) = tool_router.clone() {
-                let tool_router = tool_router.lock().await;
                 if let Some(workflow) = tool_router
                     .get_workflow(name)
                     .await
@@ -475,7 +473,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         workflow: Workflow,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
@@ -523,7 +521,7 @@ impl JobManager {
         let tools = {
             // get tool_router and then call get_tools_by_names
             if let Some(tool_router) = tool_router.clone() {
-                let tool_router = tool_router.lock().await;
+                
                 tool_router.get_tools_by_names(js_functions_used).await?
             } else {
                 return Err(LLMProviderError::ToolRouterNotFound);
@@ -562,7 +560,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -588,7 +586,6 @@ impl JobManager {
                 Some(workflow)
             } else if let Some(workflow_name) = sheet_job_data.workflow_name {
                 if let Some(tool_router) = tool_router.clone() {
-                    let tool_router = tool_router.lock().await;
                     tool_router
                         .get_workflow(&workflow_name)
                         .await
