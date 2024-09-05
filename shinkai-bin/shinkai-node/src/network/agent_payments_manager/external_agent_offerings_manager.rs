@@ -532,6 +532,7 @@ impl ExtAgentOfferingsManager {
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
+            eprintln!("sending message to peer {:?}", invoice_request.requester_name.to_string());
             send_message_to_peer(
                 message,
                 self.db.clone(),
