@@ -218,7 +218,7 @@ impl ToolRouter {
                 activated: true,
                 config: vec![],
                 input_args: vec![ToolArgument {
-                    name: "youtube_link".to_string(),
+                    name: "url".to_string(),
                     arg_type: "string".to_string(),
                     description: "The URL of the YouTube video".to_string(),
                     is_required: true,

@@ -13,6 +13,7 @@ use tokio::sync::Mutex;
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::tools::js_toolkit_headers::ToolConfig;
 use crate::tools::shinkai_tool::ShinkaiTool;
+use crate::wallet::mixed::AssetType;
 use crate::wallet::wallet_error::WalletError;
 
 use super::mixed::{self, Address, AddressBalanceList, Asset, Balance, Network, PublicAddress};
@@ -382,61 +383,69 @@ impl CommonActions for CoinbaseMPCWallet {
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
+        let network_id = self.network.id.clone();
+        let network = self.network.clone();
         let lance_db = self.lance_db.clone().unwrap(); // Use the Weak reference
 
         Box::pin(async move {
             let params = serde_json::json!({
-                "walletId": config.wallet_id,
+                "walletId": config.wallet_id.clone(),
             });
 
             let response =
-                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
+                CoinbaseMPCWallet::call_function(config.clone(), lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
+
+            eprintln!("response: {:?}", response);
 
             let balances = response
-                .get("balances")
-                .and_then(|v| v.as_array())
+                .get("data")
+                .and_then(|data| data.get("balances"))
+                .and_then(|v| v.as_object())
                 .ok_or(WalletError::ConfigNotFound)?;
 
-            // let data: Vec<Balance> = balances
-            //     .iter()
-            //     .map(|balance| {
-            //         let amount = balance
-            //             .get("amount")
-            //             .and_then(|v| v.as_str())
-            //             .unwrap_or_default()
-            //             .parse::<f64>()
-            //             .unwrap_or(0.0);
-            //         let decimals = balance.get("decimals").and_then(|v| v.as_u64()).map(|d| d as u32);
-            //         let asset = balance
-            //             .get("asset")
-            //             .and_then(|v| v.as_str())
-            //             .unwrap_or_default()
-            //             .to_string();
-            //         Balance {
-            //             amount: amount.to_string(),
-            //             decimals,
-            //             asset,
-            //         }
-            //     })
-            //     .collect();
+            let data: Vec<Balance> = balances
+                .iter()
+                .filter_map(|(asset, amount)| {
+                    let amount = amount.as_f64().unwrap_or(0.0);
+                    match asset.as_str() {
+                        "ETH" => Some(Balance {
+                            amount: amount.to_string(),
+                            decimals: Some(18),
+                            asset: Asset {
+                                asset_id: asset.clone(),
+                                decimals: Some(18),
+                                network_id: network.id.clone(),
+                                contract_address: None,
+                            },
+                        }),
+                        "USDC" => Some(Balance {
+                            amount: amount.to_string(),
+                            decimals: Some(6),
+                            asset: Asset::new(AssetType::USDC, &network_id.clone())?,
+                        }),
+                        _ => None,
+                    }
+                })
+                .collect();
 
-            let has_more = response.get("has_more").and_then(|v| v.as_bool()).unwrap_or(false);
+            let has_more = response.clone().get("has_more").and_then(|v| v.as_bool()).unwrap_or(false);
 
             let next_page = response
                 .get("next_page")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                .map(|s| s.to_string())
+                .unwrap_or_default(); // Set to empty string if None
 
-            let total_count = response.get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let total_count = response.clone().get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
 
             let address_balance_list = AddressBalanceList {
-                data: vec![],
+                data,
                 has_more,
-                next_page: next_page.expect("REASON"),
+                next_page,
                 total_count: total_count as u32,
             };
 
-            Ok(address_balance_list)
+            Ok(address_balance_list.clone())
         })
     }
 
