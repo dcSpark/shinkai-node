@@ -15,6 +15,7 @@ use crate::network::agent_payments_manager::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use crate::network::ws_manager::{PaymentMetadata, WSMessageType, WidgetMetadata};
+use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::tools::workflow_tool::WorkflowTool;
@@ -193,7 +194,12 @@ impl ToolRouter {
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
-                input_args: vec![],
+                input_args: vec![ToolArgument {
+                    name: "message".to_string(),
+                    arg_type: "string".to_string(),
+                    description: "".to_string(),
+                    is_required: true,
+                }],
                 embedding: None,
                 restrictions: None,
             };
@@ -403,12 +409,9 @@ impl ToolRouter {
                     (invoice_request, balances)
                 };
 
-                 // Convert balances to Value
-                 let balances_value = serde_json::to_value(&wallet_balances).map_err(|e| {
-                    LLMProviderError::FunctionExecutionError(format!(
-                        "Failed to convert balances to Value: {}",
-                        e
-                    ))
+                // Convert balances to Value
+                let balances_value = serde_json::to_value(&wallet_balances).map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!("Failed to convert balances to Value: {}", e))
                 })?;
 
                 // Note: there must be a better way to do this
