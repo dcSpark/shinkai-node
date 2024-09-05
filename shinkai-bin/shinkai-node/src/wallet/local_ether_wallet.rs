@@ -392,72 +392,79 @@ impl CommonActions for LocalEthersWallet {
             let mut balances = Vec::new();
 
             // Check ETH balance
-            let eth_balance_wei = self_clone
+            if let Ok(eth_balance_wei) = self_clone
                 .provider
                 .get_balance(self_clone.wallet.address(), None)
                 .await
-                .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-            let eth_balance = Balance {
-                amount: eth_balance_wei.to_string(),
-                decimals: Some(18),
-                asset: Asset::new(AssetType::ETH, &self_clone.network.id).ok_or_else(|| {
-                    WalletError::UnsupportedAssetForNetwork("ETH".to_string(), self_clone.network.id.to_string())
-                })?,
-            };
-            balances.push(eth_balance);
+            {
+                let eth_balance = Balance {
+                    amount: eth_balance_wei.to_string(),
+                    decimals: Some(18),
+                    asset: Asset::new(AssetType::ETH, &self_clone.network.id).ok_or_else(|| {
+                        WalletError::UnsupportedAssetForNetwork("ETH".to_string(), self_clone.network.id.to_string())
+                    })?,
+                };
+                balances.push(eth_balance);
+            }
 
             // Check USDC balance
             if let Some(usdc_asset) = Asset::new(AssetType::USDC, &self_clone.network.id) {
-                let usdc_contract_address = usdc_asset
+                if let Ok(usdc_contract_address) = usdc_asset
                     .contract_address
                     .clone()
-                    .ok_or_else(|| WalletError::MissingContractAddress(usdc_asset.asset_id.clone()))?;
-                let usdc_contract = Contract::new(
-                    usdc_contract_address
-                        .parse::<EthersAddress>()
-                        .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-                    ERC20_ABI.clone(),
-                    Arc::new(self_clone.provider.clone()),
-                );
-                let usdc_balance: U256 = usdc_contract
-                    .method::<EthersAddress, U256>("balanceOf", self_clone.wallet.address())
-                    .map_err(|e| WalletError::ContractError(e.to_string()))?
-                    .call()
-                    .await
-                    .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-                let usdc_balance = Balance {
-                    amount: usdc_balance.to_string(),
-                    decimals: Some(6),
-                    asset: usdc_asset,
-                };
-                balances.push(usdc_balance);
+                    .ok_or_else(|| WalletError::MissingContractAddress(usdc_asset.asset_id.clone()))
+                {
+                    let usdc_contract = Contract::new(
+                        usdc_contract_address
+                            .parse::<EthersAddress>()
+                            .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+                        ERC20_ABI.clone(),
+                        Arc::new(self_clone.provider.clone()),
+                    );
+                    if let Ok(usdc_balance) = usdc_contract
+                        .method::<EthersAddress, U256>("balanceOf", self_clone.wallet.address())
+                        .map_err(|e| WalletError::ContractError(e.to_string()))?
+                        .call()
+                        .await
+                    {
+                        let usdc_balance = Balance {
+                            amount: usdc_balance.to_string(),
+                            decimals: Some(6),
+                            asset: usdc_asset,
+                        };
+                        balances.push(usdc_balance);
+                    }
+                }
             }
 
             // Check KAI balance (if applicable)
             if let Some(kai_asset) = Asset::new(AssetType::KAI, &self_clone.network.id) {
-                let kai_contract_address = kai_asset
+                if let Ok(kai_contract_address) = kai_asset
                     .contract_address
                     .clone()
-                    .ok_or_else(|| WalletError::MissingContractAddress(kai_asset.asset_id.clone()))?;
-                let kai_contract = Contract::new(
-                    kai_contract_address
-                        .parse::<EthersAddress>()
-                        .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-                    ERC20_ABI.clone(),
-                    Arc::new(self_clone.provider.clone()),
-                );
-                let kai_balance: U256 = kai_contract
-                    .method::<EthersAddress, U256>("balanceOf", self_clone.wallet.address())
-                    .map_err(|e| WalletError::ContractError(e.to_string()))?
-                    .call()
-                    .await
-                    .map_err(|e| WalletError::ProviderError(e.to_string()))?;
-                let kai_balance = Balance {
-                    amount: kai_balance.to_string(),
-                    decimals: Some(18),
-                    asset: kai_asset,
-                };
-                balances.push(kai_balance);
+                    .ok_or_else(|| WalletError::MissingContractAddress(kai_asset.asset_id.clone()))
+                {
+                    let kai_contract = Contract::new(
+                        kai_contract_address
+                            .parse::<EthersAddress>()
+                            .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+                        ERC20_ABI.clone(),
+                        Arc::new(self_clone.provider.clone()),
+                    );
+                    if let Ok(kai_balance) = kai_contract
+                        .method::<EthersAddress, U256>("balanceOf", self_clone.wallet.address())
+                        .map_err(|e| WalletError::ContractError(e.to_string()))?
+                        .call()
+                        .await
+                    {
+                        let kai_balance = Balance {
+                            amount: kai_balance.to_string(),
+                            decimals: Some(18),
+                            asset: kai_asset,
+                        };
+                        balances.push(kai_balance);
+                    }
+                }
             }
 
             Ok(AddressBalanceList {

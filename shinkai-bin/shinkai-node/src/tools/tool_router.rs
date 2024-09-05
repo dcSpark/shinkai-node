@@ -371,7 +371,7 @@ impl ToolRouter {
                 eprintln!("network tool with name {:?}", network_tool.name);
 
                 let agent_payments_manager = context.my_agent_payments_manager();
-                let internal_invoice_request = {
+                let (internal_invoice_request, wallet_balances) = {
                     // Start invoice request
                     let my_agent_payments_manager = match &agent_payments_manager {
                         Some(manager) => manager.lock().await,
@@ -381,6 +381,11 @@ impl ToolRouter {
                             ));
                         }
                     };
+
+                    // Get wallet balances
+                    let balances = my_agent_payments_manager.get_balances().await.map_err(|e| {
+                        LLMProviderError::FunctionExecutionError(format!("Failed to get balances: {}", e))
+                    })?;
 
                     // Send a Network Request Invoice
                     let invoice_request = match my_agent_payments_manager
@@ -395,8 +400,16 @@ impl ToolRouter {
                             )));
                         }
                     };
-                    invoice_request
+                    (invoice_request, balances)
                 };
+
+                 // Convert balances to Value
+                 let balances_value = serde_json::to_value(&wallet_balances).map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!(
+                        "Failed to convert balances to Value: {}",
+                        e
+                    ))
+                })?;
 
                 // Note: there must be a better way to do this
                 // Loop to check for the invoice unique_id
@@ -455,6 +468,8 @@ impl ToolRouter {
                             usage_type: network_tool.usage_type.clone(),
                             invoice_id: internal_invoice_request.unique_id.clone(),
                             invoice: notification_content_value,
+                            function_args: function_args.clone(),
+                            wallet_balances: balances_value,
                         };
 
                         let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));

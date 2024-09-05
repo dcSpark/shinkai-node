@@ -72,6 +72,8 @@ pub struct PaymentMetadata {
     pub usage_type: UsageType,
     pub invoice_id: String,
     pub invoice: Value,
+    pub function_args: Value,
+    pub wallet_balances: Value,
 }
 
 #[derive(Debug)]
