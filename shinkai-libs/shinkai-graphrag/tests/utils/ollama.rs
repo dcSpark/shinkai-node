@@ -90,7 +90,7 @@ impl OllamaEmbedding {
 impl BaseTextEmbedding for OllamaEmbedding {
     async fn aembed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
         let client = Client::new();
-        let embedding_url = format!("{}{}", &self.base_url, "/api/embedding");
+        let embedding_url = format!("{}{}", &self.base_url, "/api/embed");
 
         let payload = json!({
             "model": self.model,
