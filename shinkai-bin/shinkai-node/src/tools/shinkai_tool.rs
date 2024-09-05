@@ -32,7 +32,7 @@ pub struct ShinkaiToolHeader {
     pub author: String,
     pub version: String,
     pub enabled: bool,
-    // pub input_args: Vec<ToolArgument>, // most likely we need to that this
+    pub input_args: Vec<ToolArgument>,
     pub config: Option<Vec<ToolConfig>>,
     pub usage_type: Option<UsageType>, // includes pricing
     // Note: do we need usage_type? it's already contained in the tool_offering
@@ -61,6 +61,7 @@ impl ShinkaiTool {
             author: self.author(),
             version: self.version(),
             enabled: self.is_enabled(),
+            input_args: self.input_args(),
             config: self.get_js_tool_config().cloned(),
             usage_type: self.get_usage_type(),
             tool_offering: None,
