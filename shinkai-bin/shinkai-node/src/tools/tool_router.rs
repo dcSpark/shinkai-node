@@ -370,7 +370,7 @@ impl ToolRouter {
             }
             ShinkaiTool::Network(network_tool, _) => {
                 eprintln!("network tool with name {:?}", network_tool.name);
-                
+
                 let agent_payments_manager = context.my_agent_payments_manager();
                 let internal_invoice_request = {
                     // Start invoice request
@@ -404,7 +404,7 @@ impl ToolRouter {
                 let start_time = std::time::Instant::now();
                 let timeout = std::time::Duration::from_secs(300); // 5 minutes
                 let interval = std::time::Duration::from_millis(100); // 100ms
-                let notification_content: NetworkToolNotification;
+                let notification_content: Invoice;
 
                 loop {
                     if start_time.elapsed() > timeout {
@@ -413,42 +413,31 @@ impl ToolRouter {
                         ));
                     }
 
-                    match context
-                        .db()
-                        .get_network_tool_notification(internal_invoice_request.unique_id.clone())
-                    {
-                        Ok(Some(notification)) => {
-                            // Process the notification
-                            notification_content = notification;
+                    // Check if the invoice is paid
+                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
+                        Ok(invoice) => {
+                            eprintln!("invoice found: {:?}", invoice);
 
-                            // Remove notification from the database
-                            match context
-                                .db()
-                                .delete_network_tool_notification(internal_invoice_request.unique_id.clone())
-                            {
-                                Ok(_) => (),
-                                Err(e) => {
-                                    return Err(LLMProviderError::FunctionExecutionError(format!(
-                                        "Error while removing network tool notification: {}",
-                                        e
-                                    )));
-                                }
+                            if invoice.status == InvoiceStatusEnum::Pending {
+                                // Process the notification
+                                notification_content = invoice;
+                                break;
                             }
-
-                            break;
-                        }
-                        Ok(None) => {
-                            // Sleep for the interval before checking again
-                            tokio::time::sleep(interval).await;
                         }
                         Err(e) => {
-                            return Err(LLMProviderError::FunctionExecutionError(format!(
-                                "Error while checking for invoice unique_id: {}",
-                                e
-                            )));
+                            // Nothing to do here
                         }
                     }
+                    tokio::time::sleep(interval).await;
                 }
+
+                // Convert notification_content to Value
+                let notification_content_value = serde_json::to_value(&notification_content).map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!(
+                        "Failed to convert notification_content to Value: {}",
+                        e
+                    ))
+                })?;
 
                 // Get the ws from the context
                 {
@@ -466,7 +455,7 @@ impl ToolRouter {
                             description: network_tool.description.clone(),
                             usage_type: network_tool.usage_type.clone(),
                             invoice_id: internal_invoice_request.unique_id.clone(),
-                            invoice: notification_content.message,
+                            invoice: notification_content_value,
                         };
 
                         let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));
