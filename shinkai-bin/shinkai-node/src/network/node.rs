@@ -482,6 +482,8 @@ impl Node {
                 self.tool_router.clone(),
                 self.sheet_manager.clone(),
                 self.callback_manager.clone(),
+                self.my_agent_payments_manager.clone(),
+                self.ext_agent_payments_manager.clone(),
             )
             .await,
         ));

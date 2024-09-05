@@ -7,7 +7,9 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::managers::sheet_manager::{self, SheetManager};
+use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -15,7 +17,7 @@ use ed25519_dalek::SigningKey;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use shinkai_message_primitives::schemas::sheet::{self, WorkflowSheetJobData};
+use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -57,6 +59,8 @@ impl JobManager {
         sheet_manager: Arc<Mutex<SheetManager>>,
         _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+        ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -134,6 +138,8 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
+            Some(my_agent_payments_manager.clone()),
+            Some(ext_agent_payments_manager.clone()),
         )
         .await;
 
@@ -160,6 +166,8 @@ impl JobManager {
             Some(sheet_manager.clone()),
             tool_router.clone(),
             job_queue_manager.clone(),
+            Some(my_agent_payments_manager.clone()),
+            Some(ext_agent_payments_manager.clone()),
         )
         .await?;
         if sheet_job_found {
@@ -202,6 +210,8 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
+            Some(my_agent_payments_manager.clone()),
+            Some(ext_agent_payments_manager.clone()),
         )
         .await;
 
@@ -266,8 +276,9 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<(), LLMProviderError> {
-        let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -297,6 +308,8 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -355,6 +368,8 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<bool, LLMProviderError> {
         let workflow = if let Some(code) = &job_message.workflow_code {
             parse_workflow(code)?
@@ -406,6 +421,8 @@ impl JobManager {
             tool_router.clone(),
             sheet_manager.clone(),
             workflow,
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
         )
         .await?;
 
@@ -461,6 +478,8 @@ impl JobManager {
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         workflow: Workflow,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
@@ -482,6 +501,8 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
         );
 
         // Process files
@@ -543,6 +564,8 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<bool, LLMProviderError> {
         if let Some(sheet_job_data) = &job_message.sheet_job_data {
             let sheet_job_data: WorkflowSheetJobData = serde_json::from_str(sheet_job_data)
@@ -592,6 +615,8 @@ impl JobManager {
                     tool_router.clone(),
                     Some(sheet_manager.clone()),
                     workflow,
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
                 )
                 .await?
             } else {
@@ -610,6 +635,8 @@ impl JobManager {
                     ws_manager.clone(),
                     tool_router.clone(),
                     Some(sheet_manager.clone()),
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
                 )
                 .await?
             };

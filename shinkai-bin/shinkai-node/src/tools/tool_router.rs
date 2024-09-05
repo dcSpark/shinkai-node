@@ -4,13 +4,18 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::db::db_network_tool_notification::NetworkToolNotification;
 use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
-use crate::network::agent_payments_manager::shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType};
+use crate::network::agent_payments_manager::invoices::{Invoice, InvoiceStatusEnum};
+use crate::network::agent_payments_manager::shinkai_tool_offering::{
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
+};
+use crate::network::ws_manager::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use crate::tools::error::ToolError;
 use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::tools::workflow_tool::WorkflowTool;
@@ -19,6 +24,7 @@ use crate::workflows::sm_executor::AsyncFunction;
 use serde_json::Value;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -363,7 +369,150 @@ impl ToolRouter {
                 });
             }
             ShinkaiTool::Network(network_tool, _) => {
-                // Should this create an invoice request?
+                let agent_payments_manager = context.my_agent_payments_manager();
+                let internal_invoice_request = {
+                    // Start invoice request
+                    let my_agent_payments_manager = match &agent_payments_manager {
+                        Some(manager) => manager.lock().await,
+                        None => {
+                            return Err(LLMProviderError::FunctionExecutionError(
+                                "Agent payments manager is not available".to_string(),
+                            ));
+                        }
+                    };
+
+                    // Send a Network Request Invoice
+                    let invoice_request = match my_agent_payments_manager
+                        .request_invoice(network_tool.clone(), UsageTypeInquiry::PerUse)
+                        .await
+                    {
+                        Ok(request) => request,
+                        Err(e) => {
+                            return Err(LLMProviderError::FunctionExecutionError(format!(
+                                "Failed to request invoice: {}",
+                                e
+                            )));
+                        }
+                    };
+                    invoice_request
+                };
+
+                // Note: there must be a better way to do this
+                // Loop to check for the invoice unique_id
+                let start_time = std::time::Instant::now();
+                let timeout = std::time::Duration::from_secs(300); // 5 minutes
+                let interval = std::time::Duration::from_millis(100); // 100ms
+                let notification_content: NetworkToolNotification;
+
+                loop {
+                    if start_time.elapsed() > timeout {
+                        return Err(LLMProviderError::FunctionExecutionError(
+                            "Timeout while waiting for invoice unique_id".to_string(),
+                        ));
+                    }
+
+                    match context
+                        .db()
+                        .get_network_tool_notification(internal_invoice_request.unique_id.clone())
+                    {
+                        Ok(Some(notification)) => {
+                            // Process the notification
+                            notification_content = notification;
+
+                            // Remove notification from the database
+                            match context
+                                .db()
+                                .delete_network_tool_notification(internal_invoice_request.unique_id.clone())
+                            {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    return Err(LLMProviderError::FunctionExecutionError(format!(
+                                        "Error while removing network tool notification: {}",
+                                        e
+                                    )));
+                                }
+                            }
+
+                            break;
+                        }
+                        Ok(None) => {
+                            // Sleep for the interval before checking again
+                            tokio::time::sleep(interval).await;
+                        }
+                        Err(e) => {
+                            return Err(LLMProviderError::FunctionExecutionError(format!(
+                                "Error while checking for invoice unique_id: {}",
+                                e
+                            )));
+                        }
+                    }
+                }
+
+                // Get the ws from the context
+                {
+                    let ws_manager = context.ws_manager_trait();
+
+                    if let Some(ws_manager) = &ws_manager {
+                        let ws_manager = ws_manager.lock().await;
+                        let job = context.full_job();
+
+                        let topic = WSTopic::Widget;
+                        let subtopic = job.conversation_inbox_name.to_string();
+                        let update = "".to_string();
+                        let payment_metadata = PaymentMetadata {
+                            tool_key: network_tool.name.clone(),
+                            description: network_tool.description.clone(),
+                            usage_type: network_tool.usage_type.clone(),
+                            invoice_id: internal_invoice_request.unique_id.clone(),
+                            invoice: notification_content.message,
+                        };
+
+                        let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));
+                        ws_manager.queue_message(topic, subtopic, update, widget, false).await;
+                    } else {
+                        return Err(LLMProviderError::FunctionExecutionError(
+                            "WS manager is not available".to_string(),
+                        ));
+                    }
+                }
+
+                // Wait for the invoice to be paid for up to 5 minutes
+                let start_time = std::time::Instant::now();
+                let timeout = std::time::Duration::from_secs(300); // 5 minutes
+                let interval = std::time::Duration::from_millis(100); // 100ms
+                let invoice_result: Invoice;
+
+                loop {
+                    if start_time.elapsed() > timeout {
+                        return Err(LLMProviderError::FunctionExecutionError(
+                            "Timeout while waiting for invoice payment".to_string(),
+                        ));
+                    }
+
+                    // Check if the invoice is paid
+                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
+                        Ok(invoice) => {
+                            if invoice.status == InvoiceStatusEnum::Paid {
+                                invoice_result = invoice;
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            return Err(LLMProviderError::FunctionExecutionError(format!(
+                                "Error while checking for invoice payment: {}",
+                                e
+                            )));
+                        }
+                    }
+
+                    // Sleep for the interval before checking again
+                    tokio::time::sleep(interval).await;
+                }
+
+                return Ok(FunctionCallResponse {
+                    response: invoice_result.result_str.unwrap_or_default(),
+                    function_call,
+                });
 
                 // TODO:
                 // 1. Push for the InvoiceRequest
@@ -373,8 +522,6 @@ impl ToolRouter {
                 // 4. Run the network tool
                 // 5. Wait for the WS to get the Invoice (Result)
                 // 6. Return the result on this fn
-
-                unimplemented!("WIP")
             }
         }
 

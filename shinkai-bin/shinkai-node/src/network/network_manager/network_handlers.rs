@@ -1213,7 +1213,7 @@ pub async fn handle_network_message_cases(
                         Ok(invoice_result) => {
                             println!("Invoice result received: {:?}", invoice_result);
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            // my_agent_offering_manager.store_invoice_result(invoice_result).await?;
+                            my_agent_offering_manager.store_invoice_result(&invoice_result).await?;
                         }
                         Err(e) => {
                             shinkai_log(

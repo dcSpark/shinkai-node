@@ -10,6 +10,8 @@ use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
 use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -71,6 +73,8 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.tool_router.clone(),
             self.context.sheet_manager.clone(),
             self.sheet_id.clone(),
+            self.context.my_agent_payments_manager.clone(),
+            self.context.ext_agent_payments_manager.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -109,6 +113,8 @@ impl SheetUIInferenceChain {
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         sheet_id: String,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -296,6 +302,8 @@ impl SheetUIInferenceChain {
                         ws_manager_trait.clone(),
                         tool_router.clone(),
                         sheet_manager.clone(),
+                        my_agent_payments_manager.clone(),
+                        ext_agent_payments_manager.clone(),
                     );
                     
                     // JS or workflow tool

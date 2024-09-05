@@ -25,3 +25,4 @@ pub mod db_sheet;
 pub mod db_invoice;
 pub mod db_internal_invoice_request;
 pub mod db_wallets;
+pub mod db_network_tool_notification;

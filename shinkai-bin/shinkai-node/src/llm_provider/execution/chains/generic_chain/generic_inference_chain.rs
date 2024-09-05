@@ -8,6 +8,8 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -71,6 +73,8 @@ impl InferenceChain for GenericInferenceChain {
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
             self.context.sheet_manager.clone(),
+            self.context.my_agent_payments_manager.clone(),
+            self.context.ext_agent_payments_manager.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -105,6 +109,8 @@ impl GenericInferenceChain {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -171,6 +177,7 @@ impl GenericInferenceChain {
                         tools.push(tool);
                     }
                 }
+                // TODO: add an env so we always use the same tool (Network + Payments)
             }
         }
 
@@ -236,6 +243,8 @@ impl GenericInferenceChain {
                     ws_manager_trait.clone(),
                     tool_router.clone(),
                     sheet_manager.clone(),
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
                 );
 
                 // 6) Call workflow or tooling

@@ -300,7 +300,20 @@ impl MyAgentOfferingsManager {
         Ok(payment)
     }
 
+    /// Store the invoice (this invoice doesn't contain the result)
     pub async fn store_invoice(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        db.set_invoice(invoice)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+    }
+
+
+    /// Store the invoice result (for the network)
+    pub async fn store_invoice_result(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
         let db = self
             .db
             .upgrade()

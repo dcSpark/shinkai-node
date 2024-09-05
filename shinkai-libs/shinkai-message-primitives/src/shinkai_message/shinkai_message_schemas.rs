@@ -676,7 +676,7 @@ pub enum WSTopic {
     SmartInboxes,
     Sheet,
     SheetList,
-    ToolPaymentRequest,
+    Widget,
 }
 
 impl fmt::Display for WSTopic {
@@ -686,7 +686,7 @@ impl fmt::Display for WSTopic {
             WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
             WSTopic::Sheet => write!(f, "sheet"),
             WSTopic::SheetList => write!(f, "sheet_list"),
-            WSTopic::ToolPaymentRequest => write!(f, "tool_payment_request"),
+            WSTopic::Widget => write!(f, "widget"),
         }
     }
 }

@@ -6,6 +6,8 @@ use crate::llm_provider::job::JobLike;
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -70,6 +72,10 @@ pub struct JobManager {
     pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Job callback manager for handling job callbacks
     pub callback_manager: Arc<Mutex<JobCallbackManager>>,
+    // My agent payments manager for managing payments to agents
+    pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+    // Ext agent payments manager for managing payments to agents
+    pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
 }
 
 impl JobManager {
@@ -86,6 +92,8 @@ impl JobManager {
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
+        my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+        ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -137,6 +145,8 @@ impl JobManager {
             tool_router.clone(),
             sheet_manager.clone(),
             callback_manager.clone(),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
             |job,
              db,
              vector_fs,
@@ -148,7 +158,9 @@ impl JobManager {
              tool_router,
              sheet_manager,
              callback_manager,
-             job_queue_manager| {
+             job_queue_manager,
+             my_agent_payments_manager,
+             ext_agent_payments_manager| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -162,6 +174,8 @@ impl JobManager {
                     sheet_manager,
                     callback_manager,
                     job_queue_manager,
+                    my_agent_payments_manager,
+                    ext_agent_payments_manager,
                 ))
             },
         )
@@ -183,6 +197,8 @@ impl JobManager {
             tool_router,
             sheet_manager,
             callback_manager,
+            my_agent_payments_manager,
+            ext_agent_payments_manager,
         }
     }
 
@@ -200,6 +216,8 @@ impl JobManager {
         tool_router: Option<Arc<Mutex<ToolRouter>>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
+        my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+        ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -213,6 +231,8 @@ impl JobManager {
                 Arc<Mutex<SheetManager>>,
                 Arc<Mutex<JobCallbackManager>>,
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+                Arc<Mutex<MyAgentOfferingsManager>>,
+                Arc<Mutex<ExtAgentOfferingsManager>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -286,6 +306,8 @@ impl JobManager {
                     let tool_router = tool_router.clone();
                     let sheet_manager = sheet_manager.clone();
                     let callback_manager = callback_manager.clone();
+                    let my_agent_payments_manager = my_agent_payments_manager.clone();
+                    let ext_agent_payments_manager = ext_agent_payments_manager.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -314,6 +336,8 @@ impl JobManager {
                                         sheet_manager,
                                         callback_manager,
                                         job_queue_manager.clone(),
+                                        my_agent_payments_manager,
+                                        ext_agent_payments_manager,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {

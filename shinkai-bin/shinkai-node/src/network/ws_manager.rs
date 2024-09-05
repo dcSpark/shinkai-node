@@ -7,6 +7,7 @@ use futures::stream::SplitSink;
 use futures::SinkExt;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -29,6 +30,8 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use crate::db::ShinkaiDB;
 use crate::schemas::identity::Identity;
 
+use super::agent_payments_manager::invoices::InternalInvoiceRequest;
+use super::agent_payments_manager::shinkai_tool_offering::UsageType;
 use super::node_api_router::APIError;
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
@@ -39,7 +42,7 @@ pub enum MessageType {
     ShinkaiMessage,
     Stream,
     Sheet,
-    ToolPaymentRequest,
+    Widget,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +52,7 @@ pub struct WSMessagePayload {
     pub message: Option<String>,
     pub error_message: Option<String>,
     pub metadata: Option<WSMetadata>,
+    pub widget: Option<Value>,
     pub is_stream: bool,
 }
 
@@ -59,6 +63,15 @@ pub struct WSMetadata {
     pub done_reason: Option<String>,
     pub total_duration: Option<u64>,
     pub eval_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentMetadata {
+    pub tool_key: String,
+    pub description: String,
+    pub usage_type: UsageType,
+    pub invoice_id: String,
+    pub invoice: Value,
 }
 
 #[derive(Debug)]
@@ -106,8 +119,13 @@ pub trait WSUpdateHandler {
 pub enum WSMessageType {
     Metadata(WSMetadata),
     Sheet(CellUpdateInfo),
-    // ToolPaymentRequest(ToolPaymentRequest),
+    Widget(WidgetMetadata),
     None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WidgetMetadata {
+    PaymentRequest(PaymentMetadata),
 }
 
 pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, WSMessageType, bool)>>>;
@@ -267,7 +285,7 @@ impl WebSocketManager {
             }
             WSTopic::Sheet => true,
             WSTopic::SheetList => true,
-            WSTopic::ToolPaymentRequest => true,
+            WSTopic::Widget => true,
         }
     }
 
@@ -469,6 +487,7 @@ impl WebSocketManager {
         // Determine the message type
         let message_type = match metadata {
             WSMessageType::Sheet(_) => MessageType::Sheet,
+            WSMessageType::Widget(_) => MessageType::Widget,
             _ => {
                 if is_stream {
                     MessageType::Stream
@@ -484,8 +503,14 @@ impl WebSocketManager {
             inbox: subtopic.clone(),
             message: Some(update.clone()),
             error_message: None,
-            metadata: match metadata {
+            metadata: match metadata.clone() {
                 WSMessageType::Metadata(meta) => Some(meta),
+                _ => None,
+            },
+            widget: match metadata {
+                WSMessageType::Widget(widget_metadata) => {
+                    Some(serde_json::to_value(widget_metadata).expect("Failed to serialize WidgetMetadata"))
+                }
                 _ => None,
             },
             is_stream,

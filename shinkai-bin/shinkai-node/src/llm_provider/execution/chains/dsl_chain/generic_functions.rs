@@ -354,6 +354,8 @@ mod tests {
             Some(raw_files),
             None,
             None,
+            None,
+            None,
         );
 
         let args: Vec<Box<dyn Any + Send>> = vec![];
@@ -381,6 +383,8 @@ mod tests {
             1000,
             HashMap::new(),
             Some(raw_files),
+            None,
+            None,
             None,
             None,
         );
@@ -411,6 +415,8 @@ mod tests {
             Some(raw_files),
             None,
             None,
+            None,
+            None,
         );
 
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new("file2.csv".to_string())];
@@ -437,6 +443,8 @@ mod tests {
             1000,
             HashMap::new(),
             Some(raw_files),
+            None,
+            None,
             None,
             None,
         );
@@ -587,6 +595,8 @@ mod tests {
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
+            None, // Replace with actual if needed
+            None, // Replace with actual if needed
         );
 
         // Call the function to process embeddings in job scope
@@ -717,6 +727,8 @@ mod tests {
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
+            None, // Replace with actual if needed
+            None, // Replace with actual if needed
         );
 
         // Call the function to search embeddings in job scope
