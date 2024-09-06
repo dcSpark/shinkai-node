@@ -8,7 +8,7 @@ impl ShinkaiToolSchema {
     /// Creates a new Schema for Shinkai tools with the following fields:
     /// - tool_key: UTF-8 string (non-nullable)
     /// - vector: Fixed-size list of 32-bit floats (nullable)
-    /// - tool_data: UTF-8 string (non-nullable)
+    /// - tool_data: Binary (non-nullable)
     /// - tool_type: UTF-8 string (non-nullable)
     /// - tool_header: UTF-8 string (non-nullable)
     /// - author: UTF-8 string (non-nullable)
