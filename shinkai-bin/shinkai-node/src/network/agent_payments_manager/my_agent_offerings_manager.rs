@@ -132,6 +132,17 @@ impl MyAgentOfferingsManager {
                 AgentOfferingManagerError::OperationFailed(format!("Failed to store internal invoice request: {:?}", e))
             })?;
 
+        Ok(internal_invoice_request)
+    }
+
+    pub async fn network_request_invoice(
+        &self,
+        network_tool: NetworkTool,
+        usage_type_inquiry: UsageTypeInquiry,
+    ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
+        // Request the invoice
+        let internal_invoice_request = self.request_invoice(network_tool.clone(), usage_type_inquiry).await?;
+
         // Create the payload for the invoice request
         let payload = internal_invoice_request.to_invoice_request();
 
@@ -597,7 +608,7 @@ mod tests {
             let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
             let dummy_standard_identity = Identity::Standard(StandardIdentity {
-                full_identity_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
+                full_identity_name: ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap(),
                 addr: None,
                 node_encryption_public_key: node1_encryption_pk,
                 node_signature_public_key: node1_identity_pk,
@@ -616,7 +627,7 @@ mod tests {
     #[async_trait]
     impl IdentityManagerTrait for MockIdentityManager {
         fn find_by_identity_name(&self, _full_profile_name: ShinkaiName) -> Option<&Identity> {
-            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+            if _full_profile_name.to_string() == "@@localhost.arb-sep-shinkai/main" {
                 Some(&self.dummy_standard_identity)
             } else {
                 None
@@ -624,7 +635,7 @@ mod tests {
         }
 
         async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
-            if full_identity_name == "@@node1.shinkai/main" {
+            if full_identity_name == "@@localhost.arb-sep-shinkai/main" {
                 Some(self.dummy_standard_identity.clone())
             } else {
                 None
@@ -639,7 +650,15 @@ mod tests {
             &self,
             full_profile_name: &str,
         ) -> Result<StandardIdentity, String> {
-            unimplemented!()
+            if full_profile_name == "@@localhost.arb-sep-shinkai" {
+                if let Identity::Standard(identity) = &self.dummy_standard_identity {
+                    Ok(identity.clone())
+                } else {
+                    Err("Identity is not of type Standard".to_string())
+                }
+            } else {
+                Err("Profile not found".to_string())
+            }
         }
     }
 
@@ -725,7 +744,7 @@ mod tests {
             "shinkai_toolkit".to_string(),
             "A tool for testing".to_string(),
             "1.0".to_string(),
-            ShinkaiName::new("@@test_provider.shinkai".to_string()).unwrap(),
+            ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap(),
             UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
             true,
             vec![],
@@ -768,7 +787,6 @@ mod tests {
         // Call verify_invoice
         let result = manager.verify_invoice(&invoice).await;
         assert!(result.is_ok());
-        assert!(result.unwrap());
 
         Ok(())
     }

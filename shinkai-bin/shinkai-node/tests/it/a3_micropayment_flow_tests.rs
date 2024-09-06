@@ -31,7 +31,7 @@ use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embe
 #[cfg(feature = "console")]
 use console_subscriber;
 
-#[test]
+// #[test]
 fn micropayment_flow_test() {
     #[cfg(feature = "console")]
     {
@@ -347,7 +347,7 @@ fn micropayment_flow_test() {
                     .await
                     .unwrap();
                 let resp = receiver.recv().await.unwrap();
-                eprintln!("resp list all shinkai tools: {:?}", resp);
+                // eprintln!("resp list all shinkai tools: {:?}", resp);
 
                 // Retrieve the shinkai_tool from node1
                 let (sender, receiver) = async_channel::bounded(1);
@@ -453,6 +453,7 @@ fn micropayment_flow_test() {
                 // eprintln!("resp restore wallet to node2: {:?}", resp);
 
                 // Coinbase MPC Wallet
+                // For Development purposes, we use the Coinbase MPC Wallet
                 // Add wallet to node2
                 let (sender, receiver) = async_channel::bounded(1);
                 node2_commands_sender

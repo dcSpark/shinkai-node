@@ -898,7 +898,8 @@ mod tests {
 
         // Check available tools
         let available_tools = agent_offerings_manager.available_tools().await.unwrap();
-        assert!(available_tools.contains(&"Weather by City".to_string()));
+        eprintln!("available_tools: {:?}", available_tools);
+        assert!(available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string()));
 
         Ok(())
     }

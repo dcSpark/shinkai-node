@@ -136,7 +136,7 @@ mod tests {
         println!("{}", json);
         assert!(json.contains("\"tool_key\":\"test_tool\""));
         assert!(json.contains("\"per_use_price\":\"Free\""));
-        assert!(json.contains("\"download_price\":\"DirectDelegation\""));
+        assert!(json.contains("\"download_price\":{\"DirectDelegation\":\"1000\"}"));
     }
 
     #[test]
