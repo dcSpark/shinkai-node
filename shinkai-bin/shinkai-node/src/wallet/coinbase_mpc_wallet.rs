@@ -1,5 +1,5 @@
-use bigdecimal::num_bigint::BigInt;
 use bigdecimal::BigDecimal;
+use bigdecimal::num_bigint::BigInt;
 use ethers::prelude::*;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -515,10 +515,10 @@ impl SendActions for CoinbaseMPCWallet {
         to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: String,
-        invoice_id: String,
+        _invoice_id: String,
     ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send + 'static>> {
-        let send_amount_u256 = U256::from_dec_str(&send_amount);
-        let send_amount_u256 = match send_amount_u256 {
+        let send_amount_bd = BigDecimal::from_str(&send_amount);
+        let send_amount_bd = match send_amount_bd {
             Ok(amount) => amount,
             Err(e) => return Box::pin(async move { Err(WalletError::ConversionError(e.to_string())) }),
         };
@@ -529,17 +529,10 @@ impl SendActions for CoinbaseMPCWallet {
         // Normalize send_amount to the asset decimals e.g. Instead of 1000, it should be 0.001
         let normalized_amount = if let Some(asset) = &token {
             let decimals = asset.decimals.unwrap_or(18);
-            let factor = U256::exp10(decimals as usize);
-            match send_amount_u256.checked_div(factor) {
-                Some(amount) => amount,
-                None => {
-                    return Box::pin(
-                        async move { Err(WalletError::ConversionError("Normalization error".to_string())) },
-                    )
-                }
-            }
+            let factor = BigDecimal::from(10u64.pow(decimals as u32));
+            send_amount_bd / factor
         } else {
-            send_amount_u256
+            send_amount_bd
         };
 
         let fut = async move {
@@ -617,5 +610,41 @@ impl ShinkaiToolCoinbase {
                 "local:::shinkai-tool-coinbase-call-faucet:::shinkai__coinbase_faucet_caller"
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bigdecimal::BigDecimal;
+    use std::str::FromStr;
+
+    #[tokio::test]
+    async fn test_normalize_send_amount() {
+        let token = Some(Asset {
+            asset_id: "USDC".to_string(),
+            decimals: Some(6),
+            network_id: mixed::NetworkIdentifier::BaseSepolia,
+            contract_address: None,
+        });
+
+        let send_amount = "1000".to_string();
+        let send_amount_bd = BigDecimal::from_str(&send_amount).unwrap();
+
+        // Normalize send_amount to the asset decimals e.g. Instead of 1000, it should be 0.001
+        let normalized_amount = if let Some(asset) = &token {
+            let decimals = asset.decimals.unwrap_or(18);
+            let factor = BigDecimal::from(10u64.pow(decimals as u32));
+            send_amount_bd / factor
+        } else {
+            send_amount_bd
+        };
+
+        // Convert normalized_amount to a string for comparison
+        let normalized_amount_str = normalized_amount.to_string();
+
+        // The expected result should be "0.001"
+        assert_eq!(normalized_amount_str, "0.001");
     }
 }
