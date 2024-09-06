@@ -4,7 +4,6 @@ use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use arrow_array::{Array, BinaryArray, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
-use lancedb::connection::LanceFileVersion;
 use futures::{StreamExt, TryStreamExt};
 use lancedb::index::Index;
 use lancedb::query::QueryBase;
@@ -74,7 +73,7 @@ impl LanceShinkaiDb {
 
         let table = match connection
             .create_empty_table("tool_router", schema)
-            .data_storage_version(LanceFileVersion::V2_1)
+            // .data_storage_version(LanceFileVersion::V2_1)
             .execute()
             .await
         {
@@ -301,22 +300,19 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
-        let mut results = query
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-        if let Some(batch) = results.pop() {
+        let mut res = query;
+        while let Some(Ok(batch)) = res.next().await {
             let tool_data_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_data_field())
                 .unwrap()
                 .as_any()
-                .downcast_ref::<StringArray>()
+                .downcast_ref::<BinaryArray>()
                 .unwrap();
 
             if tool_data_array.len() > 0 {
-                let tool_data = tool_data_array.value(0).to_string();
+                let tool_data = tool_data_array.value(0);
                 let shinkai_tool: ShinkaiTool =
-                    serde_json::from_str(&tool_data).map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+                    serde_json::from_slice(tool_data).map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
                 let duration = start_time.elapsed();
                 println!("Time taken to fetch tool with key '{}': {:?}", tool_key, duration);
                 return Ok(Some(shinkai_tool));

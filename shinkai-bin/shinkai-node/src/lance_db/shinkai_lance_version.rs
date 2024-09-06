@@ -4,7 +4,6 @@ use arrow_array::Array;
 use arrow_array::{RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::TryStreamExt;
-use lancedb::connection::LanceFileVersion;
 use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
 use lancedb::Table;
@@ -17,7 +16,7 @@ impl LanceShinkaiDb {
 
         match connection
             .create_empty_table("version", schema.into())
-            .data_storage_version(LanceFileVersion::V2_1)
+            // .data_storage_version(LanceFileVersion::V2_1)
             .execute()
             .await
         {
