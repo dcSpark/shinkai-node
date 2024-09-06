@@ -1,21 +1,3 @@
-/*
-- My Agent Payments Manager
-
-
-Flow:
-- request invoice
-- pay invoice
-- send receipt and data to provider
-- receive response from provider and process it
-(for this we need to know the provenance from where it came from)
-
-
-Notes:
-- what's the flow between requesting an invoice and paying it?
-can it be done in one step? maybe we have rules per: tool, provider or overall spending.
-
-*/
-
 use std::sync::{Arc, Weak};
 
 use ed25519_dalek::SigningKey;
@@ -78,11 +60,8 @@ impl MyAgentOfferingsManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        // ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Weak<ToolRouter>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
-        // crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
-        // Do I need the payment manager for the node?
     ) -> Self {
         Self {
             db,
@@ -94,10 +73,10 @@ impl MyAgentOfferingsManager {
             identity_manager,
             tool_router,
             wallet_manager,
-            // crypto_invoice_manager,
         }
     }
 
+    // Notes:
     // Fn: Ask for the current offerings from the provider (directly)
     // Old fashion send message and wait network response
 
@@ -107,6 +86,17 @@ impl MyAgentOfferingsManager {
 
     // Fn: Request an invoice <- can we triggered by the user through API
     // Note: currently works only for added network tools
+
+    /// Request an invoice for a network tool
+    ///
+    /// # Arguments
+    ///
+    /// * `network_tool` - The network tool for which the invoice is requested.
+    /// * `usage_type_inquiry` - The type of usage inquiry for the tool.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<InternalInvoiceRequest, AgentOfferingManagerError>` - The internal invoice request or an error.
     pub async fn request_invoice(
         &self,
         network_tool: NetworkTool,
@@ -135,6 +125,16 @@ impl MyAgentOfferingsManager {
         Ok(internal_invoice_request)
     }
 
+    /// Request an invoice from the network
+    ///
+    /// # Arguments
+    ///
+    /// * `network_tool` - The network tool for which the invoice is requested.
+    /// * `usage_type_inquiry` - The type of usage inquiry for the tool.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<InternalInvoiceRequest, AgentOfferingManagerError>` - The internal invoice request or an error.
     pub async fn network_request_invoice(
         &self,
         network_tool: NetworkTool,
@@ -187,9 +187,15 @@ impl MyAgentOfferingsManager {
         Ok(internal_invoice_request)
     }
 
-    // Fn: Verify an invoice
-    // - Check if the invoice is valid (even if we asked for it)
-    // - Check about any rules for auto-payment
+    /// Verify an invoice
+    ///
+    /// # Arguments
+    ///
+    /// * `invoice` - The invoice to be verified.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<bool, AgentOfferingManagerError>` - True if the invoice is valid (and even if we asked for it) false otherwise.
     pub async fn verify_invoice(&self, invoice: &Invoice) -> Result<bool, AgentOfferingManagerError> {
         // Upgrade the database reference to a strong reference
         let db = self
@@ -216,7 +222,15 @@ impl MyAgentOfferingsManager {
         Ok(true)
     }
 
-    // Fn: Pay an invoice and wait for the blockchain update of it
+    /// Pay an invoice and wait for the blockchain update of it
+    ///
+    /// # Arguments
+    ///
+    /// * `invoice` - The invoice to be paid.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Payment, AgentOfferingManagerError>` - The payment information or an error.
     pub async fn pay_invoice(&self, invoice: &Invoice) -> Result<Payment, AgentOfferingManagerError> {
         // Mocking the payment process
         println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
@@ -311,7 +325,15 @@ impl MyAgentOfferingsManager {
         Ok(payment)
     }
 
-    /// Store the invoice (this invoice doesn't contain the result)
+    /// Store the quote invoice (this invoice doesn't contain the result -- it's just the quote)
+    ///
+    /// # Arguments
+    ///
+    /// * `invoice` - The invoice to be stored.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
     pub async fn store_invoice(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
         let db = self
             .db
@@ -322,7 +344,15 @@ impl MyAgentOfferingsManager {
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
     }
 
-    /// Store the invoice result (for the network)
+    /// Store the invoice result (from the external agent's work)
+    ///
+    /// # Arguments
+    ///
+    /// * `invoice` - The invoice result to be stored.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
     pub async fn store_invoice_result(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
         let db = self
             .db
@@ -333,6 +363,16 @@ impl MyAgentOfferingsManager {
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
     }
 
+    /// Pay an invoice and send receipt and data to provider
+    ///
+    /// # Arguments
+    ///
+    /// * `invoice_id` - The ID of the invoice to be paid.
+    /// * `tool_data` - The data related to the tool.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Invoice, AgentOfferingManagerError>` - The updated invoice or an error.
     pub async fn pay_invoice_and_send_receipt(
         &self,
         invoice_id: String,
@@ -383,7 +423,7 @@ impl MyAgentOfferingsManager {
     }
 
     // Note: Only For Testing (!!!)
-    // tODO: it could be re-purposed for auto-payment if we have a preset of rules and whitelisted tools
+    // TODO: it could be re-purposed for auto-payment if we have a preset of rules and whitelisted tools
     // We want to have a way to confirm payment from the user perspective
     // Fn: Automatically verify and pay an invoice, then send receipt and data to the provider
     pub async fn auto_pay_invoice(&self, invoice: Invoice) -> Result<(), AgentOfferingManagerError> {
@@ -418,7 +458,15 @@ impl MyAgentOfferingsManager {
         Ok(())
     }
 
-    // Fn: Send the receipt and the data for the job to the provider
+    /// Send the receipt and the data for the job to the provider
+    ///
+    /// # Arguments
+    ///
+    /// * `invoice` - The invoice for which the receipt and data are to be sent.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
     pub async fn send_receipt_and_data_to_provider(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
         println!(
             "Sending receipt for invoice ID: {} to provider: {}",
@@ -469,7 +517,15 @@ impl MyAgentOfferingsManager {
 
         Ok(())
     }
-
+    /// Add a network tool
+    ///
+    /// # Arguments
+    ///
+    /// * `network_tool` - The network tool to be added.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
     pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), AgentOfferingManagerError> {
         let tool_router = self.tool_router.upgrade().ok_or_else(|| {
             AgentOfferingManagerError::OperationFailed("Failed to upgrade tool_router reference".to_string())
@@ -483,7 +539,16 @@ impl MyAgentOfferingsManager {
         result
     }
 
-    // New function to create and add a NetworkTool
+    /// Create and add a NetworkTool
+    ///
+    /// # Arguments
+    ///
+    /// * `tool_header` - The header information for the tool.
+    /// * `provider` - The provider of the tool.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
     pub async fn create_and_add_network_tool(
         &self,
         tool_header: ShinkaiToolHeader,
@@ -514,6 +579,11 @@ impl MyAgentOfferingsManager {
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to add network tool: {:?}", e)))
     }
 
+    /// Get balances from the wallet manager
+    ///
+    /// # Returns
+    ///
+    /// * `Result<AddressBalanceList, AgentOfferingManagerError>` - The list of address balances or an error.
     pub async fn get_balances(&self) -> Result<AddressBalanceList, AgentOfferingManagerError> {
         let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
             AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
@@ -532,32 +602,22 @@ impl MyAgentOfferingsManager {
             AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
         })?;
 
-        wallet.payment_wallet.check_balances().await.map_err(|e| {
-            AgentOfferingManagerError::OperationFailed(format!("Failed to get balances: {:?}", e))
-        })
+        wallet
+            .payment_wallet
+            .check_balances()
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get balances: {:?}", e)))
     }
-    
-    // Fn: Receive the response from the provider and process it -> update the job
 
-    // Note: Should be create a new type of ShinkaiTool "NetworkTool" that can be called by an LLM?
-    // We could extend the schema with some rules for the payment and the usage of the tool depending on the network.
-    // When we try to execute it it would perform the entire flow (and even wait for user confirmation if required).
-
-    // For now we could do an extra search for available tools on the network and show the user
-    // if any of the options is interesting for them and the price.
-
-    // Note: do we need a job to check the status (offer) of tools on the network?
-    // For now only official tools are allowed to be used.
-    // We could hardcode the official tools and their prices for a beta version -> indexer (whitelisted) -> very open.
-
-    // Where do we store these available tools? rocksdb? lancedb? memory?
-    // Should we add all of the tools to lancedb with their price and then filter them based on the current network?
-    // We could even do two searches: one of the locals and one for the locals + network tools (so we know which ones are the best to use).
-    // ONLY: if the user has a wallet set up.
-
-    // Thoughts
-    // Should we add a way to scan previous invoices sent to the chain? if we reset the node but we wouldn't be able to know if they were already claimed.
-
+    /// Get proxy builder info
+    ///
+    /// # Arguments
+    ///
+    /// * `identity_manager_lock` - The identity manager lock.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<ShinkaiProxyBuilderInfo>` - The proxy builder info or None.
     async fn get_proxy_builder_info(
         &self,
         identity_manager_lock: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
@@ -801,9 +861,14 @@ mod tests {
             amount: "4999000.000".to_string(),
         };
 
-        let available_amount = balance.amount.split('.').next().unwrap().parse::<u128>().map_err(|e| {
-            AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e))
-        }).unwrap();
+        let available_amount = balance
+            .amount
+            .split('.')
+            .next()
+            .unwrap()
+            .parse::<u128>()
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e)))
+            .unwrap();
 
         assert_eq!(available_amount, 4999000);
     }

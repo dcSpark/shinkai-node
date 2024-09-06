@@ -82,6 +82,24 @@ const NUM_THREADS: usize = 4;
 
 impl ExtAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
+    ///
+    /// Creates a new instance of `ExtAgentOfferingsManager`.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Weak reference to the ShinkaiDB.
+    /// * `vector_fs` - Weak reference to the VectorFS.
+    /// * `identity_manager` - Weak reference to the identity manager.
+    /// * `node_name` - The name of the node.
+    /// * `my_signature_secret_key` - The secret key used for signing operations.
+    /// * `my_encryption_secret_key` - The secret key used for encryption and decryption.
+    /// * `proxy_connection_info` - Weak reference to the proxy connection info.
+    /// * `tool_router` - Weak reference to the tool router.
+    /// * `wallet_manager` - Weak reference to the wallet manager.
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - A new instance of `ExtAgentOfferingsManager`.
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -161,6 +179,26 @@ impl ExtAgentOfferingsManager {
 
     // TODO: Should be split this into two? one for invoices and one for actual tool jobs?
     #[allow(clippy::too_many_arguments)]
+    ///
+    /// Processes the offerings queue.
+    ///
+    /// # Arguments
+    ///
+    /// * `offering_queue_manager` - The job queue manager for invoices.
+    /// * `db` - Weak reference to the ShinkaiDB.
+    /// * `vector_fs` - Weak reference to the VectorFS.
+    /// * `node_name` - The name of the node.
+    /// * `my_signature_secret_key` - The secret key used for signing operations.
+    /// * `my_encryption_secret_key` - The secret key used for encryption and decryption.
+    /// * `identity_manager` - Weak reference to the identity manager.
+    /// * `thread_number` - The number of threads to use for processing.
+    /// * `proxy_connection_info` - Weak reference to the proxy connection info.
+    /// * `tool_router` - Weak reference to the tool router.
+    /// * `process_job` - The function to process each job.
+    ///
+    /// # Returns
+    ///
+    /// * `tokio::task::JoinHandle<()>` - A handle to the spawned task.
     pub async fn process_offerings_queue(
         offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
         db: Weak<ShinkaiDB>,
@@ -333,9 +371,27 @@ impl ExtAgentOfferingsManager {
         })
     }
 
-    /// The idea of this function is to be able to process the invoice payment and then
+    /// Note: The idea of this function is to be able to process the invoice payment and then
     /// call the tool router to process the tool job
     /// but in a way that we can have control of how many jobs are processed at the same time
+
+    /// Processes the invoice payment.
+    ///
+    /// # Arguments
+    ///
+    /// * `_invoice` - The invoice to be processed.
+    /// * `_db` - Weak reference to the ShinkaiDB.
+    /// * `_vector_fs` - Weak reference to the VectorFS.
+    /// * `_node_name` - The name of the node.
+    /// * `_my_signature_secret_key` - The secret key used for signing operations.
+    /// * `_my_encryption_secret_key` - The secret key used for encryption and decryption.
+    /// * `_maybe_identity_manager` - Weak reference to the identity manager.
+    /// * `_proxy_connection_info` - Weak reference to the proxy connection info.
+    /// * `_tool_router` - Weak reference to the tool router.
+    ///
+    /// # Returns
+    ///
+    /// * `Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>>` - A future that resolves to the result of the processing.
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
         _invoice: Invoice,
@@ -355,6 +411,12 @@ impl ExtAgentOfferingsManager {
         })
     }
 
+    ///
+    /// Retrieves the available tools.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<String>, AgentOfferingManagerError>` - A list of available tools or an error.
     pub async fn available_tools(&mut self) -> Result<Vec<String>, AgentOfferingManagerError> {
         let db = self
             .db
@@ -370,6 +432,16 @@ impl ExtAgentOfferingsManager {
         Ok(tool_names)
     }
 
+    ///
+    /// Updates the shareable tool requirements.
+    ///
+    /// # Arguments
+    ///
+    /// * `updated_offering` - The updated tool offering.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<bool, AgentOfferingManagerError>` - True if successful, otherwise an error.
     pub async fn update_shareable_tool_requirements(
         &self,
         updated_offering: ShinkaiToolOffering,
@@ -386,6 +458,16 @@ impl ExtAgentOfferingsManager {
         Ok(true)
     }
 
+    ///
+    /// Makes a tool shareable.
+    ///
+    /// # Arguments
+    ///
+    /// * `offering` - The tool offering to be made shareable.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<bool, AgentOfferingManagerError>` - True if successful, otherwise an error.
     pub async fn make_tool_shareable(
         &mut self,
         offering: ShinkaiToolOffering,
@@ -401,6 +483,16 @@ impl ExtAgentOfferingsManager {
         Ok(true)
     }
 
+    ///
+    /// Unshares a tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `tool_key_name` - The key name of the tool to be unshared.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<bool, SubscriberManagerError>` - True if successful, otherwise an error.
     pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
         let db = self
             .db
@@ -413,6 +505,17 @@ impl ExtAgentOfferingsManager {
         Ok(true)
     }
 
+    ///
+    /// Requests an invoice.
+    ///
+    /// # Arguments
+    ///
+    /// * `_requester_node_name` - The name of the requester node.
+    /// * `invoice_request` - The invoice request.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Invoice, AgentOfferingManagerError>` - The generated invoice or an error.
     pub async fn request_invoice(
         &mut self,
         _requester_node_name: ShinkaiName,
@@ -498,6 +601,17 @@ impl ExtAgentOfferingsManager {
         Ok(invoice)
     }
 
+    ///
+    /// Requests an invoice from the network.
+    ///
+    /// # Arguments
+    ///
+    /// * `requester_node_name` - The name of the requester node.
+    /// * `invoice_request` - The invoice request.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Invoice, AgentOfferingManagerError>` - The generated invoice or an error.
     pub async fn network_request_invoice(
         &mut self,
         requester_node_name: ShinkaiName,
@@ -554,6 +668,17 @@ impl ExtAgentOfferingsManager {
         Ok(invoice)
     }
 
+    ///
+    /// Confirms the payment of an invoice and processes it.
+    ///
+    /// # Arguments
+    ///
+    /// * `requester_node_name` - The name of the requester node.
+    /// * `invoice` - The invoice to be confirmed and processed.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Invoice, AgentOfferingManagerError>` - The processed invoice or an error.
     pub async fn confirm_invoice_payment_and_process(
         &mut self,
         requester_node_name: ShinkaiName,
@@ -621,6 +746,17 @@ impl ExtAgentOfferingsManager {
         Ok(local_invoice)
     }
 
+    ///
+    /// Confirms the payment of an invoice from the network and processes it.
+    ///
+    /// # Arguments
+    ///
+    /// * `requester_node_name` - The name of the requester node.
+    /// * `invoice` - The invoice to be confirmed and processed.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), AgentOfferingManagerError>` - Ok if successful, otherwise an error.
     pub async fn network_confirm_invoice_payment_and_process(
         &mut self,
         requester_node_name: ShinkaiName,
@@ -899,7 +1035,9 @@ mod tests {
         // Check available tools
         let available_tools = agent_offerings_manager.available_tools().await.unwrap();
         eprintln!("available_tools: {:?}", available_tools);
-        assert!(available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string()));
+        assert!(
+            available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string())
+        );
 
         Ok(())
     }
