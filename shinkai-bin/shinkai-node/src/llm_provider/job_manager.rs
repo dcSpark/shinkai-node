@@ -146,8 +146,8 @@ impl JobManager {
             tool_router.clone(),
             sheet_manager.clone(),
             callback_manager.clone(),
-            my_agent_payments_manager.clone(),
-            ext_agent_payments_manager.clone(),
+            Some(my_agent_payments_manager.clone()),
+            Some(ext_agent_payments_manager.clone()),
             |job,
              db,
              vector_fs,
@@ -175,8 +175,8 @@ impl JobManager {
                     sheet_manager,
                     callback_manager,
                     job_queue_manager,
-                    my_agent_payments_manager,
-                    ext_agent_payments_manager,
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
                 ))
             },
         )
@@ -217,8 +217,8 @@ impl JobManager {
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
-        my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
-        ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -232,8 +232,8 @@ impl JobManager {
                 Arc<Mutex<SheetManager>>,
                 Arc<Mutex<JobCallbackManager>>,
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-                Arc<Mutex<MyAgentOfferingsManager>>,
-                Arc<Mutex<ExtAgentOfferingsManager>>,
+                Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+                Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync

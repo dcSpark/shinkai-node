@@ -333,22 +333,25 @@ impl ExtAgentOfferingsManager {
         })
     }
 
+    /// The idea of this function is to be able to process the invoice payment and then
+    /// call the tool router to process the tool job
+    /// but in a way that we can have control of how many jobs are processed at the same time
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
-        invoice: Invoice,
-        db: Weak<ShinkaiDB>,
+        _invoice: Invoice,
+        _db: Weak<ShinkaiDB>,
         _vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
-        my_signature_secret_key: SigningKey,
-        my_encryption_secret_key: EncryptionStaticKey,
-        maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
-        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        tool_router: Weak<ToolRouter>,
+        _my_signature_secret_key: SigningKey,
+        _my_encryption_secret_key: EncryptionStaticKey,
+        _maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
+        _proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        _tool_router: Weak<ToolRouter>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>> {
         Box::pin(async move {
             // Actually do the work by calling tool_router
             // Then craft the message with the response and send it back to the requester
-            Ok(format!("Done. thx"))
+            unimplemented!()
         })
     }
 
@@ -749,7 +752,7 @@ mod tests {
 
         async fn external_profile_to_global_identity(
             &self,
-            full_profile_name: &str,
+            _full_profile_name: &str,
         ) -> Result<StandardIdentity, String> {
             unimplemented!()
         }

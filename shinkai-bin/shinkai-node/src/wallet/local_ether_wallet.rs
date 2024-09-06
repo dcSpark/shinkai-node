@@ -657,7 +657,7 @@ mod tests {
         assert_eq!(wallet.network.display_name, network.display_name);
         assert!(!wallet.id.is_empty());
         assert!(!wallet.address.address_id.is_empty());
-        assert_eq!(wallet.address.address_id, "0xea6e8f7525e8af0669546ac6c5b8318fd2c6d7b6");
+        assert_eq!(wallet.address.address_id, "0x9858EfFD232B4033E47d90003D41EC34EcaEda94");
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
         assert_eq!(wallet.network.display_name, network.display_name);
         assert!(!wallet.id.is_empty());
         assert!(!wallet.address.address_id.is_empty());
-        assert_eq!(wallet.address.address_id, "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf");
+        assert_eq!(wallet.address.address_id, "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf");
     }
 
     #[tokio::test]

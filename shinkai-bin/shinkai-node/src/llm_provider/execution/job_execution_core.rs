@@ -59,8 +59,8 @@ impl JobManager {
         sheet_manager: Arc<Mutex<SheetManager>>,
         _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-        my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
-        ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -137,8 +137,8 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
-            Some(my_agent_payments_manager.clone()),
-            Some(ext_agent_payments_manager.clone()),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
         )
         .await;
 
@@ -165,8 +165,8 @@ impl JobManager {
             Some(sheet_manager.clone()),
             tool_router.clone(),
             job_queue_manager.clone(),
-            Some(my_agent_payments_manager.clone()),
-            Some(ext_agent_payments_manager.clone()),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
         )
         .await?;
         if sheet_job_found {
@@ -209,8 +209,8 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
-            Some(my_agent_payments_manager.clone()),
-            Some(ext_agent_payments_manager.clone()),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
         )
         .await;
 

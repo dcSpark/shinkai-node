@@ -20,6 +20,8 @@ use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::managers::sheet_manager::SheetManager;
+use shinkai_node::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use shinkai_node::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
@@ -104,7 +106,6 @@ async fn setup_default_vector_fs() -> VectorFS {
 
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    
     utils::db_handlers::setup();
 
     let num_threads = 8;
@@ -181,6 +182,8 @@ async fn test_process_job_queue_concurrency() {
         None,
         sheet_manager.clone(),
         callback_manager.clone(),
+        None,
+        None,
         move |job,
               _db,
               _vector_fs,
@@ -192,7 +195,9 @@ async fn test_process_job_queue_concurrency() {
               _tool_router,
               _sheet_manager,
               _callback_manager,
-              _job_queue_manager| {
+              _job_queue_manager,
+              _my_agent_payments_manager,
+              _ext_agent_payments_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -255,7 +260,6 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequential_process_for_same_job_id() {
-    
     super::utils::db_handlers::setup();
 
     let num_threads = 8;
@@ -345,7 +349,9 @@ async fn test_sequential_process_for_same_job_id() {
               _tool_router,
               _sheet_manager,
               _callback_manager,
-              _job_queue_manager| {
+              _job_queue_manager,
+              _my_agent_payments_manager,
+              _ext_agent_payments_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
