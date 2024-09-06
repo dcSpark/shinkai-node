@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
@@ -82,6 +82,10 @@ impl<'de> Deserialize<'de> for CoinbaseMPCWallet {
 }
 
 impl CoinbaseMPCWallet {
+    pub fn update_lance_db(&mut self, lance_db: Arc<Mutex<LanceShinkaiDb>>) {
+        self.lance_db = Some(Arc::downgrade(&lance_db));
+    }
+    
     pub async fn create_wallet(
         network: Network,
         lance_db: Weak<Mutex<LanceShinkaiDb>>, // Changed to Weak
@@ -227,14 +231,6 @@ impl CoinbaseMPCWallet {
                 }
             }
         };
-
-        // Call the function to restore the wallet
-        // let params = serde_json::json!({
-        //     "name": config.name,
-        //     "privateKey": config.private_key,
-        //     "useServerSigner": config.use_server_signer,
-        //     "walletId": wallet_id,
-        // });
 
         let params = serde_json::json!({});
 

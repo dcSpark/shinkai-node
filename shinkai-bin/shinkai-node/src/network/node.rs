@@ -24,6 +24,7 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::ws_routes::run_ws_api;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
@@ -335,11 +336,21 @@ impl Node {
         let tool_router = ToolRouter::new(lance_db.clone());
 
         // Read wallet_manager from db if it exists, if not, None
-        let wallet_manager = match db_arc.read_wallet_manager() {
+        let mut wallet_manager = match db_arc.read_wallet_manager() {
             Ok(manager) => Some(manager),
             Err(ShinkaiDBError::DataNotFound) => None,
             Err(e) => panic!("Failed to read wallet manager from database: {}", e),
         };
+
+        // Update LanceDB in CoinbaseMPCWallet if it exists (not ideal to have this logic here, but it's convenient for now)
+        if let Some(ref mut manager) = wallet_manager {
+            if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
+                coinbase_wallet.update_lance_db(lance_db.clone());
+            }
+            if let Some(coinbase_wallet) = manager.receiving_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
+                coinbase_wallet.update_lance_db(lance_db.clone());
+            }
+        }
 
         let wallet_manager = Arc::new(Mutex::new(wallet_manager));
 
