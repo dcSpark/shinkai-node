@@ -24,7 +24,7 @@ use super::utils::node_test_api::api_registration_device_node_profile_main;
 
 // #[test]
 fn node_retrying_test() {
-    init_default_tracing();
+    
     utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
 

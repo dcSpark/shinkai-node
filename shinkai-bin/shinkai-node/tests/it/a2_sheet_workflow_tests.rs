@@ -19,7 +19,7 @@ use mockito::Server;
 // #[test]
 fn create_a_sheet_and_check_workflows() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
-    init_default_tracing();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

@@ -285,8 +285,9 @@ impl Prompt {
 
         // Accumulator for ExtraContext content
         let mut extra_context_content = String::new();
-        let mut processing_extra_context = false;
         let mut last_user_message: Option<String> = None;
+        let mut function_calls: Vec<LlmMessage> = Vec::new();
+        let mut function_call_responses: Vec<LlmMessage> = Vec::new();
 
         for sub_prompt in &self.sub_prompts {
             match sub_prompt {
@@ -294,7 +295,6 @@ impl Prompt {
                 SubPrompt::Content(SubPromptType::ExtraContext, content, _) => {
                     extra_context_content.push_str(content);
                     extra_context_content.push('\n');
-                    processing_extra_context = true;
                 }
                 SubPrompt::ToolAvailable(_, content, _) => {
                     let tool_message = LlmMessage::import_functions_from_value(content.clone()).unwrap();
@@ -320,7 +320,7 @@ impl Prompt {
                         });
                     }
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
-                    tiktoken_messages.push(new_message);
+                    function_calls.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
                     let mut new_message = LlmMessage {
@@ -339,7 +339,7 @@ impl Prompt {
                     new_message.content = content.get("response").and_then(|r| r.as_str()).map(|r| r.to_string());
 
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
-                    tiktoken_messages.push(new_message);
+                    function_call_responses.push(new_message);
                 }
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
                     last_user_message = Some(content.clone());
@@ -372,6 +372,16 @@ impl Prompt {
             };
             current_length += ModelCapabilitiesManager::num_tokens_from_llama3(&[combined_message.clone()]);
             tiktoken_messages.push(combined_message);
+        }
+
+        // Add function calls after the last user message
+        for function_call in function_calls {
+            tiktoken_messages.push(function_call);
+        }
+
+        // Add function call responses after function calls
+        for response in function_call_responses {
+            tiktoken_messages.push(response);
         }
 
         (tiktoken_messages, current_length)
@@ -508,7 +518,7 @@ mod tests {
             SubPrompt::Content(SubPromptType::User, "summarize this".to_string(), 97),
             SubPrompt::Content(SubPromptType::Assistant, "## What are the benefits of using Vector Resources ...\n\n".to_string(), 97),
             SubPrompt::Content(SubPromptType::ExtraContext, "Here is a list of relevant new content provided for you to potentially use while answering:".to_string(), 97),
-            SubPrompt::Content(SubPromptType::ExtraContext, "- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00".to_string(), 97),
+            SubPrompt::Content(SubPromptType::ExtraContext, "- FAQ Shinkai Overview What's Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00".to_string(), 97),
             SubPrompt::Content(SubPromptType::ExtraContext, "- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string(), 97),
             SubPrompt::Content(SubPromptType::User, "tell me more about Shinkai. Answer the question using this markdown and the extra context provided: \n # Answer \n here goes the answer\n".to_string(), 100),
             SubPrompt::ToolAvailable(SubPromptType::AvailableTool, shinkai_tool.json_function_call_format().expect("mh"), 98),
@@ -586,7 +596,7 @@ mod tests {
             },
             LlmMessage {
                 role: Some("user".to_string()),
-                content: Some("Here is a list of relevant new content provided for you to potentially use while answering:\n- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00\n- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string()),
+                content: Some("Here is a list of relevant new content provided for you to potentially use while answering:\n- FAQ Shinkai Overview What's Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00\n- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string()),
                 name: None,
                 function_call: None,
                 functions: None,

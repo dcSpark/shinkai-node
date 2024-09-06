@@ -8,3 +8,4 @@ pub mod rust_tools;
 pub mod shinkai_tool;
 pub mod workflow_tool;
 pub mod tool_router_dep;
+pub mod network_tool;

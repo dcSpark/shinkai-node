@@ -14,7 +14,12 @@ impl LanceShinkaiDb {
     pub async fn create_version_table(connection: &Connection) -> Result<Table, ShinkaiLanceDBError> {
         let schema = arrow_schema::Schema::new(vec![Field::new("version", DataType::Utf8, false)]);
 
-        match connection.create_empty_table("version", schema.into()).execute().await {
+        match connection
+            .create_empty_table("version", schema.into())
+            // .data_storage_version(LanceFileVersion::V2_1)
+            .execute()
+            .await
+        {
             Ok(table) => Ok(table),
             Err(LanceDbError::TableAlreadyExists { .. }) => connection
                 .open_table("version")
@@ -83,7 +88,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_version_management() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

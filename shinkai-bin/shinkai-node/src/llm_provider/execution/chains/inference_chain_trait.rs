@@ -3,14 +3,14 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
-use crate::vector_fs;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use shinkai_message_primitives::schemas::sheet;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::fmt;
@@ -66,8 +66,10 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn score_results(&self) -> &HashMap<String, ScoreResult>;
     fn raw_files(&self) -> &RawFiles;
     fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>;
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>>;
+    fn tool_router(&self) -> Option<Arc<ToolRouter>>;
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
+    fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
+    fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
 }
@@ -147,12 +149,20 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.ws_manager_trait.clone()
     }
 
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+    fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         self.tool_router.clone()
     }
 
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
         self.sheet_manager.clone()
+    }
+
+    fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>> {
+        self.my_agent_payments_manager.clone()
+    }
+
+    fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>> {
+        self.ext_agent_payments_manager.clone()
     }
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
@@ -179,8 +189,10 @@ pub struct InferenceChainContext {
     pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub tool_router: Option<Arc<ToolRouter>>,
     pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+    pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+    pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
 }
 
 impl InferenceChainContext {
@@ -198,8 +210,10 @@ impl InferenceChainContext {
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>
+        tool_router: Option<Arc<ToolRouter>>,
+        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Self {
         Self {
             db,
@@ -218,6 +232,8 @@ impl InferenceChainContext {
             ws_manager_trait,
             tool_router,
             sheet_manager,
+            my_agent_payments_manager,
+            ext_agent_payments_manager,
         }
     }
 
@@ -251,6 +267,8 @@ impl fmt::Debug for InferenceChainContext {
             .field("ws_manager_trait", &self.ws_manager_trait.is_some())
             .field("tool_router", &self.tool_router.is_some())
             .field("sheet_manager", &self.sheet_manager.is_some())
+            .field("my_agent_payments_manager", &self.my_agent_payments_manager.is_some())
+            .field("ext_agent_payments_manager", &self.ext_agent_payments_manager.is_some())
             .finish()
     }
 }
@@ -380,12 +398,20 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).ws_manager_trait()
     }
 
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+    fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         (**self).tool_router()
     }
 
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
         (**self).sheet_manager()
+    }
+
+    fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>> {
+        (**self).my_agent_payments_manager()
+    }
+
+    fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>> {
+        (**self).ext_agent_payments_manager()
     }
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
@@ -405,6 +431,8 @@ pub struct MockInferenceChainContext {
     pub raw_files: RawFiles,
     pub db: Option<Arc<ShinkaiDB>>,
     pub vector_fs: Option<Arc<VectorFS>>,
+    pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+    pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
 }
 
 impl MockInferenceChainContext {
@@ -421,6 +449,8 @@ impl MockInferenceChainContext {
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
         db: Option<Arc<ShinkaiDB>>,
         vector_fs: Option<Arc<VectorFS>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Self {
         Self {
             user_message,
@@ -433,6 +463,8 @@ impl MockInferenceChainContext {
             raw_files,
             db,
             vector_fs,
+            my_agent_payments_manager,
+            ext_agent_payments_manager,
         }
     }
 }
@@ -455,6 +487,8 @@ impl Default for MockInferenceChainContext {
             raw_files: None,
             db: None,
             vector_fs: None,
+            my_agent_payments_manager: None,
+            ext_agent_payments_manager: None,
         }
     }
 }
@@ -528,11 +562,19 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         None
     }
 
-    fn tool_router(&self) -> Option<Arc<Mutex<ToolRouter>>> {
+    fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         unimplemented!()
     }
 
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
+        unimplemented!()
+    }
+
+    fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>> {
+        unimplemented!()
+    }
+
+    fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>> {
         unimplemented!()
     }
 
@@ -554,6 +596,8 @@ impl Clone for MockInferenceChainContext {
             raw_files: self.raw_files.clone(),
             db: self.db.clone(),
             vector_fs: self.vector_fs.clone(),
+            my_agent_payments_manager: self.my_agent_payments_manager.clone(),
+            ext_agent_payments_manager: self.ext_agent_payments_manager.clone(),
         }
     }
 }

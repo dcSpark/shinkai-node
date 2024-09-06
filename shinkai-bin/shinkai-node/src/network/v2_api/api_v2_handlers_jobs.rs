@@ -80,6 +80,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(change_job_llm_provider_handler);
 
+    let get_last_messages_with_branches_route = warp::path("last_messages_with_branches")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_last_messages_with_branches_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -89,6 +96,7 @@ pub fn job_routes(
         .or(create_files_inbox_route)
         .or(add_file_to_inbox_route)
         .or(change_job_llm_provider_route)
+        .or(get_last_messages_with_branches_route)
 }
 
 #[derive(Deserialize)]
@@ -120,6 +128,13 @@ pub struct AddFileToInboxRequest {
     pub file_inbox_name: String,
     pub filename: String,
     pub file: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+pub struct GetLastMessagesWithBranchesRequest {
+    pub inbox_name: String,
+    pub limit: usize,
+    pub offset_key: Option<String>,
 }
 
 // Code
@@ -574,6 +589,48 @@ pub async fn change_job_llm_provider_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/last_messages_with_branches",
+    request_body = GetLastMessagesWithBranchesRequest,
+    responses(
+        (status = 200, description = "Successfully retrieved last messages with branches", body = Vec<Vec<V2ChatMessage>>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_last_messages_with_branches_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: GetLastMessagesWithBranchesRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let node_commands_sender = node_commands_sender.clone();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetLastMessagesFromInboxWithBranches {
+            bearer,
+            inbox_name: payload.inbox_name,
+            limit: payload.limit,
+            offset_key: payload.offset_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -585,7 +642,8 @@ pub async fn change_job_llm_provider_handler(
         update_smart_inbox_name_handler,
         create_files_inbox_handler,
         add_file_to_inbox_handler,
-        change_job_llm_provider_handler
+        change_job_llm_provider_handler,
+        get_last_messages_with_branches_handler
     ),
     components(
         schemas(SendResponseBody, SendResponseBodyData, APIError)

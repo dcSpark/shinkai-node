@@ -10,6 +10,8 @@ use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
 use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -28,7 +30,6 @@ use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tokio::task;
-use tracing::instrument;
 
 #[derive(Clone)]
 pub struct SheetUIInferenceChain {
@@ -72,6 +73,8 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.tool_router.clone(),
             self.context.sheet_manager.clone(),
             self.sheet_id.clone(),
+            self.context.my_agent_payments_manager.clone(),
+            self.context.ext_agent_payments_manager.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -94,7 +97,6 @@ impl SheetUIInferenceChain {
 
     // Note: this code is very similar to the one from Generic, maybe we could inject
     // the tool code handling in the future so we can reuse the code
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -108,9 +110,11 @@ impl SheetUIInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         sheet_id: String,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -161,8 +165,6 @@ impl SheetUIInferenceChain {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
             if let Some(tool_router) = &tool_router {
-                let tool_router = tool_router.lock().await;
-
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
                 // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
@@ -298,14 +300,14 @@ impl SheetUIInferenceChain {
                         ws_manager_trait.clone(),
                         tool_router.clone(),
                         sheet_manager.clone(),
+                        my_agent_payments_manager.clone(),
+                        ext_agent_payments_manager.clone(),
                     );
                     
                     // JS or workflow tool
                     match tool_router
                         .as_ref()
                         .unwrap()
-                        .lock()
-                        .await
                         .call_function(function_call, &context, shinkai_tool.unwrap())
                         .await
                     {

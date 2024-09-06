@@ -2998,7 +2998,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         potentially_encrypted_msg: ShinkaiMessage,
         _embedding_generator: Arc<RemoteEmbeddingGenerator>,
         res: Sender<Result<JsonValue, APIError>>,
@@ -3036,7 +3036,6 @@ impl Node {
 
         // Perform the internal search using tool_router
         if let Some(tool_router) = tool_router {
-            let mut tool_router = tool_router.lock().await;
             match tool_router.workflow_search(&search_query, 5).await {
                 Ok(workflows) => {
                     let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
@@ -3079,7 +3078,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         potentially_encrypted_msg: ShinkaiMessage,
         _embedding_generator: Arc<RemoteEmbeddingGenerator>,
         res: Sender<Result<JsonValue, APIError>>,
@@ -3117,7 +3116,7 @@ impl Node {
 
         // Perform the internal search using tool_router
         if let Some(tool_router) = tool_router {
-            let tool_router = tool_router.lock().await;
+            
             match tool_router.vector_search_all_tools(&search_query, 5).await {
                 Ok(tools) => {
                     let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
@@ -3449,7 +3448,7 @@ impl Node {
         // List all Shinkai tools
         let tools = {
             let lance_db = lance_db.lock().await;
-            match lance_db.get_all_tools().await {
+            match lance_db.get_all_tools(true).await {
                 Ok(tools) => tools,
                 Err(err) => {
                     let api_error = APIError {

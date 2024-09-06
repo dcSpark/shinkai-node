@@ -87,6 +87,10 @@ pub enum MessageSchemaType {
     ListAllShinkaiTools,
     GetShinkaiTool,
     SearchShinkaiTool,
+    InvoiceRequest,
+    Invoice,
+    PaidInvoice,
+    InvoiceResult
 }
 
 impl MessageSchemaType {
@@ -168,6 +172,10 @@ impl MessageSchemaType {
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
             "SearchShinkaiTool" => Some(Self::SearchShinkaiTool),
+            "InvoiceRequest" => Some(Self::InvoiceRequest),
+            "Invoice" => Some(Self::Invoice),
+            "PaidInvoice" => Some(Self::PaidInvoice),
+            "InvoiceResult" => Some(Self::InvoiceResult),
             _ => None,
         }
     }
@@ -249,6 +257,10 @@ impl MessageSchemaType {
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
             Self::SearchShinkaiTool => "SearchShinkaiTool",
+            Self::InvoiceRequest => "InvoiceRequest",
+            Self::Invoice => "Invoice",
+            Self::PaidInvoice => "PaidInvoice",
+            Self::InvoiceResult => "InvoiceResult",
             Self::Empty => "",
         }
     }
@@ -664,6 +676,7 @@ pub enum WSTopic {
     SmartInboxes,
     Sheet,
     SheetList,
+    Widget,
 }
 
 impl fmt::Display for WSTopic {
@@ -673,6 +686,7 @@ impl fmt::Display for WSTopic {
             WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
             WSTopic::Sheet => write!(f, "sheet"),
             WSTopic::SheetList => write!(f, "sheet_list"),
+            WSTopic::Widget => write!(f, "widget"),
         }
     }
 }

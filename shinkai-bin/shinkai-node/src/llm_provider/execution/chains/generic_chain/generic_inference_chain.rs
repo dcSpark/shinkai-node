@@ -8,6 +8,8 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -25,7 +27,6 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use tracing::instrument;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -72,6 +73,8 @@ impl InferenceChain for GenericInferenceChain {
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
             self.context.sheet_manager.clone(),
+            self.context.my_agent_payments_manager.clone(),
+            self.context.ext_agent_payments_manager.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -91,7 +94,6 @@ impl GenericInferenceChain {
     }
 
     #[async_recursion]
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -105,8 +107,10 @@ impl GenericInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -155,7 +159,7 @@ impl GenericInferenceChain {
         let mut tools = vec![];
         if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
             if let Some(tool_router) = &tool_router {
-                let tool_router = tool_router.lock().await;
+                
 
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
@@ -164,15 +168,22 @@ impl GenericInferenceChain {
                 // }
 
                 // Search in JS Tools
-                let results = tool_router
-                    .vector_search_enabled_tools(&user_message.clone(), 3)
-                    .await
-                    .unwrap();
-                for result in results {
-                    if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
-                        tools.push(tool);
-                    }
+                // let results = tool_router
+                //     .vector_search_enabled_tools_with_network(&user_message.clone(), 3)
+                //     .await
+                //     .unwrap();
+                // for result in results {
+                //     if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
+                //         tools.push(tool);
+                //     }
+                // }
+
+                // Get the specific Shinkai tool
+                if let Some(tool) = tool_router.get_tool_by_name("@@agent_provider.arb-sep-shinkai:::shinkai-tool-youtube-transcript:::youtube_transcript_with_timestamps").await.unwrap() {
+                    tools.push(tool);
                 }
+                eprintln!("tool: {:?}", tools);
+                // TODO: add an env so we always use the same tool (Network + Payments)
             }
         }
 
@@ -238,6 +249,8 @@ impl GenericInferenceChain {
                     ws_manager_trait.clone(),
                     tool_router.clone(),
                     sheet_manager.clone(),
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
                 );
 
                 // 6) Call workflow or tooling
@@ -248,12 +261,12 @@ impl GenericInferenceChain {
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
 
+                // Note: here we can add logic to handle the case that we have network tools
+
                 // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .lock()
-                    .await
                     .call_function(function_call, &context, shinkai_tool.unwrap())
                     .await
                 {

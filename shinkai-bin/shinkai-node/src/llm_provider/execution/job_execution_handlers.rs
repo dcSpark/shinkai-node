@@ -20,7 +20,6 @@ use crate::{
     db::{db_errors::ShinkaiDBError, ShinkaiDB},
     llm_provider::{error::LLMProviderError, job::Job, job_manager::JobManager},
     network::ws_manager::WSUpdateHandler,
-    planner::kai_files::KaiJobFile,
     vector_fs::vector_fs::VectorFS,
 };
 
@@ -96,35 +95,5 @@ impl JobManager {
         db.set_job_execution_context(full_job.job_id.clone(), prev_execution_context, None)?;
 
         Ok(())
-    }
-
-    /// Inserts a KaiJobFile into a specific inbox
-    pub async fn insert_kai_job_file_into_inbox(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        file_name_no_ext: String,
-        kai_file: KaiJobFile,
-    ) -> Result<String, LLMProviderError> {
-        let inbox_name = random_string();
-
-        // Create the inbox
-        match db.create_files_message_inbox(inbox_name.clone()) {
-            Ok(_) => {
-                // Convert the KaiJobFile to a JSON string
-                let kai_file_json = to_string(&kai_file)?;
-
-                // Convert the JSON string to bytes
-                let kai_file_bytes = kai_file_json.into_bytes();
-
-                // Save the KaiJobFile to the inbox
-                vector_fs.db.add_file_to_files_message_inbox(
-                    inbox_name.clone(),
-                    format!("{}.jobkai", file_name_no_ext).to_string(),
-                    kai_file_bytes,
-                )?;
-                Ok(inbox_name)
-            }
-            Err(err) => Err(LLMProviderError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
-        }
     }
 }

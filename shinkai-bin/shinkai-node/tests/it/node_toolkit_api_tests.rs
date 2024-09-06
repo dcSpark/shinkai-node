@@ -28,7 +28,7 @@ use mockito::Server;
 
 // #[test]
 fn node_toolkit_api() {
-    init_default_tracing();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

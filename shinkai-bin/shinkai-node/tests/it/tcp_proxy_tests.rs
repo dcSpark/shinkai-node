@@ -33,7 +33,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 #[test]
 fn tcp_proxy_test_identity() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     setup();
     let rt = Runtime::new().unwrap();
 
@@ -438,7 +438,7 @@ fn tcp_proxy_test_identity() {
 #[test]
 fn tcp_proxy_test_localhost() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     setup();
     let rt = Runtime::new().unwrap();
 

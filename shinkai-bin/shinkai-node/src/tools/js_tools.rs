@@ -38,7 +38,7 @@ impl JSTool {
         let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
         // Create a hashmap with key_name and key_value
-        let config: HashMap<String, String> = self
+        let mut config: HashMap<String, String> = self
             .config
             .iter()
             .filter_map(|c| {
@@ -52,6 +52,13 @@ impl JSTool {
                 }
             })
             .collect();
+
+        // Merge extra_config into the config hashmap
+        if let Some(extra_config_str) = extra_config {
+            let extra_config_map: HashMap<String, String> = serde_json::from_str(&extra_config_str)
+                .map_err(|e| ToolError::SerializationError(e.to_string()))?;
+            config.extend(extra_config_map);
+        }
 
         // Convert the config hashmap to a JSON value
         let config_json = serde_json::to_value(&config).map_err(|e| ToolError::SerializationError(e.to_string()))?;

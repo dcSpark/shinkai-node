@@ -40,6 +40,20 @@ impl ToolConfig {
     pub fn shinkai_db_key(&self, toolkit_name: &str) -> String {
         format!("{}:::{}", self.header(), toolkit_name)
     }
+
+    /// Returns a sanitized copy of the ToolConfig by removing key-values from BasicConfig
+    pub fn sanitize(&self) -> ToolConfig {
+        match self {
+            ToolConfig::OAuth(oauth) => ToolConfig::OAuth(oauth.clone()),
+            ToolConfig::GenericHeader(header) => ToolConfig::GenericHeader(header.clone()),
+            ToolConfig::BasicConfig(config) => ToolConfig::BasicConfig(BasicConfig {
+                key_name: config.key_name.clone(),
+                description: config.description.clone(),
+                required: config.required,
+                key_value: None,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

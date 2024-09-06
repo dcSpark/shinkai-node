@@ -1,3 +1,6 @@
+use super::agent_payments_manager::crypto_invoice_manager::{CryptoInvoiceManager, CryptoInvoiceManagerTrait};
+use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{
     NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
 };
@@ -21,6 +24,8 @@ use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::ws_routes::run_ws_api;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
+use crate::wallet::wallet_manager::WalletManager;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
@@ -120,8 +125,6 @@ pub struct Node {
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-    // Handle for the listen_and_reconnect task
-    pub listen_handle: Option<tokio::task::JoinHandle<()>>,
     // Websocket Manager
     pub ws_manager: Option<Arc<Mutex<WebSocketManager>>>,
     // Websocket Manager Trait
@@ -131,7 +134,7 @@ pub struct Node {
     // Websocket Server
     pub ws_server: Option<tokio::task::JoinHandle<()>>,
     // Tool Router. Option so it is less painful to test
-    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub tool_router: Option<Arc<ToolRouter>>,
     // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
     pub callback_manager: Arc<Mutex<JobCallbackManager>>,
     // Sheet Manager.
@@ -142,6 +145,12 @@ pub struct Node {
     pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
     // API V2 Key
     pub api_v2_key: String,
+    // Wallet Manager
+    pub wallet_manager: Arc<Mutex<Option<WalletManager>>>,
+    /// My Agent Payments Manager
+    pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+    /// Ext Agent Payments Manager
+    pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
 }
 
 impl Node {
@@ -270,7 +279,7 @@ impl Node {
             let manager = WebSocketManager::new(
                 db_weak,
                 node_name.clone(),
-                identity_manager_trait,
+                identity_manager_trait.clone(),
                 clone_static_secret_key(&encryption_secret_key),
             )
             .await;
@@ -311,21 +320,7 @@ impl Node {
             .await,
         ));
 
-        // Create NetworkJobManager with a weak reference to this node
-        let network_manager = NetworkJobManager::new(
-            Arc::downgrade(&db_arc),
-            Arc::downgrade(&vector_fs_arc),
-            node_name.clone(),
-            clone_static_secret_key(&encryption_secret_key),
-            clone_signature_secret_key(&identity_secret_key),
-            identity_manager.clone(),
-            my_subscription_manager.clone(),
-            ext_subscriber_manager.clone(),
-            proxy_connection_info_weak.clone(),
-            ws_manager_trait.clone(),
-        )
-        .await;
-
+        // LanceDB
         let lance_db_path = format!("{}", main_db_path);
         // Note: do we need to push this to start bc of the default embedding model?
         let lance_db = LanceShinkaiDb::new(
@@ -339,6 +334,74 @@ impl Node {
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(lance_db.clone());
+
+        // Read wallet_manager from db if it exists, if not, None
+        let mut wallet_manager = match db_arc.read_wallet_manager() {
+            Ok(manager) => Some(manager),
+            Err(ShinkaiDBError::DataNotFound) => None,
+            Err(e) => panic!("Failed to read wallet manager from database: {}", e),
+        };
+
+        // Update LanceDB in CoinbaseMPCWallet if it exists (not ideal to have this logic here, but it's convenient for now)
+        if let Some(ref mut manager) = wallet_manager {
+            if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
+                coinbase_wallet.update_lance_db(lance_db.clone());
+            }
+            if let Some(coinbase_wallet) = manager.receiving_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
+                coinbase_wallet.update_lance_db(lance_db.clone());
+            }
+        }
+
+        let wallet_manager = Arc::new(Mutex::new(wallet_manager));
+
+        let tool_router = Arc::new(tool_router);
+
+        let my_agent_payments_manager = Arc::new(Mutex::new(
+            MyAgentOfferingsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager_trait),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                proxy_connection_info_weak.clone(),
+                Arc::downgrade(&tool_router),
+                Arc::downgrade(&wallet_manager),
+            )
+            .await,
+        ));
+
+        let ext_agent_payments_manager = Arc::new(Mutex::new(
+            ExtAgentOfferingsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager_trait),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                proxy_connection_info_weak.clone(),
+                Arc::downgrade(&tool_router),
+                Arc::downgrade(&wallet_manager),
+            )
+            .await,
+        ));
+
+        // Create NetworkJobManager with a weak reference to this node
+        let network_manager = NetworkJobManager::new(
+            Arc::downgrade(&db_arc),
+            Arc::downgrade(&vector_fs_arc),
+            node_name.clone(),
+            clone_static_secret_key(&encryption_secret_key),
+            clone_signature_secret_key(&identity_secret_key),
+            identity_manager.clone(),
+            my_subscription_manager.clone(),
+            ext_subscriber_manager.clone(),
+            Arc::downgrade(&my_agent_payments_manager),
+            Arc::downgrade(&ext_agent_payments_manager),
+            proxy_connection_info_weak.clone(),
+            ws_manager_trait.clone(),
+        )
+        .await;
 
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
@@ -396,17 +459,19 @@ impl Node {
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
-            listen_handle: None,
             ws_manager,
             ws_address,
             ws_manager_trait,
             ws_server: None,
             callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
             sheet_manager: Arc::new(Mutex::new(sheet_manager)),
-            tool_router: Some(Arc::new(Mutex::new(tool_router))),
+            tool_router: Some(tool_router),
             default_embedding_model,
             supported_embedding_models,
             api_v2_key,
+            wallet_manager,
+            my_agent_payments_manager,
+            ext_agent_payments_manager,
         }))
     }
 
@@ -428,6 +493,8 @@ impl Node {
                 self.tool_router.clone(),
                 self.sheet_manager.clone(),
                 self.callback_manager.clone(),
+                self.my_agent_payments_manager.clone(),
+                self.ext_agent_payments_manager.clone(),
             )
             .await,
         ));
@@ -484,18 +551,13 @@ impl Node {
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
-                let current_version = tool_router
-                    .lock()
-                    .await
-                    .get_current_lancedb_version()
-                    .await
-                    .unwrap_or(None);
+                let current_version = tool_router.get_current_lancedb_version().await.unwrap_or(None);
                 if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
-                    if let Err(e) = tool_router.lock().await.force_reinstall_all(generator).await {
+                    if let Err(e) = tool_router.force_reinstall_all(generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }
                 } else {
-                    if let Err(e) = tool_router.lock().await.initialization(generator).await {
+                    if let Err(e) = tool_router.initialization(generator).await {
                         eprintln!("ToolRouter initialization failed: {:?}", e);
                     }
                 }
@@ -1069,7 +1131,7 @@ impl Node {
         peer: (SocketAddr, ProfileName),
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         db: Arc<ShinkaiDB>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         save_to_db_flag: bool,
         retry: Option<u32>,
@@ -1088,7 +1150,7 @@ impl Node {
         tokio::spawn(async move {
             let start_time = Utc::now();
             let writer_start_time = Utc::now();
-            let writer = Node::get_writer(address, proxy_connection_info, maybe_identity_manager.clone()).await;
+            let writer = Node::get_writer(address, proxy_connection_info).await;
             let writer_end_time = Utc::now(); // End time for get_writer
             let writer_duration = writer_end_time - writer_start_time;
             shinkai_log(
@@ -1159,9 +1221,6 @@ impl Node {
     async fn get_writer(
         address: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        _identity_manager: Arc<Mutex<IdentityManager>>,
-        // node_name: ShinkaiName,
-        // identity_secret_key: SigningKey,
     ) -> Option<Arc<Mutex<WriteHalf<TcpStream>>>> {
         let proxy_connection = proxy_connection_info.lock().await;
         if let Some(proxy_info) = proxy_connection.as_ref() {
@@ -1253,7 +1312,7 @@ impl Node {
             data_to_send.extend_from_slice(&vr_kai_serialized);
 
             // Get the stream using the get_stream function
-            let writer = Node::get_writer(peer, proxy_connection_info, maybe_identity_manager).await;
+            let writer = Node::get_writer(peer, proxy_connection_info).await;
 
             if let Some(writer) = writer {
                 let mut writer = writer.lock().await;
@@ -1274,7 +1333,7 @@ impl Node {
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
         db: Arc<ShinkaiDB>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible

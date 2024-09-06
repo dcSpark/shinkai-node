@@ -1,6 +1,7 @@
-use std::fmt;
-use lancedb::Error as LanceDbError;
 use crate::tools::error::ToolError;
+use lancedb::Error as LanceDbError;
+use rocksdb::Error as RocksDbError;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum ShinkaiLanceDBError {
@@ -8,7 +9,9 @@ pub enum ShinkaiLanceDBError {
     Schema(String),
     Arrow(String),
     ToolError(String),
-    InvalidPath(String)
+    InvalidPath(String),
+    ShinkaiDBError(String),
+    RocksDBError(String),
 }
 
 impl fmt::Display for ShinkaiLanceDBError {
@@ -19,6 +22,8 @@ impl fmt::Display for ShinkaiLanceDBError {
             ShinkaiLanceDBError::Arrow(err) => write!(f, "Arrow error: {}", err),
             ShinkaiLanceDBError::ToolError(err) => write!(f, "Tool error: {}", err),
             ShinkaiLanceDBError::InvalidPath(err) => write!(f, "Invalid path error: {}", err),
+            ShinkaiLanceDBError::ShinkaiDBError(err) => write!(f, "ShinkaiDB error: {}", err),
+            ShinkaiLanceDBError::RocksDBError(err) => write!(f, "RocksDB error: {}", err),
         }
     }
 }
@@ -31,7 +36,7 @@ impl std::error::Error for ShinkaiLanceDBError {
         }
     }
 }
-
+    
 impl From<LanceDbError> for ShinkaiLanceDBError {
     fn from(err: LanceDbError) -> Self {
         ShinkaiLanceDBError::LanceDB(err)
@@ -41,5 +46,11 @@ impl From<LanceDbError> for ShinkaiLanceDBError {
 impl From<ShinkaiLanceDBError> for ToolError {
     fn from(error: ShinkaiLanceDBError) -> Self {
         ToolError::DatabaseError(error.to_string())
+    }
+}
+
+impl From<RocksDbError> for ShinkaiLanceDBError {
+    fn from(err: RocksDbError) -> Self {
+        ShinkaiLanceDBError::RocksDBError(err.to_string())
     }
 }

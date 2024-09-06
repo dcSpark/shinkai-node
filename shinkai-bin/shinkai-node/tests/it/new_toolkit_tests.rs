@@ -23,7 +23,7 @@
 
 // #[tokio::test]
 // async fn test_toolkit_installation_from_built_in_tools() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile
@@ -92,7 +92,7 @@
 
 // #[tokio::test]
 // async fn test_call_function_weather_by_city() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile
@@ -164,7 +164,7 @@
 
 // #[tokio::test]
 // async fn test_get_default_tools() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile
@@ -228,7 +228,7 @@
 
 // #[tokio::test]
 // async fn test_create_update_and_read_toolkit() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile
@@ -298,7 +298,7 @@
 
 // #[tokio::test]
 // async fn test_create_toolkit_from_file() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile
@@ -374,7 +374,7 @@
 
 // #[tokio::test]
 // async fn test_workflow_search() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile
@@ -415,7 +415,7 @@
 
 // #[tokio::test]
 // async fn test_get_static_workflow() {
-//     init_default_tracing();
+//     
 //     setup();
 
 //     // Initialize the database and profile

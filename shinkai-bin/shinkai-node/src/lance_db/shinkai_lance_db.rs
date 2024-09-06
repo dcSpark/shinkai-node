@@ -1,10 +1,10 @@
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit_headers::{BasicConfig, ToolConfig};
 use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use arrow_array::{Array, BooleanArray};
+use arrow_array::{Array, BinaryArray, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use lancedb::index::Index;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
@@ -21,7 +21,10 @@ use super::ollama_embedding_fn::OllamaEmbeddingFunction;
 use super::shinkai_lancedb_error::ShinkaiLanceDBError;
 use super::shinkai_tool_schema::ShinkaiToolSchema;
 
-pub static LATEST_ROUTER_DB_VERSION: &str = "1";
+// Note: Add 1 to the current number to force an old fashion migration (delete all and then add all)
+pub static LATEST_ROUTER_DB_VERSION: &str = "3";
+
+// TODO: we need a way to export and import the db (or tables). it could be much faster to reset.
 
 #[derive(Clone)]
 pub struct LanceShinkaiDb {
@@ -68,7 +71,12 @@ impl LanceShinkaiDb {
         let schema = ShinkaiToolSchema::create_schema(embedding_model)
             .map_err(|e| ShinkaiLanceDBError::Schema(e.to_string()))?;
 
-        let table = match connection.create_empty_table("tool_router", schema).execute().await {
+        let table = match connection
+            .create_empty_table("tool_router", schema)
+            // .data_storage_version(LanceFileVersion::V2_1)
+            .execute()
+            .await
+        {
             Ok(table) => table,
             Err(e) => {
                 if let LanceDbError::TableAlreadyExists { .. } = e {
@@ -98,6 +106,11 @@ impl LanceShinkaiDb {
         // Create the index if it doesn't exist
         if !index_exists {
             table.create_index(&["tool_key"], Index::Auto).execute().await?;
+            // Note: potentially add this and we will need FTS index as well (v0.10.0)
+            // table
+            //     .create_index(&["tool_key"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
+            //     .execute()
+            //     .await?;
         }
 
         Ok(table)
@@ -132,6 +145,7 @@ impl LanceShinkaiDb {
         let embedding = match shinkai_tool.get_embedding() {
             Some(embedding) => embedding.vector,
             None => {
+                eprintln!("Generating embedding for tool: {}", tool_key);
                 let embedding_string = shinkai_tool.format_embedding_string();
                 self.embedding_function
                     .request_embeddings(&embedding_string)
@@ -146,9 +160,9 @@ impl LanceShinkaiDb {
 
         // For Debugging
         // add an if using env REINSTALL_TOOLS so we inject some configuration data for certain tools and also we make it enabled
-        if env::var("REINSTALL_TOOLS").is_ok() {
+        if env::var("REINSTALL_TOOLS").is_ok() || env::var("INITIAL_CONF").is_ok() {
             if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
-                if tool_key.starts_with("shinkai-tool-coinbase") {
+                if tool_key.starts_with("local:::shinkai-tool-coinbase") {
                     if let (Ok(api_name), Ok(private_key), Ok(wallet_id), Ok(use_server_signer)) = (
                         env::var("COINBASE_API_NAME"),
                         env::var("COINBASE_API_PRIVATE_KEY"),
@@ -170,6 +184,25 @@ impl LanceShinkaiDb {
                         }
                         shinkai_tool.enable();
                     }
+                } else if tool_key.starts_with("local:::shinkai-tool-youtube-transcript") {
+                    if let (Ok(api_url), Ok(api_key), Ok(model)) = (
+                        env::var("YOUTUBE_TRANSCRIPT_API_URL"),
+                        env::var("YOUTUBE_TRANSCRIPT_API_KEY"),
+                        env::var("YOUTUBE_TRANSCRIPT_API_MODEL"),
+                    ) {
+                        for config in &mut js_tool.config {
+                            if let ToolConfig::BasicConfig(ref mut basic_config) = config {
+                                if basic_config.key_name == "apiUrl" {
+                                    basic_config.key_value = Some(api_url.clone());
+                                } else if basic_config.key_name == "apiKey" {
+                                    basic_config.key_value = Some(api_key.clone());
+                                } else if basic_config.key_name == "model" {
+                                    basic_config.key_value = Some(model.clone());
+                                }
+                            }
+                        }
+                        shinkai_tool.enable();
+                    }
                 }
             }
         }
@@ -183,8 +216,9 @@ impl LanceShinkaiDb {
             shinkai_tool.disable();
         }
 
-        let tool_data =
-            vec![serde_json::to_string(&shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?];
+        let tool_data_vec =
+            serde_json::to_vec(&shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+        let tool_data: Vec<&[u8]> = vec![tool_data_vec.as_slice()];
 
         let tool_header = vec![serde_json::to_string(&shinkai_tool.to_header())
             .map_err(|e| ToolError::SerializationError(e.to_string()))?];
@@ -201,6 +235,15 @@ impl LanceShinkaiDb {
 
         let vectors_normalized = Arc::new(Float32Array::from(vectors));
 
+        // Extract on_demand_price and is_network
+        let (on_demand_price, is_network) = match shinkai_tool {
+            ShinkaiTool::Network(ref network_tool, _) => {
+                let price = network_tool.usage_type.per_use_usd_price();
+                (Some(price), true)
+            }
+            _ => (None, false),
+        };
+
         let batch = RecordBatch::try_new(
             schema.clone(),
             vec![
@@ -215,11 +258,16 @@ impl LanceShinkaiDb {
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?,
                 ),
                 Arc::new(StringArray::from(tool_types)),
-                Arc::new(StringArray::from(tool_data)),
+                Arc::new(BinaryArray::from(tool_data)),
                 Arc::new(StringArray::from(tool_header)),
                 Arc::new(StringArray::from(vec![shinkai_tool.author().to_string()])),
                 Arc::new(StringArray::from(vec![shinkai_tool.version().to_string()])),
                 Arc::new(BooleanArray::from(vec![is_enabled])),
+                Arc::new(
+                    on_demand_price
+                        .map_or_else(|| Float32Array::from(vec![None]), |p| Float32Array::from(vec![Some(p)])),
+                ),
+                Arc::new(BooleanArray::from(vec![is_network])),
             ],
         )
         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -252,22 +300,19 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
-        let mut results = query
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-        if let Some(batch) = results.pop() {
+        let mut res = query;
+        while let Some(Ok(batch)) = res.next().await {
             let tool_data_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_data_field())
                 .unwrap()
                 .as_any()
-                .downcast_ref::<StringArray>()
+                .downcast_ref::<BinaryArray>()
                 .unwrap();
 
             if tool_data_array.len() > 0 {
-                let tool_data = tool_data_array.value(0).to_string();
+                let tool_data = tool_data_array.value(0);
                 let shinkai_tool: ShinkaiTool =
-                    serde_json::from_str(&tool_data).map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+                    serde_json::from_slice(tool_data).map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
                 let duration = start_time.elapsed();
                 println!("Time taken to fetch tool with key '{}': {:?}", tool_key, duration);
                 return Ok(Some(shinkai_tool));
@@ -283,7 +328,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))
     }
 
-    async fn tool_exists(&self, tool_key: &str) -> Result<bool, ShinkaiLanceDBError> {
+    pub async fn tool_exists(&self, tool_key: &str) -> Result<bool, ShinkaiLanceDBError> {
         let query = self
             .tool_table
             .query()
@@ -343,15 +388,21 @@ impl LanceShinkaiDb {
         Ok(workflows)
     }
 
-    pub async fn get_all_tools(&self) -> Result<Vec<ShinkaiToolHeader>, ShinkaiLanceDBError> {
-        let query = self
-            .tool_table
-            .query()
-            .select(Select::columns(&[
-                ShinkaiToolSchema::tool_key_field(),
-                ShinkaiToolSchema::tool_type_field(),
-                ShinkaiToolSchema::tool_header_field(),
-            ]))
+    pub async fn get_all_tools(
+        &self,
+        include_network_tools: bool,
+    ) -> Result<Vec<ShinkaiToolHeader>, ShinkaiLanceDBError> {
+        let mut query_builder = self.tool_table.query().select(Select::columns(&[
+            ShinkaiToolSchema::tool_key_field(),
+            ShinkaiToolSchema::tool_type_field(),
+            ShinkaiToolSchema::tool_header_field(),
+        ]));
+
+        if !include_network_tools {
+            query_builder = query_builder.only_if(format!("{} = false", ShinkaiToolSchema::is_network_field()));
+        }
+
+        let query = query_builder
             .execute()
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
@@ -384,21 +435,34 @@ impl LanceShinkaiDb {
         &self,
         query: &str,
         num_results: u64,
+        include_network_tools: bool,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        self.vector_search_tools(
-            query,
-            num_results,
-            Some(&format!("{} = true", ShinkaiToolSchema::is_enabled_field())),
-        )
-        .await
+        let filter = if include_network_tools {
+            Some(format!("{} = true", ShinkaiToolSchema::is_enabled_field()))
+        } else {
+            Some(format!(
+                "{} = true AND {} = false",
+                ShinkaiToolSchema::is_enabled_field(),
+                ShinkaiToolSchema::is_network_field()
+            ))
+        };
+
+        self.vector_search_tools(query, num_results, filter.as_deref()).await
     }
 
     pub async fn vector_search_all_tools(
         &self,
         query: &str,
         num_results: u64,
+        include_network_tools: bool,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        self.vector_search_tools(query, num_results, None).await
+        let filter = if include_network_tools {
+            None
+        } else {
+            Some(format!("{} = false", ShinkaiToolSchema::is_network_field()))
+        };
+
+        self.vector_search_tools(query, num_results, filter.as_deref()).await
     }
 
     async fn vector_search_tools(
@@ -565,13 +629,16 @@ impl LanceShinkaiDb {
 
 #[cfg(test)]
 mod tests {
+    use crate::network::agent_payments_manager::shinkai_tool_offering::ToolPrice;
+    use crate::network::agent_payments_manager::shinkai_tool_offering::UsageType;
     use crate::tools::js_toolkit::JSToolkit;
     use crate::tools::js_toolkit_headers::ToolConfig;
+    use crate::tools::network_tool::NetworkTool;
     use crate::tools::tool_router_dep::workflows_data;
 
     use super::*;
     use serde_json::Value;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
+    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -587,7 +654,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_and_basics() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -626,7 +693,7 @@ mod tests {
 
         let query = "duckduckgo";
         let results = db
-            .vector_search_enabled_tools(&query, 5)
+            .vector_search_enabled_tools(&query, 5, false)
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
@@ -692,7 +759,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tools_and_workflows() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         // Set the environment variable to enable testing workflows
@@ -755,7 +822,7 @@ mod tests {
         let search_start_time = Instant::now();
 
         let results = db
-            .vector_search_enabled_tools(&query, 2)
+            .vector_search_enabled_tools(&query, 2, false)
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
@@ -782,7 +849,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tool_and_update_config() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -859,7 +926,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_workflow_and_js_tool() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -907,7 +974,7 @@ mod tests {
         }
 
         // Verify both tools are added
-        let all_tools = db.get_all_tools().await?;
+        let all_tools = db.get_all_tools(false).await?;
         let mut found_js_tool = false;
         let mut found_workflow = false;
 
@@ -927,7 +994,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_has_any_js_tools() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
+        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -964,6 +1031,117 @@ mod tests {
         assert!(
             db.has_any_js_tools().await?,
             "Database should not be empty for JS tools after adding one"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_add_js_and_network_tools() -> Result<(), ShinkaiLanceDBError> {
+        setup();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
+
+        // Add JS tool
+        let tools = built_in_tools::get_tools();
+        let (js_name, js_definition) = tools
+            .iter()
+            .find(|(name, _)| *name == "shinkai-tool-weather-by-city")
+            .unwrap();
+
+        let js_toolkit = JSToolkit::new(js_name, vec![js_definition.clone()]);
+        let js_tool = js_toolkit.tools.into_iter().next().unwrap();
+        let mut shinkai_js_tool = ShinkaiTool::JS(js_tool.clone(), true);
+        let js_embedding = generator
+            .generate_embedding_default(&shinkai_js_tool.format_embedding_string())
+            .await
+            .unwrap();
+        shinkai_js_tool.set_embedding(js_embedding);
+
+        db.set_tool(&shinkai_js_tool)
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        // Add Network tool
+        let network_tool = NetworkTool {
+            name: "network_tool_example".to_string(),
+            toolkit_name: "shinkai-tool-echo".to_string(),
+            description: "A network tool example".to_string(),
+            version: "1.0".to_string(),
+            provider: ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),
+            usage_type: UsageType::PerUse(ToolPrice::Free),
+            activated: true,
+            config: vec![],
+            input_args: vec![],
+            embedding: None,
+            restrictions: None,
+        };
+        let mut shinkai_network_tool = ShinkaiTool::Network(network_tool.clone(), true);
+        let network_embedding = generator
+            .generate_embedding_default(&shinkai_network_tool.format_embedding_string())
+            .await
+            .unwrap();
+        shinkai_network_tool.set_embedding(network_embedding);
+
+        db.set_tool(&shinkai_network_tool)
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        // Test get_all_tools with include_network_tools = true
+        let all_tools_with_network = db.get_all_tools(true).await?;
+        assert!(
+            all_tools_with_network.iter().any(|tool| tool.tool_type == "JS"),
+            "JS tool not found"
+        );
+        assert!(
+            all_tools_with_network.iter().any(|tool| tool.tool_type == "Network"),
+            "Network tool not found"
+        );
+
+        // Test get_all_tools with include_network_tools = false
+        let all_tools_without_network = db.get_all_tools(false).await?;
+        assert!(
+            all_tools_without_network.iter().any(|tool| tool.tool_type == "JS"),
+            "JS tool not found"
+        );
+        assert!(
+            !all_tools_without_network.iter().any(|tool| tool.tool_type == "Network"),
+            "Network tool should not be found"
+        );
+
+        // Test vector_search_all_tools with include_network_tools = true
+        let query = "example";
+        let search_results_with_network = db
+            .vector_search_all_tools(query, 5, true)
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+        assert!(
+            search_results_with_network.iter().any(|tool| tool.tool_type == "JS"),
+            "JS tool not found in search results"
+        );
+        assert!(
+            search_results_with_network
+                .iter()
+                .any(|tool| tool.tool_type == "Network"),
+            "Network tool not found in search results"
+        );
+
+        // Test vector_search_all_tools with include_network_tools = false
+        let search_results_without_network = db
+            .vector_search_all_tools(query, 5, false)
+            .await
+            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+        assert!(
+            search_results_without_network.iter().any(|tool| tool.tool_type == "JS"),
+            "JS tool not found in search results"
+        );
+        assert!(
+            !search_results_without_network
+                .iter()
+                .any(|tool| tool.tool_type == "Network"),
+            "Network tool should not be found in search results"
         );
 
         Ok(())
