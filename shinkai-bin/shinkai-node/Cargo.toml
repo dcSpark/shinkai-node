@@ -1,6 +1,6 @@
 [package]
 name = "shinkai_node"
-version = "0.7.33"
+version = "0.7.34"
 edition = "2021"
 authors.workspace = true
 # this causes `cargo run` in the workspace root to run this package
@@ -18,7 +18,6 @@ doctest = false
 [build-dependencies]
 reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "stream"] }
 shinkai_tools_runner = { version = "0.7.10" } # change to a crate later on
-# shinkai_tools_runner = { path = "../../../shinkai-tool/libs/shinkai-tools-runner", features = ["built-in-tools"] }
 
 [dependencies]
 async-trait = "0.1.74"
@@ -80,7 +79,6 @@ rust_decimal = "1.17.0"
 aws-types = "1.2.0"
 aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
 shinkai_tools_runner = { version = "0.7.10", features = ["built-in-tools"] } # change to a crate later on
-# shinkai_tools_runner = { path = "../../../shinkai-tool/libs/shinkai-tools-runner", features = ["built-in-tools"] }
 lancedb = "0.8.0"
 arrow = "52.1"
 arrow-array = "52.1"
