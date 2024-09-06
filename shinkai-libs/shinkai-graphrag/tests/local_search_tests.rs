@@ -12,7 +12,7 @@ use shinkai_graphrag::{
     vector_stores::lancedb::LanceDBVectorStore,
 };
 use utils::{
-    ollama::OllamaChat,
+    ollama::{OllamaChat, OllamaEmbedding},
     openai::{num_tokens, ChatOpenAI, OpenAIEmbedding},
 };
 
@@ -24,13 +24,10 @@ async fn ollama_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     let llm_model = "llama3.1";
     let llm = OllamaChat::new(base_url, llm_model);
 
-    // Using OpenAI embeddings since the dataset was created with OpenAI embeddings
-    let api_key = std::env::var("GRAPHRAG_API_KEY").unwrap();
-    let embedding_model = std::env::var("GRAPHRAG_EMBEDDING_MODEL").unwrap();
-    let text_embedder = OpenAIEmbedding::new(Some(api_key), &embedding_model, 8191, 5);
+    let embedding_model = "snowflake-arctic-embed:m";
+    let text_embedder = OllamaEmbedding::new(base_url, embedding_model);
 
-    // Load community reports
-    // Download dataset: https://microsoft.github.io/graphrag/data/operation_dulce/dataset.zip
+    // Load datasets
 
     let input_dir = "./dataset";
     let lancedb_uri = format!("{}/lancedb", input_dir);
@@ -131,11 +128,6 @@ async fn ollama_local_search_test() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = search_engine.asearch("Tell me about Agent Mercer".to_string()).await?;
-    println!("Response: {:?}\n", result.response);
-
-    let result = search_engine
-        .asearch("Tell me about Dr. Jordan Hayes".to_string())
-        .await?;
     println!("Response: {:?}\n", result.response);
 
     match result.context_data {
