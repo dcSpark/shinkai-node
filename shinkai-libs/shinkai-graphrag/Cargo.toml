@@ -1,0 +1,27 @@
+[package]
+name = "shinkai-graphrag"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+arrow = "52.1"
+arrow-array = "52.1"
+arrow-schema = "52.1"
+async-trait = "0.1.74"
+futures = "0.3.30"
+lancedb = "0.8.0"
+polars = { version = "0.41.3", features = ["dtype-struct", "is_in", "lazy", "parquet"] }
+polars-lazy = "0.41.3"
+rand = "0.8.5"
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.117"
+tokio = { version = "1.36", features = ["full"] }
+uuid = { version = "1.6.1", features = ["v4"] }
+
+[dev-dependencies]
+async-openai = "0.23.4"
+ndarray = "0.16.1"
+ndarray-stats = "0.6.0"
+reqwest = { version = "0.11.26", features = ["json"] }
+tiktoken-rs = "0.5.9"

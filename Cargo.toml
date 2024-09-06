@@ -4,13 +4,14 @@ members = [
   "shinkai-libs/shinkai-dsl",
   "shinkai-libs/shinkai-sheet",
   "shinkai-libs/shinkai-fs-mirror",
+  "shinkai-libs/shinkai-graphrag",
   "shinkai-libs/shinkai-message-primitives",
   "shinkai-libs/shinkai-ocr",
   "shinkai-libs/shinkai-tcp-relayer",
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-bin/*",
   "shinkai-cli-tools/*"
-]
+, "shinkai-libs/shinkai-graphrag"]
 resolver = "2"
 
 [workspace.package]
