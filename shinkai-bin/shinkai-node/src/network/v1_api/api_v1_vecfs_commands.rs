@@ -1,15 +1,12 @@
 use std::{env, fs, path::Path, sync::Arc};
 
+#[cfg(feature = "http-manager")]
+use crate::network::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo};
 use crate::{
     db::ShinkaiDB,
     llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
-    network::{
-        node_api_router::APIError,
-        node_error::NodeError,
-        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-        Node,
-    },
+    network::{node_api_router::APIError, node_error::NodeError, Node},
     schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };
@@ -85,6 +82,7 @@ impl Node {
         Ok((input_payload, requester_name))
     }
 
+    #[cfg(feature = "http-manager")]
     #[allow(clippy::too_many_arguments)]
     // Public function for simplified JSON
     pub async fn api_vec_fs_retrieve_path_simplified_json(
@@ -112,6 +110,7 @@ impl Node {
         .await
     }
 
+    #[cfg(feature = "http-manager")]
     #[allow(clippy::too_many_arguments)]
     // Public function for minimal JSON
     pub async fn api_vec_fs_retrieve_path_minimal_json(
@@ -140,6 +139,7 @@ impl Node {
     }
 
     // Private method to abstract common logic
+    #[cfg(feature = "http-manager")]
     #[allow(clippy::too_many_arguments)]
     async fn retrieve_path_json_common(
         _db: Arc<ShinkaiDB>,
@@ -1080,6 +1080,7 @@ impl Node {
         Ok(())
     }
 
+    #[cfg(feature = "http-manager")]
     #[allow(clippy::too_many_arguments)]
     pub async fn api_convert_files_and_save_to_folder(
         db: Arc<ShinkaiDB>,
@@ -1122,6 +1123,7 @@ impl Node {
         .await
     }
 
+    #[cfg(feature = "http-manager")]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_and_save_files(
         db: Arc<ShinkaiDB>,

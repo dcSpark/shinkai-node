@@ -32,6 +32,7 @@ mod it {
     mod planner_tests;
     // mod toolkit_tests;
     mod new_toolkit_tests;
+    #[cfg(feature = "http-manager")]
     mod subscription_http_upload_tests;
     mod utils;
     mod vector_fs_api_tests;

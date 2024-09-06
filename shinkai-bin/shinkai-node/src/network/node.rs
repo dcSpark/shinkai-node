@@ -1,9 +1,11 @@
-use super::network_manager::network_job_manager::{
-    NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
-};
+#[cfg(feature = "http-manager")]
+use super::network_manager::network_job_manager::{NetworkJobManager, VRPackPlusChanges};
+use super::network_manager::network_job_manager::{NetworkJobQueue, NetworkVRKai};
 use super::node_commands::NodeCommand;
 use super::node_error::NodeError;
+#[cfg(feature = "http-manager")]
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+#[cfg(feature = "http-manager")]
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -113,10 +115,13 @@ pub struct Node {
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
     /// External Subscription Manager (when others are subscribing to this node's data)
+    #[cfg(feature = "http-manager")]
     pub ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     /// My Subscription Manager
+    #[cfg(feature = "http-manager")]
     pub my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     // Network Job Manager
+    #[cfg(feature = "http-manager")]
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
@@ -283,6 +288,7 @@ impl Node {
             .clone()
             .map(|manager| manager as Arc<Mutex<dyn WSUpdateHandler + Send>>);
 
+        #[cfg(feature = "http-manager")]
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
                 Arc::downgrade(&db_arc),
@@ -297,6 +303,7 @@ impl Node {
             .await,
         ));
 
+        #[cfg(feature = "http-manager")]
         let my_subscription_manager = Arc::new(Mutex::new(
             MySubscriptionsManager::new(
                 Arc::downgrade(&db_arc),
@@ -311,6 +318,7 @@ impl Node {
             .await,
         ));
 
+        #[cfg(feature = "http-manager")]
         // Create NetworkJobManager with a weak reference to this node
         let network_manager = NetworkJobManager::new(
             Arc::downgrade(&db_arc),
@@ -392,8 +400,11 @@ impl Node {
             embedding_generator,
             unstructured_api,
             conn_limiter,
+            #[cfg(feature = "http-manager")]
             ext_subscription_manager: ext_subscriber_manager,
+            #[cfg(feature = "http-manager")]
             my_subscription_manager,
+            #[cfg(feature = "http-manager")]
             network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
             listen_handle: None,
@@ -645,6 +656,7 @@ impl Node {
         loop {
             // let listen_address = self.listen_address;
             let identity_manager = self.identity_manager.clone();
+            #[cfg(feature = "http-manager")]
             let network_job_manager = self.network_job_manager.clone();
             // let conn_limiter = self.conn_limiter.clone();
             let node_name = self.node_name.clone();
@@ -671,6 +683,7 @@ impl Node {
                             writer,
                             proxy_info.proxy_identity.clone(),
                             proxy_connection_info.clone(),
+                            #[cfg(feature = "http-manager")]
                             network_job_manager.clone(),
                             identity_manager.clone(),
                         )
@@ -697,6 +710,7 @@ impl Node {
         // Execute direct listening if no proxy was ever connected
         let result = Self::handle_listen_connection(
             self.listen_address,
+            #[cfg(feature = "http-manager")]
             self.network_job_manager.clone(),
             self.conn_limiter.clone(),
             self.node_name.clone(),
@@ -791,7 +805,7 @@ impl Node {
         writer: Arc<Mutex<WriteHalf<tokio::net::TcpStream>>>,
         proxy_identity: ShinkaiName,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+        #[cfg(feature = "http-manager")] network_job_manager: Arc<Mutex<NetworkJobManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         eprintln!("handle_proxy_listen_connection");
@@ -806,6 +820,7 @@ impl Node {
         // Handle the connection
         loop {
             let reader_clone = Arc::clone(&reader);
+            #[cfg(feature = "http-manager")]
             let network_job_manager_clone = Arc::clone(&network_job_manager);
             let identity_manager = identity_manager.clone();
             let proxy_identity = proxy_identity.clone();
@@ -825,9 +840,14 @@ impl Node {
                         return Err(io::Error::new(io::ErrorKind::Other, e));
                     }
                 };
-                Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone)
-                    .await
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
+                Self::handle_connection(
+                    reader_clone,
+                    proxy_addr,
+                    #[cfg(feature = "http-manager")]
+                    network_job_manager_clone,
+                )
+                .await
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
                 Ok::<(), std::io::Error>(())
             });
 
@@ -851,7 +871,7 @@ impl Node {
 
     async fn handle_listen_connection(
         listen_address: SocketAddr,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+        #[cfg(feature = "http-manager")] network_job_manager: Arc<Mutex<NetworkJobManager>>,
         conn_limiter: Arc<ConnectionLimiter>,
         _node_name: ShinkaiName,
     ) -> io::Result<()> {
@@ -889,6 +909,7 @@ impl Node {
                 continue;
             }
 
+            #[cfg(feature = "http-manager")]
             let network_job_manager = Arc::clone(&network_job_manager);
             let conn_limiter_clone = conn_limiter.clone();
 
@@ -901,7 +922,13 @@ impl Node {
             tokio::spawn(async move {
                 let (reader, _writer) = tokio::io::split(socket);
                 let reader = Arc::new(Mutex::new(reader));
-                let _ = Self::handle_connection(reader, addr, network_job_manager).await;
+                let _ = Self::handle_connection(
+                    reader,
+                    addr,
+                    #[cfg(feature = "http-manager")]
+                    network_job_manager,
+                )
+                .await;
                 conn_limiter_clone.decrement_connection(&ip).await;
             });
         }
@@ -931,7 +958,7 @@ impl Node {
     async fn handle_connection(
         reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         addr: SocketAddr,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+        #[cfg(feature = "http-manager")] network_job_manager: Arc<Mutex<NetworkJobManager>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let start_time = Utc::now();
         let mut length_bytes = [0u8; 4];
@@ -992,8 +1019,11 @@ impl Node {
                 date_created: Utc::now(),
             };
 
-            let mut network_job_manager = network_job_manager.lock().await;
-            network_job_manager.add_network_job_to_queue(&network_job).await?;
+            #[cfg(feature = "http-manager")]
+            {
+                let mut network_job_manager = network_job_manager.lock().await;
+                network_job_manager.add_network_job_to_queue(&network_job).await?;
+            }
         }
 
         let end_time = Utc::now();
@@ -1196,6 +1226,7 @@ impl Node {
         }
     }
 
+    #[cfg(feature = "http-manager")]
     pub async fn send_encrypted_vrpack(
         vr_pack_plus_changes: VRPackPlusChanges,
         subscription_id: SubscriptionId,

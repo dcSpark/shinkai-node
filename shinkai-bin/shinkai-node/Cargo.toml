@@ -13,6 +13,7 @@ telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "open
 console = ["console-subscriber"]
 dynamic-pdf-parser = ["shinkai_vector_resources/dynamic-pdf-parser"]
 static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
+http-manager = []
 
 [lib]
 doctest = false

@@ -694,7 +694,11 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::APISetShinkaiTool { tool_router_key, msg, res } => {
+            NodeCommand::APISetShinkaiTool {
+                tool_router_key,
+                msg,
+                res,
+            } => {
                 let lance_db = self.lance_db.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
@@ -1043,6 +1047,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await,
             NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1065,6 +1070,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => self.api_vec_fs_retrieve_path_minimal_json(msg, res).await,
             NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1087,6 +1093,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => self.api_convert_files_and_save_to_folder(msg, res).await,
             NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1313,6 +1320,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIAvailableSharedItems { msg, res } => self.api_subscription_available_shared_items(msg, res).await,
             NodeCommand::APIAvailableSharedItems { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1337,6 +1345,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIAvailableSharedItemsOpen { msg, res } => self.api_subscription_available_shared_items_open(msg, res).await,
             NodeCommand::APIAvailableSharedItemsOpen { msg, res } => {
                 let node_name_clone = self.node_name.clone();
@@ -1351,6 +1360,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APICreateShareableFolder { msg, res } => self.api_subscription_create_shareable_folder(msg, res).await,
             NodeCommand::APICreateShareableFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1373,6 +1383,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIUpdateShareableFolder { msg, res } => self.api_subscription_update_shareable_folder(msg, res).await,
             NodeCommand::APIUpdateShareableFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1395,6 +1406,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIUnshareFolder { msg, res } => self.api_subscription_unshare_folder(msg, res).await,
             NodeCommand::APIUnshareFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1417,6 +1429,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APISubscribeToSharedFolder { msg, res } => self.api_subscription_subscribe_to_shared_folder(msg, res).await,
             NodeCommand::APISubscribeToSharedFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1439,6 +1452,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIMySubscriptions { msg, res } => self.api_subscription_my_subscriptions(msg, res).await,
             NodeCommand::APIMySubscriptions { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1459,6 +1473,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIUnsubscribe { msg, res } => self.api_unsubscribe_my_subscriptions(msg, res).await,
             NodeCommand::APIUnsubscribe { msg, res } => {
                 let node_name_clone = self.node_name.clone();
@@ -1477,6 +1492,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIGetMySubscribers { msg, res } => self.api_get_my_subscribers(msg, res).await,
             NodeCommand::APIGetMySubscribers { msg, res } => {
                 let node_name_clone = self.node_name.clone();
@@ -1495,6 +1511,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::APIGetHttpFreeSubscriptionLinks { subscription_id: ShinkaiMessage, res: Sender<Result<Value, APIError>>, },
             NodeCommand::APIGetHttpFreeSubscriptionLinks {
                 subscription_profile_path,
@@ -1554,6 +1571,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => self.local_ext_manager_process_subscription_updates(res).await,
             NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => {
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
@@ -1562,6 +1580,7 @@ impl Node {
                         Node::local_ext_manager_process_subscription_updates(ext_subscription_manager_clone, res).await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand::LocalHttpUploaderProcessSubscriptionUpdates { res } => self.local_http_uploader_process_subscription_updates(res).await,
             NodeCommand::LocalHttpUploaderProcessSubscriptionUpdates { res } => {
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
@@ -1570,6 +1589,7 @@ impl Node {
                         .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand:: { res } => self.local_mysubscription_manager_process_download_updates(res).await,
             NodeCommand::LocalMySubscriptionCallJobMessageProcessing { res } => {
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
@@ -1579,6 +1599,7 @@ impl Node {
                             .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand:: { res } => self.local_mysubscription_trigger_http_download(res).await,
             NodeCommand::LocalMySubscriptionTriggerHttpDownload { res } => {
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
@@ -1586,6 +1607,7 @@ impl Node {
                     let _ = Node::local_mysubscription_trigger_http_download(my_subscription_manager_clone, res).await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand:: { res } => self.get_last_notifications(res).await,
             NodeCommand::APIGetLastNotifications { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1604,6 +1626,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // NodeCommand:: { res } => self.get_notifications_before_timestamp(res).await,
             NodeCommand::APIGetNotificationsBeforeTimestamp { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1960,6 +1983,7 @@ impl Node {
                     let _ = Node::v2_get_available_llm_providers(db_clone, node_name_clone, bearer, res).await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -1978,6 +2002,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiConvertFilesAndSaveToFolder { payload, bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2000,6 +2025,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiVecFSCreateFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2010,6 +2036,7 @@ impl Node {
                             .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiMoveItem { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2019,7 +2046,7 @@ impl Node {
                         .await;
                 });
             }
-
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiCopyItem { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2029,7 +2056,7 @@ impl Node {
                         .await;
                 });
             }
-
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiMoveFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2040,7 +2067,7 @@ impl Node {
                             .await;
                 });
             }
-
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiCopyFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2051,7 +2078,7 @@ impl Node {
                             .await;
                 });
             }
-
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiDeleteFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2062,7 +2089,7 @@ impl Node {
                             .await;
                 });
             }
-
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiDeleteItem { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2073,7 +2100,7 @@ impl Node {
                             .await;
                 });
             }
-
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiSearchItems { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2084,6 +2111,7 @@ impl Node {
                             .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2139,6 +2167,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiUploadFileToFolder {
                 bearer,
                 filename,
@@ -2171,6 +2200,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             // New Code
             NodeCommand::V2ApiAvailableSharedItems { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2192,6 +2222,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiAvailableSharedItemsOpen { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -2208,6 +2239,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiCreateShareableFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
@@ -2224,6 +2256,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiUpdateShareableFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
@@ -2240,6 +2273,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiUnshareFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
@@ -2256,6 +2290,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiSubscribeToSharedFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
@@ -2272,6 +2307,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiUnsubscribe { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -2290,6 +2326,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiMySubscriptions { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -2300,6 +2337,7 @@ impl Node {
                             .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiGetMySubscribers { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
@@ -2309,6 +2347,7 @@ impl Node {
                             .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiGetHttpFreeSubscriptionLinks {
                 bearer,
                 subscription_profile_path,
@@ -2327,6 +2366,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiGetLastNotifications { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -2343,6 +2383,7 @@ impl Node {
                     .await;
                 });
             }
+            #[cfg(feature = "http-manager")]
             NodeCommand::V2ApiGetNotificationsBeforeTimestamp { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -2362,141 +2403,81 @@ impl Node {
             NodeCommand::V2ApiGetLocalProcessingPreference { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_local_processing_preference(
-                        db_clone,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_get_local_processing_preference(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiUpdateLocalProcessingPreference { bearer, preference, res } => {
+            NodeCommand::V2ApiUpdateLocalProcessingPreference {
+                bearer,
+                preference,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_update_local_processing_preference(
-                        db_clone,
-                        bearer,
-                        preference,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_update_local_processing_preference(db_clone, bearer, preference, res).await;
                 });
             }
             NodeCommand::V2ApiSearchWorkflows { bearer, query, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_search_workflows(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        query,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_search_workflows(db_clone, lance_db, bearer, query, res).await;
                 });
             }
             NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_search_shinkai_tool(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        query,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_search_shinkai_tool(db_clone, lance_db, bearer, query, res).await;
                 });
             }
             NodeCommand::V2ApiSetWorkflow { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_workflow(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        payload,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_set_workflow(db_clone, lance_db, bearer, payload, res).await;
                 });
             }
             NodeCommand::V2ApiRemoveWorkflow { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_workflow(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        payload,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_remove_workflow(db_clone, lance_db, bearer, payload, res).await;
                 });
             }
             NodeCommand::V2ApiGetWorkflowInfo { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_workflow_info(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        payload,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_get_workflow_info(db_clone, lance_db, bearer, payload, res).await;
                 });
             }
             NodeCommand::V2ApiListAllWorkflows { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_all_workflows(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_list_all_workflows(db_clone, lance_db, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiGetDefaultEmbeddingModel { bearer, res } => {
                 let db = self.db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_default_embedding_model(
-                        db,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_get_default_embedding_model(db, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiGetSupportedEmbeddingModels { bearer, res } => {
                 let db = self.db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_supported_embedding_models(
-                        db,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_get_supported_embedding_models(db, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiUpdateDefaultEmbeddingModel { bearer, model_name, res } => {
+            NodeCommand::V2ApiUpdateDefaultEmbeddingModel {
+                bearer,
+                model_name,
+                res,
+            } => {
                 let db = self.db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_update_default_embedding_model(
-                        db,
-                        bearer,
-                        model_name,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_update_default_embedding_model(db, bearer, model_name, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateSupportedEmbeddingModels { bearer, models, res } => {
@@ -2538,16 +2519,14 @@ impl Node {
             NodeCommand::V2ApiChangeJobLlmProvider { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_change_job_llm_provider(
-                        db_clone,
-                        bearer,
-                        payload,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_change_job_llm_provider(db_clone, bearer, payload, res).await;
                 });
             }
-            NodeCommand::V2ApiRemoveLlmProvider { bearer, llm_provider_id, res } => {
+            NodeCommand::V2ApiRemoveLlmProvider {
+                bearer,
+                llm_provider_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
@@ -2565,14 +2544,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_modify_llm_provider(
-                        db_clone,
-                        identity_manager_clone,
-                        bearer,
-                        agent,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_api_modify_llm_provider(db_clone, identity_manager_clone, bearer, agent, res).await;
                 });
             }
             NodeCommand::V2ApiChangeNodesName { bearer, new_name, res } => {
@@ -2604,54 +2577,33 @@ impl Node {
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_scan_ollama_models(
-                        db_clone,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_scan_ollama_models(db_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiListAllShinkaiTools { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_all_shinkai_tools(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_list_all_shinkai_tools(db_clone, lance_db, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiSetShinkaiTool { bearer, tool_key, payload, res } => {
+            NodeCommand::V2ApiSetShinkaiTool {
+                bearer,
+                tool_key,
+                payload,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_shinkai_tool(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        tool_key,
-                        payload,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_set_shinkai_tool(db_clone, lance_db, bearer, tool_key, payload, res).await;
                 });
             }
             NodeCommand::V2ApiGetShinkaiTool { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db = self.lance_db.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_shinkai_tool(
-                        db_clone,
-                        lance_db,
-                        bearer,
-                        payload,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_get_shinkai_tool(db_clone, lance_db, bearer, payload, res).await;
                 });
             }
             NodeCommand::V2ApiAddOllamaModels { bearer, payload, res } => {

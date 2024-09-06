@@ -1,16 +1,14 @@
+#[cfg(feature = "http-manager")]
+use crate::network::subscription_manager::{
+    external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
+    fs_entry_tree::FSEntryTree,
+    my_subscription_manager::MySubscriptionsManager,
+};
+
 use crate::{
     db::ShinkaiDB,
     managers::IdentityManager,
-    network::{
-        node::ProxyConnectionInfo,
-        subscription_manager::{
-            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-            fs_entry_tree::FSEntryTree,
-            my_subscription_manager::MySubscriptionsManager,
-        },
-        ws_manager::WSUpdateHandler,
-        Node,
-    },
+    network::{node::ProxyConnectionInfo, ws_manager::WSUpdateHandler, Node},
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
@@ -46,6 +44,7 @@ pub enum PingPong {
     Pong,
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_based_on_message_content_and_encryption(
     message: ShinkaiMessage,
@@ -271,6 +270,7 @@ pub async fn handle_ping(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_default_encryption(
     message: ShinkaiMessage,
@@ -363,6 +363,7 @@ pub async fn handle_default_encryption(
     }
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_network_message_cases(
     message: ShinkaiMessage,
@@ -537,7 +538,7 @@ pub async fn handle_network_message_cases(
                                     let mut my_subscription_manager = my_subscription_manager.lock().await;
                                     let _ = my_subscription_manager
                                         .handle_shared_folder_response_update(requester, shared_folder_infos)
-                                    .await;
+                                        .await;
                                 }
                                 Err(e) => {
                                     shinkai_log(
@@ -1058,6 +1059,7 @@ pub async fn handle_network_message_cases(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn send_ack(
     peer: (SocketAddr, ShinkaiNameString),

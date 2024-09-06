@@ -2,9 +2,13 @@ use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
+#[cfg(feature = "http-manager")]
 use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+#[cfg(feature = "http-manager")]
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
+#[cfg(feature = "http-manager")]
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
+#[cfg(feature = "http-manager")]
 use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::network::ws_manager::{self, WSUpdateHandler};
 use crate::vector_fs::vector_fs::VectorFS;
@@ -34,6 +38,7 @@ use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+#[cfg(feature = "http-manager")]
 use super::network_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,
 };
@@ -47,6 +52,7 @@ pub struct NetworkVRKai {
     pub symmetric_key_hash: String,
 }
 
+#[cfg(feature = "http-manager")]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VRPackPlusChanges {
     pub vr_pack: VRPack,
@@ -80,11 +86,13 @@ impl Ord for NetworkJobQueue {
 /// connections wouldn't close.
 const NUM_THREADS: usize = 2;
 
+#[cfg(feature = "http-manager")]
 pub struct NetworkJobManager {
     pub network_job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
     pub network_job_processing_task: Option<tokio::task::JoinHandle<()>>,
 }
 
+#[cfg(feature = "http-manager")]
 impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -346,7 +354,6 @@ impl NetworkJobManager {
                                         ),
                                     );
                                 }
-
 
                                 match result {
                                     Ok(_) => {

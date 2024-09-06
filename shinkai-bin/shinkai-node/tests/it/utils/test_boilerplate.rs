@@ -3,7 +3,9 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::managers::sheet_manager::SheetManager;
+#[cfg(feature = "http-manager")]
 use shinkai_node::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+#[cfg(feature = "http-manager")]
 use shinkai_node::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use shinkai_node::tools::tool_router::ToolRouter;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
@@ -51,7 +53,9 @@ pub struct TestEnvironment {
     pub node1_device_encryption_pk: EncryptionPublicKey,
     pub node1_vecfs: Arc<VectorFS>,
     pub node1_db: Arc<ShinkaiDB>,
+    #[cfg(feature = "http-manager")]
     pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    #[cfg(feature = "http-manager")]
     pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
@@ -141,8 +145,11 @@ where
         let node1_locked = node1.lock().await;
         let node1_vecfs = node1_locked.vector_fs.clone();
         let node1_db = node1_locked.db.clone();
-        let node1_ext_subscription_manager = node1_locked.ext_subscription_manager.clone();
-        let node1_my_subscriptions_manager = node1_locked.my_subscription_manager.clone();
+        #[cfg(feature = "http-manager")]
+        {
+            let node1_ext_subscription_manager = node1_locked.ext_subscription_manager.clone();
+            let node1_my_subscriptions_manager = node1_locked.my_subscription_manager.clone();
+        }
         let node1_sheet_manager = node1_locked.sheet_manager.clone();
         let node1_callback_manager = node1_locked.callback_manager.clone();
         let node1_tool_router = node1_locked.tool_router.clone();
@@ -178,7 +185,9 @@ where
             node1_device_encryption_pk,
             node1_vecfs,
             node1_db,
+            #[cfg(feature = "http-manager")]
             node1_ext_subscription_manager,
+            #[cfg(feature = "http-manager")]
             node1_my_subscriptions_manager,
             node1_sheet_manager,
             node1_callback_manager,

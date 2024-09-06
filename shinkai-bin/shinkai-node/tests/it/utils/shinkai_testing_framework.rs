@@ -13,11 +13,11 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_node::network::{
-    node_commands::NodeCommand,
-    node_api_router::APIError,
-    subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination},
+#[cfg(feature = "http-manager")]
+use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{
+    upload_file_http, FileDestination,
 };
+use shinkai_node::network::{node_api_router::APIError, node_commands::NodeCommand};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 /// Struct to simplify testing by encapsulating common test components.
@@ -144,6 +144,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Updates a file to an HTTP destination.
+    #[cfg(feature = "http-manager")]
     pub async fn update_file_to_http(
         &self,
         destination: FileDestination,
