@@ -50,7 +50,7 @@ jobs:
             sudo apt-get install -y protobuf-compiler
 
         - name: Build
-          run: cargo build --release
+          run: cargo build --release --features dynamic-pdf-parser
 
         - name: Prepare bundle files
           env:
