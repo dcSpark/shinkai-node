@@ -1,11 +1,11 @@
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit_headers::{BasicConfig, ToolConfig};
 use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use arrow_array::{Array, BooleanArray};
+use arrow_array::{Array, BinaryArray, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
-use futures::TryStreamExt;
 use lancedb::connection::LanceFileVersion;
+use futures::{StreamExt, TryStreamExt};
 use lancedb::index::Index;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
@@ -217,8 +217,9 @@ impl LanceShinkaiDb {
             shinkai_tool.disable();
         }
 
-        let tool_data =
-            vec![serde_json::to_string(&shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?];
+        let tool_data_vec =
+            serde_json::to_vec(&shinkai_tool).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+        let tool_data: Vec<&[u8]> = vec![tool_data_vec.as_slice()];
 
         let tool_header = vec![serde_json::to_string(&shinkai_tool.to_header())
             .map_err(|e| ToolError::SerializationError(e.to_string()))?];
@@ -258,7 +259,7 @@ impl LanceShinkaiDb {
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?,
                 ),
                 Arc::new(StringArray::from(tool_types)),
-                Arc::new(StringArray::from(tool_data)),
+                Arc::new(BinaryArray::from(tool_data)),
                 Arc::new(StringArray::from(tool_header)),
                 Arc::new(StringArray::from(vec![shinkai_tool.author().to_string()])),
                 Arc::new(StringArray::from(vec![shinkai_tool.version().to_string()])),
