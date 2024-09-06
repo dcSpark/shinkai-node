@@ -32,7 +32,7 @@ impl ShinkaiToolSchema {
                 true,
             ),
             Field::new(Self::tool_type_field(), DataType::Utf8, false),
-            Field::new(Self::tool_data_field(), DataType::Utf8, false),
+            Field::new(Self::tool_data_field(), DataType::Binary, false),
             Field::new(Self::tool_header_field(), DataType::Utf8, false),
             Field::new(Self::author_field(), DataType::Utf8, false),
             Field::new(Self::version_field(), DataType::Utf8, false),
