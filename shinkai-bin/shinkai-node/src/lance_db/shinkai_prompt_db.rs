@@ -133,11 +133,41 @@ impl LanceShinkaiDb {
         let batch_reader = Box::new(RecordBatchIterator::new(vec![Ok(batch)], schema.clone()));
         self.prompt_table
             .add(batch_reader)
-            .mode(AddDataMode::Append)
+            .mode(AddDataMode::Overwrite)
             .execute()
             .await
             .map_err(ShinkaiLanceDBError::from)?;
         Ok(())
+    }
+
+    pub async fn get_favorite_prompts(&self) -> Result<Vec<CustomPrompt>, ShinkaiLanceDBError> {
+        let query = self
+            .prompt_table
+            .query()
+            .select(Select::columns(&[
+                ShinkaiPromptSchema::name_field(),
+                ShinkaiPromptSchema::prompt_field(),
+                ShinkaiPromptSchema::is_system_field(),
+                ShinkaiPromptSchema::is_enabled_field(),
+                ShinkaiPromptSchema::version_field(),
+                ShinkaiPromptSchema::is_favorite_field(),
+            ]))
+            .only_if(format!("{} = true", ShinkaiPromptSchema::is_favorite_field()))
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
+
+        let mut prompts = Vec::new();
+        let mut res = query;
+        while let Some(Ok(batch)) = res.next().await {
+            for _i in 0..batch.num_rows() {
+                if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
+                    prompts.push(prompt);
+                }
+            }
+        }
+
+        Ok(prompts)
     }
 
     pub async fn prompt_vector_search(
@@ -167,18 +197,13 @@ impl LanceShinkaiDb {
             .nearest_to(embedding)
             .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
 
-        let results = query
+        let mut prompts = Vec::new();
+        let mut results = query
             .execute()
             .await
             .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
 
-        let mut prompts = Vec::new();
-        let batches = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
-
-        for batch in batches {
+        while let Some(Ok(batch)) = results.next().await {
             let prompt_array = batch
                 .column_by_name(ShinkaiPromptSchema::prompt_field())
                 .unwrap()
@@ -214,7 +239,7 @@ impl LanceShinkaiDb {
         let mut prompts = Vec::new();
         let mut res = query;
         while let Some(Ok(batch)) = res.next().await {
-            for i in 0..batch.num_rows() {
+            for _i in 0..batch.num_rows() {
                 if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
                     prompts.push(prompt);
                 }
@@ -312,6 +337,40 @@ mod tests {
         for prompt in prompts {
             assert!(all_prompts.contains(&prompt), "Prompt should be in the list");
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_add_and_update_prompt() -> Result<(), ShinkaiLanceDBError> {
+        setup();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
+
+        let initial_prompt = CustomPrompt {
+            name: "update_test_prompt".to_string(),
+            prompt: "This is a test prompt to be updated".to_string(),
+            is_system: false,
+            is_enabled: true,
+            version: "1".to_string(),
+            is_favorite: false,
+        };
+
+        // Set the initial prompt
+        db.set_prompt(initial_prompt.clone()).await?;
+
+        // Update the prompt to be a favorite
+        let updated_prompt = CustomPrompt {
+            is_favorite: true,
+            ..initial_prompt.clone()
+        };
+        db.set_prompt(updated_prompt.clone()).await?;
+
+        // Get the updated prompt
+        let prompt = db.get_prompt("update_test_prompt").await?;
+        assert_eq!(prompt, Some(updated_prompt), "Prompt should be updated to favorite");
 
         Ok(())
     }

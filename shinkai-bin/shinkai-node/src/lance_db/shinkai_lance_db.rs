@@ -367,13 +367,10 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
-        let results = query
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-
+        let mut res = query;
         let mut workflows = Vec::new();
-        for batch in results {
+
+        while let Some(Ok(batch)) = res.next().await {
             let tool_header_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_header_field())
                 .unwrap()
@@ -410,13 +407,10 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
-        let results = query
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-
+        let mut res = query;
         let mut tools = Vec::new();
-        for batch in results {
+
+        while let Some(Ok(batch)) = res.next().await {
             let tool_header_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_header_field())
                 .unwrap()
@@ -501,18 +495,15 @@ impl LanceShinkaiDb {
             query_builder = query_builder.only_if(filter.to_string());
         }
 
-        let results = query_builder
+        let query = query_builder
             .execute()
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
+        let mut res = query;
         let mut tool_headers = Vec::new();
-        let batches = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        for batch in batches {
+        while let Some(Ok(batch)) = res.next().await {
             let tool_header_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_header_field())
                 .unwrap()
@@ -564,18 +555,14 @@ impl LanceShinkaiDb {
             .nearest_to(embedding)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        let results = query
+        let mut res = query
             .execute()
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
         let mut tool_headers = Vec::new();
-        let batches = results
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        for batch in batches {
+        while let Some(Ok(batch)) = res.next().await {
             let tool_header_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_header_field())
                 .unwrap()
