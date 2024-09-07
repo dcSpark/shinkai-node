@@ -1,12 +1,12 @@
 use super::shinkai_prompt_schema::ShinkaiPromptSchema;
 use super::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
+use arrow_array::Array;
 use arrow_array::{BooleanArray, RecordBatch, RecordBatchIterator, StringArray};
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::{table::AddDataMode, Connection, Error as LanceDbError, Table};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use arrow_array::Array;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomPrompt {
@@ -30,6 +30,58 @@ impl LanceShinkaiDb {
                 .await
                 .map_err(ShinkaiLanceDBError::from),
             Err(e) => Err(ShinkaiLanceDBError::from(e)),
+        }
+    }
+
+    fn convert_batch_to_prompt(batch: &RecordBatch) -> Option<CustomPrompt> {
+        let name_array = batch
+            .column_by_name(ShinkaiPromptSchema::name_field())
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let prompt_array = batch
+            .column_by_name(ShinkaiPromptSchema::prompt_field())
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let is_system_array = batch
+            .column_by_name(ShinkaiPromptSchema::is_system_field())
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BooleanArray>()
+            .unwrap();
+        let is_enabled_array = batch
+            .column_by_name(ShinkaiPromptSchema::is_enabled_field())
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BooleanArray>()
+            .unwrap();
+        let version_array = batch
+            .column_by_name(ShinkaiPromptSchema::version_field())
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let is_favorite_array = batch
+            .column_by_name(ShinkaiPromptSchema::is_favorite_field())
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BooleanArray>()
+            .unwrap();
+
+        if name_array.len() > 0 {
+            Some(CustomPrompt {
+                name: name_array.value(0).to_string(),
+                prompt: prompt_array.value(0).to_string(),
+                is_system: is_system_array.value(0),
+                is_enabled: is_enabled_array.value(0),
+                version: version_array.value(0).to_string(),
+                is_favorite: is_favorite_array.value(0),
+            })
+        } else {
+            None
         }
     }
 
@@ -57,52 +109,8 @@ impl LanceShinkaiDb {
             .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
 
         for batch in results {
-            let name_array = batch
-                .column_by_name(ShinkaiPromptSchema::name_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let prompt_array = batch
-                .column_by_name(ShinkaiPromptSchema::prompt_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let is_system_array = batch
-                .column_by_name(ShinkaiPromptSchema::is_system_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<BooleanArray>()
-                .unwrap();
-            let is_enabled_array = batch
-                .column_by_name(ShinkaiPromptSchema::is_enabled_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<BooleanArray>()
-                .unwrap();
-            let version_array = batch
-                .column_by_name(ShinkaiPromptSchema::version_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let is_favorite_array = batch
-                .column_by_name(ShinkaiPromptSchema::is_favorite_field())
-                .unwrap()
-                .as_any()
-                .downcast_ref::<BooleanArray>()
-                .unwrap();
-
-            if name_array.len() > 0 {
-                return Ok(Some(CustomPrompt {
-                    name: name_array.value(0).to_string(),
-                    prompt: prompt_array.value(0).to_string(),
-                    is_system: is_system_array.value(0),
-                    is_enabled: is_enabled_array.value(0),
-                    version: version_array.value(0).to_string(),
-                    is_favorite: is_favorite_array.value(0),
-                }));
+            if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
+                return Ok(Some(prompt));
             }
         }
         Ok(None)
@@ -186,6 +194,35 @@ impl LanceShinkaiDb {
 
         Ok(prompts)
     }
+
+    pub async fn get_all_prompts(&self) -> Result<Vec<CustomPrompt>, ShinkaiLanceDBError> {
+        let query = self
+            .prompt_table
+            .query()
+            .select(Select::columns(&[
+                ShinkaiPromptSchema::name_field(),
+                ShinkaiPromptSchema::prompt_field(),
+                ShinkaiPromptSchema::is_system_field(),
+                ShinkaiPromptSchema::is_enabled_field(),
+                ShinkaiPromptSchema::version_field(),
+                ShinkaiPromptSchema::is_favorite_field(),
+            ]))
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
+
+        let mut prompts = Vec::new();
+        let mut res = query;
+        while let Some(Ok(batch)) = res.next().await {
+            for i in 0..batch.num_rows() {
+                if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
+                    prompts.push(prompt);
+                }
+            }
+        }
+
+        Ok(prompts)
+    }
 }
 
 #[cfg(test)]
@@ -224,6 +261,57 @@ mod tests {
         // Get the prompt
         let prompt = db.get_prompt("test_prompt").await?;
         assert_eq!(prompt, Some(test_prompt), "Prompt should match");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_add_and_get_all_prompts() -> Result<(), ShinkaiLanceDBError> {
+        setup();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let embedding_model = generator.model_type().clone();
+        let db = LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?;
+
+        let prompts = vec![
+            CustomPrompt {
+                name: "prompt1".to_string(),
+                prompt: "This is the first test prompt".to_string(),
+                is_system: false,
+                is_enabled: true,
+                version: "1".to_string(),
+                is_favorite: false,
+            },
+            CustomPrompt {
+                name: "prompt2".to_string(),
+                prompt: "This is the second test prompt".to_string(),
+                is_system: false,
+                is_enabled: true,
+                version: "1".to_string(),
+                is_favorite: false,
+            },
+            CustomPrompt {
+                name: "prompt3".to_string(),
+                prompt: "This is the third test prompt".to_string(),
+                is_system: false,
+                is_enabled: true,
+                version: "1".to_string(),
+                is_favorite: false,
+            },
+        ];
+
+        // Set the prompts
+        for prompt in &prompts {
+            db.set_prompt(prompt.clone()).await?;
+        }
+
+        // Get all prompts
+        let all_prompts = db.get_all_prompts().await?;
+        assert_eq!(all_prompts.len(), 3, "There should be 3 prompts");
+
+        for prompt in prompts {
+            assert!(all_prompts.contains(&prompt), "Prompt should be in the list");
+        }
 
         Ok(())
     }
