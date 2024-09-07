@@ -144,6 +144,7 @@ pub struct Node {
     // Supported embedding models for profiles
     pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
     // API V2 Key
+    #[allow(dead_code)]
     pub api_v2_key: String,
     // Wallet Manager
     pub wallet_manager: Arc<Mutex<Option<WalletManager>>>,
@@ -553,7 +554,7 @@ impl Node {
             tokio::spawn(async move {
                 let current_version = tool_router.get_current_lancedb_version().await.unwrap_or(None);
                 if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
-                    if let Err(e) = tool_router.force_reinstall_all(generator).await {
+                    if let Err(e) = tool_router.force_reinstall_all(&generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }
                 } else {

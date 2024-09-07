@@ -564,7 +564,7 @@ async fn create_shinkai_message_for_shared_files(
 }
 
 async fn get_onchain_identity(node_name: &str) -> (VerifyingKey, EncryptionPublicKey) {
-    let rpc_url = env::var("RPC_URL").unwrap_or("https://public.stackup.sh/api/v1/node/arbitrum-sepolia".to_string());
+    let rpc_url = env::var("RPC_URL").unwrap_or("https://arbitrum-sepolia.blockpi.network/v1/rpc/public".to_string());
     let contract_address =
         env::var("CONTRACT_ADDRESS").unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
 
