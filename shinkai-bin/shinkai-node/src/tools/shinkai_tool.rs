@@ -210,7 +210,8 @@ impl ShinkaiTool {
 
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
     pub fn format_embedding_string(&self) -> String {
-        format!("{} {}", self.name(), self.description())
+        let formatted_name = self.name().replace("shinkai__", "").replace('_', " ");
+        format!("{} {}", formatted_name, self.description())
     }
 
     /// Returns the embedding if it exists

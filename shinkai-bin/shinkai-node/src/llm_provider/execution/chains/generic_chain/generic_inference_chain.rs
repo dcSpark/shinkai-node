@@ -169,7 +169,7 @@ impl GenericInferenceChain {
 
                 // Search in JS Tools
                 let results = tool_router
-                    .vector_search_enabled_tools_with_network(&user_message.clone(), 3)
+                    .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
                     .await
                     .unwrap();
                 for result in results {
