@@ -1,5 +1,5 @@
 use crate::tools::error::ToolError;
-use crate::tools::js_toolkit_headers::{BasicConfig, ToolConfig};
+use crate::tools::js_toolkit_headers::ToolConfig;
 use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use arrow_array::{Array, BinaryArray, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
@@ -32,8 +32,9 @@ pub struct LanceShinkaiDb {
     connection: Connection,
     pub tool_table: Table,
     pub version_table: Table,
-    embedding_model: EmbeddingModelType,
-    embedding_function: OllamaEmbeddingFunction,
+    pub prompt_table: Table,
+    pub embedding_model: EmbeddingModelType,
+    pub embedding_function: OllamaEmbeddingFunction,
 }
 
 impl LanceShinkaiDb {
@@ -52,6 +53,7 @@ impl LanceShinkaiDb {
         let connection = connect(&db_path).execute().await?;
         let version_table = Self::create_version_table(&connection).await?;
         let tool_table = Self::create_tool_router_table(&connection, &embedding_model).await?;
+        let prompt_table = Self::create_prompt_table(&connection).await?;
         let api_url = generator.api_url;
         let embedding_function = OllamaEmbeddingFunction::new(&api_url, embedding_model.clone());
 
@@ -59,6 +61,7 @@ impl LanceShinkaiDb {
             connection,
             tool_table,
             version_table,
+            prompt_table,
             embedding_model,
             embedding_function,
         })
@@ -654,7 +657,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search_and_basics() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -759,7 +761,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tools_and_workflows() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         // Set the environment variable to enable testing workflows
@@ -849,7 +850,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tool_and_update_config() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -926,7 +926,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_workflow_and_js_tool() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -994,7 +993,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_has_any_js_tools() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();

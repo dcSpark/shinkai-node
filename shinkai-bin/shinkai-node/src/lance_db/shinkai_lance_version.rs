@@ -75,7 +75,6 @@ impl LanceShinkaiDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
     use std::fs;
