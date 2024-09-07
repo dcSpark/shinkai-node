@@ -58,7 +58,7 @@ impl ToolRouter {
 
         if is_empty {
             // Add workflows
-            // let _ = self.add_static_workflows(generator).await;
+            let _ = self.add_static_workflows(generator).await;
 
             // Add JS tools
             let _ = self.add_js_tools().await;
@@ -75,7 +75,7 @@ impl ToolRouter {
 
     pub async fn force_reinstall_all(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Add workflows
-        // let _ = self.add_static_workflows(generator).await;
+        let _ = self.add_static_workflows(generator).await;
 
         // Add JS tools
         let _ = self.add_js_tools().await;

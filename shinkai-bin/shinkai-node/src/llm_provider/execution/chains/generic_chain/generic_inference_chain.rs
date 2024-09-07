@@ -168,22 +168,15 @@ impl GenericInferenceChain {
                 // }
 
                 // Search in JS Tools
-                // let results = tool_router
-                //     .vector_search_enabled_tools_with_network(&user_message.clone(), 3)
-                //     .await
-                //     .unwrap();
-                // for result in results {
-                //     if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
-                //         tools.push(tool);
-                //     }
-                // }
-
-                // Get the specific Shinkai tool
-                if let Some(tool) = tool_router.get_tool_by_name("@@agent_provider.arb-sep-shinkai:::shinkai-tool-youtube-transcript:::youtube_transcript_with_timestamps").await.unwrap() {
-                    tools.push(tool);
+                let results = tool_router
+                    .vector_search_enabled_tools_with_network(&user_message.clone(), 3)
+                    .await
+                    .unwrap();
+                for result in results {
+                    if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
+                        tools.push(tool);
+                    }
                 }
-                eprintln!("tool: {:?}", tools);
-                // TODO: add an env so we always use the same tool (Network + Payments)
             }
         }
 
