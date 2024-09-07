@@ -53,7 +53,7 @@ impl LanceShinkaiDb {
         let connection = connect(&db_path).execute().await?;
         let version_table = Self::create_version_table(&connection).await?;
         let tool_table = Self::create_tool_router_table(&connection, &embedding_model).await?;
-        let prompt_table = Self::create_prompt_table(&connection).await?;
+        let prompt_table = Self::create_prompt_table(&connection, &embedding_model).await?;
         let api_url = generator.api_url;
         let embedding_function = OllamaEmbeddingFunction::new(&api_url, embedding_model.clone());
 

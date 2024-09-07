@@ -1,5 +1,5 @@
 use arrow_schema::{DataType, Field, Schema};
-use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::{model_type::EmbeddingModelType, resource_errors::VRError};
 use std::sync::Arc;
 
 pub struct ShinkaiPromptSchema;
@@ -12,7 +12,12 @@ impl ShinkaiPromptSchema {
     /// - version: UTF-8 string (non-nullable, starting from "1")
     /// - prompt: UTF-8 string (non-nullable)
     /// - is_favorite: Boolean (non-nullable)
-    pub fn create_schema() -> Result<Arc<Schema>, VRError> {
+    /// - vector: Fixed-size list of 32-bit floats (nullable)
+    ///
+    /// The vector field's size is determined by the embedding model's dimensions.
+    pub fn create_schema(embedding_model: &EmbeddingModelType) -> Result<Arc<Schema>, VRError> {
+        let vector_dimensions = embedding_model.vector_dimensions()?;
+
         Ok(Arc::new(Schema::new(vec![
             Field::new(Self::name_field(), DataType::Utf8, false),
             Field::new(Self::is_system_field(), DataType::Boolean, false),
@@ -20,6 +25,14 @@ impl ShinkaiPromptSchema {
             Field::new(Self::version_field(), DataType::Utf8, false),
             Field::new(Self::prompt_field(), DataType::Utf8, false),
             Field::new(Self::is_favorite_field(), DataType::Boolean, false),
+            Field::new(
+                Self::vector_field(),
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float32, true)),
+                    vector_dimensions.try_into().unwrap(),
+                ),
+                true,
+            ),
         ])))
     }
 
@@ -45,5 +58,9 @@ impl ShinkaiPromptSchema {
 
     pub fn is_favorite_field() -> &'static str {
         "is_favorite"
+    }
+
+    pub fn vector_field() -> &'static str {
+        "vector"
     }
 }
