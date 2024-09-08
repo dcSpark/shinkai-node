@@ -159,8 +159,6 @@ impl GenericInferenceChain {
         let mut tools = vec![];
         if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
             if let Some(tool_router) = &tool_router {
-                
-
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
                 // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
@@ -181,8 +179,11 @@ impl GenericInferenceChain {
         }
 
         // 3) Generate Prompt
+        let job_config = full_job.config();
+        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            None, // TODO: connect later on
+            custom_prompt,
             None, // TODO: connect later on
             user_message.clone(),
             ret_nodes.clone(),

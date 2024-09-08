@@ -4,15 +4,17 @@ use futures::StreamExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    APIChangeJobAgentRequest, JobCreationInfo, JobMessage,
+};
 use utoipa::OpenApi;
 use warp::multipart::FormData;
 use warp::Filter;
 
-use crate::network::{
+use crate::{llm_provider::job::JobConfig, network::{
     node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
     node_commands::NodeCommand,
-};
+}};
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -87,6 +89,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(get_last_messages_with_branches_handler);
 
+    let update_job_config_route = warp::path("update_job_config")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_job_config_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -96,6 +105,7 @@ pub fn job_routes(
         .or(create_files_inbox_route)
         .or(add_file_to_inbox_route)
         .or(change_job_llm_provider_route)
+        .or(update_job_config_route)
         .or(get_last_messages_with_branches_route)
 }
 
@@ -631,6 +641,52 @@ pub async fn get_last_messages_with_branches_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct UpdateJobConfigRequest {
+    pub job_id: String,
+    pub config: JobConfig,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/update_job_config",
+    request_body = UpdateJobConfigRequest,
+    responses(
+        (status = 200, description = "Successfully updated job configuration", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_job_config_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: UpdateJobConfigRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUpdateJobConfig {
+            bearer,
+            job_id: payload.job_id,
+            config: payload.config.clone(),
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(json!({ "result": response }));
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -643,7 +699,8 @@ pub async fn get_last_messages_with_branches_handler(
         create_files_inbox_handler,
         add_file_to_inbox_handler,
         change_job_llm_provider_handler,
-        get_last_messages_with_branches_handler
+        get_last_messages_with_branches_handler,
+        update_job_config_handler
     ),
     components(
         schemas(SendResponseBody, SendResponseBodyData, APIError)

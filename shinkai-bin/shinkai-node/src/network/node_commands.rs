@@ -24,7 +24,7 @@ use shinkai_message_primitives::{
 };
 
 use crate::{
-    prompts::custom_prompt::CustomPrompt, schemas::{
+    llm_provider::job::JobConfig, prompts::custom_prompt::CustomPrompt, schemas::{
         identity::{Identity, StandardIdentity},
         smart_inbox::{SmartInbox, V2SmartInbox},
     }, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -778,6 +778,12 @@ pub enum NodeCommand {
     V2ApiChangeJobLlmProvider {
         bearer: String,
         payload: APIChangeJobAgentRequest,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateJobConfig {
+        bearer: String,
+        job_id: String,
+        config: JobConfig,
         res: Sender<Result<String, APIError>>,
     },
     V2ApiRemoveLlmProvider {

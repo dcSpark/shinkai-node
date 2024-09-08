@@ -108,6 +108,14 @@ impl InboxName {
         }
     }
 
+    /// Returns the job ID if the InboxName is a JobInbox, otherwise returns None
+    pub fn get_job_id(&self) -> Option<String> {
+        match self {
+            InboxName::JobInbox { unique_id, .. } => Some(unique_id.clone()),
+            InboxName::RegularInbox { .. } => None,
+        }
+    }
+
     pub fn has_creation_access(&self, identity_name: ShinkaiName) -> Result<bool, InboxNameError> {
         if let InboxName::RegularInbox { identities, .. } = self {
             for identity in identities {

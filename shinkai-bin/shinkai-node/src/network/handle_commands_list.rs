@@ -2503,6 +2503,12 @@ impl Node {
                     let _ = Node::v2_api_change_job_llm_provider(db_clone, bearer, payload, res).await;
                 });
             }
+            NodeCommand::V2ApiUpdateJobConfig { bearer, job_id, config, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_job_config(db_clone, bearer, job_id, config, res).await;
+                });
+            }
             NodeCommand::V2ApiRemoveLlmProvider {
                 bearer,
                 llm_provider_id,

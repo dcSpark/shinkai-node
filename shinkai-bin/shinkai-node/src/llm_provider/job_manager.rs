@@ -469,6 +469,7 @@ impl JobManager {
                 job_creation.scope,
                 is_hidden,
                 job_creation.associated_ui,
+                None,
             ) {
                 Ok(_) => (),
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
