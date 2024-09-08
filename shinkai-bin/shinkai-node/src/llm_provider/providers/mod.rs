@@ -4,7 +4,7 @@ use crate::network::ws_manager::WSUpdateHandler;
 
 use super::{
     error::LLMProviderError,
-    execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt},
+    execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt}, job::JobConfig,
 };
 use async_trait::async_trait;
 use reqwest::Client;
@@ -35,5 +35,6 @@ pub trait LLMService {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
     ) -> Result<LLMInferenceResponse, LLMProviderError>;
 }

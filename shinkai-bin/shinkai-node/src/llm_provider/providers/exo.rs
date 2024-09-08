@@ -1,6 +1,7 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::providers::shared::ollama::{
-    ollama_conversation_prepare_messages, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use crate::network::ws_manager::{WSMessageType, WSMetadata, WSUpdateHandler};
@@ -67,6 +68,7 @@ impl LLMService for Exo {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {

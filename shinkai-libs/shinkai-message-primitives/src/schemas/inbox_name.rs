@@ -10,7 +10,6 @@ use std::fmt::Debug;
 pub enum InboxNameError {
     ShinkaiNameError(ShinkaiNameError),
     InvalidFormat(String),
-    InvalidSenderRecipientFormat(String),
     InvalidOperation(String),
 }
 
@@ -19,9 +18,6 @@ impl fmt::Display for InboxNameError {
         match *self {
             InboxNameError::ShinkaiNameError(ref err) => std::fmt::Display::fmt(err, f),
             InboxNameError::InvalidFormat(ref s) => write!(f, "Invalid inbox name format: {}", s),
-            InboxNameError::InvalidSenderRecipientFormat(ref s) => {
-                write!(f, "Invalid sender/recipient format: {}", s)
-            }
             InboxNameError::InvalidOperation(ref s) => write!(f, "Invalid operation: {}", s),
         }
     }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::job::JobConfig;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use crate::network::ws_manager::WSUpdateHandler;
 
@@ -53,6 +54,7 @@ impl LLMService for ShinkaiBackend {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);

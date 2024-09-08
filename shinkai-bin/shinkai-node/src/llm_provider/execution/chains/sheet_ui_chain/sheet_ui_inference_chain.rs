@@ -185,8 +185,11 @@ impl SheetUIInferenceChain {
         }
 
         // 3) Generate Prompt
+        let job_config = full_job.config();
+        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            None, // TODO: connect later on
+            custom_prompt,
             None, // TODO: connect later on
             user_message.clone(),
             ret_nodes.clone(),
@@ -216,6 +219,7 @@ impl SheetUIInferenceChain {
                 filled_prompt.clone(),
                 inbox_name,
                 ws_manager_trait.clone(),
+                job_config.cloned(),
             )
             .await;
 

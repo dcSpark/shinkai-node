@@ -284,6 +284,7 @@ impl AsyncFunction for InferenceFunction {
             } else {
                 None
             },
+            None, // this is the config
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -383,6 +384,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             } else {
                 None
             },
+            None, // this is the config
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;

@@ -1,4 +1,3 @@
-use super::agent_payments_manager::crypto_invoice_manager::{CryptoInvoiceManager, CryptoInvoiceManagerTrait};
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{
@@ -211,13 +210,10 @@ impl Node {
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
         // Fetch list of existing profiles from the node to push into the VectorFS
-        let mut profile_list = vec![];
-        {
-            profile_list = match db_arc.get_all_profiles(node_name.clone()) {
-                Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
-                Err(e) => panic!("Failed to fetch profiles: {}", e),
-            };
-        }
+        let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
+            Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
+            Err(e) => panic!("Failed to fetch profiles: {}", e),
+        };
 
         // Initialize/setup the VectorFS.
         let vector_fs = VectorFS::new(
@@ -272,8 +268,8 @@ impl Node {
         let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
         let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>> = {
-            // Cast the Arc<Mutex<IdentityManager>> to Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
-            identity_manager.clone() as Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
+            // Convert the Arc<Mutex<IdentityManager>> to Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
+            identity_manager.clone()
         };
 
         let ws_manager = if ws_address.is_some() {
@@ -289,9 +285,14 @@ impl Node {
             None
         };
 
-        let ws_manager_trait = ws_manager
-            .clone()
-            .map(|manager| manager as Arc<Mutex<dyn WSUpdateHandler + Send>>);
+        // let ws_manager_trait = ws_manager
+        // .clone()
+        // .map(|manager| manager as Arc<Mutex<dyn WSUpdateHandler + Send>>);
+
+        let ws_manager_trait = ws_manager.clone().map(|manager| {
+            let manager_trait: Arc<Mutex<dyn WSUpdateHandler + Send>> = manager.clone();
+            manager_trait
+        });
 
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
@@ -348,7 +349,11 @@ impl Node {
             if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
                 coinbase_wallet.update_lance_db(lance_db.clone());
             }
-            if let Some(coinbase_wallet) = manager.receiving_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
+            if let Some(coinbase_wallet) = manager
+                .receiving_wallet
+                .as_any_mut()
+                .downcast_mut::<CoinbaseMPCWallet>()
+            {
                 coinbase_wallet.update_lance_db(lance_db.clone());
             }
         }

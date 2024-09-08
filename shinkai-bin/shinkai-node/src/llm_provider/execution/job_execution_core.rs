@@ -749,6 +749,8 @@ impl JobManager {
                     let file_extension = filename.split('.').last().unwrap_or("jpg");
 
                     // Call a new function
+                    let job_config = full_job.config();
+
                     JobManager::handle_image_file(
                         db.clone(),
                         llm_provider_found.clone(),
@@ -759,6 +761,7 @@ impl JobManager {
                         clone_signature_secret_key(&identity_secret_key),
                         file_extension.to_string(),
                         ws_manager.clone(),
+                        job_config.cloned(),
                     )
                     .await?;
                     return Ok(true);

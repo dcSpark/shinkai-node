@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::{
     db::ShinkaiDB,
     llm_provider::{
-        error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager,
+        error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::{Job, JobConfig}, job_manager::JobManager,
     },
     network::ws_manager::WSUpdateHandler,
 };
@@ -39,6 +39,7 @@ impl JobManager {
         iteration_count: u64,
         max_iterations: u64,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        job_config: Option<JobConfig>,
     ) -> Result<(String, HashMap<String, String>), LLMProviderError> {
         if iteration_count > max_iterations {
             return Err(LLMProviderError::InferenceRecursionLimitReached(
@@ -57,7 +58,7 @@ impl JobManager {
             Err(_) => None,
         };
         let response_json =
-            JobManager::inference_with_llm_provider(agent.clone(), image_prompt, inbox_name, ws_manager_trait).await?;
+            JobManager::inference_with_llm_provider(agent.clone(), image_prompt, inbox_name, ws_manager_trait, job_config).await?;
         let mut new_execution_context = HashMap::new();
 
         new_execution_context.insert(

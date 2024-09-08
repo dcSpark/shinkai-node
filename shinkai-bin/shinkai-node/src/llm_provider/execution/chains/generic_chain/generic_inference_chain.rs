@@ -156,8 +156,22 @@ impl GenericInferenceChain {
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
+        let job_config = full_job.config();
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
+        let use_tools = match &llm_provider.model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model_type) => {
+                let is_supported_model =
+                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            _ => false,
+        };
+
+        if use_tools {
             if let Some(tool_router) = &tool_router {
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
@@ -179,7 +193,7 @@ impl GenericInferenceChain {
         }
 
         // 3) Generate Prompt
-        let job_config = full_job.config();
+
         let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -213,6 +227,7 @@ impl GenericInferenceChain {
                 filled_prompt.clone(),
                 inbox_name,
                 ws_manager_trait.clone(),
+                job_config.cloned(),
             )
             .await;
 

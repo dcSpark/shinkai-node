@@ -10,12 +10,9 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::{
-        schemas::{
-            llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
-            shinkai_name::ShinkaiName,
-        },
-        shinkai_utils::shinkai_logging::init_default_tracing,
+    use shinkai_message_primitives::schemas::{
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
+        shinkai_name::ShinkaiName,
     };
     use shinkai_node::llm_provider::{execution::prompts::prompts::JobPromptGenerator, llm_provider::LLMProvider};
     use shinkai_vector_resources::utils::hash_string;
@@ -24,7 +21,6 @@ mod tests {
 
     #[test]
     fn test_add_and_remove_agent() {
-        
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
@@ -96,7 +92,6 @@ mod tests {
 
     #[test]
     fn test_update_agent_access() {
-        
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
@@ -149,7 +144,6 @@ mod tests {
 
     #[test]
     fn test_get_agent_profiles_and_toolkits() {
-        
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let db = ShinkaiDB::new(&db_path).unwrap();
@@ -188,7 +182,6 @@ mod tests {
 
     #[test]
     fn test_remove_profile_and_toolkit_from_agent_access() {
-        
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let db = ShinkaiDB::new(&db_path).unwrap();
@@ -234,7 +227,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_call_external_api_openai() {
-        
         let mut server = Server::new();
         let _m = server
             .mock("POST", "/v1/chat/completions")
@@ -281,6 +273,7 @@ mod tests {
         let response = agent
             .inference(
                 JobPromptGenerator::basic_instant_response_prompt("Hello!".to_string(), None),
+                None,
                 None,
                 None,
             )

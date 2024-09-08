@@ -4,6 +4,7 @@ use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt}
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::job::JobConfig;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use crate::network::ws_manager::WSUpdateHandler;
 use async_trait::async_trait;
@@ -50,6 +51,7 @@ impl LLMService for OpenAI {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {

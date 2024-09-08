@@ -11,13 +11,13 @@ use std::collections::HashMap;
 pub struct JobConfig {
     pub custom_prompt: Option<String>,
     // pub custom_system_prompt: String
-    // pub temperature: f64,
+    pub temperature: Option<f64>,
     // pub max_output_tokens: u64,
-    // pub seed: u64,
-    // pub top_k: u64,
-    // pub top_p: f64,
-    // pub streaming: bool,
-    pub other_model_params: Value,
+    pub seed: Option<u64>,
+    pub top_k: Option<u64>,
+    pub top_p: Option<f64>,
+    pub stream: Option<bool>,
+    pub other_model_params: Option<Value>,
 }
 
 pub trait JobLike: Send + Sync {
