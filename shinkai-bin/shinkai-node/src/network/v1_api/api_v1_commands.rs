@@ -909,12 +909,29 @@ impl Node {
                         let mut subidentity_manager = identity_manager.lock().await;
                         match subidentity_manager.add_profile_subidentity(subidentity).await {
                             Ok(_) => {
+                                if !first_device_needs_registration_code && !main_profile_exists {
+                                    // Call the new function to scan and add Ollama models
+                                    if let Err(err) = Self::scan_and_add_ollama_models(
+                                        db.clone(),
+                                        identity_manager.clone(),
+                                        job_manager.clone(),
+                                        identity_secret_key.clone(),
+                                        node_name.clone(),
+                                        ws_manager.clone(),
+                                    )
+                                    .await
+                                    {
+                                        error!("Failed to scan and add Ollama models: {}", err);
+                                        // Note: We're not failing the entire operation if this fails
+                                    }
+                                }
+
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
-                                    api_v2_key
+                                    api_v2_key,
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -1032,6 +1049,23 @@ impl Node {
                                     }
                                 }
 
+                                if !first_device_needs_registration_code && !main_profile_exists {
+                                    // Call the new function to scan and add Ollama models
+                                    if let Err(err) = Self::scan_and_add_ollama_models(
+                                        db.clone(),
+                                        identity_manager.clone(),
+                                        job_manager.clone(),
+                                        identity_secret_key.clone(),
+                                        node_name.clone(),
+                                        ws_manager.clone(),
+                                    )
+                                    .await
+                                    {
+                                        error!("Failed to scan and add Ollama models: {}", err);
+                                        // Note: We're not failing the entire operation if this fails
+                                    }
+                                }
+
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
@@ -1069,6 +1103,52 @@ impl Node {
                     .await;
             }
         }
+        Ok(())
+    }
+
+    async fn scan_and_add_ollama_models(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
+        node_name: ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Scan Ollama models
+        let ollama_models = match Self::internal_scan_ollama_models().await {
+            Ok(models) => models,
+            Err(err) => {
+                error!("Failed to scan Ollama models: {}", err);
+                return Ok(()); // Continue even if scanning fails
+            }
+        };
+
+        // Add Ollama models if any were found
+        if !ollama_models.is_empty() {
+            let models_to_add: Vec<String> = ollama_models
+                .iter()
+                .filter_map(|model| model["name"].as_str().map(String::from))
+                .collect();
+
+            if !models_to_add.is_empty() {
+                let add_models_result = Self::internal_add_ollama_models(
+                    db,
+                    identity_manager,
+                    job_manager,
+                    identity_secret_key,
+                    models_to_add,
+                    node_name,
+                    ws_manager,
+                )
+                .await;
+
+                if let Err(err) = add_models_result {
+                    error!("Failed to add Ollama models: {}", err);
+                    // Note: We're not failing the entire operation if adding models fails
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -3116,7 +3196,6 @@ impl Node {
 
         // Perform the internal search using tool_router
         if let Some(tool_router) = tool_router {
-            
             match tool_router.vector_search_all_tools(&search_query, 5).await {
                 Ok(tools) => {
                     let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {

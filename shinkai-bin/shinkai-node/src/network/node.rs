@@ -285,10 +285,6 @@ impl Node {
             None
         };
 
-        // let ws_manager_trait = ws_manager
-        // .clone()
-        // .map(|manager| manager as Arc<Mutex<dyn WSUpdateHandler + Send>>);
-
         let ws_manager_trait = ws_manager.clone().map(|manager| {
             let manager_trait: Arc<Mutex<dyn WSUpdateHandler + Send>> = manager.clone();
             manager_trait
@@ -1267,7 +1263,7 @@ impl Node {
         encryption_key_hex: String,
         peer: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        _maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         recipient: ShinkaiName,
     ) {
         tokio::spawn(async move {
