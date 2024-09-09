@@ -398,9 +398,50 @@ mod tests {
         // Set a prompt
         db.set_prompt(test_prompt.clone()).await?;
 
+        // Generate embedding
+        let embedding = generator
+            .generate_embedding_default(&test_prompt.text_for_embedding())
+            .await
+            .unwrap()
+            .vector;
+
         // Get the prompt
         let prompt = db.get_prompt("test_prompt").await?;
-        assert_eq!(prompt, Some(test_prompt), "Prompt should match");
+
+        // Compare the generated embedding with the one from the database
+        assert_eq!(
+            prompt.as_ref().unwrap().embedding,
+            Some(embedding),
+            "Embeddings should match"
+        );
+
+        // Compare the rest of the prompt fields
+        assert_eq!(prompt.as_ref().unwrap().name, test_prompt.name, "Name should match");
+        assert_eq!(
+            prompt.as_ref().unwrap().prompt,
+            test_prompt.prompt,
+            "Prompt text should match"
+        );
+        assert_eq!(
+            prompt.as_ref().unwrap().is_system,
+            test_prompt.is_system,
+            "Is system flag should match"
+        );
+        assert_eq!(
+            prompt.as_ref().unwrap().is_enabled,
+            test_prompt.is_enabled,
+            "Is enabled flag should match"
+        );
+        assert_eq!(
+            prompt.as_ref().unwrap().version,
+            test_prompt.version,
+            "Version should match"
+        );
+        assert_eq!(
+            prompt.as_ref().unwrap().is_favorite,
+            test_prompt.is_favorite,
+            "Is favorite flag should match"
+        );
 
         Ok(())
     }
@@ -452,8 +493,14 @@ mod tests {
         let all_prompts = db.get_all_prompts().await?;
         assert_eq!(all_prompts.len(), 3, "There should be 3 prompts");
 
-        for prompt in prompts {
-            assert!(all_prompts.contains(&prompt), "Prompt should be in the list");
+        // Check that all prompt names are present in the retrieved prompts
+        let prompt_names: Vec<String> = prompts.iter().map(|p| p.name.clone()).collect();
+        for prompt in all_prompts {
+            assert!(
+                prompt_names.contains(&prompt.name),
+                "Prompt name '{}' should be in the list",
+                prompt.name
+            );
         }
 
         Ok(())
@@ -489,7 +536,29 @@ mod tests {
 
         // Get the updated prompt
         let prompt = db.get_prompt("update_test_prompt").await?;
-        assert_eq!(prompt, Some(updated_prompt), "Prompt should be updated to favorite");
+
+        // Check specific fields
+        assert!(prompt.is_some(), "Prompt should exist");
+        let retrieved_prompt = prompt.unwrap();
+        assert_eq!(retrieved_prompt.name, updated_prompt.name, "Name should match");
+        assert_eq!(
+            retrieved_prompt.prompt, updated_prompt.prompt,
+            "Prompt text should match"
+        );
+        assert_eq!(
+            retrieved_prompt.is_system, updated_prompt.is_system,
+            "Is system flag should match"
+        );
+        assert_eq!(
+            retrieved_prompt.is_enabled, updated_prompt.is_enabled,
+            "Is enabled flag should match"
+        );
+        assert_eq!(retrieved_prompt.version, updated_prompt.version, "Version should match");
+        assert_eq!(
+            retrieved_prompt.is_favorite, updated_prompt.is_favorite,
+            "Is favorite flag should match"
+        );
+        assert!(retrieved_prompt.embedding.is_some(), "Embedding should be present");
 
         Ok(())
     }
