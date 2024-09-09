@@ -28,6 +28,7 @@ mod it {
     // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
+    #[cfg(feature = "http-manager")]
     mod subscription_http_upload_tests;
     mod utils;
     #[cfg(feature = "http-manager")]

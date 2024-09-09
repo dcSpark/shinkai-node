@@ -5,6 +5,7 @@ use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
 use crate::network::node::ProxyConnectionInfo;
+#[cfg(feature = "http-manager")]
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -493,6 +494,7 @@ impl ExtAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<bool, SubscriberManagerError>` - True if successful, otherwise an error.
+    #[cfg(feature = "http-manager")]
     pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
         let db = self
             .db

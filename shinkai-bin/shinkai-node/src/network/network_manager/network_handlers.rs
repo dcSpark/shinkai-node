@@ -15,11 +15,6 @@ use crate::{
             my_agent_offerings_manager::MyAgentOfferingsManager,
         },
         node::ProxyConnectionInfo,
-        subscription_manager::{
-            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-            fs_entry_tree::FSEntryTree,
-            my_subscription_manager::MySubscriptionsManager,
-        },
         ws_manager::WSUpdateHandler,
         Node,
     },
