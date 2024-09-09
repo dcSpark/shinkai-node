@@ -80,6 +80,8 @@ impl JobManager {
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e, ws_manager).await,
         };
 
+        eprintln!("full_job config: {:?}", full_job.config);
+
         // Ensure the user profile exists before proceeding with inference chain
         let user_profile = match user_profile {
             Some(profile) => profile,

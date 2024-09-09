@@ -25,3 +25,28 @@ impl LLMStopper {
         self.stop_signal.get(key).map_or(false, |v| *v)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_llm_stopper() {
+        let stopper = LLMStopper::new();
+        let job_id = "test_job";
+
+        // Test initial state
+        assert!(!stopper.should_stop(job_id));
+
+        // Test stop
+        stopper.stop(job_id);
+        assert!(stopper.should_stop(job_id));
+
+        // Test reset
+        stopper.reset(job_id);
+        assert!(!stopper.should_stop(job_id));
+
+        // Test non-existent key
+        assert!(!stopper.should_stop("non_existent_job"));
+    }
+}

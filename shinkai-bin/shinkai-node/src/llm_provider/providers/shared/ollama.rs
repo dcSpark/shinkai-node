@@ -84,7 +84,9 @@ fn from_chat_completion_messages(
 
             if message.role.clone().unwrap_or_default() == "user" {
                 if let Some(next_message) = iter.peek() {
-                    if next_message.role.clone().unwrap_or_default() == "user" && next_message.name.as_deref() == Some("image") {
+                    if next_message.role.clone().unwrap_or_default() == "user"
+                        && next_message.name.as_deref() == Some("image")
+                    {
                         if let Some(image_content) = &next_message.content {
                             images = Some(vec![image_content.clone()]);
                             iter.next(); // Consume the next message
@@ -104,10 +106,79 @@ fn from_chat_completion_messages(
     Ok(messages)
 }
 
+pub fn ollama_conversation_prepare_messages_with_tooling(
+    model: &LLMProviderInterface,
+    prompt: Prompt,
+) -> Result<PromptResult, LLMProviderError> {
+    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
+
+    // Generate the messages and filter out images
+    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;
+
+    // Get a more accurate estimate of the number of used tokens
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
+    // Calculate the remaining output tokens available
+    let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
+
+    // Separate messages into those with a valid role and those without
+    let (messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
+        .into_iter()
+        .partition(|message| message.role.is_some());
+
+    // Convert both sets of messages to serde Value
+    let messages_json = serde_json::to_value(messages_with_role)?;
+    let tools_json = serde_json::to_value(tools)?;
+
+    // Convert messages_json and tools_json to Vec<serde_json::Value>
+    let messages_vec = match messages_json {
+        serde_json::Value::Array(arr) => arr,
+        _ => vec![],
+    };
+
+    // Flatten the tools array to extract functions directly
+    let tools_vec = match tools_json {
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .flat_map(|tool| {
+                if let serde_json::Value::Object(mut map) = tool {
+                    map.remove("functions")
+                        .and_then(|functions| {
+                            if let serde_json::Value::Array(funcs) = functions {
+                                Some(
+                                    funcs
+                                        .into_iter()
+                                        .map(|func| {
+                                            serde_json::json!({
+                                                "type": "function",
+                                                "function": func
+                                            })
+                                        })
+                                        .collect(),
+                                )
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                }
+            })
+            .collect(),
+        _ => vec![],
+    };
+
+    Ok(PromptResult {
+        messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
+        functions: Some(tools_vec),
+        remaining_tokens: remaining_output_tokens,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::llm_provider::providers::shared::llm_message::LlmMessage;
     use super::*;
+    use crate::llm_provider::providers::shared::llm_message::LlmMessage;
 
     #[test]
     fn test_from_llm_messages() {
