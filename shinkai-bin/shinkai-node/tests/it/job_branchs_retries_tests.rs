@@ -398,7 +398,8 @@ fn job_branchs_retries_tests() {
                         for (index, content) in flattened_messages.iter().enumerate() {
                             eprintln!("Message position: {}, content: {}", index, content);
                         }
-                        break;
+                        node1_abort_handler.abort();
+                        return;
                     }
 
                     if start.elapsed() > Duration::from_secs(10) {
@@ -407,7 +408,6 @@ fn job_branchs_retries_tests() {
                     tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping
                 }
             }
-            node1_abort_handler.abort();
         })
     });
 }

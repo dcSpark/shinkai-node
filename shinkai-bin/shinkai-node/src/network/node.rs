@@ -1,4 +1,3 @@
-use super::agent_payments_manager::crypto_invoice_manager::{CryptoInvoiceManager, CryptoInvoiceManagerTrait};
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{
@@ -16,6 +15,7 @@ use crate::db::ShinkaiDB;
 use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
@@ -144,6 +144,7 @@ pub struct Node {
     // Supported embedding models for profiles
     pub supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
     // API V2 Key
+    #[allow(dead_code)]
     pub api_v2_key: String,
     // Wallet Manager
     pub wallet_manager: Arc<Mutex<Option<WalletManager>>>,
@@ -151,6 +152,8 @@ pub struct Node {
     pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
     /// Ext Agent Payments Manager
     pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+    // LLM Stopper
+    pub llm_stopper: Arc<LLMStopper>,
 }
 
 impl Node {
@@ -210,13 +213,10 @@ impl Node {
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
         // Fetch list of existing profiles from the node to push into the VectorFS
-        let mut profile_list = vec![];
-        {
-            profile_list = match db_arc.get_all_profiles(node_name.clone()) {
-                Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
-                Err(e) => panic!("Failed to fetch profiles: {}", e),
-            };
-        }
+        let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
+            Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
+            Err(e) => panic!("Failed to fetch profiles: {}", e),
+        };
 
         // Initialize/setup the VectorFS.
         let vector_fs = VectorFS::new(
@@ -271,8 +271,8 @@ impl Node {
         let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
         let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>> = {
-            // Cast the Arc<Mutex<IdentityManager>> to Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
-            identity_manager.clone() as Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
+            // Convert the Arc<Mutex<IdentityManager>> to Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
+            identity_manager.clone()
         };
 
         let ws_manager = if ws_address.is_some() {
@@ -288,9 +288,10 @@ impl Node {
             None
         };
 
-        let ws_manager_trait = ws_manager
-            .clone()
-            .map(|manager| manager as Arc<Mutex<dyn WSUpdateHandler + Send>>);
+        let ws_manager_trait = ws_manager.clone().map(|manager| {
+            let manager_trait: Arc<Mutex<dyn WSUpdateHandler + Send>> = manager.clone();
+            manager_trait
+        });
 
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
@@ -347,7 +348,11 @@ impl Node {
             if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
                 coinbase_wallet.update_lance_db(lance_db.clone());
             }
-            if let Some(coinbase_wallet) = manager.receiving_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
+            if let Some(coinbase_wallet) = manager
+                .receiving_wallet
+                .as_any_mut()
+                .downcast_mut::<CoinbaseMPCWallet>()
+            {
                 coinbase_wallet.update_lance_db(lance_db.clone());
             }
         }
@@ -433,6 +438,8 @@ impl Node {
             }
         };
 
+        let llm_stopper = Arc::new(LLMStopper::new());
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -472,6 +479,7 @@ impl Node {
             wallet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
+            llm_stopper,
         }))
     }
 
@@ -495,6 +503,7 @@ impl Node {
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
+                self.llm_stopper.clone(),
             )
             .await,
         ));
@@ -553,7 +562,7 @@ impl Node {
             tokio::spawn(async move {
                 let current_version = tool_router.get_current_lancedb_version().await.unwrap_or(None);
                 if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
-                    if let Err(e) = tool_router.force_reinstall_all(generator).await {
+                    if let Err(e) = tool_router.force_reinstall_all(&generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }
                 } else {
@@ -1261,7 +1270,7 @@ impl Node {
         encryption_key_hex: String,
         peer: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        _maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         recipient: ShinkaiName,
     ) {
         tokio::spawn(async move {

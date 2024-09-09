@@ -1,6 +1,7 @@
 use crate::tools::error::ToolError;
 use lancedb::Error as LanceDbError;
 use rocksdb::Error as RocksDbError;
+use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 
 #[derive(Debug)]
@@ -12,6 +13,8 @@ pub enum ShinkaiLanceDBError {
     InvalidPath(String),
     ShinkaiDBError(String),
     RocksDBError(String),
+    DatabaseError(String),
+    EmbeddingGenerationError(String),
 }
 
 impl fmt::Display for ShinkaiLanceDBError {
@@ -24,6 +27,8 @@ impl fmt::Display for ShinkaiLanceDBError {
             ShinkaiLanceDBError::InvalidPath(err) => write!(f, "Invalid path error: {}", err),
             ShinkaiLanceDBError::ShinkaiDBError(err) => write!(f, "ShinkaiDB error: {}", err),
             ShinkaiLanceDBError::RocksDBError(err) => write!(f, "RocksDB error: {}", err),
+            ShinkaiLanceDBError::DatabaseError(err) => write!(f, "Database error: {}", err),
+            ShinkaiLanceDBError::EmbeddingGenerationError(err) => write!(f, "Embedding generation error: {}", err),
         }
     }
 }
@@ -52,5 +57,12 @@ impl From<ShinkaiLanceDBError> for ToolError {
 impl From<RocksDbError> for ShinkaiLanceDBError {
     fn from(err: RocksDbError) -> Self {
         ShinkaiLanceDBError::RocksDBError(err.to_string())
+    }
+}
+
+// Add this implementation
+impl From<VRError> for ShinkaiLanceDBError {
+    fn from(err: VRError) -> Self {
+        ShinkaiLanceDBError::Schema(err.to_string())
     }
 }

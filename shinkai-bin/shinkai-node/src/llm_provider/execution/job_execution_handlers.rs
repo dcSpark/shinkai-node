@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use ed25519_dalek::SigningKey;
-use serde_json::to_string;
 use shinkai_message_primitives::{
     schemas::{
         llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
@@ -13,14 +12,17 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
-use shinkai_vector_resources::utils::random_string;
 use tokio::sync::Mutex;
 
 use crate::{
-    db::{db_errors::ShinkaiDBError, ShinkaiDB},
-    llm_provider::{error::LLMProviderError, job::Job, job_manager::JobManager},
+    db::ShinkaiDB,
+    llm_provider::{
+        error::LLMProviderError,
+        job::{Job, JobConfig},
+        job_manager::JobManager,
+        llm_stopper::LLMStopper,
+    },
     network::ws_manager::WSUpdateHandler,
-    vector_fs::vector_fs::VectorFS,
 };
 
 impl JobManager {
@@ -36,6 +38,8 @@ impl JobManager {
         identity_secret_key: SigningKey,
         file_extension: String,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        job_config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
@@ -64,6 +68,8 @@ impl JobManager {
             0,
             3,
             ws_manager.clone(),
+            job_config,
+            llm_stopper.clone(),
         )
         .await?;
 

@@ -7,6 +7,7 @@ pub mod network;
 pub mod runner;
 pub mod schemas;
 pub mod tools;
+pub mod prompts;
 pub mod utils;
 pub mod vector_fs;
 pub mod welcome_files;

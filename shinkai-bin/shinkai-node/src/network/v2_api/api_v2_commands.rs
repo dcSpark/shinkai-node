@@ -28,7 +28,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
     db::ShinkaiDB,
-    llm_provider::job_manager::JobManager,
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
     network::{
         node_api_router::{APIError, GetPublicKeysResponse},
@@ -924,6 +924,24 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_stop_llm(
+        db: Arc<ShinkaiDB>,
+        stopper: Arc<LLMStopper>,
+        bearer: String,
+        inbox_name: String,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Stop the LLM
+        stopper.stop(&inbox_name);
+        let _ = res.send(Ok(())).await;
         Ok(())
     }
 }

@@ -8,6 +8,7 @@ mod network;
 mod runner;
 mod schemas;
 mod tools;
+mod prompts;
 mod utils;
 mod vector_fs;
 mod welcome_files;

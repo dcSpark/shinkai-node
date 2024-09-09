@@ -2503,6 +2503,12 @@ impl Node {
                     let _ = Node::v2_api_change_job_llm_provider(db_clone, bearer, payload, res).await;
                 });
             }
+            NodeCommand::V2ApiUpdateJobConfig { bearer, job_id, config, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_job_config(db_clone, bearer, job_id, config, res).await;
+                });
+            }
             NodeCommand::V2ApiRemoveLlmProvider {
                 bearer,
                 llm_provider_id,
@@ -2827,6 +2833,55 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_list_invoices(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiAddCustomPrompt { bearer, prompt, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_custom_prompt(db_clone, lance_db_clone, bearer, prompt, res).await;
+                });
+            }
+            NodeCommand::V2ApiDeleteCustomPrompt { bearer, prompt_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_delete_custom_prompt(db_clone, lance_db_clone, bearer, prompt_name, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetAllCustomPrompts { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_all_custom_prompts(db_clone, lance_db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetCustomPrompt { bearer, prompt_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_custom_prompt(db_clone, lance_db_clone, bearer, prompt_name, res).await;
+                });
+            }
+            NodeCommand::V2ApiSearchCustomPrompts { bearer, query, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_search_custom_prompts(db_clone, lance_db_clone, bearer, query, res).await;
+                });
+            }
+            NodeCommand::V2ApiUpdateCustomPrompt { bearer, prompt, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_custom_prompt(db_clone, lance_db_clone, bearer, prompt, res).await;
+                });
+            }
+            NodeCommand::V2ApiStopLLM { bearer, inbox_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let stopper_clone = self.llm_stopper.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_stop_llm(db_clone, stopper_clone, bearer, inbox_name, res).await;
                 });
             }
             _ => (),

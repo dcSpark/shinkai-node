@@ -1,7 +1,24 @@
-use super::execution::{prompts::{prompts::Prompt, subprompts::{SubPrompt, SubPromptType}}, user_message_parser::ParsedUserMessage};
+use super::execution::prompts::prompts::Prompt;
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::JobScope};
+use serde_json::Value;
+use shinkai_message_primitives::{
+    schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::AssociatedUI,
+    shinkai_utils::job_scope::JobScope,
+};
 use std::collections::HashMap;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct JobConfig {
+    pub custom_prompt: Option<String>,
+    // pub custom_system_prompt: String
+    pub temperature: Option<f64>,
+    // pub max_output_tokens: u64,
+    pub seed: Option<u64>,
+    pub top_k: Option<u64>,
+    pub top_p: Option<f64>,
+    pub stream: Option<bool>,
+    pub other_model_params: Option<Value>,
+}
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
@@ -11,7 +28,8 @@ pub trait JobLike: Send + Sync {
     fn parent_llm_provider_id(&self) -> &str;
     fn scope(&self) -> &JobScope;
     fn conversation_inbox_name(&self) -> &InboxName;
-    fn associated_ui(&self) -> Option<&AssociatedUI>; 
+    fn associated_ui(&self) -> Option<&AssociatedUI>;
+    fn config(&self) -> Option<&JobConfig>;
 }
 
 // Todo: Add a persistent_context: String
@@ -43,6 +61,8 @@ pub struct Job {
     pub execution_context: HashMap<String, String>,
     /// A link to the UI where the user can view the job e.g. Sheet UI
     pub associated_ui: Option<AssociatedUI>,
+    /// The job's configuration
+    pub config: Option<JobConfig>,
 }
 
 impl JobLike for Job {
@@ -76,6 +96,10 @@ impl JobLike for Job {
 
     fn associated_ui(&self) -> Option<&AssociatedUI> {
         self.associated_ui.as_ref()
+    }
+
+    fn config(&self) -> Option<&JobConfig> {
+        self.config.as_ref()
     }
 }
 
@@ -116,35 +140,6 @@ impl JobStepResult {
     /// Returns the latest revisions of the Job Step Result if one exists
     pub fn get_result_prompt(&self) -> Option<Prompt> {
         self.step_revisions.last().cloned()
-    }
-
-    /// Returns the latest user message if one exists
-    pub fn get_latest_user_message_parsed(&self) -> Option<ParsedUserMessage> {
-        self.get_latest_user_message_string().map(ParsedUserMessage::new)
-    }
-
-    /// Returns the latest user message if one exists
-    pub fn get_latest_user_message_string(&self) -> Option<String> {
-        self.step_revisions
-            .last()?
-            .sub_prompts
-            .iter()
-            .find_map(|prompt| match prompt {
-                SubPrompt::Content(role, message, _) if role == &SubPromptType::User => Some(message.clone()),
-                _ => None,
-            })
-    }
-
-    /// Returns the latest assistant message if one exists
-    pub fn get_latest_assistant_message_string(&self) -> Option<String> {
-        self.step_revisions
-            .last()?
-            .sub_prompts
-            .iter()
-            .find_map(|prompt| match prompt {
-                SubPrompt::Content(role, message, _) if role == &SubPromptType::Assistant => Some(message.clone()),
-                _ => None,
-            })
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {

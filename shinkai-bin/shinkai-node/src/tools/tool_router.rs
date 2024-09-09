@@ -15,6 +15,8 @@ use crate::network::agent_payments_manager::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use crate::network::ws_manager::{PaymentMetadata, WSMessageType, WidgetMetadata};
+use crate::prompts::custom_prompt::CustomPrompt;
+use crate::prompts::prompts_data;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::shinkai_tool::ShinkaiTool;
@@ -58,10 +60,13 @@ impl ToolRouter {
 
         if is_empty {
             // Add workflows
-            // let _ = self.add_static_workflows(generator).await;
+            let _ = self.add_static_workflows(&generator).await;
 
             // Add JS tools
             let _ = self.add_js_tools().await;
+
+            // Add static prompts
+            let _ = self.add_static_prompts(&generator).await;
 
             // Set the latest version in the database
             self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
@@ -73,9 +78,9 @@ impl ToolRouter {
         Ok(())
     }
 
-    pub async fn force_reinstall_all(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Add workflows
-        // let _ = self.add_static_workflows(generator).await;
+        let _ = self.add_static_workflows(generator).await;
 
         // Add JS tools
         let _ = self.add_js_tools().await;
@@ -86,7 +91,61 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn add_static_workflows(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn add_static_prompts(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+        // Check if ONLY_TESTING_PROMPTS is set
+        if env::var("ONLY_TESTING_PROMPTS").unwrap_or_default() == "1"
+            || env::var("ONLY_TESTING_PROMPTS").unwrap_or_default().to_lowercase() == "true"
+        {
+            return Ok(()); // Return right away and don't add anything
+        }
+
+        let lance_db = self.lance_db.lock().await;
+        let start_time = Instant::now();
+
+        // Determine which set of prompts to use
+        let prompts_data = if env::var("IS_TESTING").unwrap_or_default() == "1" {
+            prompts_data::PROMPTS_JSON_TESTING
+        } else {
+            prompts_data::PROMPTS_JSON
+        };
+
+        let json_value: Value = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
+        let json_array = json_value
+            .as_array()
+            .expect("Expected prompts JSON data to be an array");
+
+        println!("Number of static prompts to add: {}", json_array.len());
+
+        for item in json_array {
+            let custom_prompt: Result<CustomPrompt, _> = serde_json::from_value(item.clone());
+            let mut custom_prompt = match custom_prompt {
+                Ok(prompt) => prompt,
+                Err(e) => {
+                    eprintln!("Failed to parse custom_prompt: {}. JSON: {:?}", e, item);
+                    continue; // Skip this item and continue with the next one
+                }
+            };
+
+            // Generate embedding if not present
+            if custom_prompt.embedding.is_none() {
+                let embedding = generator
+                    .generate_embedding_default(&custom_prompt.text_for_embedding())
+                    .await
+                    .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
+                custom_prompt.embedding = Some(embedding.vector);
+            }
+
+            lance_db.set_prompt(custom_prompt).await?;
+        }
+
+        let duration = start_time.elapsed();
+        if env::var("LOG_ALL").unwrap_or_default() == "1" {
+            println!("Time taken to add static prompts: {:?}", duration);
+        }
+        Ok(())
+    }
+
+    async fn add_static_workflows(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Check if ONLY_TESTING_WORKFLOWS is set
         if env::var("ONLY_TESTING_WORKFLOWS").unwrap_or_default() == "1"
             || env::var("ONLY_TESTING_WORKFLOWS").unwrap_or_default().to_lowercase() == "true"
@@ -207,8 +266,8 @@ impl ToolRouter {
             let shinkai_tool = ShinkaiTool::Network(network_tool, true);
             lance_db.set_tool(&shinkai_tool).await?;
 
-             // Manually create another NetworkTool
-             let youtube_tool = NetworkTool {
+            // Manually create another NetworkTool
+            let youtube_tool = NetworkTool {
                 name: "youtube_transcript_with_timestamps".to_string(),
                 toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
                 description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
@@ -241,7 +300,10 @@ impl ToolRouter {
                 }
             }
 
-            if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript").await? {
+            if let Some(shinkai_tool) = lance_db
+                .get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
+                .await?
+            {
                 if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "youtube_transcript_with_timestamps".to_string();
                     let modified_tool = ShinkaiTool::JS(js_tool, true);
@@ -551,7 +613,9 @@ impl ToolRouter {
                 eprintln!("invoice_result: {:?}", invoice_result);
 
                 // Try to parse the result_str and extract the "data" field
-                let response = match serde_json::from_str::<serde_json::Value>(&invoice_result.result_str.clone().unwrap_or_default()) {
+                let response = match serde_json::from_str::<serde_json::Value>(
+                    &invoice_result.result_str.clone().unwrap_or_default(),
+                ) {
                     Ok(parsed) => {
                         if let Some(data) = parsed.get("data") {
                             data.to_string()
@@ -568,15 +632,6 @@ impl ToolRouter {
                     response,
                     function_call,
                 });
-
-                // TODO:
-                // 1. Push for the InvoiceRequest
-                // 2. Get the response (with the goal of showing it in the UI)
-                // 2. Use WS to show that in the UI and get user confirmation
-                // 3. Wait until the user has confirmed (or timed out after 2 minutes? without user feedback not about the entire operation)
-                // 4. Run the network tool
-                // 5. Wait for the WS to get the Invoice (Result)
-                // 6. Return the result on this fn
             }
         }
 

@@ -14,7 +14,7 @@ mod tests {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let registry = ShinkaiRegistry::new(
-                "https://public.stackup.sh/api/v1/node/arbitrum-sepolia",
+                "https://arbitrum-sepolia.blockpi.network/v1/rpc/public",
                 "0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6",
                 None, // "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
             )

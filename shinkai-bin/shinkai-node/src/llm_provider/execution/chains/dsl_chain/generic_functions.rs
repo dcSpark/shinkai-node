@@ -329,6 +329,7 @@ mod tests {
         },
         user_message_parser::ParsedUserMessage,
     };
+    use crate::llm_provider::llm_stopper::LLMStopper;
     use crate::vector_fs::vector_fs::VectorFS;
 
     use std::{any::Any, collections::HashMap, fs, path::Path, sync::Arc};
@@ -356,6 +357,7 @@ mod tests {
             None,
             None,
             None,
+            Arc::new(LLMStopper::new()),
         );
 
         let args: Vec<Box<dyn Any + Send>> = vec![];
@@ -387,6 +389,7 @@ mod tests {
             None,
             None,
             None,
+            Arc::new(LLMStopper::new()),
         );
 
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new("txt".to_string())];
@@ -417,6 +420,7 @@ mod tests {
             None,
             None,
             None,
+            Arc::new(LLMStopper::new()),
         );
 
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new("file2.csv".to_string())];
@@ -447,6 +451,7 @@ mod tests {
             None,
             None,
             None,
+            Arc::new(LLMStopper::new()),
         );
 
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new("file3.txt".to_string())];
@@ -511,7 +516,7 @@ mod tests {
             network_folders: Vec::new(),
         };
         shinkai_db_arc
-            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None)
+            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
             .unwrap();
 
         // Retrieve the created job
@@ -597,6 +602,7 @@ mod tests {
             None, // Replace with actual SheetManager if needed
             None, // Replace with actual if needed
             None, // Replace with actual if needed
+            Arc::new(LLMStopper::new()),
         );
 
         // Call the function to process embeddings in job scope
@@ -642,7 +648,7 @@ mod tests {
             network_folders: Vec::new(),
         };
         shinkai_db_arc
-            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None)
+            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
             .unwrap();
 
         // Retrieve the created job
@@ -729,6 +735,7 @@ mod tests {
             None, // Replace with actual SheetManager if needed
             None, // Replace with actual if needed
             None, // Replace with actual if needed
+            Arc::new(LLMStopper::new()),
         );
 
         // Call the function to search embeddings in job scope

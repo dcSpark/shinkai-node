@@ -4,7 +4,6 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 
 use tokio::sync::Mutex;
-use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
     db::ShinkaiDB,
@@ -15,8 +14,6 @@ use crate::{
     },
     tools::shinkai_tool::ShinkaiToolHeader,
 };
-
-use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
     pub async fn v2_api_get_tool_offering(

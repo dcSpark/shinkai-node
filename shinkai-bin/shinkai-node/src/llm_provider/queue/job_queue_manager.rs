@@ -196,7 +196,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     }
 
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
-        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db")?;
         let mut db_queues: HashMap<_, _> = db_arc.get_all_queues::<T>(&self.cf_name, self.prefix.clone())?;
 
         // Sort the keys based on the first element in each queue, falling back to key names

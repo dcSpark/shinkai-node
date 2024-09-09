@@ -7,6 +7,7 @@ use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -75,6 +76,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
+            self.context.llm_stopper.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -111,6 +113,7 @@ impl GenericInferenceChain {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -156,11 +159,23 @@ impl GenericInferenceChain {
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
+        let job_config = full_job.config();
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
-            if let Some(tool_router) = &tool_router {
-                
+        let use_tools = match &llm_provider.model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model_type) => {
+                let is_supported_model =
+                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            _ => false,
+        };
 
+        if use_tools {
+            if let Some(tool_router) = &tool_router {
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
                 // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
@@ -168,28 +183,24 @@ impl GenericInferenceChain {
                 // }
 
                 // Search in JS Tools
-                // let results = tool_router
-                //     .vector_search_enabled_tools_with_network(&user_message.clone(), 3)
-                //     .await
-                //     .unwrap();
-                // for result in results {
-                //     if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
-                //         tools.push(tool);
-                //     }
-                // }
-
-                // Get the specific Shinkai tool
-                if let Some(tool) = tool_router.get_tool_by_name("@@agent_provider.arb-sep-shinkai:::shinkai-tool-youtube-transcript:::youtube_transcript_with_timestamps").await.unwrap() {
-                    tools.push(tool);
+                let results = tool_router
+                    .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
+                    .await
+                    .unwrap();
+                for result in results {
+                    if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
+                        tools.push(tool);
+                    }
                 }
-                eprintln!("tool: {:?}", tools);
-                // TODO: add an env so we always use the same tool (Network + Payments)
             }
         }
 
         // 3) Generate Prompt
+
+        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            None, // TODO: connect later on
+            custom_prompt,
             None, // TODO: connect later on
             user_message.clone(),
             ret_nodes.clone(),
@@ -219,6 +230,8 @@ impl GenericInferenceChain {
                 filled_prompt.clone(),
                 inbox_name,
                 ws_manager_trait.clone(),
+                job_config.cloned(),
+                llm_stopper.clone(),
             )
             .await;
 
@@ -251,6 +264,7 @@ impl GenericInferenceChain {
                     sheet_manager.clone(),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 );
 
                 // 6) Call workflow or tooling

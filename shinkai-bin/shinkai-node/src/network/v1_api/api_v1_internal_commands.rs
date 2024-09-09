@@ -441,7 +441,7 @@ impl Node {
                             let job_creation = JobCreationInfo {
                                 scope: job_scope,
                                 is_hidden: Some(false),
-                                associated_ui: None
+                                associated_ui: None,
                             };
 
                             let mut job_manager_locked = job_manager.lock().await;
@@ -631,10 +631,10 @@ impl Node {
         shinkai_name: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), String> {
-        let requester_profile = match shinkai_name.extract_profile() {
-            Ok(profile) => profile,
-            Err(e) => return Err(e.to_string()),
-        };
+        let requester_profile = shinkai_name.extract_profile().unwrap_or_else(|_| {
+            ShinkaiName::from_node_and_profile_names(shinkai_name.node_name, "main".to_string())
+                .expect("Failed to create main profile ShinkaiName")
+        });
 
         let available_models = Self::internal_scan_ollama_models().await.map_err(|e| e.message)?;
 

@@ -1,16 +1,18 @@
 use async_channel::Sender;
-use reqwest::StatusCode;
 use serde::Deserialize;
-use serde_json::{json, Value};
-use utoipa::OpenApi;
+use serde_json::Value;
+// use utoipa::OpenApi;
 use warp::Filter;
 
 use crate::{
-    network::{node_api_router::APIError, node_commands::NodeCommand},
-    wallet::{local_ether_wallet::{LocalEthersWallet, WalletSource}, mixed::NetworkIdentifier, coinbase_mpc_wallet::CoinbaseMPCWalletConfig, wallet_manager::WalletRole},
+    network::node_commands::NodeCommand,
+    wallet::{
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
+        wallet_manager::WalletRole,
+    },
 };
 
-use super::api_v2_router::{create_success_response, with_sender};
+use super::api_v2_router::with_sender;
 
 pub fn wallet_routes(
     node_commands_sender: Sender<NodeCommand>,

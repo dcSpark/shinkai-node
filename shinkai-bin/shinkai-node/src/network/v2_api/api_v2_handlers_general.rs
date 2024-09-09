@@ -138,6 +138,13 @@ pub fn general_routes(
         .and(warp::path::param::<String>())
         .and_then(list_files_in_inbox_handler);
 
+    let stop_llm_route = warp::path("stop_llm")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(stop_llm_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -156,6 +163,7 @@ pub fn general_routes(
         .or(add_ollama_models_route)
         .or(download_file_from_inbox_route)
         .or(list_files_in_inbox_route)
+        .or(stop_llm_route)
 }
 
 #[derive(Deserialize)]
@@ -193,11 +201,14 @@ pub async fn download_file_from_inbox_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(file_data) => Ok(warp::reply::with_header(file_data, "Content-Type", "application/octet-stream")),
+        Ok(file_data) => Ok(warp::reply::with_header(
+            file_data,
+            "Content-Type",
+            "application/octet-stream",
+        )),
         Err(error) => Err(warp::reject::custom(error)),
     }
 }
-
 
 #[utoipa::path(
     get,
@@ -734,6 +745,39 @@ pub async fn add_ollama_models_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/stop_llm",
+    request_body = String,
+    responses(
+        (status = 200, description = "Successfully stopped LLM", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn stop_llm_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    inbox_name: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiStopLLM {
+            bearer,
+            inbox_name,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -755,6 +799,7 @@ pub async fn add_ollama_models_handler(
         is_pristine_handler,
         scan_ollama_models_handler,
         add_ollama_models_handler,
+        stop_llm_handler,
     ),
     components(
         schemas(GetPublicKeysResponse, APIError)

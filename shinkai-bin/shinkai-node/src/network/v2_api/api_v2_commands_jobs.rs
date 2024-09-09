@@ -19,7 +19,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
     db::ShinkaiDB,
-    llm_provider::job_manager::JobManager,
+    llm_provider::{job::JobConfig, job_manager::JobManager},
     managers::IdentityManager,
     network::{
         node_api_router::{APIError, SendResponseBodyData},
@@ -631,6 +631,51 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to change job agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_update_job_config(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        config: JobConfig,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if the job exists
+        match db.get_job(&job_id) {
+            Ok(_) => {
+                // Job exists, proceed with updating the config
+                match db.update_job_config(&job_id, config) {
+                    Ok(_) => {
+                        let success_message = format!("Job config updated successfully for job ID: {}", job_id);
+                        let _ = res.send(Ok(success_message)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to update job config: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Job with ID {} not found", job_id),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

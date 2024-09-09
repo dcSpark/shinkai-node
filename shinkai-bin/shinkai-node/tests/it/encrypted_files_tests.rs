@@ -12,7 +12,6 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::node_commands::NodeCommand;
@@ -30,6 +29,7 @@ use mockito::Server;
 #[test]
 fn sandwich_messages_with_files_test() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
+    unsafe { std::env::set_var("ONLY_TESTING_JS_TOOLS", "true") };
     
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -420,7 +420,8 @@ fn sandwich_messages_with_files_test() {
                                 eprintln!("message_content: {}", message_content);
                                 if job_message.content != new_job_message_content {
                                     assert!(true);
-                                    break;
+                                    node1_abort_handler.abort();
+                                    return;
                                 }
                             }
                             Err(_) => {
@@ -434,7 +435,6 @@ fn sandwich_messages_with_files_test() {
                     tokio::time::sleep(Duration::from_secs(10)).await;
                 }
             }
-            node1_abort_handler.abort();
         })
     });
 }

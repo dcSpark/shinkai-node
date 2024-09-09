@@ -35,6 +35,7 @@ fn setup() {
 #[test]
 fn workflow_integration_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
     
 
     // WIP: need to find a way to test the agent registration

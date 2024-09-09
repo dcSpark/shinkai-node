@@ -24,15 +24,13 @@ use shinkai_message_primitives::{
 };
 
 use crate::{
-    schemas::{
+    llm_provider::job::JobConfig, prompts::custom_prompt::CustomPrompt, schemas::{
         identity::{Identity, StandardIdentity},
         smart_inbox::{SmartInbox, V2SmartInbox},
-    },
-    tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
-    wallet::{
+    }, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
         wallet_manager::WalletRole,
-    },
+    }
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -782,6 +780,12 @@ pub enum NodeCommand {
         payload: APIChangeJobAgentRequest,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiUpdateJobConfig {
+        bearer: String,
+        job_id: String,
+        config: JobConfig,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiRemoveLlmProvider {
         bearer: String,
         llm_provider_id: String,
@@ -872,5 +876,39 @@ pub enum NodeCommand {
     V2ApiListInvoices {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAddCustomPrompt {
+        bearer: String,
+        prompt: CustomPrompt,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },
+    V2ApiDeleteCustomPrompt {
+        bearer: String,
+        prompt_name: String,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },    
+    V2ApiGetAllCustomPrompts {
+        bearer: String,
+        res: Sender<Result<Vec<CustomPrompt>, APIError>>,
+    },
+    V2ApiGetCustomPrompt {
+        bearer: String,
+        prompt_name: String,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },
+    V2ApiSearchCustomPrompts {
+        bearer: String,
+        query: String,
+        res: Sender<Result<Vec<CustomPrompt>, APIError>>,
+    },
+    V2ApiUpdateCustomPrompt {
+        bearer: String,
+        prompt: CustomPrompt,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },
+    V2ApiStopLLM {
+        bearer: String,
+        inbox_name: String,
+        res: Sender<Result<(), APIError>>,
     },
 }
