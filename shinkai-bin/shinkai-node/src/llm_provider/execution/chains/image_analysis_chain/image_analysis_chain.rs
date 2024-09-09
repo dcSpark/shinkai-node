@@ -1,6 +1,6 @@
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{
-    inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName
+    inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
 };
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -8,7 +8,10 @@ use tokio::sync::Mutex;
 use crate::{
     db::ShinkaiDB,
     llm_provider::{
-        error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager,
+        error::LLMProviderError,
+        execution::prompts::prompts::JobPromptGenerator,
+        job::{Job, JobConfig},
+        job_manager::JobManager, llm_stopper::LLMStopper,
     },
     network::ws_manager::WSUpdateHandler,
 };
@@ -39,6 +42,8 @@ impl JobManager {
         iteration_count: u64,
         max_iterations: u64,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        job_config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<(String, HashMap<String, String>), LLMProviderError> {
         if iteration_count > max_iterations {
             return Err(LLMProviderError::InferenceRecursionLimitReached(
@@ -56,8 +61,15 @@ impl JobManager {
             Ok(name) => Some(name),
             Err(_) => None,
         };
-        let response_json =
-            JobManager::inference_with_llm_provider(agent.clone(), image_prompt, inbox_name, ws_manager_trait).await?;
+        let response_json = JobManager::inference_with_llm_provider(
+            agent.clone(),
+            image_prompt,
+            inbox_name,
+            ws_manager_trait,
+            job_config,
+            llm_stopper.clone(),
+        )
+        .await?;
         let mut new_execution_context = HashMap::new();
 
         new_execution_context.insert(

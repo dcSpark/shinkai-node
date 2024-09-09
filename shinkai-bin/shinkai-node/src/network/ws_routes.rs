@@ -109,8 +109,6 @@ async fn process_shinkai_message(
     manager: &Arc<Mutex<WebSocketManager>>,
     ws_tx: &Arc<Mutex<SplitSink<WebSocket, warp::ws::Message>>>,
 ) -> Result<(), WebSocketManagerError> {
-    eprintln!("process_shinkai_message with shinkai message: {:?}", shinkai_message);
-
     let shinkai_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(shinkai_message)
         .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e)))?;
 

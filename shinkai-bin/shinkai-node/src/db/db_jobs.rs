@@ -5,7 +5,7 @@ use std::time::Instant;
 use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::llm_provider::execution::prompts::subprompts::SubPromptType;
-use crate::llm_provider::job::{Job, JobLike, JobStepResult};
+use crate::llm_provider::job::{Job, JobConfig, JobLike, JobStepResult};
 use crate::network::ws_manager::WSUpdateHandler;
 
 use rocksdb::WriteBatch;
@@ -24,6 +24,7 @@ impl ShinkaiDB {
         scope: JobScope,
         is_hidden: bool,
         associated_ui: Option<AssociatedUI>,
+        config: Option<JobConfig>,
     ) -> Result<(), ShinkaiDBError> {
         let start = std::time::Instant::now();
 
@@ -98,6 +99,13 @@ impl ShinkaiDB {
             batch.put_cf(cf_inbox, associated_ui_key.as_bytes(), &associated_ui_value);
         }
 
+        // Serialize and put config if it exists
+        if let Some(cfg) = &config {
+            let config_key = format!("jobinbox_{}_config", job_id);
+            let config_value = serde_json::to_vec(cfg)?;
+            batch.put_cf(cf_inbox, config_key.as_bytes(), &config_value);
+        }
+
         self.db.write(batch)?;
 
         let batch_write_duration = batch_write_start.elapsed();
@@ -112,6 +120,20 @@ impl ShinkaiDB {
             );
         }
 
+        Ok(())
+    }
+
+    /// Updates the config of a job
+    pub fn update_job_config(&self, job_id: &str, config: JobConfig) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let config_key = format!("jobinbox_{}_config", job_id);
+    
+        // Serialize the config
+        let config_value = serde_json::to_vec(&config)?;
+    
+        // Update the config in the database
+        self.db.put_cf(cf_inbox, config_key.as_bytes(), &config_value)?;
+    
         Ok(())
     }
 
@@ -181,6 +203,7 @@ impl ShinkaiDB {
             unprocessed_messages,
             execution_context,
             associated_ui,
+            config,
         ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
@@ -196,6 +219,7 @@ impl ShinkaiDB {
             unprocessed_messages,
             execution_context,
             associated_ui,
+            config,
         };
 
         let duration = start.elapsed();
@@ -224,6 +248,7 @@ impl ShinkaiDB {
             unprocessed_messages,
             execution_context,
             associated_ui,
+            config,
         ) = self.get_job_data(job_id, false)?;
 
         // Construct the job
@@ -239,6 +264,7 @@ impl ShinkaiDB {
             unprocessed_messages,
             execution_context,
             associated_ui,
+            config,
         };
 
         let duration = start.elapsed();
@@ -271,6 +297,7 @@ impl ShinkaiDB {
             Vec<String>,
             HashMap<String, String>,
             Option<AssociatedUI>,
+            Option<JobConfig>,
         ),
         ShinkaiDBError,
     > {
@@ -329,6 +356,13 @@ impl ShinkaiDB {
             .flatten()
             .and_then(|value| serde_json::from_slice(&value).ok());
 
+        let config_value = self
+            .db
+            .get_cf(cf_jobs, format!("jobinbox_{}_config", job_id).as_bytes())
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_slice(&value).ok());
+
         Ok((
             scope,
             is_finished,
@@ -340,6 +374,7 @@ impl ShinkaiDB {
             unprocessed_messages,
             self.get_job_execution_context(job_id)?,
             associated_ui_value,
+            config_value,
         ))
     }
 

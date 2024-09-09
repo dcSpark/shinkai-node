@@ -24,15 +24,18 @@ use shinkai_message_primitives::{
 };
 
 use crate::{
-    schemas::{
+    llm_provider::job::JobConfig, prompts::custom_prompt::CustomPrompt, schemas::{
         identity::{Identity, StandardIdentity},
         smart_inbox::{SmartInbox, V2SmartInbox},
-    },
-    tools::shinkai_tool::ShinkaiTool,
+    }, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
+        wallet_manager::WalletRole,
+    }
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
+    agent_payments_manager::shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     v2_api::api_v2_handlers_general::InitialRegistrationRequest,
@@ -548,6 +551,13 @@ pub enum NodeCommand {
         offset_key: Option<String>,
         res: Sender<Result<Vec<V2ChatMessage>, APIError>>,
     },
+    V2ApiGetLastMessagesFromInboxWithBranches {
+        bearer: String,
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+        res: Sender<Result<Vec<Vec<V2ChatMessage>>, APIError>>,
+    },
     V2ApiCreateJob {
         bearer: String,
         job_creation_info: JobCreationInfo,
@@ -576,6 +586,17 @@ pub enum NodeCommand {
         bearer: String,
         payload: APIConvertFilesAndSaveToFolder,
         res: Sender<Result<Vec<Value>, APIError>>,
+    },
+    V2ApiDownloadFileFromInbox {
+        bearer: String,
+        inbox_name: String,
+        filename: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiListFilesInInbox {
+        bearer: String,
+        inbox_name: String,
+        res: Sender<Result<Vec<String>, APIError>>,
     },
     #[cfg(feature = "http-manager")]
     V2ApiVecFSCreateFolder {
@@ -755,6 +776,11 @@ pub enum NodeCommand {
         payload: Value,
         res: Sender<Result<ShinkaiTool, APIError>>,
     },
+    V2ApiAddShinkaiTool {
+        bearer: String,
+        shinkai_tool: ShinkaiTool,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiGetShinkaiTool {
         bearer: String,
         payload: String,
@@ -797,6 +823,12 @@ pub enum NodeCommand {
         payload: APIChangeJobAgentRequest,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiUpdateJobConfig {
+        bearer: String,
+        job_id: String,
+        config: JobConfig,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiRemoveLlmProvider {
         bearer: String,
         llm_provider_id: String,
@@ -823,6 +855,103 @@ pub enum NodeCommand {
     V2ApiAddOllamaModels {
         bearer: String,
         payload: APIAddOllamaModels,
+        res: Sender<Result<(), APIError>>,
+    },
+    V2ApiGetToolOffering {
+        bearer: String,
+        tool_key_name: String,
+        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+    },
+    V2ApiRemoveToolOffering {
+        bearer: String,
+        tool_key_name: String,
+        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+    },
+    V2ApiGetAllToolOfferings {
+        bearer: String,
+        res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
+    },
+    V2ApiSetToolOffering {
+        bearer: String,
+        tool_offering: ShinkaiToolOffering,
+        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+    },
+    V2ApiRestoreLocalEthersWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        source: WalletSource,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCreateLocalEthersWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCreateCoinbaseMPCWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        config: Option<CoinbaseMPCWalletConfig>,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRestoreCoinbaseMPCWallet {
+        bearer: String,
+        network: NetworkIdentifier,
+        config: Option<CoinbaseMPCWalletConfig>,
+        wallet_id: String,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRequestInvoice {
+        bearer: String,
+        tool_key_name: String,
+        usage: UsageTypeInquiry,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiPayInvoice {
+        bearer: String,
+        invoice_id: String,
+        data_for_tool: Value,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListInvoices {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAddCustomPrompt {
+        bearer: String,
+        prompt: CustomPrompt,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },
+    V2ApiDeleteCustomPrompt {
+        bearer: String,
+        prompt_name: String,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },    
+    V2ApiGetAllCustomPrompts {
+        bearer: String,
+        res: Sender<Result<Vec<CustomPrompt>, APIError>>,
+    },
+    V2ApiGetCustomPrompt {
+        bearer: String,
+        prompt_name: String,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },
+    V2ApiSearchCustomPrompts {
+        bearer: String,
+        query: String,
+        res: Sender<Result<Vec<CustomPrompt>, APIError>>,
+    },
+    V2ApiUpdateCustomPrompt {
+        bearer: String,
+        prompt: CustomPrompt,
+        res: Sender<Result<CustomPrompt, APIError>>,
+    },
+    V2ApiStopLLM {
+        bearer: String,
+        inbox_name: String,
         res: Sender<Result<(), APIError>>,
     },
 }

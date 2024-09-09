@@ -11,5 +11,5 @@ pub mod node_shareable_logic;
 pub mod subscription_manager;
 pub mod v1_api;
 pub mod v2_api;
-pub mod ws_manager;
-pub mod ws_routes;
+pub mod agent_payments_manager;
+pub mod network_manager_utils;

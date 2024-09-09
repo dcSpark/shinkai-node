@@ -6,7 +6,7 @@ use super::utils::node_test_api::api_initial_registration_with_no_code_for_devic
 
 #[test]
 fn simple_node_registration_test() {
-    init_default_tracing();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

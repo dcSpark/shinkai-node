@@ -312,7 +312,7 @@ impl ShinkaiRegistry {
         let mut last_error = None;
 
         for rpc in rpc_endpoints {
-            let provider = match Provider::<Http>::try_from(rpc) {
+            let provider = match Provider::<Http>::try_from(rpc.clone()) {
                 Ok(provider) => provider,
                 Err(err) => {
                     last_error = Some(ShinkaiRegistryError::CustomError(err.to_string()));
@@ -356,7 +356,7 @@ impl ShinkaiRegistry {
                     });
                 }
                 Err(e) => {
-                    eprintln!("Error calling contract: {}", e);
+                    eprintln!("Error calling contract: {} using rpc_endpoint: {}", e, rpc);
                     shinkai_log(
                         ShinkaiLogOption::CryptoIdentity,
                         ShinkaiLogLevel::Error,

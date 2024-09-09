@@ -10,7 +10,6 @@ use std::fmt::Debug;
 pub enum InboxNameError {
     ShinkaiNameError(ShinkaiNameError),
     InvalidFormat(String),
-    InvalidSenderRecipientFormat(String),
     InvalidOperation(String),
 }
 
@@ -19,9 +18,6 @@ impl fmt::Display for InboxNameError {
         match *self {
             InboxNameError::ShinkaiNameError(ref err) => std::fmt::Display::fmt(err, f),
             InboxNameError::InvalidFormat(ref s) => write!(f, "Invalid inbox name format: {}", s),
-            InboxNameError::InvalidSenderRecipientFormat(ref s) => {
-                write!(f, "Invalid sender/recipient format: {}", s)
-            }
             InboxNameError::InvalidOperation(ref s) => write!(f, "Invalid operation: {}", s),
         }
     }
@@ -105,6 +101,14 @@ impl InboxName {
                 InboxName::new(inbox_name)
             }
             _ => Err(InboxNameError::InvalidFormat("Expected Unencrypted MessageBody".into())),
+        }
+    }
+
+    /// Returns the job ID if the InboxName is a JobInbox, otherwise returns None
+    pub fn get_job_id(&self) -> Option<String> {
+        match self {
+            InboxName::JobInbox { unique_id, .. } => Some(unique_id.clone()),
+            InboxName::RegularInbox { .. } => None,
         }
     }
 

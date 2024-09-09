@@ -1,17 +1,21 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
+use super::llm_stopper::LLMStopper;
 use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::job::JobLike;
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -65,11 +69,15 @@ pub struct JobManager {
     // Websocket manager for sending updates to the frontend
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     // Tool router for managing installed tools
-    pub tool_router: Option<Arc<Mutex<ToolRouter>>>,
+    pub tool_router: Option<Arc<ToolRouter>>,
     // Sheet manager for managing installed sheets
     pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Job callback manager for handling job callbacks
     pub callback_manager: Arc<Mutex<JobCallbackManager>>,
+    // My agent payments manager for managing payments to agents
+    pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+    // Ext agent payments manager for managing payments to agents
+    pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
 }
 
 impl JobManager {
@@ -83,9 +91,12 @@ impl JobManager {
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
+        my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+        ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -137,6 +148,9 @@ impl JobManager {
             tool_router.clone(),
             sheet_manager.clone(),
             callback_manager.clone(),
+            Some(my_agent_payments_manager.clone()),
+            Some(ext_agent_payments_manager.clone()),
+            llm_stopper.clone(),
             |job,
              db,
              vector_fs,
@@ -148,7 +162,10 @@ impl JobManager {
              tool_router,
              sheet_manager,
              callback_manager,
-             job_queue_manager| {
+             job_queue_manager,
+             my_agent_payments_manager,
+             ext_agent_payments_manager,
+             llm_stopper| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -162,6 +179,9 @@ impl JobManager {
                     sheet_manager,
                     callback_manager,
                     job_queue_manager,
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 ))
             },
         )
@@ -183,6 +203,8 @@ impl JobManager {
             tool_router,
             sheet_manager,
             callback_manager,
+            my_agent_payments_manager,
+            ext_agent_payments_manager,
         }
     }
 
@@ -197,9 +219,12 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -209,10 +234,13 @@ impl JobManager {
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-                Option<Arc<Mutex<ToolRouter>>>,
+                Option<Arc<ToolRouter>>,
                 Arc<Mutex<SheetManager>>,
                 Arc<Mutex<JobCallbackManager>>,
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+                Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+                Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+                Arc<LLMStopper>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -224,7 +252,7 @@ impl JobManager {
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
-
+        let llm_stopper = Arc::clone(&llm_stopper);
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
 
@@ -286,6 +314,9 @@ impl JobManager {
                     let tool_router = tool_router.clone();
                     let sheet_manager = sheet_manager.clone();
                     let callback_manager = callback_manager.clone();
+                    let my_agent_payments_manager = my_agent_payments_manager.clone();
+                    let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                    let llm_stopper = Arc::clone(&llm_stopper);
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -314,6 +345,9 @@ impl JobManager {
                                         sheet_manager,
                                         callback_manager,
                                         job_queue_manager.clone(),
+                                        my_agent_payments_manager,
+                                        ext_agent_payments_manager,
+                                        llm_stopper,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
@@ -342,13 +376,9 @@ impl JobManager {
                     handles.push(handle);
                 }
 
-                let handles_to_join = std::mem::take(&mut handles);
-                futures::future::join_all(handles_to_join).await;
-                handles.clear();
-
-                // If job_ids_to_process was equal to max_parallel_jobs, loop again immediately
-                // without waiting for a new job from receiver.recv().await
-                if continue_immediately {
+                // Check if we can process more jobs
+                let available_permits = semaphore.available_permits();
+                if available_permits > 0 {
                     continue;
                 }
 
@@ -380,8 +410,18 @@ impl JobManager {
                                     let agent_id = agent_name
                                         .get_agent_name_string()
                                         .ok_or(LLMProviderError::LLMProviderNotFound)?;
-                                    let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| LLMProviderError::ContentParseFailed)?;
+                                    let mut job_creation: JobCreationInfo =
+                                        serde_json::from_str(&data.message_raw_content)
+                                            .map_err(|_| LLMProviderError::ContentParseFailed)?;
+
+                                    // Delete later
+                                    // Treat empty string in associated_ui as None
+                                    if let Some(AssociatedUI::Sheet(ref sheet)) = job_creation.associated_ui {
+                                        if sheet.is_empty() {
+                                            job_creation.associated_ui = None;
+                                        }
+                                    }
+
                                     self.process_job_creation(job_creation, &profile, &agent_id).await
                                 }
                                 MessageSchemaType::JobMessageSchema => {
@@ -438,6 +478,7 @@ impl JobManager {
                 job_creation.scope,
                 is_hidden,
                 job_creation.associated_ui,
+                None,
             ) {
                 Ok(_) => (),
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),

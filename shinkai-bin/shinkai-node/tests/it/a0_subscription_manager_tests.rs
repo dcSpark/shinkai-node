@@ -37,7 +37,7 @@ use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_suc
 #[test]
 fn subscription_manager_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     setup();
     let rt = Runtime::new().unwrap();
 
@@ -335,7 +335,7 @@ fn subscription_manager_test() {
                     node1_profile_name,
                     "/shared test folder",
                     file_path,
-                    0,
+                    1,
                 )
                 .await;
             }
@@ -393,7 +393,7 @@ fn subscription_manager_test() {
                     node1_profile_name,
                     "/shared test folder/crypto",
                     file_path,
-                    0,
+                    2,
                 )
                 .await;
 
@@ -799,6 +799,7 @@ fn subscription_manager_test() {
                         .await
                         .unwrap();
                     let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                    eprintln!("Actual structure:");
                     print_tree_simple(actual_resp_json.clone());
 
                     let expected_structure = serde_json::json!({
@@ -837,6 +838,9 @@ fn subscription_manager_test() {
                         ],
                         "child_items": []
                     });
+
+                    eprintln!("Expected structure:");
+                    print_tree_simple(expected_structure.clone());
 
                     structure_matched = check_structure(&actual_resp_json, &expected_structure);
                     if structure_matched {
@@ -894,7 +898,7 @@ fn subscription_manager_test() {
                     node1_profile_name,
                     "/shared test folder/zeko/paper",
                     file_path,
-                    0,
+                    3,
                 )
                 .await;
             }
@@ -1004,6 +1008,8 @@ fn subscription_manager_test() {
                         ],
                         "child_items": []
                     });
+                    eprintln!("Expected structure:");
+                    print_tree_simple(expected_structure.clone());
 
                     structure_matched = check_structure(&actual_resp_json, &expected_structure);
                     if structure_matched {

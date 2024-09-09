@@ -1,11 +1,13 @@
 use crate::network::node_commands::NodeCommand;
 
+use super::api_v2_handlers_ext_agent_offers::ext_agent_offers_routes;
 use super::api_v2_handlers_general::general_routes;
 use super::api_v2_handlers_jobs::job_routes;
 #[cfg(feature = "http-manager")]
 use super::api_v2_handlers_subscriptions::subscriptions_routes;
 #[cfg(feature = "http-manager")]
 use super::api_v2_handlers_vecfs::vecfs_routes;
+use super::api_v2_handlers_wallets::wallet_routes;
 use super::api_v2_handlers_workflows::workflows_routes;
 use async_channel::Sender;
 use serde::Serialize;
@@ -24,8 +26,14 @@ pub fn v2_routes(
     #[cfg(feature = "http-manager")]
     let subscriptions_routes = subscriptions_routes(node_commands_sender.clone());
     let workflows_routes = workflows_routes(node_commands_sender.clone());
+    let ext_agent_offers = ext_agent_offers_routes(node_commands_sender.clone());
+    let wallet_routes = wallet_routes(node_commands_sender.clone());
 
-    let routes = general_routes.or(job_routes).or(workflows_routes);
+    let routes = general_routes
+        .or(job_routes)
+        .or(workflows_routes)
+        .or(ext_agent_offers)
+        .or(wallet_routes);
 
     #[cfg(feature = "http-manager")]
     {

@@ -4,10 +4,13 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::managers::sheet_manager::{self, SheetManager};
+use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -15,7 +18,7 @@ use ed25519_dalek::SigningKey;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use shinkai_message_primitives::schemas::sheet::{self, WorkflowSheetJobData};
+use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -37,25 +40,12 @@ use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use tracing::instrument;
-
 use super::chains::dsl_chain::dsl_inference_chain::DslChain;
 use super::chains::inference_chain_trait::{InferenceChainContext, InferenceChainResult};
 use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(
-        identity_secret_key,
-        generator,
-        unstructured_api,
-        vector_fs,
-        db,
-        ws_manager,
-        tool_router,
-        sheet_manager,
-        _callback_manager
-    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
@@ -66,10 +56,13 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -112,7 +105,6 @@ impl JobManager {
         // Note: remove later on. This code is for the meantime only while we add embeddings to tools so they can get added at the first Shinkai start
         {
             if let Some(tool_router) = tool_router.clone() {
-                let tool_router = tool_router.lock().await;
                 let _ = tool_router.initialization(Box::new(generator.clone())).await;
             }
         }
@@ -147,6 +139,9 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await;
 
@@ -173,6 +168,9 @@ impl JobManager {
             Some(sheet_manager.clone()),
             tool_router.clone(),
             job_queue_manager.clone(),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await?;
         if sheet_job_found {
@@ -190,6 +188,7 @@ impl JobManager {
             clone_signature_secret_key(&identity_secret_key),
             unstructured_api.clone(),
             ws_manager.clone(),
+            llm_stopper.clone(),
         )
         .await;
         let jobkai_found = match jobkai_found_result {
@@ -215,6 +214,9 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await;
 
@@ -266,15 +268,6 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(
-        identity_secret_key,
-        db,
-        vector_fs,
-        generator,
-        ws_manager,
-        tool_router,
-        sheet_manager
-    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
@@ -286,10 +279,12 @@ impl JobManager {
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
-        let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -319,6 +314,9 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -375,14 +373,16 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         let workflow = if let Some(code) = &job_message.workflow_code {
             parse_workflow(code)?
         } else if let Some(name) = &job_message.workflow_name {
             if let Some(tool_router) = tool_router.clone() {
-                let tool_router = tool_router.lock().await;
                 if let Some(workflow) = tool_router
                     .get_workflow(name)
                     .await
@@ -428,6 +428,9 @@ impl JobManager {
             tool_router.clone(),
             sheet_manager.clone(),
             workflow,
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await?;
 
@@ -480,9 +483,12 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         workflow: Workflow,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
@@ -504,6 +510,9 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),
+            my_agent_payments_manager.clone(),
+            ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         );
 
         // Process files
@@ -524,7 +533,7 @@ impl JobManager {
         let tools = {
             // get tool_router and then call get_tools_by_names
             if let Some(tool_router) = tool_router.clone() {
-                let tool_router = tool_router.lock().await;
+                
                 tool_router.get_tools_by_names(js_functions_used).await?
             } else {
                 return Err(LLMProviderError::ToolRouterNotFound);
@@ -563,8 +572,11 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         if let Some(sheet_job_data) = &job_message.sheet_job_data {
             let sheet_job_data: WorkflowSheetJobData = serde_json::from_str(sheet_job_data)
@@ -587,7 +599,6 @@ impl JobManager {
                 Some(workflow)
             } else if let Some(workflow_name) = sheet_job_data.workflow_name {
                 if let Some(tool_router) = tool_router.clone() {
-                    let tool_router = tool_router.lock().await;
                     tool_router
                         .get_workflow(&workflow_name)
                         .await
@@ -614,6 +625,9 @@ impl JobManager {
                     tool_router.clone(),
                     Some(sheet_manager.clone()),
                     workflow,
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 )
                 .await?
             } else {
@@ -632,6 +646,9 @@ impl JobManager {
                     ws_manager.clone(),
                     tool_router.clone(),
                     Some(sheet_manager.clone()),
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 )
                 .await?
             };
@@ -686,6 +703,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         _unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -747,6 +765,8 @@ impl JobManager {
                     let file_extension = filename.split('.').last().unwrap_or("jpg");
 
                     // Call a new function
+                    let job_config = full_job.config();
+
                     JobManager::handle_image_file(
                         db.clone(),
                         llm_provider_found.clone(),
@@ -757,6 +777,8 @@ impl JobManager {
                         clone_signature_secret_key(&identity_secret_key),
                         file_extension.to_string(),
                         ws_manager.clone(),
+                        job_config.cloned(),
+                        llm_stopper.clone(),
                     )
                     .await?;
                     return Ok(true);

@@ -3,9 +3,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
-    init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
-};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -18,6 +16,7 @@ use shinkai_message_primitives::{
 use shinkai_node::db::{ShinkaiDB, Topic};
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
+use shinkai_node::llm_provider::llm_stopper::LLMStopper;
 use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
@@ -104,7 +103,6 @@ async fn setup_default_vector_fs() -> VectorFS {
 
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    init_default_tracing();
     utils::db_handlers::setup();
 
     let num_threads = 8;
@@ -166,6 +164,7 @@ async fn test_process_job_queue_concurrency() {
     let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
     let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
     let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+    let llm_stopper = Arc::new(LLMStopper::new());
 
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
@@ -181,6 +180,9 @@ async fn test_process_job_queue_concurrency() {
         None,
         sheet_manager.clone(),
         callback_manager.clone(),
+        None,
+        None,
+        llm_stopper.clone(),
         move |job,
               _db,
               _vector_fs,
@@ -192,7 +194,10 @@ async fn test_process_job_queue_concurrency() {
               _tool_router,
               _sheet_manager,
               _callback_manager,
-              _job_queue_manager| {
+              _job_queue_manager,
+              _my_agent_payments_manager,
+              _ext_agent_payments_manager,
+              _llm_stopper| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -255,7 +260,6 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequential_process_for_same_job_id() {
-    init_default_tracing();
     super::utils::db_handlers::setup();
 
     let num_threads = 8;
@@ -317,6 +321,7 @@ async fn test_sequential_process_for_same_job_id() {
     let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
     let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
     let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
+    let llm_stopper = Arc::new(LLMStopper::new());
 
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
@@ -332,6 +337,9 @@ async fn test_sequential_process_for_same_job_id() {
         None,
         sheet_manager.clone(),
         callback_manager.clone(),
+        None,
+        None,
+        llm_stopper.clone(),
         move |job,
               _db,
               _vector_fs,
@@ -343,7 +351,10 @@ async fn test_sequential_process_for_same_job_id() {
               _tool_router,
               _sheet_manager,
               _callback_manager,
-              _job_queue_manager| {
+              _job_queue_manager,
+              _my_agent_payments_manager,
+              _ext_agent_payments_manager,
+              _llm_stopper| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),

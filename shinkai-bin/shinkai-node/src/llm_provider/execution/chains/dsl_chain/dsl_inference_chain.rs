@@ -1,9 +1,8 @@
-use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
+use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, sync::Arc, time::Instant};
 
 use crate::{
     llm_provider::{
-        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike,
-        providers::shared::openai::FunctionCall,
+        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike, llm_stopper::LLMStopper, providers::shared::openai::FunctionCall
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
@@ -222,29 +221,11 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("search_and_replace", |context, args| {
             generic_functions::search_and_replace(&*context, args)
         });
-        self.add_generic_function("download_webpage", |context, args| {
-            generic_functions::download_webpage(&*context, args)
-        });
-        self.add_generic_function("html_to_markdown", |context, args| {
-            generic_functions::html_to_markdown(&*context, args)
-        });
-        self.add_generic_function("fill_variable_in_md_template", |context, args| {
-            generic_functions::fill_variable_in_md_template(&*context, args)
-        });
-        self.add_generic_function("array_to_markdown_template", |context, args| {
-            generic_functions::array_to_markdown_template(&*context, args)
-        });
-        // self.add_generic_function("print_arg", |context, args| {
-        //     generic_functions::print_arg(&*context, args)
-        // });
         self.add_generic_function("count_files_from_input", |context, args| {
             generic_functions::count_files_from_input(&*context, args)
         });
         self.add_generic_function("retrieve_file_from_input", |context, args| {
             generic_functions::retrieve_file_from_input(&*context, args)
-        });
-        self.add_generic_function("extract_and_map_csv_column", |context, args| {
-            generic_functions::extract_and_map_csv_column(&*context, args)
         });
         self.add_generic_function("process_embeddings_in_job_scope", |context, args| {
             generic_functions::process_embeddings_in_job_scope(&*context, args)
@@ -302,6 +283,8 @@ impl AsyncFunction for InferenceFunction {
             } else {
                 None
             },
+            None, // this is the config
+            self.context.llm_stopper().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -401,6 +384,8 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             } else {
                 None
             },
+            None, // this is the config
+            self.context.llm_stopper().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -578,6 +563,12 @@ impl AsyncFunction for ShinkaiToolFunction {
                 // TODO: we should allow for a workflow to call another workflow
                 return Err(WorkflowError::ExecutionError(
                     "Workflows are not supported in this context".to_string(),
+                ));
+            }
+            ShinkaiTool::Network(_, _) => {
+                // TODO: we should allow for a workflow to call another workflow
+                return Err(WorkflowError::ExecutionError(
+                    "Network Tools are not supported in this context".to_string(),
                 ));
             }
         };

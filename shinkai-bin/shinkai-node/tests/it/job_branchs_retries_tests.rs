@@ -56,7 +56,7 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
 #[test]
 fn job_branchs_retries_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    init_default_tracing();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -398,7 +398,8 @@ fn job_branchs_retries_tests() {
                         for (index, content) in flattened_messages.iter().enumerate() {
                             eprintln!("Message position: {}, content: {}", index, content);
                         }
-                        break;
+                        node1_abort_handler.abort();
+                        return;
                     }
 
                     if start.elapsed() > Duration::from_secs(10) {
@@ -407,7 +408,6 @@ fn job_branchs_retries_tests() {
                     tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping
                 }
             }
-            node1_abort_handler.abort();
         })
     });
 }

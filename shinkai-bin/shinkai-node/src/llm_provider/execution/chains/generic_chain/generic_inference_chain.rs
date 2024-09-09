@@ -7,7 +7,10 @@ use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
+use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -25,7 +28,6 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use tracing::instrument;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -72,6 +74,9 @@ impl InferenceChain for GenericInferenceChain {
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
             self.context.sheet_manager.clone(),
+            self.context.my_agent_payments_manager.clone(),
+            self.context.ext_agent_payments_manager.clone(),
+            self.context.llm_stopper.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -91,7 +96,6 @@ impl GenericInferenceChain {
     }
 
     #[async_recursion]
-    #[instrument(skip(generator, vector_fs, db, ws_manager_trait, tool_router, sheet_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -105,8 +109,11 @@ impl GenericInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        tool_router: Option<Arc<Mutex<ToolRouter>>>,
+        tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -152,11 +159,23 @@ impl GenericInferenceChain {
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
+        let job_config = full_job.config();
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
-            if let Some(tool_router) = &tool_router {
-                let tool_router = tool_router.lock().await;
+        let use_tools = match &llm_provider.model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model_type) => {
+                let is_supported_model =
+                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            _ => false,
+        };
 
+        if use_tools {
+            if let Some(tool_router) = &tool_router {
                 // TODO: enable back the default tools (must tools)
                 // // Get default tools
                 // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
@@ -165,7 +184,7 @@ impl GenericInferenceChain {
 
                 // Search in JS Tools
                 let results = tool_router
-                    .vector_search_enabled_tools(&user_message.clone(), 3)
+                    .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
                     .await
                     .unwrap();
                 for result in results {
@@ -177,8 +196,11 @@ impl GenericInferenceChain {
         }
 
         // 3) Generate Prompt
+
+        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            None, // TODO: connect later on
+            custom_prompt,
             None, // TODO: connect later on
             user_message.clone(),
             ret_nodes.clone(),
@@ -208,6 +230,8 @@ impl GenericInferenceChain {
                 filled_prompt.clone(),
                 inbox_name,
                 ws_manager_trait.clone(),
+                job_config.cloned(),
+                llm_stopper.clone(),
             )
             .await;
 
@@ -238,6 +262,9 @@ impl GenericInferenceChain {
                     ws_manager_trait.clone(),
                     tool_router.clone(),
                     sheet_manager.clone(),
+                    my_agent_payments_manager.clone(),
+                    ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 );
 
                 // 6) Call workflow or tooling
@@ -248,12 +275,12 @@ impl GenericInferenceChain {
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
 
+                // Note: here we can add logic to handle the case that we have network tools
+
                 // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .lock()
-                    .await
                     .call_function(function_call, &context, shinkai_tool.unwrap())
                     .await
                 {

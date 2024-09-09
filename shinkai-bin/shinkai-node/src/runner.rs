@@ -59,18 +59,6 @@ pub async fn initialize_node() -> Result<
     (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, Weak<Mutex<Node>>),
     Box<dyn std::error::Error + Send + Sync>,
 > {
-    // Check if TELEMETRY_ENDPOINT is defined
-    if let Ok(_telemetry_endpoint) = std::env::var("TELEMETRY_ENDPOINT") {
-        // If TELEMETRY_ENDPOINT is defined, initialize telemetry tracing
-        #[cfg(feature = "telemetry")]
-        {
-            init_telemetry_tracing(&_telemetry_endpoint);
-        }
-    } else {
-        // If TELEMETRY_ENDPOINT is not defined, initialize default tracing
-        init_default_tracing();
-    }
-
     let main_db: &str = "main_db";
     let vector_fs_db: &str = "vector_fs_db";
     let secrets_file: &str = ".secret";

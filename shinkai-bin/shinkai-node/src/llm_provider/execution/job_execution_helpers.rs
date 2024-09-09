@@ -3,9 +3,10 @@ use super::prompts::prompts::Prompt;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::job::Job;
+use crate::llm_provider::job::{Job, JobConfig};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_provider::LLMProvider;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::network::ws_manager::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
@@ -22,13 +23,15 @@ impl JobManager {
         filled_prompt: Prompt,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let llm_provider_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
 
         let task_response = tokio::spawn(async move {
             let llm_provider = LLMProvider::from_serialized_llm_provider(llm_provider_cloned);
-            llm_provider.inference(prompt_cloned, inbox_name, ws_manager_trait).await
+            llm_provider.inference(prompt_cloned, inbox_name, ws_manager_trait, config, llm_stopper).await
         })
         .await;
 

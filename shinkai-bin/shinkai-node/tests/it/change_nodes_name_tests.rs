@@ -24,7 +24,7 @@ fn setup() {
 
 #[test]
 fn change_nodes_name_test() {
-    init_default_tracing();
+    
     setup();
 
     let rt = Runtime::new().unwrap();

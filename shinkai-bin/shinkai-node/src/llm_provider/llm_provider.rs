@@ -5,6 +5,8 @@ use crate::network::ws_manager::WSUpdateHandler;
 use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::Prompt;
+use super::job::JobConfig;
+use super::llm_stopper::LLMStopper;
 use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
@@ -84,6 +86,8 @@ impl LLMProvider {
         prompt: Prompt,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
             LLMProviderInterface::OpenAI(openai) => {
@@ -96,6 +100,8 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
+                        config,
+                        llm_stopper,
                     )
                     .await
             }
@@ -109,6 +115,8 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
+                        config,
+                        llm_stopper,
                     )
                     .await
             }
@@ -122,6 +130,8 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
+                        config,
+                        llm_stopper,
                     )
                     .await
             }
@@ -134,6 +144,8 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
+                    config,
+                    llm_stopper,
                 )
                 .await
             }
@@ -147,6 +159,8 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
+                        config,
+                        llm_stopper,
                     )
                     .await
             }
@@ -159,6 +173,8 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
+                    config,
+                    llm_stopper,
                 )
                 .await
             }
@@ -172,6 +188,8 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
+                        config,
+                        llm_stopper,
                     )
                     .await
             }

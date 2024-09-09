@@ -29,6 +29,7 @@ pub trait IdentityManagerTrait {
     fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity>;
     async fn search_identity(&self, full_identity_name: &str) -> Option<Identity>;
     fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send>;
+    async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Result<StandardIdentity, String>;
 }
 
 impl Clone for Box<dyn IdentityManagerTrait + Send> {
@@ -86,7 +87,11 @@ impl IdentityManager {
     pub fn get_main_identity(&self) -> Option<&Identity> {
         self.local_identities.iter().find(|identity| match identity {
             Identity::Standard(standard_identity) => {
-                standard_identity.full_identity_name.get_profile_name_string().unwrap_or_default() == "main"
+                standard_identity
+                    .full_identity_name
+                    .get_profile_name_string()
+                    .unwrap_or_default()
+                    == "main"
             }
             _ => false,
         })
@@ -273,8 +278,68 @@ impl IdentityManager {
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
         db_arc.get_all_llm_providers()
     }
+}
 
-    pub async fn external_profile_to_global_identity(
+#[async_trait]
+impl IdentityManagerTrait for IdentityManager {
+    fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
+        self.local_identities.iter().find(|identity| {
+            match identity {
+                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
+                Identity::Device(device) => device.full_identity_name == full_profile_name,
+                Identity::LLMProvider(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+            }
+        })
+    }
+
+    async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
+        let node_name = identity_name.extract_node();
+
+        // If the node name matches local node, search in self.identities
+        if self.local_node_name == node_name {
+            self.search_local_identity(full_identity_name).await
+        } else {
+            // If not, query the identity network manager
+            let external_im = self.external_identity_manager.lock().await;
+            match external_im
+                .external_identity_to_profile_data(full_identity_name.to_string())
+                .await
+            {
+                Ok(identity_network_manager) => match identity_network_manager.first_address().await {
+                    Ok(first_address) => {
+                        let encryption_key = match identity_network_manager.encryption_public_key() {
+                            Ok(key) => key,
+                            Err(_) => return None,
+                        };
+                        let signature_key = match identity_network_manager.signature_verifying_key() {
+                            Ok(key) => key,
+                            Err(_) => return None,
+                        };
+
+                        Some(Identity::Standard(StandardIdentity::new(
+                            node_name,
+                            Some(first_address),
+                            encryption_key,
+                            signature_key,
+                            None,
+                            None,
+                            StandardIdentityType::Global,
+                            IdentityPermissions::None,
+                        )))
+                    }
+                    Err(_) => None,
+                },
+                Err(_) => None, // return None if the identity is not found in the network manager
+            }
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
+        Box::new(self.clone())
+    }
+
+    async fn external_profile_to_global_identity(
         &self,
         full_profile_name: &str,
     ) -> Result<StandardIdentity, String> {
@@ -338,66 +403,6 @@ impl IdentityManager {
                 full_profile_name
             )),
         }
-    }
-}
-
-#[async_trait]
-impl IdentityManagerTrait for IdentityManager {
-    fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
-        self.local_identities.iter().find(|identity| {
-            match identity {
-                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
-                Identity::Device(device) => device.full_identity_name == full_profile_name,
-                Identity::LLMProvider(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
-            }
-        })
-    }
-
-    async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
-        let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
-        let node_name = identity_name.extract_node();
-
-        // If the node name matches local node, search in self.identities
-        if self.local_node_name == node_name {
-            self.search_local_identity(full_identity_name).await
-        } else {
-            // If not, query the identity network manager
-            let external_im = self.external_identity_manager.lock().await;
-            match external_im
-                .external_identity_to_profile_data(full_identity_name.to_string())
-                .await
-            {
-                Ok(identity_network_manager) => match identity_network_manager.first_address().await {
-                    Ok(first_address) => {
-                        let encryption_key = match identity_network_manager.encryption_public_key() {
-                            Ok(key) => key,
-                            Err(_) => return None,
-                        };
-                        let signature_key = match identity_network_manager.signature_verifying_key() {
-                            Ok(key) => key,
-                            Err(_) => return None,
-                        };
-
-                        Some(Identity::Standard(StandardIdentity::new(
-                            node_name,
-                            Some(first_address),
-                            encryption_key,
-                            signature_key,
-                            None,
-                            None,
-                            StandardIdentityType::Global,
-                            IdentityPermissions::None,
-                        )))
-                    }
-                    Err(_) => None,
-                },
-                Err(_) => None, // return None if the identity is not found in the network manager
-            }
-        }
-    }
-
-    fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
-        Box::new(self.clone())
     }
 }
 

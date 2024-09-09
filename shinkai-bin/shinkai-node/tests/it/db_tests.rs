@@ -51,7 +51,7 @@ fn generate_message_with_text(
 
 #[test]
 fn test_insert_message_to_all() {
-    init_default_tracing();
+    
     setup();
 
     // Initialization same as in db_inbox test
@@ -138,7 +138,7 @@ fn test_insert_message_to_all() {
 
 #[test]
 fn test_schedule_and_get_due_scheduled_messages() {
-    init_default_tracing();
+    
     setup();
 
     // Initialization same as in db_inbox test
