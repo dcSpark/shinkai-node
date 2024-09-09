@@ -1115,7 +1115,8 @@ impl Node {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // if IS_TESTING then don't scan for ollama models
-        if env::var("IS_TESTING").unwrap_or("false".to_string()) == "true" {
+        let is_testing = env::var("IS_TESTING").unwrap_or_default();
+        if is_testing == "true" || is_testing == "1" {
             return Ok(());
         }
 
