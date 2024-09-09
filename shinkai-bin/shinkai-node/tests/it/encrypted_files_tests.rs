@@ -29,6 +29,7 @@ use mockito::Server;
 #[test]
 fn sandwich_messages_with_files_test() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
+    unsafe { std::env::set_var("ONLY_TESTING_JS_TOOLS", "true") };
     
     run_test_one_node_network(|env| {
         Box::pin(async move {
