@@ -2,6 +2,7 @@ use super::error::LLMProviderError;
 use super::execution::prompts::prompts::JobPromptGenerator;
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
+use super::llm_stopper::LLMStopper;
 use regex::Regex;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -12,6 +13,7 @@ use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileM
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ParsingHelper {}
 
@@ -26,9 +28,10 @@ impl ParsingHelper {
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
 
         let mut extracted_answer: Option<String> = None;
+        let llm_stopper = Arc::new(LLMStopper::new());
         for _ in 0..5 {
             let response_json =
-                match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), None, None, None).await {
+                match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), None, None, None, llm_stopper.clone()).await {
                     Ok(json) => json,
                     Err(_e) => {
                         continue; // Continue to the next iteration on error

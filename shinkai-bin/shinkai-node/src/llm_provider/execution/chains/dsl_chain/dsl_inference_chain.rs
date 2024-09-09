@@ -1,9 +1,8 @@
-use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
+use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, sync::Arc, time::Instant};
 
 use crate::{
     llm_provider::{
-        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike,
-        providers::shared::openai::FunctionCall,
+        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike, llm_stopper::LLMStopper, providers::shared::openai::FunctionCall
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
@@ -285,6 +284,7 @@ impl AsyncFunction for InferenceFunction {
                 None
             },
             None, // this is the config
+            self.context.llm_stopper().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -385,6 +385,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
                 None
             },
             None, // this is the config
+            self.context.llm_stopper().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;

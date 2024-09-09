@@ -906,4 +906,9 @@ pub enum NodeCommand {
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,
     },
+    V2ApiStopLLM {
+        bearer: String,
+        inbox_name: String,
+        res: Sender<Result<(), APIError>>,
+    },
 }

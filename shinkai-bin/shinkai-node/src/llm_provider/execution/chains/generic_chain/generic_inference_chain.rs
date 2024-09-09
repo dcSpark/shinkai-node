@@ -7,6 +7,7 @@ use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -75,6 +76,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
+            self.context.llm_stopper.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -111,6 +113,7 @@ impl GenericInferenceChain {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -228,6 +231,7 @@ impl GenericInferenceChain {
                 inbox_name,
                 ws_manager_trait.clone(),
                 job_config.cloned(),
+                llm_stopper.clone(),
             )
             .await;
 
@@ -260,6 +264,7 @@ impl GenericInferenceChain {
                     sheet_manager.clone(),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 );
 
                 // 6) Call workflow or tooling

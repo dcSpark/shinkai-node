@@ -1,5 +1,6 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
+use super::llm_stopper::LLMStopper;
 use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::job::JobLike;
@@ -95,6 +96,7 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -148,6 +150,7 @@ impl JobManager {
             callback_manager.clone(),
             Some(my_agent_payments_manager.clone()),
             Some(ext_agent_payments_manager.clone()),
+            llm_stopper.clone(),
             |job,
              db,
              vector_fs,
@@ -161,7 +164,8 @@ impl JobManager {
              callback_manager,
              job_queue_manager,
              my_agent_payments_manager,
-             ext_agent_payments_manager| {
+             ext_agent_payments_manager,
+             llm_stopper| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -177,6 +181,7 @@ impl JobManager {
                     job_queue_manager,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 ))
             },
         )
@@ -219,6 +224,7 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -234,6 +240,7 @@ impl JobManager {
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
                 Option<Arc<Mutex<MyAgentOfferingsManager>>>,
                 Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+                Arc<LLMStopper>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -245,7 +252,7 @@ impl JobManager {
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
-
+        let llm_stopper = Arc::clone(&llm_stopper);
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
 
@@ -309,6 +316,7 @@ impl JobManager {
                     let callback_manager = callback_manager.clone();
                     let my_agent_payments_manager = my_agent_payments_manager.clone();
                     let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                    let llm_stopper = Arc::clone(&llm_stopper);
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -339,6 +347,7 @@ impl JobManager {
                                         job_queue_manager.clone(),
                                         my_agent_payments_manager,
                                         ext_agent_payments_manager,
+                                        llm_stopper,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {

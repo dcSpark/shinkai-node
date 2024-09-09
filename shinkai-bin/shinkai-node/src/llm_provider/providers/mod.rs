@@ -4,11 +4,10 @@ use crate::network::ws_manager::WSUpdateHandler;
 
 use super::{
     error::LLMProviderError,
-    execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt}, job::JobConfig,
+    execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt}, job::JobConfig, llm_stopper::LLMStopper,
 };
 use async_trait::async_trait;
 use reqwest::Client;
-use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::LLMProviderInterface};
 use tokio::sync::Mutex;
 
@@ -36,5 +35,6 @@ pub trait LLMService {
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError>;
 }

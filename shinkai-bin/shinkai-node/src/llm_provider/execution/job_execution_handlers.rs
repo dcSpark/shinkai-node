@@ -20,6 +20,7 @@ use crate::{
         error::LLMProviderError,
         job::{Job, JobConfig},
         job_manager::JobManager,
+        llm_stopper::LLMStopper,
     },
     network::ws_manager::WSUpdateHandler,
 };
@@ -38,6 +39,7 @@ impl JobManager {
         file_extension: String,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
@@ -67,6 +69,7 @@ impl JobManager {
             3,
             ws_manager.clone(),
             job_config,
+            llm_stopper.clone(),
         )
         .await?;
 

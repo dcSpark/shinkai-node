@@ -6,6 +6,7 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -39,6 +40,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         // Initializations
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -63,6 +65,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         );
 
         // Check for associated_ui and choose the appropriate chain

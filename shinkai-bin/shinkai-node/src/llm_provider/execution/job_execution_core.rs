@@ -4,6 +4,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
@@ -61,6 +62,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -139,6 +141,7 @@ impl JobManager {
             Some(sheet_manager.clone()),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await;
 
@@ -167,6 +170,7 @@ impl JobManager {
             job_queue_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await?;
         if sheet_job_found {
@@ -184,6 +188,7 @@ impl JobManager {
             clone_signature_secret_key(&identity_secret_key),
             unstructured_api.clone(),
             ws_manager.clone(),
+            llm_stopper.clone(),
         )
         .await;
         let jobkai_found = match jobkai_found_result {
@@ -211,6 +216,7 @@ impl JobManager {
             Some(sheet_manager.clone()),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await;
 
@@ -277,6 +283,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let job_id = full_job.job_id().to_string();
         shinkai_log(
@@ -309,6 +316,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -369,6 +377,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         let workflow = if let Some(code) = &job_message.workflow_code {
             parse_workflow(code)?
@@ -421,6 +430,7 @@ impl JobManager {
             workflow,
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         )
         .await?;
 
@@ -478,6 +488,7 @@ impl JobManager {
         workflow: Workflow,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
@@ -501,6 +512,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            llm_stopper.clone(),
         );
 
         // Process files
@@ -564,6 +576,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         if let Some(sheet_job_data) = &job_message.sheet_job_data {
             let sheet_job_data: WorkflowSheetJobData = serde_json::from_str(sheet_job_data)
@@ -614,6 +627,7 @@ impl JobManager {
                     workflow,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 )
                 .await?
             } else {
@@ -634,6 +648,7 @@ impl JobManager {
                     Some(sheet_manager.clone()),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    llm_stopper.clone(),
                 )
                 .await?
             };
@@ -688,6 +703,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         _unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -762,6 +778,7 @@ impl JobManager {
                         file_extension.to_string(),
                         ws_manager.clone(),
                         job_config.cloned(),
+                        llm_stopper.clone(),
                     )
                     .await?;
                     return Ok(true);

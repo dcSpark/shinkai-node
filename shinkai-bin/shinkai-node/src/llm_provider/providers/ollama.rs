@@ -1,5 +1,6 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::job::JobConfig;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama::{
     ollama_conversation_prepare_messages, OllamaAPIStreamingResponse,
 };
@@ -49,6 +50,7 @@ impl LLMService for Ollama {
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -109,6 +111,19 @@ impl LLMService for Ollama {
             let mut response_text = String::new();
             let mut previous_json_chunk: String = String::new();
             while let Some(item) = stream.next().await {
+                // Check if we need to stop the LLM job
+                if let Some(ref inbox_name) = inbox_name {
+                    if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Info,
+                            "LLM job stopped by user request",
+                        );
+                        llm_stopper.reset(&inbox_name.to_string());
+                        return Ok(LLMInferenceResponse::new(response_text, json!({}), None));
+                    }
+                }
+
                 match item {
                     Ok(chunk) => {
                         let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
@@ -216,8 +231,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     }
 
     // Handle streaming option
-    let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref()))
-        .unwrap_or(true); // Default to true if not specified
+    let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref())).unwrap_or(true); // Default to true if not specified
     payload["stream"] = serde_json::json!(streaming);
 
     // Handle other model params

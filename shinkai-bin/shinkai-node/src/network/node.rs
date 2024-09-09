@@ -15,6 +15,7 @@ use crate::db::ShinkaiDB;
 use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
@@ -151,6 +152,8 @@ pub struct Node {
     pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
     /// Ext Agent Payments Manager
     pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+    // LLM Stopper
+    pub llm_stopper: Arc<LLMStopper>,
 }
 
 impl Node {
@@ -435,6 +438,8 @@ impl Node {
             }
         };
 
+        let llm_stopper = Arc::new(LLMStopper::new());
+
         Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -474,6 +479,7 @@ impl Node {
             wallet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
+            llm_stopper,
         }))
     }
 
@@ -497,6 +503,7 @@ impl Node {
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
+                self.llm_stopper.clone(),
             )
             .await,
         ));

@@ -57,7 +57,7 @@ use shinkai_message_primitives::{
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, model_type::EmbeddingModelType};
-use std::{convert::TryInto, sync::Arc, time::Instant};
+use std::{convert::TryInto, env, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -1114,6 +1114,11 @@ impl Node {
         node_name: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // if IS_TESTING then don't scan for ollama models
+        if env::var("IS_TESTING").unwrap_or("false".to_string()) == "true" {
+            return Ok(());
+        }
+
         // Scan Ollama models
         let ollama_models = match Self::internal_scan_ollama_models().await {
             Ok(models) => models,

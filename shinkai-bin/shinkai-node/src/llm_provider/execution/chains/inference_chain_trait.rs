@@ -1,5 +1,6 @@
 use crate::db::ShinkaiDB;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::managers::sheet_manager::SheetManager;
@@ -70,6 +71,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
+    fn llm_stopper(&self) -> Arc<LLMStopper>;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
 }
@@ -165,6 +167,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.ext_agent_payments_manager.clone()
     }
 
+    fn llm_stopper(&self) -> Arc<LLMStopper> {
+        self.llm_stopper.clone()
+    }
+
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         Box::new(self.clone())
     }
@@ -193,6 +199,7 @@ pub struct InferenceChainContext {
     pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+    pub llm_stopper: Arc<LLMStopper>,
 }
 
 impl InferenceChainContext {
@@ -214,6 +221,7 @@ impl InferenceChainContext {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         Self {
             db,
@@ -234,6 +242,7 @@ impl InferenceChainContext {
             sheet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
+            llm_stopper,
         }
     }
 
@@ -414,6 +423,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).ext_agent_payments_manager()
     }
 
+    fn llm_stopper(&self) -> Arc<LLMStopper> {
+        (**self).llm_stopper()
+    }
+
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         (**self).clone_box()
     }
@@ -433,6 +446,7 @@ pub struct MockInferenceChainContext {
     pub vector_fs: Option<Arc<VectorFS>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+    pub llm_stopper: Arc<LLMStopper>,
 }
 
 impl MockInferenceChainContext {
@@ -451,6 +465,7 @@ impl MockInferenceChainContext {
         vector_fs: Option<Arc<VectorFS>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         Self {
             user_message,
@@ -465,6 +480,7 @@ impl MockInferenceChainContext {
             vector_fs,
             my_agent_payments_manager,
             ext_agent_payments_manager,
+            llm_stopper,
         }
     }
 }
@@ -489,6 +505,7 @@ impl Default for MockInferenceChainContext {
             vector_fs: None,
             my_agent_payments_manager: None,
             ext_agent_payments_manager: None,
+            llm_stopper: Arc::new(LLMStopper::new()),
         }
     }
 }
@@ -578,6 +595,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         unimplemented!()
     }
 
+    fn llm_stopper(&self) -> Arc<LLMStopper> {
+        self.llm_stopper.clone()
+    }
+
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         Box::new(self.clone())
     }
@@ -598,6 +619,7 @@ impl Clone for MockInferenceChainContext {
             vector_fs: self.vector_fs.clone(),
             my_agent_payments_manager: self.my_agent_payments_manager.clone(),
             ext_agent_payments_manager: self.ext_agent_payments_manager.clone(),
+            llm_stopper: self.llm_stopper.clone(),
         }
     }
 }

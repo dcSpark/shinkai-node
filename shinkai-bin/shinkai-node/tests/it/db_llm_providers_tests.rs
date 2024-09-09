@@ -10,11 +10,13 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use shinkai_message_primitives::schemas::{
         llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     };
-    use shinkai_node::llm_provider::{execution::prompts::prompts::JobPromptGenerator, llm_provider::LLMProvider};
+    use shinkai_node::llm_provider::{execution::prompts::prompts::JobPromptGenerator, llm_provider::LLMProvider, llm_stopper::LLMStopper};
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
@@ -276,6 +278,7 @@ mod tests {
                 None,
                 None,
                 None,
+                Arc::new(LLMStopper::new()),
             )
             .await;
         match response {

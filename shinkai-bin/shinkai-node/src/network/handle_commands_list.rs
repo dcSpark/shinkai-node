@@ -2877,6 +2877,13 @@ impl Node {
                     let _ = Node::v2_api_update_custom_prompt(db_clone, lance_db_clone, bearer, prompt, res).await;
                 });
             }
+            NodeCommand::V2ApiStopLLM { bearer, inbox_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let stopper_clone = self.llm_stopper.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_stop_llm(db_clone, stopper_clone, bearer, inbox_name, res).await;
+                });
+            }
             _ => (),
         }
     }
