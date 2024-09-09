@@ -18,7 +18,6 @@ mod it {
     mod job_concurrency_in_seq_tests;
     mod job_image_analysis_tests;
     mod job_manager_concurrency_tests;
-    mod llm_provider_integration_tests;
     mod model_capabilities_manager_tests;
     mod node_integration_tests;
     mod node_retrying_tests;
