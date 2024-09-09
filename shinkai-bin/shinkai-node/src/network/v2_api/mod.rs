@@ -7,7 +7,9 @@ pub mod api_v2_commands_vecfs;
 pub mod api_v2_commands_workflows;
 pub mod api_v2_handlers_general;
 pub mod api_v2_handlers_jobs;
+#[cfg(feature = "http-manager")]
 pub mod api_v2_handlers_subscriptions;
+#[cfg(feature = "http-manager")]
 pub mod api_v2_handlers_vecfs;
 pub mod api_v2_handlers_workflows;
 pub mod api_v2_router;

@@ -1,8 +1,13 @@
 use std::path::Path;
 
+#[cfg(feature = "http-manager")]
+use super::vecfs_test_utils::retrieve_file_info;
 use super::vecfs_test_utils::{
-    create_folder, generate_message_with_payload, make_folder_shareable, make_folder_shareable_http_free,
-    print_tree_simple, remove_folder, remove_item, retrieve_file_info, show_available_shared_items, upload_file,
+    create_folder, generate_message_with_payload, print_tree_simple, remove_folder, remove_item,
+};
+#[cfg(feature = "http-manager")]
+use super::vecfs_test_utils::{
+    make_folder_shareable, make_folder_shareable_http_free, show_available_shared_items, upload_file,
 };
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -80,6 +85,7 @@ impl ShinkaiTestingFramework {
         .await;
     }
 
+    #[cfg(feature = "http-manager")]
     /// Shows available shared items.
     pub async fn show_available_shared_items(&self) {
         show_available_shared_items(
@@ -95,6 +101,7 @@ impl ShinkaiTestingFramework {
         .await;
     }
 
+    #[cfg(feature = "http-manager")]
     /// Makes a folder shareable.
     #[allow(dead_code)]
     pub async fn make_folder_shareable(&self, folder_path: &str) {
@@ -111,6 +118,7 @@ impl ShinkaiTestingFramework {
         .await;
     }
 
+    #[cfg(feature = "http-manager")]
     /// Makes a folder shareable free (+http).
     pub async fn make_folder_shareable_free_whttp(&self, folder_path: &str, credentials: FileDestinationCredentials) {
         make_folder_shareable_http_free(
@@ -126,6 +134,7 @@ impl ShinkaiTestingFramework {
         .await;
     }
 
+    #[cfg(feature = "http-manager")]
     /// Uploads a file to a specified folder.
     pub async fn upload_file(&self, folder_name: &str, file_path: &str) {
         let file_path = Path::new(file_path);
@@ -159,6 +168,7 @@ impl ShinkaiTestingFramework {
         }
     }
 
+    #[cfg(feature = "http-manager")]
     /// Retrieves file information.
     #[allow(dead_code)]
     pub async fn retrieve_file_info(&self, path: &str, is_simple: bool) -> Value {
@@ -190,6 +200,7 @@ impl ShinkaiTestingFramework {
         .await;
     }
 
+    #[cfg(feature = "http-manager")]
     /// Retrieves the list of subscriptions.
     #[allow(dead_code)]
     pub async fn my_subscriptions(&self) -> Value {
@@ -227,6 +238,7 @@ impl ShinkaiTestingFramework {
             .expect("Failed to receive response")
     }
 
+    #[cfg(feature = "http-manager")]
     /// Retrieves simplified path information and optionally prints it based on `should_print`.
     pub async fn retrieve_and_print_path_simplified(&self, path: &str, should_print: bool) -> serde_json::Value {
         let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };

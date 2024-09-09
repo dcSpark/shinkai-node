@@ -47,6 +47,7 @@ pub async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Resu
     }
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_subscription_available_shared_items_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -62,6 +63,7 @@ pub async fn api_subscription_available_shared_items_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_subscription_available_shared_items_open_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: APIAvailableSharedItems,
@@ -77,6 +79,7 @@ pub async fn api_subscription_available_shared_items_open_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_subscription_create_shareable_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -92,6 +95,7 @@ pub async fn api_subscription_create_shareable_folder_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_subscription_update_shareable_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -107,6 +111,7 @@ pub async fn api_subscription_update_shareable_folder_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_subscription_unshare_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -167,6 +172,7 @@ pub async fn retrieve_vrpack_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_vec_fs_retrieve_path_simplified_json_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -182,6 +188,7 @@ pub async fn api_vec_fs_retrieve_path_simplified_json_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_vec_fs_retrieve_path_minimal_json_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -347,6 +354,7 @@ pub async fn api_vec_fs_retrieve_vector_resource_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_convert_files_and_save_to_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -402,6 +410,7 @@ pub async fn add_ollama_models_handler(
     }
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn subscribe_to_shared_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -685,6 +694,7 @@ pub async fn api_update_supported_embedding_models_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn unsubscribe_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -713,6 +723,7 @@ pub async fn change_nodes_name_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn api_my_subscriptions_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -728,6 +739,7 @@ pub async fn api_my_subscriptions_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn get_my_subscribers_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1133,6 +1145,7 @@ pub async fn create_registration_code_handler(
     }
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn get_subscription_links_handler(
     node_commands_sender: Sender<NodeCommand>,
     subscription_id: String,
@@ -1173,6 +1186,7 @@ pub async fn get_local_processing_preference_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn get_last_notifications_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1183,6 +1197,7 @@ pub async fn get_last_notifications_handler(
     .await
 }
 
+#[cfg(feature = "http-manager")]
 pub async fn get_notifications_before_timestamp_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

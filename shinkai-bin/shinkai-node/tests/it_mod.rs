@@ -1,7 +1,9 @@
 #![recursion_limit = "512"]
 
 mod it {
+    #[cfg(feature = "http-manager")]
     mod a0_subscription_manager_tests;
+    #[cfg(feature = "http-manager")]
     mod a1_http_subscription_tests;
     mod a2_sheet_workflow_tests;
     mod cron_job_tests;
@@ -35,11 +37,15 @@ mod it {
     #[cfg(feature = "http-manager")]
     mod subscription_http_upload_tests;
     mod utils;
+    #[cfg(feature = "http-manager")]
     mod vector_fs_api_tests;
+    #[cfg(feature = "http-manager")]
     mod vector_fs_tests;
     mod websocket_tests;
 
     mod change_nodes_name_tests;
+    #[cfg(feature = "http-manager")]
     mod tcp_proxy_tests;
+    #[cfg(feature = "http-manager")]
     mod z_shinkai_mirror_tests;
 }

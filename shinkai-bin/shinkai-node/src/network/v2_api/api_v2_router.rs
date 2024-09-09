@@ -1,9 +1,12 @@
 use crate::network::node_commands::NodeCommand;
 
+use super::api_v2_handlers_general::general_routes;
 use super::api_v2_handlers_jobs::job_routes;
+#[cfg(feature = "http-manager")]
+use super::api_v2_handlers_subscriptions::subscriptions_routes;
+#[cfg(feature = "http-manager")]
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_workflows::workflows_routes;
-use super::{api_v2_handlers_general::general_routes, api_v2_handlers_subscriptions::subscriptions_routes};
 use async_channel::Sender;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -15,16 +18,22 @@ pub fn v2_routes(
     node_name: String,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let general_routes = general_routes(node_commands_sender.clone(), node_name.clone());
+    #[cfg(feature = "http-manager")]
     let vecfs_routes = vecfs_routes(node_commands_sender.clone(), node_name.clone());
     let job_routes = job_routes(node_commands_sender.clone(), node_name.clone());
+    #[cfg(feature = "http-manager")]
     let subscriptions_routes = subscriptions_routes(node_commands_sender.clone());
     let workflows_routes = workflows_routes(node_commands_sender.clone());
 
-    general_routes
-        .or(vecfs_routes)
-        .or(job_routes)
-        .or(subscriptions_routes)
-        .or(workflows_routes)
+    let routes = general_routes.or(job_routes).or(workflows_routes);
+
+    #[cfg(feature = "http-manager")]
+    {
+        routes.or(vecfs_routes).or(subscriptions_routes)
+    }
+
+    #[cfg(not(feature = "http-manager"))]
+    routes
 }
 
 pub fn with_sender(

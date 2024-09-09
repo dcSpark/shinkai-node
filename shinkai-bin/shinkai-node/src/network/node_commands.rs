@@ -12,15 +12,24 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
+            APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp,
+            APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
+            APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
+            APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+            APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
         },
     },
 };
 
-use crate::{schemas::{
-    identity::{Identity, StandardIdentity},
-    smart_inbox::{SmartInbox, V2SmartInbox},
-}, tools::shinkai_tool::ShinkaiTool};
+use crate::{
+    schemas::{
+        identity::{Identity, StandardIdentity},
+        smart_inbox::{SmartInbox, V2SmartInbox},
+    },
+    tools::shinkai_tool::ShinkaiTool,
+};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
@@ -286,10 +295,12 @@ pub enum NodeCommand {
         models: Vec<String>,
         res: Sender<Result<(), String>>,
     },
+    #[cfg(feature = "http-manager")]
     APIVecFSRetrievePathSimplifiedJson {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIVecFSRetrievePathMinimalJson {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
@@ -303,6 +314,7 @@ pub enum NodeCommand {
         #[allow(clippy::complexity)]
         res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIConvertFilesAndSaveToFolder {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<Value>, APIError>>,
@@ -339,42 +351,52 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIAvailableSharedItems {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIAvailableSharedItemsOpen {
         msg: APIAvailableSharedItems,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APICreateShareableFolder {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIUpdateShareableFolder {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIUnshareFolder {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APISubscribeToSharedFolder {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIUnsubscribe {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIMySubscriptions {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIGetMySubscribers {
         msg: ShinkaiMessage,
         res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIGetHttpFreeSubscriptionLinks {
         subscription_profile_path: String,
         res: Sender<Result<Value, APIError>>,
@@ -387,18 +409,22 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     #[allow(dead_code)]
     LocalExtManagerProcessSubscriptionUpdates {
         res: Sender<Result<(), String>>,
     },
+    #[cfg(feature = "http-manager")]
     #[allow(dead_code)]
     LocalHttpUploaderProcessSubscriptionUpdates {
         res: Sender<Result<(), String>>,
     },
+    #[cfg(feature = "http-manager")]
     #[allow(dead_code)]
     LocalMySubscriptionCallJobMessageProcessing {
         res: Sender<Result<(), String>>,
     },
+    #[cfg(feature = "http-manager")]
     #[allow(dead_code)]
     LocalMySubscriptionTriggerHttpDownload {
         res: Sender<Result<(), String>>,
@@ -407,10 +433,12 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<bool, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIGetLastNotifications {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     APIGetNotificationsBeforeTimestamp {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
@@ -531,56 +559,67 @@ pub enum NodeCommand {
         job_message: JobMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,
         payload: APIVecFsRetrievePathSimplifiedJson,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiVecFSRetrieveVectorResource {
         bearer: String,
         path: String,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiConvertFilesAndSaveToFolder {
         bearer: String,
         payload: APIConvertFilesAndSaveToFolder,
         res: Sender<Result<Vec<Value>, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiVecFSCreateFolder {
         bearer: String,
         payload: APIVecFsCreateFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiMoveItem {
         bearer: String,
         payload: APIVecFsMoveItem,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiCopyItem {
         bearer: String,
         payload: APIVecFsCopyItem,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiMoveFolder {
         bearer: String,
         payload: APIVecFsMoveFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiCopyFolder {
         bearer: String,
         payload: APIVecFsCopyFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiDeleteFolder {
         bearer: String,
         payload: APIVecFsDeleteFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiDeleteItem {
         bearer: String,
         payload: APIVecFsDeleteItem,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiSearchItems {
         bearer: String,
         payload: APIVecFsSearchItems,
@@ -597,6 +636,7 @@ pub enum NodeCommand {
         file: Vec<u8>,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiUploadFileToFolder {
         bearer: String,
         filename: String,
@@ -605,60 +645,72 @@ pub enum NodeCommand {
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiAvailableSharedItems {
         bearer: String,
         payload: APIAvailableSharedItems,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiAvailableSharedItemsOpen {
         bearer: String,
         payload: APIAvailableSharedItems,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiCreateShareableFolder {
         bearer: String,
         payload: APICreateShareableFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiUpdateShareableFolder {
         bearer: String,
         payload: APIUpdateShareableFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiUnshareFolder {
         bearer: String,
         payload: APIUnshareFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiSubscribeToSharedFolder {
         bearer: String,
         payload: APISubscribeToSharedFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiUnsubscribe {
         bearer: String,
         payload: APIUnsubscribeToSharedFolder,
         res: Sender<Result<String, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiMySubscriptions {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiGetMySubscribers {
         bearer: String,
         payload: APIGetMySubscribers,
         res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiGetHttpFreeSubscriptionLinks {
         bearer: String,
         subscription_profile_path: String,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiGetLastNotifications {
         bearer: String,
         payload: APIGetLastNotifications,
         res: Sender<Result<Value, APIError>>,
     },
+    #[cfg(feature = "http-manager")]
     V2ApiGetNotificationsBeforeTimestamp {
         bearer: String,
         payload: APIGetNotificationsBeforeTimestamp,
@@ -752,7 +804,7 @@ pub enum NodeCommand {
     },
     V2ApiModifyLlmProvider {
         bearer: String,
-        agent: SerializedLLMProvider, 
+        agent: SerializedLLMProvider,
         res: Sender<Result<String, APIError>>,
     },
     V2ApiChangeNodesName {

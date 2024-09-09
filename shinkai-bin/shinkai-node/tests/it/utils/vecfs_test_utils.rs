@@ -21,8 +21,8 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::node_api_router::APIError;
+use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
 use std::time::Duration;
@@ -130,6 +130,7 @@ pub async fn remove_item(
     eprintln!("resp: {:?}", resp);
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn retrieve_file_info(
     commands_sender: &Sender<NodeCommand>,
@@ -303,6 +304,7 @@ pub async fn fetch_last_messages(
     Ok(res_receiver.recv().await.unwrap())
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn make_folder_shareable(
     commands_sender: &Sender<NodeCommand>,
@@ -352,6 +354,7 @@ pub async fn make_folder_shareable(
     eprintln!("Make folder shareable resp: {:?}", resp);
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn make_folder_shareable_http_free(
     commands_sender: &Sender<NodeCommand>,
@@ -400,6 +403,7 @@ pub async fn make_folder_shareable_http_free(
     eprintln!("Make folder shareable resp: {:?}", resp);
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn show_available_shared_items(
     streamer_node_name: &str,
@@ -571,6 +575,7 @@ pub fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
     }
 }
 
+#[cfg(feature = "http-manager")]
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     commands_sender: &Sender<NodeCommand>,
@@ -588,7 +593,6 @@ pub async fn upload_file(
     // Print current directory
     let current_dir = std::env::current_dir().unwrap();
     println!("Current directory: {:?}", current_dir);
-
 
     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
     eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");

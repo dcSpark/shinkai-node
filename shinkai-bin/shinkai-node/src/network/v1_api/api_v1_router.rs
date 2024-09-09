@@ -10,12 +10,19 @@ use super::api_v1_handlers::add_ollama_models_handler;
 use super::api_v1_handlers::add_row_handler;
 use super::api_v1_handlers::add_toolkit_handler;
 use super::api_v1_handlers::add_workflow_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_convert_files_and_save_to_folder_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_my_subscriptions_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_subscription_available_shared_items_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_subscription_available_shared_items_open_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_subscription_create_shareable_folder_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_subscription_unshare_folder_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_subscription_update_shareable_folder_handler;
 use super::api_v1_handlers::api_update_default_embedding_model_handler;
 use super::api_v1_handlers::api_update_supported_embedding_models_handler;
@@ -26,7 +33,9 @@ use super::api_v1_handlers::api_vec_fs_move_folder_handler;
 use super::api_v1_handlers::api_vec_fs_move_item_handler;
 use super::api_v1_handlers::api_vec_fs_remove_folder_handler;
 use super::api_v1_handlers::api_vec_fs_remove_item_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_vec_fs_retrieve_path_minimal_json_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::api_vec_fs_retrieve_path_simplified_json_handler;
 use super::api_v1_handlers::api_vec_fs_retrieve_vector_resource_handler;
 use super::api_v1_handlers::api_vec_fs_retrieve_vector_search_simplified_json_handler;
@@ -45,14 +54,18 @@ use super::api_v1_handlers::get_all_subidentities_handler;
 use super::api_v1_handlers::get_filenames_message_handler;
 use super::api_v1_handlers::get_last_messages_from_inbox_handler;
 use super::api_v1_handlers::get_last_messages_from_inbox_with_branches_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::get_last_notifications_handler;
 use super::api_v1_handlers::get_last_unread_messages_from_inbox_handler;
 use super::api_v1_handlers::get_local_processing_preference_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::get_my_subscribers_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::get_notifications_before_timestamp_handler;
 use super::api_v1_handlers::get_public_key_handler;
 use super::api_v1_handlers::get_sheet_handler;
 use super::api_v1_handlers::get_shinkai_tool_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::get_subscription_links_handler;
 use super::api_v1_handlers::get_workflow_info_handler;
 use super::api_v1_handlers::handle_file_upload;
@@ -77,7 +90,9 @@ use super::api_v1_handlers::set_cell_value_handler;
 use super::api_v1_handlers::set_column_handler;
 use super::api_v1_handlers::set_shinkai_tool_handler;
 use super::api_v1_handlers::shinkai_health_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::subscribe_to_shared_folder_handler;
+#[cfg(feature = "http-manager")]
 use super::api_v1_handlers::unsubscribe_handler;
 use super::api_v1_handlers::update_job_to_finished_handler;
 use super::api_v1_handlers::update_local_processing_preference_handler;
@@ -132,6 +147,7 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| add_toolkit_handler(node_commands_sender.clone(), message))
     };
 
+    #[cfg(feature = "http-manager")]
     let api_vec_fs_retrieve_path_simplified_json = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("vec_fs" / "retrieve_path_simplified_json")
@@ -142,6 +158,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_vec_fs_retrieve_path_minimal_json = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("vec_fs" / "retrieve_path_minimal_json")
@@ -242,6 +259,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_convert_files_and_save_to_folder = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("vec_fs" / "convert_files_and_save_to_folder")
@@ -466,6 +484,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_available_shared_items = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("available_shared_items")
@@ -476,6 +495,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_available_shared_items_open = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("available_shared_items_open")
@@ -486,6 +506,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let my_subscriptions = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("my_subscriptions")
@@ -496,6 +517,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_create_shareable_folder = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("create_shareable_folder")
@@ -506,6 +528,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let subscribe_to_shared_folder = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("subscribe_to_shared_folder")
@@ -516,6 +539,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_update_shareable_folder = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("update_shareable_folder")
@@ -526,6 +550,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let api_unshare_folder = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("unshare_folder")
@@ -536,6 +561,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let unsubscribe = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("unsubscribe")
@@ -544,6 +570,7 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| unsubscribe_handler(node_commands_sender.clone(), message))
     };
 
+    #[cfg(feature = "http-manager")]
     let get_my_subscribers = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("my_subscribers")
@@ -584,6 +611,7 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| add_ollama_models_handler(node_commands_sender.clone(), message))
     };
 
+    #[cfg(feature = "http-manager")]
     let get_subscription_links = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("subscriptions" / String / "links")
@@ -601,6 +629,7 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| change_job_agent_handler(node_commands_sender.clone(), message))
     };
 
+    #[cfg(feature = "http-manager")]
     let get_last_notifications = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("get_last_notifications")
@@ -611,6 +640,7 @@ pub fn v1_routes(
             })
     };
 
+    #[cfg(feature = "http-manager")]
     let get_notifications_before_timestamp = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("get_notifications_before_timestamp")
@@ -818,13 +848,11 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| get_shinkai_tool_handler(node_commands_sender.clone(), message))
     };
 
-    ping_all
+    let routes = ping_all
         .or(send_msg)
         .or(identity_name_to_external_profile_data)
         .or(get_public_key)
         .or(add_toolkit)
-        .or(api_vec_fs_retrieve_path_simplified_json)
-        .or(api_vec_fs_retrieve_path_minimal_json)
         .or(api_vec_fs_retrieve_vector_search_simplified_json)
         .or(api_vec_fs_search_items)
         .or(api_vec_fs_create_folder)
@@ -834,7 +862,6 @@ pub fn v1_routes(
         .or(api_vec_fs_move_item)
         .or(api_vec_fs_copy_item)
         .or(api_vec_fs_remove_item)
-        .or(api_convert_files_and_save_to_folder)
         .or(api_vec_fs_retrieve_vector_resource)
         .or(shinkai_health)
         .or(available_llm_providers)
@@ -858,23 +885,11 @@ pub fn v1_routes(
         .or(create_files_inbox_with_symmetric_key)
         .or(add_file_to_inbox_with_symmetric_key)
         .or(update_job_to_finished)
-        .or(api_available_shared_items)
-        .or(api_available_shared_items_open)
-        .or(my_subscriptions)
-        .or(api_create_shareable_folder)
-        .or(subscribe_to_shared_folder)
-        .or(api_update_shareable_folder)
-        .or(api_unshare_folder)
-        .or(unsubscribe)
-        .or(get_my_subscribers)
         .or(retrieve_vrkai)
         .or(retrieve_vrpack)
         .or(local_scan_ollama_models)
         .or(add_ollama_models)
-        .or(get_subscription_links)
         .or(change_job_agent)
-        .or(get_last_notifications)
-        .or(get_notifications_before_timestamp)
         .or(get_local_processing_preference)
         .or(update_local_processing_preference)
         .or(search_workflows)
@@ -897,5 +912,28 @@ pub fn v1_routes(
         .or(api_list_all_shinkai_tools)
         .or(api_set_shinkai_tool)
         .or(api_get_shinkai_tool)
-        .or(search_shinkai_tool)
+        .or(search_shinkai_tool);
+
+    #[cfg(feature = "http-manager")]
+    {
+        routes
+            .or(api_vec_fs_retrieve_path_simplified_json)
+            .or(api_vec_fs_retrieve_path_minimal_json)
+            .or(api_convert_files_and_save_to_folder)
+            .or(api_available_shared_items)
+            .or(api_available_shared_items_open)
+            .or(my_subscriptions)
+            .or(api_create_shareable_folder)
+            .or(subscribe_to_shared_folder)
+            .or(api_update_shareable_folder)
+            .or(api_unshare_folder)
+            .or(unsubscribe)
+            .or(get_my_subscribers)
+            .or(get_subscription_links)
+            .or(get_last_notifications)
+            .or(get_notifications_before_timestamp)
+    }
+
+    #[cfg(not(feature = "http-manager"))]
+    routes
 }
