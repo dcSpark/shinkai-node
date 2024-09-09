@@ -26,8 +26,6 @@ mod it {
     // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
-    // mod toolkit_tests;
-    mod new_toolkit_tests;
     mod subscription_http_upload_tests;
     mod utils;
     mod vector_fs_api_tests;
