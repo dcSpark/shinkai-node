@@ -196,7 +196,6 @@ impl GenericInferenceChain {
         }
 
         // 3) Generate Prompt
-
         let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -306,6 +305,7 @@ impl GenericInferenceChain {
             } else {
                 // No more function calls required, return the final response
                 // TODO: update job metrics here
+                eprintln!("TPS: {:?}", response.tps);
                 return Ok(response.response_string);
             }
 
