@@ -53,7 +53,7 @@ pub fn ollama_conversation_prepare_messages(
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;
+    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens), Some("tool".to_string()))?;
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
@@ -113,7 +113,7 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;
+    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens), Some("tool".to_string()))?;
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
