@@ -326,14 +326,16 @@ pub struct LLMInferenceResponse {
     pub response_string: String,
     pub function_call: Option<FunctionCall>,
     pub json: JsonValue,
+    pub tps: Option<f64>,
 }
 
 impl LLMInferenceResponse {
-    pub fn new(original_response_string: String, json: JsonValue, function_call: Option<FunctionCall>) -> Self {
+    pub fn new(original_response_string: String, json: JsonValue, function_call: Option<FunctionCall>, tps: Option<f64>) -> Self {
         Self {
             response_string: original_response_string,
             json,
             function_call,
+            tps,
         }
     }
 }

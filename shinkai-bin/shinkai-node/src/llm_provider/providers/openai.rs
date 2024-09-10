@@ -185,7 +185,7 @@ impl LLMService for OpenAI {
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);
-                        Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
+                        Ok(LLMInferenceResponse::new(response_string, json!({}), function_call, None))
                     }
                     Err(e) => {
                         shinkai_log(

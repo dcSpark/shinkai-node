@@ -130,6 +130,9 @@ impl LLMService for Ollama {
                 let mut stream = res.bytes_stream();
                 let mut response_text = String::new();
                 let mut previous_json_chunk: String = String::new();
+                let mut final_eval_count = None;
+                let mut final_eval_duration = None;
+
                 while let Some(item) = stream.next().await {
                     // Check if we need to stop the LLM job
                     if let Some(ref inbox_name) = inbox_name {
@@ -140,7 +143,7 @@ impl LLMService for Ollama {
                                 "LLM job stopped by user request",
                             );
                             llm_stopper.reset(&inbox_name.to_string());
-                            return Ok(LLMInferenceResponse::new(response_text, json!({}), None));
+                            return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
                         }
                     }
 
@@ -155,6 +158,12 @@ impl LLMService for Ollama {
                                 Ok(data) => {
                                     previous_json_chunk = "".to_string();
                                     response_text.push_str(&data.message.content);
+
+                                    // Capture eval_count and eval_duration from the final response
+                                    if data.done {
+                                        final_eval_count = data.eval_count;
+                                        final_eval_duration = data.eval_duration;
+                                    }
 
                                     // Note: this is the code for enabling WS
                                     if let Some(ref manager) = ws_manager_trait {
@@ -211,11 +220,23 @@ impl LLMService for Ollama {
                     }
                 }
 
-                Ok(LLMInferenceResponse::new(response_text, json!({}), None))
+                // Calculate tps
+                let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
+                    if eval_duration > 0 {
+                        Some(eval_count as f64 / eval_duration as f64 * 1e9)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                Ok(LLMInferenceResponse::new(response_text, json!({}), None, tps))
             } else {
                 // Handle non-streaming response
                 let response_body = res.text().await?;
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
+                eprintln!("\n\n Response JSON: {:?}\n\n", response_json);
 
                 if let Some(message) = response_json.get("message") {
                     if let Some(content) = message.get("content") {
@@ -236,10 +257,22 @@ impl LLMService for Ollama {
                                 .flatten();
 
                             eprintln!("Function Call: {:?}", function_call);
+
+                            // Calculate tps
+                            let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let eval_duration =
+                                response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1); // Avoid division by zero
+                            let tps = if eval_duration > 0 {
+                                Some(eval_count as f64 / eval_duration as f64 * 1e9)
+                            } else {
+                                None
+                            };
+
                             Ok(LLMInferenceResponse::new(
                                 content_str.to_string(),
                                 json!({}),
                                 function_call,
+                                tps,
                             ))
                         } else {
                             Err(LLMProviderError::UnexpectedResponseFormat(
