@@ -142,7 +142,7 @@ impl LLMService for Groq {
                             })
                             .collect::<Vec<String>>()
                             .join(" ");
-                        Ok(LLMInferenceResponse::new(response_string, json!({}), None))
+                        Ok(LLMInferenceResponse::new(response_string, json!({}), None, None))
                     }
                     Err(e) => {
                         shinkai_log(

@@ -77,7 +77,8 @@ pub enum LLMProviderError {
     CallbackManagerNotFound,
     SheetManagerError(String),
     InputProcessingError(String),
-    ToolRouterNotFound
+    ToolRouterNotFound,
+    UnexpectedResponseFormat(String)
 }
 
 impl fmt::Display for LLMProviderError {
@@ -162,6 +163,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::SheetManagerError(s) => write!(f, "{}", s),
             LLMProviderError::InputProcessingError(s) => write!(f, "{}", s),
             LLMProviderError::ToolRouterNotFound => write!(f, "Tool Router not found"),
+            LLMProviderError::UnexpectedResponseFormat(s) => write!(f, "Unexpected response format: {}", s),
         }
     }
 }
@@ -236,6 +238,7 @@ impl LLMProviderError {
             LLMProviderError::SheetManagerError(_) => "SheetManagerError",
             LLMProviderError::InputProcessingError(_) => "InputProcessingError",
             LLMProviderError::ToolRouterNotFound => "ToolRouterNotFound",
+            LLMProviderError::UnexpectedResponseFormat(_) => "UnexpectedResponseFormat",
         };
 
         let error_message = format!("{}", self);

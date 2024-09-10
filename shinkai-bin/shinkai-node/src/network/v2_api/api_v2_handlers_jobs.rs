@@ -11,10 +11,13 @@ use utoipa::OpenApi;
 use warp::multipart::FormData;
 use warp::Filter;
 
-use crate::{llm_provider::job::JobConfig, network::{
-    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
-    node_commands::NodeCommand,
-}};
+use crate::{
+    llm_provider::job::JobConfig,
+    network::{
+        node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
+        node_commands::NodeCommand,
+    },
+};
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -96,6 +99,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(update_job_config_handler);
 
+    let get_job_config_route = warp::path("get_job_config")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetJobConfigRequest>())
+        .and_then(get_job_config_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -107,6 +117,7 @@ pub fn job_routes(
         .or(change_job_llm_provider_route)
         .or(update_job_config_route)
         .or(get_last_messages_with_branches_route)
+        .or(get_job_config_route)
 }
 
 #[derive(Deserialize)]
@@ -687,6 +698,52 @@ pub async fn update_job_config_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct GetJobConfigRequest {
+    pub job_id: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_job_config",
+    params(
+        ("job_id" = String, Query, description = "Job ID to retrieve configuration for")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved job configuration", body = JobConfig),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_job_config_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query: GetJobConfigRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetJobConfig {
+            bearer,
+            job_id: query.job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -700,7 +757,8 @@ pub async fn update_job_config_handler(
         add_file_to_inbox_handler,
         change_job_llm_provider_handler,
         get_last_messages_with_branches_handler,
-        update_job_config_handler
+        update_job_config_handler,
+        get_job_config_handler
     ),
     components(
         schemas(SendResponseBody, SendResponseBodyData, APIError)

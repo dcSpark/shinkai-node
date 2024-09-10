@@ -198,7 +198,7 @@ impl LLMService for Exo {
             );
 
             // Directly return response_text with an empty JSON object
-            Ok(LLMInferenceResponse::new(response_text, json!({}), None))
+            Ok(LLMInferenceResponse::new(response_text, json!({}), None, None))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }

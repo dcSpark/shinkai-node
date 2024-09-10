@@ -19,7 +19,10 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
     db::ShinkaiDB,
-    llm_provider::{job::JobConfig, job_manager::JobManager},
+    llm_provider::{
+        job::{JobConfig, JobLike},
+        job_manager::JobManager,
+    },
     managers::IdentityManager,
     network::{
         node_api_router::{APIError, SendResponseBodyData},
@@ -670,6 +673,46 @@ impl Node {
                         Ok(())
                     }
                 }
+            }
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Job with ID {} not found", job_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_get_job_config(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<JobConfig, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // TODO: Get default values for Ollama
+
+        // Check if the job exists
+        match db.get_job(&job_id) {
+            Ok(job) => {
+                let config = job.config().cloned().unwrap_or_else(|| JobConfig {
+                    custom_prompt: None,
+                    temperature: None,
+                    seed: None,
+                    top_k: None,
+                    top_p: None,
+                    stream: None,
+                    other_model_params: None,
+                });
+                let _ = res.send(Ok(config)).await;
+                Ok(())
             }
             Err(_) => {
                 let api_error = APIError {

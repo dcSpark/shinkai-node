@@ -305,6 +305,7 @@ impl GenericInferenceChain {
                 );
             } else {
                 // No more function calls required, return the final response
+                // TODO: update job metrics here
                 return Ok(response.response_string);
             }
 

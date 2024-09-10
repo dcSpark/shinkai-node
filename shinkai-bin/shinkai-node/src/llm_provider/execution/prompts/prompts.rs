@@ -240,7 +240,7 @@ impl Prompt {
     pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Vec<SubPrompt> {
         let mut removed_subprompts = vec![];
 
-        let mut current_token_count = self.generate_chat_completion_messages().1;
+        let mut current_token_count = self.generate_chat_completion_messages(None).1;
         while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
@@ -279,7 +279,7 @@ impl Prompt {
         Ok(content)
     }
 
-    fn generate_chat_completion_messages(&self) -> (Vec<LlmMessage>, usize) {
+    fn generate_chat_completion_messages(&self, tool_response_field_name: Option<String>) -> (Vec<LlmMessage>, usize) {
         let mut tiktoken_messages: Vec<LlmMessage> = Vec::new();
         let mut current_length: usize = 0;
 
@@ -324,7 +324,8 @@ impl Prompt {
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
                     let mut new_message = LlmMessage {
-                        role: Some("function".to_string()),
+                        // OpenAI works using "function" while ollama uses "tool"
+                        role: tool_response_field_name.clone().or(Some("function".to_string())),
                         content: None,
                         name: None,
                         function_call: None,
@@ -391,6 +392,7 @@ impl Prompt {
     pub fn generate_openai_messages(
         &self,
         max_prompt_tokens: Option<usize>,
+        tool_response_field_name: Option<String>,
     ) -> Result<Vec<LlmMessage>, LLMProviderError> {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
         let limit = max_prompt_tokens.unwrap_or(2700_usize);
@@ -400,7 +402,7 @@ impl Prompt {
         prompt_copy.remove_subprompts_until_under_max(limit);
 
         // Generate the output chat completion request messages
-        let (output_messages, _) = prompt_copy.generate_chat_completion_messages();
+        let (output_messages, _) = prompt_copy.generate_chat_completion_messages(tool_response_field_name);
 
         Ok(output_messages)
     }
@@ -527,7 +529,7 @@ mod tests {
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(sub_prompts);
 
-        let (messages, _token_length) = prompt.generate_chat_completion_messages();
+        let (messages, _token_length) = prompt.generate_chat_completion_messages(None);
 
         // Expected messages
         let expected_messages = vec![
@@ -674,7 +676,7 @@ mod tests {
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(sub_prompts);
 
-        let (messages, _token_length) = prompt.generate_chat_completion_messages();
+        let (messages, _token_length) = prompt.generate_chat_completion_messages(None);
 
         // Expected messages
         let expected_messages = vec![

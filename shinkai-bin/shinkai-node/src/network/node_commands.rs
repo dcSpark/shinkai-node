@@ -786,6 +786,11 @@ pub enum NodeCommand {
         config: JobConfig,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiGetJobConfig {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<JobConfig, APIError>>,
+    },
     V2ApiRemoveLlmProvider {
         bearer: String,
         llm_provider_id: String,

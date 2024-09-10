@@ -87,7 +87,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;
+    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens), None)?;
     let filtered_chat_completion_messages: Vec<_> = chat_completion_messages
         .clone()
         .into_iter()

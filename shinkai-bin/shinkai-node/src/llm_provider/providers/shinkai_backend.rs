@@ -171,7 +171,7 @@ impl LLMService for ShinkaiBackend {
                                 .choices
                                 .iter()
                                 .find_map(|choice| choice.message.function_call.clone());
-                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
+                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call, None))
                         } else {
                             let data: OpenAIResponse =
                                 serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
@@ -188,7 +188,7 @@ impl LLMService for ShinkaiBackend {
                                 .choices
                                 .iter()
                                 .find_map(|choice| choice.message.function_call.clone());
-                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
+                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call, None))
                         }
                     }
                     Err(e) => {

@@ -297,7 +297,6 @@ impl WebSocketManager {
         potentially_encrypted_msg: ShinkaiMessage,
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     ) -> Result<(), WebSocketManagerError> {
-        eprintln!("Managing connections for shinkai_name: {}", sender_shinkai_name);
         shinkai_log(
             ShinkaiLogOption::WsAPI,
             ShinkaiLogLevel::Info,
