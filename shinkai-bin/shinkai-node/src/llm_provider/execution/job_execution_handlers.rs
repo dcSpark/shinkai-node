@@ -43,17 +43,28 @@ impl JobManager {
     ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
+        // Convert content to valid UTF-8
+        let utf8_content = String::from_utf8_lossy(&content);
+
         let base64_image = match &agent_found {
             Some(agent) => match agent.model {
                 LLMProviderInterface::OpenAI(_) => {
-                    format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
+                    format!(
+                        "data:image/{};base64,{}",
+                        file_extension,
+                        base64::encode(utf8_content.as_bytes())
+                    )
                 }
                 LLMProviderInterface::ShinkaiBackend(_) => {
-                    format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
+                    format!(
+                        "data:image/{};base64,{}",
+                        file_extension,
+                        base64::encode(utf8_content.as_bytes())
+                    )
                 }
-                _ => base64::encode(&content),
+                _ => base64::encode(utf8_content.as_bytes()),
             },
-            None => base64::encode(&content),
+            None => base64::encode(utf8_content.as_bytes()),
         };
 
         // TODO: fix the new_execution_context
