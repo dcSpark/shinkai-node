@@ -2,11 +2,12 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::json;
 use utoipa::OpenApi;
-use warp::Filter;
 use warp::http::StatusCode;
+use warp::Filter;
 
 use crate::network::{
-    agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering, node_api_router::{APIError, SendResponseBody, SendResponseBodyData}, node_commands::NodeCommand
+    agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering, node_api_router::APIError,
+    node_commands::NodeCommand,
 };
 
 use super::api_v2_router::{create_success_response, with_sender};
@@ -220,19 +221,19 @@ pub async fn get_all_tool_offerings_handler(
     }
 }
 
-// #[derive(OpenApi)]
-// #[openapi(
-//     paths(
-//         set_tool_offering_handler,
-//         get_tool_offering_handler,
-//         remove_tool_offering_handler,
-//         get_all_tool_offerings_handler
-//     ),
-//     components(
-//         schemas(ShinkaiToolOffering, APIError)
-//     ),
-//     tags(
-//         (name = "tool_offerings", description = "Tool Offering API endpoints")
-//     )
-// )]
-// pub struct ToolOfferingsApiDoc;
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        set_tool_offering_handler,
+        get_tool_offering_handler,
+        remove_tool_offering_handler,
+        get_all_tool_offerings_handler
+    ),
+    components(
+        schemas(ShinkaiToolOffering, APIError)
+    ),
+    tags(
+        (name = "tool_offerings", description = "Tool Offering API endpoints")
+    )
+)]
+pub struct ToolOfferingsApiDoc;

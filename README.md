@@ -50,6 +50,24 @@ Note: You must run this command from the root directory of this repo and make su
 cargo build --features telemetry
 ```
 
+## OpenAPI
+
+### Generate schemas
+
+Run the following command to generate the schema files: 
+
+```
+cargo run --example generate_openapi_docs
+```
+
+The result will be placed in the folder `docs/openapi`.
+
+### Swagger UI
+
+```
+http://{NODE_IP}:{NODE_API_PORT}/v2/swagger-ui/
+```
+
 ## Tests
 
 Note: You must run these tests from the root directory of this repo.
