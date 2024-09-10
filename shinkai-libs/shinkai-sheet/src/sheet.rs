@@ -1,5 +1,4 @@
 use async_channel::Sender;
-use async_recursion::async_recursion;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_dsl::dsl_schemas::Workflow;
@@ -7,7 +6,11 @@ use shinkai_message_primitives::schemas::sheet::{
     Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, ColumnUuid, RowIndex, RowUuid, UuidString,
     WorkflowSheetJobData,
 };
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+    pin::Pin,
+};
 use uuid::Uuid;
 
 use crate::{cell_name_converter::CellNameConverter, column_dependency_manager::ColumnDependencyManager};
@@ -584,57 +587,120 @@ pub enum SheetAction {
 }
 
 // Implement the reducer function
-#[async_recursion]
-pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec<WorkflowSheetJobData>) {
-    //  if std::env::var("LOG_REDUX").is_ok() {
-    println!("<Sheet Reducer>");
-    println!("Dispatching action: {:?}", action);
-    println!("Current state: \n");
-    state.print_as_ascii_table();
-    // }
+pub fn sheet_reducer(
+    mut state: Sheet,
+    action: SheetAction,
+) -> Pin<Box<dyn Future<Output = (Sheet, Vec<WorkflowSheetJobData>)> + Send>> {
+    Box::pin(async move {
+        //  if std::env::var("LOG_REDUX").is_ok() {
+        println!("<Sheet Reducer>");
+        println!("Dispatching action: {:?}", action);
+        println!("Current state: \n");
+        state.print_as_ascii_table();
+        // }
 
-    let mut jobs = Vec::new();
-    match action {
-        SheetAction::SetColumn(definition) => {
-            if let ColumnBehavior::Formula(ref formula) = definition.behavior {
-                let dependencies = state.parse_formula_dependencies(formula);
-                for dep in dependencies {
-                    state
-                        .column_dependency_manager
-                        .add_dependency(definition.id.clone(), dep);
+        let mut jobs = Vec::new();
+        match action {
+            SheetAction::SetColumn(definition) => {
+                if let ColumnBehavior::Formula(ref formula) = definition.behavior {
+                    let dependencies = state.parse_formula_dependencies(formula);
+                    for dep in dependencies {
+                        state
+                            .column_dependency_manager
+                            .add_dependency(definition.id.clone(), dep);
+                    }
                 }
-            }
-            state.columns.insert(definition.clone().id, definition.clone());
+                state.columns.insert(definition.clone().id, definition.clone());
 
-            // Collect row UUIDs before mutable borrow
-            let row_uuids: Vec<UuidString> = state.rows.keys().cloned().collect();
+                // Collect row UUIDs before mutable borrow
+                let row_uuids: Vec<UuidString> = state.rows.keys().cloned().collect();
 
-            // Initialize new column cells with None for all existing rows
-            for row_uuid in &row_uuids {
-                if let Some(row) = state.rows.get_mut(row_uuid) {
-                    let status = if let ColumnBehavior::Text = definition.behavior {
-                        CellStatus::Ready
-                    } else {
-                        CellStatus::Pending
+                // Initialize new column cells with None for all existing rows
+                for row_uuid in &row_uuids {
+                    if let Some(row) = state.rows.get_mut(row_uuid) {
+                        let status = if let ColumnBehavior::Text = definition.behavior {
+                            CellStatus::Ready
+                        } else {
+                            CellStatus::Pending
+                        };
+
+                        row.insert(
+                            definition.id.clone(),
+                            Cell {
+                                value: None,
+                                last_updated: Utc::now(),
+                                status,
+                                input_hash: None,
+                            },
+                        );
+                    }
+                }
+
+                // Send updates after initializing the cells
+                if let Some(sender) = &state.update_sender {
+                    for row_uuid in &row_uuids {
+                        if let Some(update_info) =
+                            state.generate_cell_update_info(row_uuid.clone(), definition.id.clone())
+                        {
+                            let sender_clone = sender.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                                    eprintln!("Failed to send update: {:?}", e);
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // Create jobs for new cells in the added column
+                for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
+                    let value = match &definition.clone().behavior {
+                        ColumnBehavior::Formula(formula) => {
+                            state.evaluate_formula(formula, row_uuid.clone(), definition.clone().id)
+                        }
+                        _ => None,
                     };
 
-                    row.insert(
-                        definition.id.clone(),
-                        Cell {
-                            value: None,
-                            last_updated: Utc::now(),
-                            status,
-                            input_hash: None,
-                        },
-                    );
+                    if let Some(value) = value {
+                        let (new_state, mut new_jobs) = sheet_reducer(
+                            state,
+                            SheetAction::SetCellValue {
+                                row: row_uuid.clone(),
+                                col: definition.clone().id,
+                                value,
+                                input_hash: None,
+                            },
+                        )
+                        .await;
+                        state = new_state;
+                        jobs.append(&mut new_jobs);
+                    }
                 }
             }
+            SheetAction::SetCellValue {
+                row,
+                col,
+                value,
+                input_hash,
+            } => {
+                if !state.columns.contains_key(&col) {
+                    return (state, jobs); // Column index out of bounds
+                }
 
-            // Send updates after initializing the cells
-            if let Some(sender) = &state.update_sender {
-                for row_uuid in &row_uuids {
-                    if let Some(update_info) = state.generate_cell_update_info(row_uuid.clone(), definition.id.clone())
-                    {
+                let row_cells = state.rows.entry(row.clone()).or_default();
+                row_cells.insert(
+                    col.clone(),
+                    Cell {
+                        value: Some(value),
+                        last_updated: Utc::now(),
+                        status: CellStatus::Ready,
+                        input_hash,
+                    },
+                );
+
+                // Send update after setting the cell value
+                if let Some(sender) = &state.update_sender {
+                    if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
                         let sender_clone = sender.clone();
                         tokio::spawn(async move {
                             if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
@@ -643,89 +709,42 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                         });
                     }
                 }
-            }
 
-            // Create jobs for new cells in the added column
-            for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
-                let value = match &definition.clone().behavior {
-                    ColumnBehavior::Formula(formula) => {
-                        state.evaluate_formula(formula, row_uuid.clone(), definition.clone().id)
+                // Trigger updates for cells dependent on the updated cell
+                let changed_cell_id = CellId(format!("{}:{}", row, col));
+                let (new_state, mut new_jobs) = sheet_reducer(
+                    state,
+                    SheetAction::PropagateUpdateToDependents {
+                        changed_cell_id,
+                        visited: HashSet::new(),
+                        depth: 0,
+                    },
+                )
+                .await;
+                state = new_state;
+                jobs.append(&mut new_jobs);
+            }
+            SheetAction::SetCellPending { row, col } => {
+                if !state.columns.contains_key(&col) {
+                    return (state, jobs); // Column index out of bounds
+                }
+
+                if let Some(row_cells) = state.rows.get_mut(&row) {
+                    if let Some(cell) = row_cells.get_mut(&col) {
+                        cell.status = CellStatus::Pending;
+                    } else {
+                        row_cells.insert(
+                            col.clone(),
+                            Cell {
+                                value: None,
+                                last_updated: Utc::now(),
+                                status: CellStatus::Pending,
+                                input_hash: None,
+                            },
+                        );
                     }
-                    _ => None,
-                };
-
-                if let Some(value) = value {
-                    let (new_state, mut new_jobs) = sheet_reducer(
-                        state,
-                        SheetAction::SetCellValue {
-                            row: row_uuid.clone(),
-                            col: definition.clone().id,
-                            value,
-                            input_hash: None,
-                        },
-                    )
-                    .await;
-                    state = new_state;
-                    jobs.append(&mut new_jobs);
-                }
-            }
-        }
-        SheetAction::SetCellValue {
-            row,
-            col,
-            value,
-            input_hash,
-        } => {
-            if !state.columns.contains_key(&col) {
-                return (state, jobs); // Column index out of bounds
-            }
-
-            let row_cells = state.rows.entry(row.clone()).or_default();
-            row_cells.insert(
-                col.clone(),
-                Cell {
-                    value: Some(value),
-                    last_updated: Utc::now(),
-                    status: CellStatus::Ready,
-                    input_hash,
-                },
-            );
-
-            // Send update after setting the cell value
-            if let Some(sender) = &state.update_sender {
-                if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
-                    let sender_clone = sender.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
-                            eprintln!("Failed to send update: {:?}", e);
-                        }
-                    });
-                }
-            }
-
-            // Trigger updates for cells dependent on the updated cell
-            let changed_cell_id = CellId(format!("{}:{}", row, col));
-            let (new_state, mut new_jobs) = sheet_reducer(
-                state,
-                SheetAction::PropagateUpdateToDependents {
-                    changed_cell_id,
-                    visited: HashSet::new(),
-                    depth: 0,
-                },
-            )
-            .await;
-            state = new_state;
-            jobs.append(&mut new_jobs);
-        }
-        SheetAction::SetCellPending { row, col } => {
-            if !state.columns.contains_key(&col) {
-                return (state, jobs); // Column index out of bounds
-            }
-
-            if let Some(row_cells) = state.rows.get_mut(&row) {
-                if let Some(cell) = row_cells.get_mut(&col) {
-                    cell.status = CellStatus::Pending;
                 } else {
+                    let mut row_cells = HashMap::new();
                     row_cells.insert(
                         col.clone(),
                         Cell {
@@ -735,82 +754,146 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                             input_hash: None,
                         },
                     );
+                    state.rows.insert(row.clone(), row_cells);
                 }
-            } else {
-                let mut row_cells = HashMap::new();
-                row_cells.insert(
-                    col.clone(),
-                    Cell {
-                        value: None,
-                        last_updated: Utc::now(),
-                        status: CellStatus::Pending,
-                        input_hash: None,
-                    },
-                );
-                state.rows.insert(row.clone(), row_cells);
-            }
 
-            if let Some(sender) = &state.update_sender {
-                if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
-                    let sender_clone = sender.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
-                            eprintln!("Failed to send update: {:?}", e);
-                        }
-                    });
+                if let Some(sender) = &state.update_sender {
+                    if let Some(update_info) = state.generate_cell_update_info(row.clone(), col.clone()) {
+                        let sender_clone = sender.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = sender_clone.send(SheetUpdate::CellUpdated(update_info)).await {
+                                eprintln!("Failed to send update: {:?}", e);
+                            }
+                        });
+                    }
                 }
             }
-        }
-        SheetAction::PropagateUpdateToDependents {
-            changed_cell_id,
-            mut visited,
-            depth,
-        } => {
-            if depth >= MAX_DEPENDENCY_DEPTH {
-                eprintln!("Maximum dependency depth reached. Possible circular dependency detected.");
-                return (state, jobs);
-            }
+            SheetAction::PropagateUpdateToDependents {
+                changed_cell_id,
+                mut visited,
+                depth,
+            } => {
+                if depth >= MAX_DEPENDENCY_DEPTH {
+                    eprintln!("Maximum dependency depth reached. Possible circular dependency detected.");
+                    return (state, jobs);
+                }
 
-            let (row, col) = state.cell_id_to_indices(&changed_cell_id);
-            eprintln!("TriggerUpdateEvent: {:?}", changed_cell_id);
+                let (row, col) = state.cell_id_to_indices(&changed_cell_id);
+                eprintln!("TriggerUpdateEvent: {:?}", changed_cell_id);
 
-            if !visited.insert((row.clone(), col.clone())) {
-                eprintln!("Circular dependency detected at cell ({}, {})", row, col);
-                return (state, jobs);
-            }
+                if !visited.insert((row.clone(), col.clone())) {
+                    eprintln!("Circular dependency detected at cell ({}, {})", row, col);
+                    return (state, jobs);
+                }
 
-            let reverse_dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
-            eprintln!("Col: {:?} Dependents: {:?}", col, reverse_dependents);
-            for reverse_dependent_col in reverse_dependents {
-                if let Some(column_definition) = state.columns.get(&reverse_dependent_col).cloned() {
-                    match &column_definition.behavior {
-                        ColumnBehavior::Formula(formula) => {
-                            if let Some(value) =
-                                state.evaluate_formula(formula, row.clone(), reverse_dependent_col.clone())
-                            {
+                let reverse_dependents = state.column_dependency_manager.get_reverse_dependents(col.clone());
+                eprintln!("Col: {:?} Dependents: {:?}", col, reverse_dependents);
+                for reverse_dependent_col in reverse_dependents {
+                    if let Some(column_definition) = state.columns.get(&reverse_dependent_col).cloned() {
+                        match &column_definition.behavior {
+                            ColumnBehavior::Formula(formula) => {
+                                if let Some(value) =
+                                    state.evaluate_formula(formula, row.clone(), reverse_dependent_col.clone())
+                                {
+                                    let (new_state, mut new_jobs) = sheet_reducer(
+                                        state,
+                                        SheetAction::SetCellValue {
+                                            row: row.clone(),
+                                            col: reverse_dependent_col.clone(),
+                                            value,
+                                            input_hash: None,
+                                        },
+                                    )
+                                    .await;
+                                    state = new_state;
+                                    jobs.append(&mut new_jobs);
+
+                                    eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, reverse_dependent_col, col);
+                                    let new_cell_id = CellId(format!("{}:{}", row, reverse_dependent_col));
+                                    eprintln!("TriggerUpdateEvent newcellid: {:?}", new_cell_id);
+                                    if changed_cell_id != new_cell_id {
+                                        let (new_state, mut new_jobs) = sheet_reducer(
+                                            state,
+                                            SheetAction::PropagateUpdateToDependents {
+                                                changed_cell_id: new_cell_id,
+                                                visited: visited.clone(),
+                                                depth: depth + 1,
+                                            },
+                                        )
+                                        .await;
+                                        state = new_state;
+                                        jobs.append(&mut new_jobs);
+                                    }
+                                }
+                            }
+                            ColumnBehavior::LLMCall {
+                                input: _, // used under the hood with get_input_cells_for_column
+                                workflow,
+                                workflow_name,
+                                llm_provider_name,
+                                input_hash: _,
+                            } => {
+                                // Check if input_hash is present and matches the blake3 hash of the current input cells values
+                                let input_cells =
+                                    state.get_input_cells_for_column(row.clone(), reverse_dependent_col.clone());
+                                let workflow_job_data = WorkflowSheetJobData {
+                                    sheet_id: state.uuid.clone(),
+                                    row: row.clone(),
+                                    col: reverse_dependent_col.clone(),
+                                    col_definition: column_definition.clone(),
+                                    workflow: workflow.clone(),
+                                    workflow_name: workflow_name.clone(),
+                                    input_cells,
+                                    llm_provider_name: llm_provider_name.clone(),
+                                };
+
+                                // Update the cell status to Pending
                                 let (new_state, mut new_jobs) = sheet_reducer(
                                     state,
-                                    SheetAction::SetCellValue {
+                                    SheetAction::SetCellPending {
                                         row: row.clone(),
                                         col: reverse_dependent_col.clone(),
-                                        value,
-                                        input_hash: None,
                                     },
                                 )
                                 .await;
                                 state = new_state;
                                 jobs.append(&mut new_jobs);
+                                jobs.push(workflow_job_data);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            SheetAction::RemoveColumn(col_uuid) => {
+                // Get dependents before removing the column
+                let dependents = state.column_dependency_manager.get_reverse_dependents(col_uuid.clone());
 
-                                eprintln!("row: {:?}, dep_col: {:?}, col: {:?}", row, reverse_dependent_col, col);
-                                let new_cell_id = CellId(format!("{}:{}", row, reverse_dependent_col));
-                                eprintln!("TriggerUpdateEvent newcellid: {:?}", new_cell_id);
-                                if changed_cell_id != new_cell_id {
+                // Remove the column
+                state.columns.remove(&col_uuid);
+                for row in state.rows.values_mut() {
+                    row.remove(&col_uuid);
+                }
+                state.column_dependency_manager.remove_column(col_uuid.clone());
+
+                // Remove the column from display_columns
+                state.display_columns.retain(|uuid| uuid != &col_uuid);
+
+                // Trigger updates for columns dependent on the removed column
+                for dependent_col in dependents {
+                    for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
+                        if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
+                            if let ColumnBehavior::Formula(formula) = &column_definition.behavior {
+                                if let Some(value) =
+                                    state.evaluate_formula(formula, row_uuid.clone(), dependent_col.clone())
+                                {
                                     let (new_state, mut new_jobs) = sheet_reducer(
                                         state,
-                                        SheetAction::PropagateUpdateToDependents {
-                                            changed_cell_id: new_cell_id,
-                                            visited: visited.clone(),
-                                            depth: depth + 1,
+                                        SheetAction::SetCellValue {
+                                            row: row_uuid.clone(),
+                                            col: dependent_col.clone(),
+                                            value,
+                                            input_hash: None,
                                         },
                                     )
                                     .await;
@@ -819,210 +902,135 @@ pub async fn sheet_reducer(mut state: Sheet, action: SheetAction) -> (Sheet, Vec
                                 }
                             }
                         }
-                        ColumnBehavior::LLMCall {
-                            input: _, // used under the hood with get_input_cells_for_column
+                    }
+                }
+            }
+            SheetAction::TriggerUpdateColumnValues(col_uuid) => {
+                let row_uuids: Vec<_> = state.rows.keys().cloned().collect();
+                for row_uuid in row_uuids {
+                    if let Some(column_definition) = state.columns.get(&col_uuid).cloned() {
+                        if let ColumnBehavior::LLMCall {
+                            input, // used under the hood with get_input_cells_for_column
                             workflow,
                             workflow_name,
                             llm_provider_name,
-                            input_hash,
-                        } => {
-                            // Check if input_hash is present and matches the blake3 hash of the current input cells values
-                            let input_cells =
-                                state.get_input_cells_for_column(row.clone(), reverse_dependent_col.clone());
-                            let workflow_job_data = WorkflowSheetJobData {
-                                sheet_id: state.uuid.clone(),
-                                row: row.clone(),
-                                col: reverse_dependent_col.clone(),
-                                col_definition: column_definition.clone(),
-                                workflow: workflow.clone(),
-                                workflow_name: workflow_name.clone(),
-                                input_cells,
-                                llm_provider_name: llm_provider_name.clone(),
-                            };
+                            input_hash: _,
+                        } = &column_definition.behavior
+                        {
+                            let dependencies = state.parse_formula_dependencies(input);
+                            let all_dependencies_met = dependencies.iter().all(|dep_col| {
+                                let cell_value = state.get_cell_value(row_uuid.clone(), dep_col.clone());
+                                cell_value.as_ref().map_or(false, |v| !v.is_empty())
+                            });
 
-                            // Update the cell status to Pending
-                            let (new_state, mut new_jobs) = sheet_reducer(
-                                state,
-                                SheetAction::SetCellPending {
-                                    row: row.clone(),
-                                    col: reverse_dependent_col.clone(),
-                                },
-                            )
-                            .await;
-                            state = new_state;
-                            jobs.append(&mut new_jobs);
-                            jobs.push(workflow_job_data);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        SheetAction::RemoveColumn(col_uuid) => {
-            // Get dependents before removing the column
-            let dependents = state.column_dependency_manager.get_reverse_dependents(col_uuid.clone());
+                            if all_dependencies_met {
+                                let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
+                                let workflow_job_data = WorkflowSheetJobData {
+                                    sheet_id: state.uuid.clone(),
+                                    row: row_uuid.clone(),
+                                    col: col_uuid.clone(),
+                                    col_definition: column_definition.clone(),
+                                    workflow: workflow.clone(),
+                                    workflow_name: workflow_name.clone(),
+                                    input_cells,
+                                    llm_provider_name: llm_provider_name.clone(),
+                                };
 
-            // Remove the column
-            state.columns.remove(&col_uuid);
-            for row in state.rows.values_mut() {
-                row.remove(&col_uuid);
-            }
-            state.column_dependency_manager.remove_column(col_uuid.clone());
-
-            // Remove the column from display_columns
-            state.display_columns.retain(|uuid| uuid != &col_uuid);
-
-            // Trigger updates for columns dependent on the removed column
-            for dependent_col in dependents {
-                for row_uuid in state.rows.keys().cloned().collect::<Vec<_>>() {
-                    if let Some(column_definition) = state.columns.get(&dependent_col).cloned() {
-                        if let ColumnBehavior::Formula(formula) = &column_definition.behavior {
-                            if let Some(value) =
-                                state.evaluate_formula(formula, row_uuid.clone(), dependent_col.clone())
-                            {
-                                let (new_state, mut new_jobs) = sheet_reducer(
-                                    state,
-                                    SheetAction::SetCellValue {
-                                        row: row_uuid.clone(),
-                                        col: dependent_col.clone(),
-                                        value,
-                                        input_hash: None,
-                                    },
-                                )
-                                .await;
-                                state = new_state;
-                                jobs.append(&mut new_jobs);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        SheetAction::TriggerUpdateColumnValues(col_uuid) => {
-            let row_uuids: Vec<_> = state.rows.keys().cloned().collect();
-            for row_uuid in row_uuids {
-                if let Some(column_definition) = state.columns.get(&col_uuid).cloned() {
-                    if let ColumnBehavior::LLMCall {
-                        input, // used under the hood with get_input_cells_for_column
-                        workflow,
-                        workflow_name,
-                        llm_provider_name,
-                        input_hash: _,
-                    } = &column_definition.behavior
-                    {
-                        let dependencies = state.parse_formula_dependencies(input);
-                        let all_dependencies_met = dependencies.iter().all(|dep_col| {
-                            let cell_value = state.get_cell_value(row_uuid.clone(), dep_col.clone());
-                            cell_value.as_ref().map_or(false, |v| !v.is_empty())
-                        });
-
-                        if all_dependencies_met {
-                            let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
-                            let workflow_job_data = WorkflowSheetJobData {
-                                sheet_id: state.uuid.clone(),
-                                row: row_uuid.clone(),
-                                col: col_uuid.clone(),
-                                col_definition: column_definition.clone(),
-                                workflow: workflow.clone(),
-                                workflow_name: workflow_name.clone(),
-                                input_cells,
-                                llm_provider_name: llm_provider_name.clone(),
-                            };
-
-                            // Update the cell status to Pending
-                            if let Some(row_cells) = state.rows.get_mut(&row_uuid) {
-                                if let Some(cell) = row_cells.get_mut(&col_uuid) {
-                                    cell.status = CellStatus::Pending;
+                                // Update the cell status to Pending
+                                if let Some(row_cells) = state.rows.get_mut(&row_uuid) {
+                                    if let Some(cell) = row_cells.get_mut(&col_uuid) {
+                                        cell.status = CellStatus::Pending;
+                                    }
                                 }
-                            }
 
-                            jobs.push(workflow_job_data);
+                                jobs.push(workflow_job_data);
+                            }
                         }
                     }
                 }
             }
-        }
-        SheetAction::RemoveRow(row_uuid) => {
-            state.rows.remove(&row_uuid);
-            state.display_rows.retain(|uuid| uuid != &row_uuid);
-            // Optionally, you can add logic to handle dependencies or other side effects
-        }
-        SheetAction::AddRow(row_uuid) => {
-            eprintln!("SheetAction::AddRow: {:?}", row_uuid);
-            if state.rows.contains_key(&row_uuid) {
-                return (state, jobs); // Row already exists, return current state
+            SheetAction::RemoveRow(row_uuid) => {
+                state.rows.remove(&row_uuid);
+                state.display_rows.retain(|uuid| uuid != &row_uuid);
+                // Optionally, you can add logic to handle dependencies or other side effects
             }
+            SheetAction::AddRow(row_uuid) => {
+                eprintln!("SheetAction::AddRow: {:?}", row_uuid);
+                if state.rows.contains_key(&row_uuid) {
+                    return (state, jobs); // Row already exists, return current state
+                }
 
-            let mut row_cells = HashMap::new();
-            for (col_uuid, col_def) in &state.columns {
-                if let ColumnBehavior::Text = col_def.behavior {
-                    row_cells.insert(
-                        col_uuid.clone(),
-                        Cell {
-                            value: Some("".to_string()), // Default empty value for text columns
-                            last_updated: Utc::now(),
-                            status: CellStatus::Ready,
-                            input_hash: None,
-                        },
-                    );
-                } else {
-                    // Check the states of dependent cells to determine the status of the new cell
-                    let status = if let ColumnBehavior::Formula(formula)
-                    | ColumnBehavior::LLMCall { input: formula, .. } = &col_def.behavior
-                    {
-                        let dependencies = state.parse_formula_dependencies(formula);
-                        let any_dependency_missing = dependencies
-                            .iter()
-                            .any(|dep_col| state.get_cell_value(row_uuid.clone(), dep_col.clone()).is_none());
-                        if any_dependency_missing {
-                            CellStatus::Waiting
+                let mut row_cells = HashMap::new();
+                for (col_uuid, col_def) in &state.columns {
+                    if let ColumnBehavior::Text = col_def.behavior {
+                        row_cells.insert(
+                            col_uuid.clone(),
+                            Cell {
+                                value: Some("".to_string()), // Default empty value for text columns
+                                last_updated: Utc::now(),
+                                status: CellStatus::Ready,
+                                input_hash: None,
+                            },
+                        );
+                    } else {
+                        // Check the states of dependent cells to determine the status of the new cell
+                        let status = if let ColumnBehavior::Formula(formula)
+                        | ColumnBehavior::LLMCall { input: formula, .. } = &col_def.behavior
+                        {
+                            let dependencies = state.parse_formula_dependencies(formula);
+                            let any_dependency_missing = dependencies
+                                .iter()
+                                .any(|dep_col| state.get_cell_value(row_uuid.clone(), dep_col.clone()).is_none());
+                            if any_dependency_missing {
+                                CellStatus::Waiting
+                            } else {
+                                CellStatus::Pending
+                            }
                         } else {
                             CellStatus::Pending
-                        }
-                    } else {
-                        CellStatus::Pending
-                    };
+                        };
 
-                    row_cells.insert(
-                        col_uuid.clone(),
-                        Cell {
-                            value: None,
-                            last_updated: Utc::now(),
-                            status,
-                            input_hash: None,
-                        },
-                    );
+                        row_cells.insert(
+                            col_uuid.clone(),
+                            Cell {
+                                value: None,
+                                last_updated: Utc::now(),
+                                status,
+                                input_hash: None,
+                            },
+                        );
+                    }
                 }
-            }
-            state.rows.insert(row_uuid.clone(), row_cells);
-            state.display_rows.push(row_uuid.clone());
+                state.rows.insert(row_uuid.clone(), row_cells);
+                state.display_rows.push(row_uuid.clone());
 
-            // Collect update events for non-text columns
-            let mut update_events = Vec::new();
-            for (col_uuid, col_def) in &state.columns {
-                if let ColumnBehavior::Text = col_def.behavior {
-                    continue; // Skip text columns
+                // Collect update events for non-text columns
+                let mut update_events = Vec::new();
+                for (col_uuid, col_def) in &state.columns {
+                    if let ColumnBehavior::Text = col_def.behavior {
+                        continue; // Skip text columns
+                    }
+
+                    let changed_cell_id = CellId(format!("{}:{}", row_uuid, col_uuid));
+                    eprintln!("\nAddRow TriggerUpdateEvent: {:?}", changed_cell_id);
+                    update_events.push(SheetAction::PropagateUpdateToDependents {
+                        changed_cell_id,
+                        visited: HashSet::new(),
+                        depth: 0,
+                    });
                 }
 
-                let changed_cell_id = CellId(format!("{}:{}", row_uuid, col_uuid));
-                eprintln!("\nAddRow TriggerUpdateEvent: {:?}", changed_cell_id);
-                update_events.push(SheetAction::PropagateUpdateToDependents {
-                    changed_cell_id,
-                    visited: HashSet::new(),
-                    depth: 0,
-                });
-            }
-
-            // Apply update events
-            for event in update_events {
-                let (new_state, mut new_jobs) = sheet_reducer(state.clone(), event).await;
-                eprintln!("update_events New state: {:?}", new_state);
-                state = new_state;
-                jobs.append(&mut new_jobs);
+                // Apply update events
+                for event in update_events {
+                    let (new_state, mut new_jobs) = sheet_reducer(state.clone(), event).await;
+                    eprintln!("update_events New state: {:?}", new_state);
+                    state = new_state;
+                    jobs.append(&mut new_jobs);
+                }
             }
         }
-    }
-    println!("After state: \n");
-    state.print_as_ascii_table();
-    (state, jobs)
+        println!("After state: \n");
+        state.print_as_ascii_table();
+        (state, jobs)
+    })
 }

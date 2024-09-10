@@ -3,11 +3,11 @@ use super::file_parser_types::TextGroup;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
-#[cfg(feature = "desktop-only")]
-use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
 use regex::Regex;
 use std::collections::HashMap;
+#[cfg(feature = "desktop-only")]
+use std::{future::Future, pin::Pin};
 
 impl ShinkaiFileParser {
     /// Recursive function to collect all texts from the text groups and their subgroups
@@ -59,75 +59,77 @@ impl ShinkaiFileParser {
     }
 
     #[cfg(feature = "desktop-only")]
-    #[async_recursion]
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them in parallel, processing up to 10 futures at a time.
-    pub async fn generate_text_group_embeddings(
-        text_groups: &Vec<TextGroup>,
+    pub fn generate_text_group_embeddings(
+        text_groups: Vec<TextGroup>,
         generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_node_text_size: u64,
         collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
-    ) -> Result<Vec<TextGroup>, VRError> {
-        // Clone the input text_groups
-        let mut text_groups = text_groups.clone();
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<TextGroup>, VRError>> + Send>> {
+        Box::pin(async move {
+            // Clone the input text_groups
 
-        // Collect all texts from the text groups and their subgroups
-        let (texts, indices) = collect_texts_and_indices(&text_groups, max_node_text_size, vec![]);
+            let mut text_groups = text_groups;
 
-        // Generate embeddings for all texts in batches
-        let ids: Vec<String> = vec!["".to_string(); texts.len()];
-        let mut all_futures = Vec::new();
-        let mut current_batch_futures = Vec::new();
+            // Collect all texts from the text groups and their subgroups
+            let (texts, indices) = collect_texts_and_indices(&text_groups, max_node_text_size, vec![]);
 
-        for (index, batch) in texts.chunks(max_batch_size as usize).enumerate() {
-            let batch_texts = batch.to_vec();
-            let batch_ids = ids[..batch.len()].to_vec();
-            let generator_clone = generator.box_clone(); // Clone the generator for use in the future.
+            // Generate embeddings for all texts in batches
+            let ids: Vec<String> = vec!["".to_string(); texts.len()];
+            let mut all_futures = Vec::new();
+            let mut current_batch_futures = Vec::new();
 
-            // Use the `move` keyword to take ownership of `generator_clone` inside the async block.
-            let future = async move { generator_clone.generate_embeddings(&batch_texts, &batch_ids).await };
-            current_batch_futures.push(future);
+            for (index, batch) in texts.chunks(max_batch_size as usize).enumerate() {
+                let batch_texts = batch.to_vec();
+                let batch_ids = ids[..batch.len()].to_vec();
+                let generator_clone = generator.box_clone(); // Clone the generator for use in the future.
 
-            // If we've collected 10 futures or are at the last batch, add them to all_futures and start a new vector
-            if current_batch_futures.len() == 10 || index == texts.chunks(max_batch_size as usize).count() - 1 {
-                all_futures.push(current_batch_futures);
-                current_batch_futures = Vec::new();
+                // Use the `move` keyword to take ownership of `generator_clone` inside the async block.
+                let future = async move { generator_clone.generate_embeddings(&batch_texts, &batch_ids).await };
+                current_batch_futures.push(future);
+
+                // If we've collected 10 futures or are at the last batch, add them to all_futures and start a new vector
+                if current_batch_futures.len() == 10 || index == texts.chunks(max_batch_size as usize).count() - 1 {
+                    all_futures.push(current_batch_futures);
+                    current_batch_futures = Vec::new();
+                }
             }
-        }
 
-        // Process each group of up to 10 futures in sequence
-        let mut embeddings = Vec::new();
-        for futures_group in all_futures {
-            let results = futures::future::join_all(futures_group).await;
-            for result in results {
-                match result {
-                    Ok(batch_embeddings) => {
-                        embeddings.extend(batch_embeddings);
-                    }
-                    Err(e) => {
-                        if max_batch_size > 5 {
-                            max_batch_size -= 5;
-                            return Self::generate_text_group_embeddings(
-                                &text_groups,
-                                generator,
-                                max_batch_size,
-                                max_node_text_size,
-                                collect_texts_and_indices,
-                            )
-                            .await;
-                        } else {
-                            return Err(e);
+            // Process each group of up to 10 futures in sequence
+            let mut embeddings = Vec::new();
+            for futures_group in all_futures {
+                let results = futures::future::join_all(futures_group).await;
+                for result in results {
+                    match result {
+                        Ok(batch_embeddings) => {
+                            embeddings.extend(batch_embeddings);
+                        }
+                        Err(e) => {
+                            if max_batch_size > 5 {
+                                max_batch_size -= 5;
+                                return Self::generate_text_group_embeddings(
+                                    text_groups,
+                                    generator,
+                                    max_batch_size,
+                                    max_node_text_size,
+                                    collect_texts_and_indices,
+                                )
+                                .await;
+                            } else {
+                                return Err(e);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // Assign the generated embeddings back to the text groups and their subgroups
-        Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
+            // Assign the generated embeddings back to the text groups and their subgroups
+            Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
 
-        Ok(text_groups)
+            Ok(text_groups)
+        })
     }
 
     #[cfg(feature = "desktop-only")]
