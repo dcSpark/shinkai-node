@@ -22,7 +22,7 @@ use super::shinkai_lancedb_error::ShinkaiLanceDBError;
 use super::shinkai_tool_schema::ShinkaiToolSchema;
 
 // Note: Add 1 to the current number to force an old fashion migration (delete all and then add all)
-pub static LATEST_ROUTER_DB_VERSION: &str = "3";
+pub static LATEST_ROUTER_DB_VERSION: &str = "4";
 
 // TODO: we need a way to export and import the db (or tables). it could be much faster to reset.
 
@@ -75,7 +75,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ShinkaiLanceDBError::Schema(e.to_string()))?;
 
         let table = match connection
-            .create_empty_table("tool_router", schema)
+            .create_empty_table("tool_router_v4", schema)
             // .data_storage_version(LanceFileVersion::V2_1)
             .execute()
             .await
@@ -85,7 +85,7 @@ impl LanceShinkaiDb {
                 if let LanceDbError::TableAlreadyExists { .. } = e {
                     // If the table already exists, retrieve and return it
                     connection
-                        .open_table("tool_router")
+                        .open_table("tool_router_v4")
                         .execute()
                         .await
                         .map_err(ShinkaiLanceDBError::from)?
