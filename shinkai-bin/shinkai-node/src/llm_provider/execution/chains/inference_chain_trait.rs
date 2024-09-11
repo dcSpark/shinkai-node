@@ -184,6 +184,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
+    pub image_files: HashMap<String, String>,
     pub llm_provider: SerializedLLMProvider,
     /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
@@ -209,6 +210,7 @@ impl InferenceChainContext {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
+        image_files: HashMap<String, String>,
         agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -228,6 +230,7 @@ impl InferenceChainContext {
             vector_fs,
             full_job,
             user_message,
+            image_files,
             llm_provider: agent,
             execution_context,
             generator,

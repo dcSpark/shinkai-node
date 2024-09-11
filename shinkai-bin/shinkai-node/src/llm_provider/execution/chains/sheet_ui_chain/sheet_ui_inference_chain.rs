@@ -293,11 +293,13 @@ impl SheetUIInferenceChain {
                     }
                 } else {
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
+                    let image_files = HashMap::new();
                     let context = InferenceChainContext::new(
                         db.clone(),
                         vector_fs.clone(),
                         full_job.clone(),
                         parsed_message,
+                        image_files,
                         llm_provider.clone(),
                         execution_context.clone(),
                         generator.clone(),

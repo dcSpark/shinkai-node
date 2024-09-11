@@ -129,7 +129,7 @@ impl LLMService for Ollama {
                 ShinkaiLogLevel::Info,
                 format!("Call API Body: {:?}", payload_log).as_str(),
             );
-            eprintln!("Call API Body: {:?}", payload_log);
+            eprintln!("ollama payload: {:?}", payload_log);
 
             if is_stream {
                 handle_streaming_response(

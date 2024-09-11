@@ -4,7 +4,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::fmt;
 
 use super::prompts::Prompt;

@@ -41,6 +41,11 @@ impl JobPromptGenerator {
 
         // Add previous messages
         if let Some(step_history) = job_step_history {
+            for step in &step_history {
+                if let Some(prompt) = step.get_result_prompt() {
+                    println!("Step history content: {:?}", prompt);
+                }
+            }
             prompt.add_step_history(step_history, 97);
         }
 

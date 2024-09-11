@@ -580,6 +580,7 @@ mod tests {
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],
         };
+        let image_files = HashMap::new();
 
         // Create a full InferenceChainContext with the generated embeddings
         let context = InferenceChainContext::new(
@@ -590,6 +591,7 @@ mod tests {
                 original_user_message_string: "".to_string(),
                 elements: vec![],
             },
+            image_files,
             agent,
             HashMap::new(),
             generator,
@@ -713,6 +715,7 @@ mod tests {
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],
         };
+        let image_files = HashMap::new();
 
         // Create a full InferenceChainContext with the generated embeddings
         let context = InferenceChainContext::new(
@@ -723,6 +726,7 @@ mod tests {
                 original_user_message_string: "".to_string(),
                 elements: vec![],
             },
+            image_files,
             agent,
             HashMap::new(),
             generator,
