@@ -199,15 +199,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
-                images: None,
-            },
-            LlmMessage {
-                role: Some("user".to_string()),
-                content: Some("iVBORw0KGgoAAAANSUhEUgAAAlgAAAJYCAYAAAC".to_string()),
-                name: Some("image".to_string()),
-                function_call: None,
-                functions: None,
-                images: None,
+                images: Some(vec!["iVBORw0KGgoAAAANSUhEUgAAAlgAAAJYCAYAAAC".to_string()]),
             },
             LlmMessage {
                 role: Some("system".to_string()),
