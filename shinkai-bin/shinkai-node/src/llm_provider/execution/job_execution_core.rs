@@ -336,7 +336,7 @@ impl JobManager {
             llm_provider_found,
             full_job,
             job_message.clone(),
-            image_files,
+            image_files.clone(),
             prev_execution_context,
             generator,
             user_profile.clone(),
@@ -380,7 +380,9 @@ impl JobManager {
         db.add_step_history(
             job_message.job_id.clone(),
             job_message.content,
+            Some(image_files),
             inference_response_content.to_string(),
+            None,
             None,
         )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
@@ -491,7 +493,9 @@ impl JobManager {
         db.add_step_history(
             job_message.job_id.clone(),
             job_message.content.clone(),
+            None,
             response.to_string(),
+            None,
             None,
         )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)

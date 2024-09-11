@@ -113,12 +113,15 @@ impl LLMService for Ollama {
             let mut payload_log = payload.clone();
             truncate_image_content_in_payload(&mut payload_log);
 
-            match serde_json::to_string_pretty(&messages_json) {
-                Ok(pretty_json) => shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Info,
-                    format!("Messages JSON: {}", pretty_json).as_str(),
-                ),
+            match serde_json::to_string_pretty(&payload_log) {
+                Ok(pretty_json) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Info,
+                        format!("Messages JSON: {}", pretty_json).as_str(),
+                    );
+                    eprintln!("Messages JSON: {}", pretty_json);
+                },
                 Err(e) => shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Error,

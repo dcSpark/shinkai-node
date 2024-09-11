@@ -27,19 +27,6 @@ impl JobPromptGenerator {
         let system_prompt = custom_system_prompt.unwrap_or_else(|| "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string());
         prompt.add_content(system_prompt, SubPromptType::System, 98);
 
-        // Commented because it was confusing the LLM in some cases
-        // If there is a document summary from the vector search add it with higher priority that the chunks
-        // if let Some(summary) = summary_text {
-        //     prompt.add_content(
-        //         format!(
-        //             "Here is the current summary of content another assistant found to answer the question: `{}`",
-        //             summary
-        //         ),
-        //         SubPromptType::User,
-        //         99,
-        //     );
-        // }
-
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages

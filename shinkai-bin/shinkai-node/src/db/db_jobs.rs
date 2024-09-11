@@ -562,7 +562,9 @@ impl ShinkaiDB {
         &self,
         job_id: String,
         user_message: String,
+        user_files: Option<HashMap<String, String>>,
         agent_response: String,
+        agent_files: Option<HashMap<String, String>>,
         message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
         // eprintln!("Adding step history");
@@ -592,8 +594,10 @@ impl ShinkaiDB {
 
         // Create prompt & JobStepResult
         let mut prompt = Prompt::new();
-        prompt.add_content(user_message, SubPromptType::User, 100);
-        prompt.add_content(agent_response, SubPromptType::Assistant, 100);
+        let user_files = user_files.unwrap_or_default();
+        let agent_files = agent_files.unwrap_or_default();
+        prompt.add_omni(user_message, user_files, SubPromptType::User, 100);
+        prompt.add_omni(agent_response, agent_files, SubPromptType::Assistant, 100);
         let mut job_step_result = JobStepResult::new();
         job_step_result.add_new_step_revision(prompt);
 
