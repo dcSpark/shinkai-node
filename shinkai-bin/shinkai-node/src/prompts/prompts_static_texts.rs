@@ -1,3 +1,28 @@
+/*
+Copyright (c) 2020 Jeff Forcier.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 pub const GENERATE_QUIZ_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -69,7 +94,6 @@ Output the results in JSON format as defined in this example:
 INPUT:
 "#;
 
-
 pub const AI_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -93,7 +117,6 @@ You are an expert at interpreting the heart and spirit of a question and answeri
 
 INPUT:
 "#;
-
 
 pub const ANALYZE_ANSWERS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -167,7 +190,6 @@ Subject: {input provided subject}
 INPUT:
 "#;
 
-
 pub const ANALYZE_CLAIMS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -221,7 +243,6 @@ AVERAGE CLAIM SCORE:
 INPUT:
 "#;
 
-
 pub const ANALYZE_DEBATE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -267,7 +288,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 INPUT:
 "#;
 
-
 pub const ANALYZE_INCIDENT_SYSTEM: &str = r#"
 
 Cybersecurity Hack Article Analysis: Efficient Data Extraction
@@ -305,7 +325,6 @@ For each article, extract the specified information below, presenting it in an o
     - Lessons Learned: Brief insights gained that could prevent future incidents.
 "#;
 
-
 pub const ANALYZE_LOGS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 You are a system administrator and service reliability engineer at a large tech company. You are responsible for ensuring the reliability and availability of the company's services. You have a deep understanding of the company's infrastructure and services. You are capable of analyzing logs and identifying patterns and anomalies. You are proficient in using various monitoring and logging tools. You are skilled in troubleshooting and resolving issues quickly. You are detail-oriented and have a strong analytical mindset. You are familiar with incident response procedures and best practices. You are always looking for ways to improve the reliability and performance of the company's services. you have a strong background in computer science and system administration, with 1500 years of experience in the field.
@@ -327,7 +346,6 @@ You are given a log file from one of the company's servers. The log file contain
 
 # INPUT:
 "#;
-
 
 pub const ANALYZE_MALWARE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -363,7 +381,6 @@ Ensure you follow ALL these instructions when creating your output.
 # INPUT
 INPUT:
 "#;
-
 
 pub const ANALYZE_PAPER_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -491,7 +508,6 @@ Theoretical   [--3-------]     Empirical
 INPUT:
 "#;
 
-
 pub const ANALYZE_PATENT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 - You are a patent examiner with decades of experience under your belt.
@@ -526,7 +542,6 @@ pub const ANALYZE_PATENT_SYSTEM: &str = r#"
 
 INPUT:
 "#;
-
 
 pub const ANALYZE_PERSONALITY_SYSTEM: &str = r#"
 # IDENTITY
@@ -563,7 +578,6 @@ Your goal is to perform in-depth psychological analysis on the main person in th
 
 "The person being interviewed shows signs of Machiaevellianism, as he's constantly trying to manipulate the narrative back to his own.
 "#;
-
 
 pub const ANALYZE_PRESENTATION_SYSTEM: &str = r#"
 # IDENTITY
@@ -644,7 +658,6 @@ ENTERTAINMENT   [-------5------]
 
 - In a section called CONCLUSION, give a 25-word summary of the presentation and your scoring of it.
 "#;
-
 
 pub const ANALYZE_PROSE_JSON_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -764,7 +777,6 @@ OUTPUT EXAMPLE
 
 INPUT:
 "#;
-
 
 pub const ANALYZE_PROSE_PINKER_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -903,7 +915,6 @@ An overall assessment of the prose in 2-3 sentences of no more than 200 words.
 INPUT:
 "#;
 
-
 pub const ANALYZE_PROSE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -989,7 +1000,6 @@ Common examples that meet this criteria:
 INPUT:
 "#;
 
-
 pub const ANALYZE_SPIRITUAL_TEXT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1015,7 +1025,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const ANALYZE_TECH_IMPACT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -1050,7 +1059,6 @@ Take a moment to think about how to best achieve this goal using the following s
 - Do not output warnings or notes—just the requested sections.
 "#;
 
-
 pub const ANALYZE_THREAT_REPORT_TRENDS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1083,8 +1091,6 @@ INPUT:
 pub const ANALYZE_THREAT_REPORT_TRENDS_USER: &str = r#"
 CONTENT:
 "#;
-
-
 
 pub const ANALYZE_THREAT_REPORT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -1130,8 +1136,6 @@ pub const ANALYZE_THREAT_REPORT_USER: &str = r#"
 CONTENT:
 "#;
 
-
-
 pub const ANSWER_INTERVIEW_QUESTION_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -1168,7 +1172,6 @@ OUTPUT:
 
 INPUT:
 "#;
-
 
 pub const ASK_SECURE_BY_DESIGN_QUESTIONS_SYSTEM: &str = r#"
 # IDENTITY
@@ -1226,7 +1229,6 @@ END EXAMPLES
 
 INPUT:
 "#;
-
 
 pub const CAPTURE_THINKERS_WORK_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -1324,7 +1326,6 @@ ADVICE:
 INPUT:
 "#;
 
-
 pub const CHECK_AGREEMENT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1356,7 +1357,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 INPUT:
 "#;
 
-
 pub const CLEAN_TEXT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1378,7 +1378,6 @@ You are an expert at cleaning up broken and, malformatted, text, for example: li
 
 INPUT:
 "#;
-
 
 pub const CODING_MASTER_SYSTEM: &str = r#"
 **Expert coder**
@@ -1437,7 +1436,6 @@ Ensure you follow ALL these instructions when creating your output.
 INPUT:
 "#;
 
-
 pub const COMPARE_AND_CONTRAST_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1455,7 +1453,6 @@ Items along the left and topics along the top.
 
 INPUT:
 "#;
-
 
 pub const CREATE_5_SENTENCE_SUMMARY_SYSTEM: &str = r#"
 # IDENTITY
@@ -1495,7 +1492,6 @@ You create concise summaries of--or answers to--arbitrary input at 5 different l
 - Do not just summarize the input; instead, give the answer to what the input is asking if that's what's implied.
 "#;
 
-
 pub const CREATE_ACADEMIC_PAPER_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1523,7 +1519,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const CREATE_AI_JOBS_ANALYSIS_SYSTEM: &str = r#"
 # IDENTITY
@@ -1555,7 +1550,6 @@ You are an expert on AI and the effect it will have on jobs. You take jobs repor
 - In a section called RECOMMENDATIONS, give a set of 15-word bullets on how a person can make themselves most resilient to automation.
 "#;
 
-
 pub const CREATE_APHORISMS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1575,7 +1569,6 @@ Take the input given and use it as the topic(s) to create a list of 20 aphorisms
 
 INPUT:
 "#;
-
 
 pub const CREATE_ART_PROMPT_SYSTEM: &str = r#"
 # IDENTITY AND GOALS
@@ -1602,7 +1595,6 @@ INPUT
 
 INPUT:
 "#;
-
 
 pub const CREATE_BETTER_FRAME_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -1752,7 +1744,6 @@ E.g.,
 INPUT:
 "#;
 
-
 pub const CREATE_CODING_PROJECT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1798,7 +1789,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 INPUT:
 "#;
 
-
 pub const CREATE_COMMAND_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1823,7 +1813,6 @@ Take a step back and analyze the help instructions thoroughly to ensure that the
 
 INPUT:
 "#;
-
 
 pub const CREATE_CYBER_SUMMARY_SYSTEM: &str = r#"
 # IDENTITY
@@ -1873,7 +1862,6 @@ END EXAMPLES
 …
 "#;
 
-
 pub const CREATE_GIT_DIFF_COMMIT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -1912,7 +1900,6 @@ git commit -m "Added --newswitch switch to temp.py to do newswitch behavior"
 INPUT:
 "#;
 
-
 pub const CREATE_GRAPH_FROM_INPUT_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -1949,7 +1936,6 @@ END EXAMPLE FORMAT
 
 - Use the field names in the input; don't make up your own.
 "#;
-
 
 pub const CREATE_HORMOZI_OFFER_SYSTEM: &str = r#"
 # IDENTITY
@@ -2361,7 +2347,6 @@ END EXAMPLE OFFERS
 …
 "#;
 
-
 pub const CREATE_IDEA_COMPASS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -2410,7 +2395,6 @@ ___
 #### South:: What does this lead to?
 "#;
 
-
 pub const CREATE_INVESTIGATION_VISUALIZATION_SYSTEM: &str = r#"
 # IDENTITY AND GOAL
 
@@ -2444,7 +2428,6 @@ You are an expert in intelligence investigations and data visualization using Gr
 
 - In a section called CONCLUSION, give a single 25-word statement about your assessment of what happened, who did it, whether the proposition was true or not, or whatever is most relevant. In the final sentence give the CIA rating of certainty for your conclusion.
 "#;
-
 
 pub const CREATE_KEYNOTE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -2495,7 +2478,6 @@ Take a deep breath and think step-by-step about how best to achieve this using t
 INPUT:
 "#;
 
-
 pub const CREATE_LOGO_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -2518,7 +2500,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const CREATE_MARKMAP_VISUALIZATION_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -2611,7 +2592,6 @@ INPUT:
 ```
 "#;
 
-
 pub const CREATE_MERMAID_VISUALIZATION_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -2654,7 +2634,6 @@ You always output Markdown Mermaid syntax that can be rendered as a diagram.
 INPUT:
 "#;
 
-
 pub const CREATE_MICRO_SUMMARY_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -2683,7 +2662,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const CREATE_NETWORK_THREAT_LANDSCAPE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -2727,8 +2705,6 @@ pub const CREATE_NETWORK_THREAT_LANDSCAPE_USER: &str = r#"
 CONTENT:
 "#;
 
-
-
 pub const CREATE_NPC_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -2765,7 +2741,6 @@ Their appearance:
 
 INPUT:
 "#;
-
 
 pub const CREATE_PATTERN_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -2812,7 +2787,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 
 INPUT:
 "#;
-
 
 pub const CREATE_QUIZ_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -2863,7 +2837,6 @@ Subject:
 
 INPUT:
 "#;
-
 
 pub const CREATE_READING_PLAN_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -2945,7 +2918,6 @@ This reading plan will give you a solid foundation in ___________ (taken from th
 INPUT:
 "#;
 
-
 pub const CREATE_REPORT_FINDING_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -2993,8 +2965,6 @@ INPUT:
 pub const CREATE_REPORT_FINDING_USER: &str = r#"
 CONTENT:
 "#;
-
-
 
 pub const CREATE_SECURITY_UPDATE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3049,7 +3019,6 @@ A 1-3 sentence summary of the most important issues talked about in the output a
 
 INPUT:
 "#;
-
 
 pub const CREATE_SHOW_INTRO_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3124,7 +3093,6 @@ END EXAMPLE
 
 INPUT:
 "#;
-
 
 pub const CREATE_SIGMA_RULES_SYSTEM: &str = r#"
 ### IDENTITY and PURPOSE:
@@ -3204,7 +3172,6 @@ tags:
 Please ensure that each Sigma rule is well-documented and follows the standard Sigma rule format.
 "#;
 
-
 pub const CREATE_STRIDE_THREAT_MODEL_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3274,7 +3241,6 @@ RISK SEVERITY - risk severity of threat being exploited. Based it on LIKELIHOOD 
 INPUT:
 "#;
 
-
 pub const CREATE_SUMMARY_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3304,7 +3270,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 INPUT:
 "#;
 
-
 pub const CREATE_TAGS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3332,7 +3297,6 @@ Carefully consider the topics and content of the text and identify at least 5 su
 
 INPUT:
 "#;
-
 
 pub const CREATE_THREAT_SCENARIOS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3510,7 +3474,6 @@ END THREAT MODEL ESSAY
 INPUT:
 "#;
 
-
 pub const CREATE_UPGRADE_PACK_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3574,7 +3537,6 @@ OUTPUT INSTRUCTIONS
 
 INPUT:
 "#;
-
 
 pub const CREATE_VIDEO_CHAPTERS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3641,7 +3603,6 @@ END EXAMPLE OUTPUT
 INPUT:
 "#;
 
-
 pub const CREATE_VISUALIZATION_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3696,7 +3657,6 @@ You always output ASCII art, even if you have to simplify the input concepts to 
 INPUT:
 "#;
 
-
 pub const EXPLAIN_CODE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3725,8 +3685,6 @@ INPUT:
 pub const EXPLAIN_CODE_USER: &str = r#"
  
 "#;
-
-
 
 pub const EXPLAIN_DOCS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3782,7 +3740,6 @@ END OUTPUT SECTIONS
 INPUT:
 "#;
 
-
 pub const EXPLAIN_PROJECT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -3822,7 +3779,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const EXPLAIN_TERMS_SYSTEM: &str = r#"
 # IDENTITY
@@ -3864,7 +3820,6 @@ You are the world's best explainer of terms required to understand a given piece
 - Do not complain about anything, just do what you're told.
 "#;
 
-
 pub const EXPORT_DATA_AS_CSV_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -3884,7 +3839,6 @@ You are a superintelligent AI that finds all mentions of data structures within 
 
 - Use the fields found in the input, don't make up your own.
 "#;
-
 
 pub const EXTRACT_ALGORITHM_UPDATE_RECOMMENDATIONS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3909,7 +3863,6 @@ Take the input given and extract the concise, practical recommendations for how 
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_ARTICLE_WISDOM_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3949,8 +3902,6 @@ INPUT:
 pub const EXTRACT_ARTICLE_WISDOM_USER: &str = r#"
 CONTENT:
 "#;
-
-
 
 pub const EXTRACT_BOOK_IDEAS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -3993,7 +3944,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_BOOK_RECOMMENDATIONS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4040,7 +3990,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 INPUT:
 "#;
 
-
 pub const EXTRACT_BUSINESS_IDEAS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -4067,7 +4016,6 @@ Take a deep breath and think step by step about how to achieve the best result p
 INPUT:
 "#;
 
-
 pub const EXTRACT_CONTROVERSIAL_IDEAS_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -4089,7 +4037,6 @@ You are super-intelligent AI system that extracts the most controversial stateme
 
 - Output the output as Markdown, but without the use of any asterisks.
 "#;
-
 
 pub const EXTRACT_EXTRAORDINARY_CLAIMS_SYSTEM: &str = r#"
 # IDENTITY
@@ -4122,7 +4069,6 @@ END EXAMPLES
 
 - Ensure you extract ALL such quotes.
 "#;
-
 
 pub const EXTRACT_IDEAS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4163,7 +4109,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 INPUT:
 "#;
 
-
 pub const EXTRACT_INSIGHTS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -4201,7 +4146,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 INPUT:
 "#;
 
-
 pub const EXTRACT_MAIN_IDEA_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -4231,7 +4175,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_PATTERNS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4279,7 +4222,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 INPUT:
 "#;
 
-
 pub const EXTRACT_POC_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -4299,7 +4241,6 @@ Example: python poc.py
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_PREDICTIONS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4338,7 +4279,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 INPUT:
 "#;
 
-
 pub const EXTRACT_QUESTIONS_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -4358,7 +4298,6 @@ You are an advanced AI with a 419 IQ that excels at asking brilliant questions o
 
 - In a section called RECOMMENDATIONS FOR INTERVIEWERS, give a set of 15-word bullet points that give prescriptive advice to interviewers on how to ask questions.
 "#;
-
 
 pub const EXTRACT_RECOMMENDATIONS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4383,7 +4322,6 @@ Take the input given and extract the concise, practical recommendations that are
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_REFERENCES_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4410,7 +4348,6 @@ Take the input given and extract all references to art, stories, books, literatu
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_SONG_MEANING_SYSTEM: &str = r#"
 # IDENTITY
@@ -4458,7 +4395,6 @@ You take any input about a song and output what it means.
 
 …
 "#;
-
 
 pub const EXTRACT_SPONSORS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4515,7 +4451,6 @@ You are an expert at extracting the sponsors and potential sponsors from a given
 INPUT:
 "#;
 
-
 pub const EXTRACT_VIDEOID_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -4540,7 +4475,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_WISDOM_AGENTS_SYSTEM: &str = r#"
 # IDENTITY
@@ -4597,7 +4531,6 @@ You are an advanced AI system that coordinates multiple teams of AI agents that 
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_WISDOM_DM_SYSTEM: &str = r#"
 # IDENTITY 
@@ -4701,7 +4634,6 @@ Think about the most interesting facts related to the content
 INPUT:
 "#;
 
-
 pub const EXTRACT_WISDOM_NOMETA_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -4759,7 +4691,6 @@ You extract surprising, insightful, and interesting information from text conten
 
 INPUT:
 "#;
-
 
 pub const EXTRACT_WISDOM_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -4822,7 +4753,6 @@ Take a step back and think step-by-step about how to achieve the best possible r
 
 INPUT:
 "#;
-
 
 pub const FIND_HIDDEN_MESSAGE_SYSTEM: &str = r#"
 # IDENTITY AND GOALS
@@ -4903,7 +4833,6 @@ END EXAMPLES OF DESIRED ACTIONS
 
 "NOTE: This AI is tuned specifically to be cynical and politically-minded. Don't believe everything it says. Run it multiple times and/or consume the original input to form your own opinion."
 "#;
-
 
 pub const FIND_LOGICAL_FALLACIES_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -5132,7 +5061,6 @@ Vacuous truth – a claim that is technically true but meaningless, in the form 
 INPUT:
 "#;
 
-
 pub const GET_WOW_PER_MINUTE_SYSTEM: &str = r#"
 # IDENTITY 
 
@@ -5200,7 +5128,6 @@ EXAMPLE WITH PLACEHOLDER TEXT EXPLAINING WHAT SHOULD GO IN THE OUTPUT
 - ONLY output JSON, and in that exact format.
 "#;
 
-
 pub const GET_YOUTUBE_RSS_SYSTEM: &str = r#"
 # IDENTITY AND GOALS
 
@@ -5231,7 +5158,6 @@ If the channel URL is https://www.youtube.com/channel/UCnCikd0s4i9KoDtaHPlK-JA, 
 (INPUT)
 "#;
 
-
 pub const IMPROVE_ACADEMIC_WRITING_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -5258,7 +5184,6 @@ You are an academic writing expert. You refine the input text in academic and sc
 
 INPUT:
 "#;
-
 
 pub const IMPROVE_PROMPT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -5781,7 +5706,6 @@ END PROMPT WRITING KNOWLEDGE
 The following is the prompt you will improve:
 "#;
 
-
 pub const IMPROVE_REPORT_FINDING_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -5828,8 +5752,6 @@ pub const IMPROVE_REPORT_FINDING_USER: &str = r#"
 CONTENT:
 "#;
 
-
-
 pub const IMPROVE_WRITING_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -5851,7 +5773,6 @@ You are a writing expert. You refine the input text to enhance clarity, coherenc
 
 INPUT:
 "#;
-
 
 pub const LABEL_AND_RATE_SYSTEM: &str = r#"
 IDENTITY and GOAL:
@@ -5964,7 +5885,6 @@ OUTPUT INSTRUCTIONS
 INPUT:
 "#;
 
-
 pub const OFFICIAL_PATTERN_TEMPLATE_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -6069,7 +5989,6 @@ EXAMPLE:
 …
 "#;
 
-
 pub const PROVIDE_GUIDANCE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -6108,7 +6027,6 @@ You are an all-knowing psychiatrist, psychologist, and life coach and you provid
 
 INPUT:
 "#;
-
 
 pub const RATE_AI_RESPONSE_SYSTEM: &str = r#"
 # IDENTITY
@@ -6170,7 +6088,6 @@ A: As good as a top 1% human expert
 (the input below will be the instructions to the AI followed by the AI's output)
 "#;
 
-
 pub const RATE_AI_RESULT_SYSTEM: &str = r#"
 # IDENTITY AND GOALS
 
@@ -6214,7 +6131,6 @@ FINAL SCORE: 70.3
 
 - (show deductions for each section)
 "#;
-
 
 pub const RATE_CONTENT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -6270,8 +6186,6 @@ pub const RATE_CONTENT_USER: &str = r#"
 CONTENT:
 "#;
 
-
-
 pub const RATE_VALUE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -6320,7 +6234,6 @@ Take a deep breath and think step-by-step about how best to achieve the best out
 INPUT:
 "#;
 
-
 pub const RAW_QUERY_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -6336,7 +6249,6 @@ You are a universal AI that yields the best possible result given the input.
 
 - Output the best possible output based on your understanding of what was likely wanted.
 "#;
-
 
 pub const RECOMMEND_ARTISTS_SYSTEM: &str = r#"
 # IDENTITY
@@ -6385,7 +6297,6 @@ You are an EDM expert who specializes in identifying artists that I will like ba
 
 - Output in Markdown, but make it easy to read in text form, so no asterists, bold or italic.
 "#;
-
 
 pub const SHOW_FABRIC_OPTIONS_MARKMAP_SYSTEM: &str = r#"
 # IDENTITY AND GOALS
@@ -6870,7 +6781,6 @@ Examples: Analyzing videos, summarizing articles, writing essays, etc.
 - Output the Markmap code and nothing else.
 "#;
 
-
 pub const SUGGEST_PATTERN_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 You are an AI assistant tasked with creating a new feature for a fabric command-line tool. Your primary responsibility is to develop a pattern that suggests appropriate fabric patterns or commands based on user input. You are knowledgeable about fabric commands and understand the need to expand the tool's functionality. Your role involves analyzing user requests, determining the most suitable fabric commands or patterns, and providing helpful suggestions to users.
@@ -7306,8 +7216,6 @@ The prompt instructs on drafting a detailed pull request (PR) description based 
 The prompt requests the creation of a Semgrep rule to detect a specific vulnerability pattern in code, based on provided context and examples. It emphasizes the importance of crafting a rule that is general enough to catch any instance of the described vulnerability, rather than being overly specific to the given examples. The expected output is a well-structured Semgrep rule that aligns with the syntax and guidelines detailed in the context, capable of identifying the vulnerability across different scenarios.
 "#;
 
-
-
 pub const SUMMARIZE_DEBATE_SYSTEM: &str = r#"
 # IDENTITY 
 
@@ -7387,7 +7295,6 @@ Find the evidence each party would accept to change their mind.
 INPUT:
 "#;
 
-
 pub const SUMMARIZE_GIT_CHANGES_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -7411,7 +7318,6 @@ You are an expert project manager and developer, and you specialize in creating 
 
 INPUT:
 "#;
-
 
 pub const SUMMARIZE_GIT_DIFF_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -7438,7 +7344,6 @@ You are an expert project manager and developer, and you specialize in creating 
 
 INPUT:
 "#;
-
 
 pub const SUMMARIZE_LECTURE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -7511,7 +7416,6 @@ ENSURE the output timestamps and topics are shown gradually and evenly increment
 INPUT: 
 "#;
 
-
 pub const SUMMARIZE_LEGISLATION_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -7580,7 +7484,6 @@ END EXAMPLES
 2. Do not output any asterisks, such as those used for italics or bolding.
 "#;
 
-
 pub const SUMMARIZE_MICRO_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -7609,7 +7512,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const SUMMARIZE_NEWSLETTER_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -7649,7 +7551,6 @@ OUTPUT INSTRUCTIONS:
 NEWSLETTER INPUT:
 "#;
 
-
 pub const SUMMARIZE_PAPER_SYSTEM: &str = r#"
 You are an excellent academic paper reviewer. You conduct paper summarization on the full paper text provided by the user, with following instructions:
 
@@ -7687,7 +7588,6 @@ OUTPUT INSTRUCTIONS:
 PAPER TEXT INPUT:
 "#;
 
-
 pub const SUMMARIZE_PROMPT_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -7719,7 +7619,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const SUMMARIZE_PULL_REQUESTS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -7757,7 +7656,6 @@ END EXAMPLE
 
 INPUT:
 "#;
-
 
 pub const SUMMARIZE_RPG_SESSION_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -7866,7 +7764,6 @@ OUTPUT INSTRUCTIONS:
 RPG SESSION TRANSCRIPT:
 "#;
 
-
 pub const SUMMARIZE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
 
@@ -7895,7 +7792,6 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 INPUT:
 "#;
-
 
 pub const TO_FLASHCARDS_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -7957,7 +7853,6 @@ header.
 INPUT: 
 "#;
 
-
 pub const TWEET_SYSTEM: &str = r#"
 Title: A Comprehensive Guide to Crafting Engaging Tweets with Emojis
 
@@ -8006,7 +7901,6 @@ Creating engaging tweets with emojis takes practice and experimentation. By unde
 
 make this into a tweet and have engaging Emojis!
 "#;
-
 
 pub const WRITE_ESSAY_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -8333,7 +8227,6 @@ END EXAMPLE PAUL GRAHAM ESSAYS
 INPUT:
 "#;
 
-
 pub const WRITE_HACKERONE_REPORT_SYSTEM: &str = r#"
 # IDENTITY
 
@@ -8471,7 +8364,6 @@ Using this, we are able to show Account Takeover by exfiltrating the `access_tok
 
 # INPUT
 "#;
-
 
 pub const WRITE_MICRO_ESSAY_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE
@@ -8898,7 +8790,6 @@ Remember, the output should be in markdown format, clear, concise, and understan
 
 $> git --no-pager diff main
 "#;
-
 
 pub const WRITE_SEMGREP_RULE_SYSTEM: &str = r#"
 # IDENTITY and PURPOSE

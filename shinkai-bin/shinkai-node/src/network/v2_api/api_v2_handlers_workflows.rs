@@ -8,7 +8,10 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{APISe
 use utoipa::OpenApi;
 use warp::Filter;
 
-use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
+use crate::{
+    network::{node_api_router::APIError, node_commands::NodeCommand},
+    tools::shinkai_tool::ShinkaiTool,
+};
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -77,6 +80,13 @@ pub fn workflows_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(search_shinkai_tool_handler);
 
+    let add_shinkai_tool_route = warp::path("add_shinkai_tool")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_shinkai_tool_handler);
+
     search_workflows_route
         .or(set_workflow_route)
         .or(remove_workflow_route)
@@ -86,6 +96,7 @@ pub fn workflows_routes(
         .or(set_shinkai_tool_route)
         .or(get_shinkai_tool_route)
         .or(search_shinkai_tool_route)
+        .or(add_shinkai_tool_route)
 }
 
 #[utoipa::path(
@@ -483,6 +494,45 @@ pub async fn get_shinkai_tool_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/add_shinkai_tool",
+    request_body = ShinkaiTool,
+    responses(
+        (status = 200, description = "Successfully added Shinkai tool", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_shinkai_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: ShinkaiTool,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiAddShinkaiTool {
+            bearer,
+            shinkai_tool: payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -495,6 +545,7 @@ pub async fn get_shinkai_tool_handler(
         set_shinkai_tool_handler,
         get_shinkai_tool_handler,
         search_shinkai_tool_handler,
+        add_shinkai_tool_handler,
     ),
     components(
         schemas(APIError)

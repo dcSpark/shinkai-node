@@ -210,6 +210,7 @@ pub fn check_structure(actual: &Value, expected: &Value) -> bool {
         expected["child_folders"].as_array().cloned(),
     ) {
         if actual_folders.len() != expected_folders.len() {
+            eprintln!("Folder count mismatch: expected {}, found {}", expected_folders.len(), actual_folders.len());
             return false;
         }
         sort_folders(&mut actual_folders);
@@ -220,6 +221,7 @@ pub fn check_structure(actual: &Value, expected: &Value) -> bool {
             }
         }
     } else {
+        eprintln!("Expected and actual folders structure mismatch");
         return false;
     }
     true
@@ -237,18 +239,21 @@ pub fn check_folder(actual_folder: &Value, expected_folder: &Value) -> bool {
     let actual_name = actual_folder["name"].as_str().unwrap_or("Unknown Folder");
     let expected_name = expected_folder["name"].as_str().unwrap_or("Unknown Folder");
     if actual_name != expected_name {
+        eprintln!("Folder name mismatch: expected '{}', found '{}'", expected_name, actual_name);
         return false;
     }
 
     let actual_path = actual_folder["path"].as_str().unwrap_or("Unknown Path");
     let expected_path = expected_folder["path"].as_str().unwrap_or("Unknown Path");
     if actual_path != expected_path {
+        eprintln!("Folder path mismatch: expected '{}', found '{}'", expected_path, actual_path);
         return false;
     }
 
     let mut actual_subfolders = actual_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
     let mut expected_subfolders = expected_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
     if actual_subfolders.len() != expected_subfolders.len() {
+        eprintln!("Subfolder count mismatch in '{}': expected {}, found {}", actual_name, expected_subfolders.len(), actual_subfolders.len());
         return false;
     }
     sort_folders(&mut actual_subfolders);
@@ -262,6 +267,7 @@ pub fn check_folder(actual_folder: &Value, expected_folder: &Value) -> bool {
     let mut actual_items = actual_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
     let mut expected_items = expected_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
     if actual_items.len() != expected_items.len() {
+        eprintln!("Item count mismatch in '{}': expected {}, found {}", actual_name, expected_items.len(), actual_items.len());
         return false;
     }
     sort_items(&mut actual_items);
@@ -279,12 +285,14 @@ pub fn check_item(actual_item: &Value, expected_item: &Value) -> bool {
     let actual_name = actual_item["name"].as_str().unwrap_or("Unknown Item");
     let expected_name = expected_item["name"].as_str().unwrap_or("Unknown Item");
     if actual_name != expected_name {
+        eprintln!("Item name mismatch: expected '{}', found '{}'", expected_name, actual_name);
         return false;
     }
 
     let actual_path = actual_item["path"].as_str().unwrap_or("Unknown Path");
     let expected_path = expected_item["path"].as_str().unwrap_or("Unknown Path");
     if actual_path != expected_path {
+        eprintln!("Item path mismatch: expected '{}', found '{}'", expected_path, actual_path);
         return false;
     }
 

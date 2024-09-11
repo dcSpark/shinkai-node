@@ -63,7 +63,6 @@ pub enum LLMProviderError {
     LLMServiceInferenceLimitReached(String),
     LLMServiceUnexpectedError(String),
     FailedSerdeParsingJSONString(String, serde_json::Error),
-    FailedSerdeParsingXMLString(String, minidom::Error),
     ShinkaiMessageBuilderError(String),
     TokenLimit(String),
     WorkflowExecutionError(String),
@@ -78,7 +77,8 @@ pub enum LLMProviderError {
     CallbackManagerNotFound,
     SheetManagerError(String),
     InputProcessingError(String),
-    ToolRouterNotFound
+    ToolRouterNotFound,
+    UnexpectedResponseFormat(String)
 }
 
 impl fmt::Display for LLMProviderError {
@@ -148,7 +148,6 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::LLMServiceInferenceLimitReached(s) => write!(f, "LLM Provider Inference Limit Reached: {}", s),
             LLMProviderError::LLMServiceUnexpectedError(e) => write!(f, "LLM Provider Unexpected Error: {}", e),
             LLMProviderError::FailedSerdeParsingJSONString(s, err) => write!(f, "Failed parsing JSON string: `{}`. Fix the following Serde error: {}", s, err),
-            LLMProviderError::FailedSerdeParsingXMLString(s, err) => write!(f, "Failed parsing XML string: `{}`. Fix the following Serde error: {}", s, err),
             LLMProviderError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
             LLMProviderError::TokenLimit(s) => write!(f, "{}", s),
             LLMProviderError::WorkflowExecutionError(s) => write!(f, "{}", s),
@@ -164,6 +163,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::SheetManagerError(s) => write!(f, "{}", s),
             LLMProviderError::InputProcessingError(s) => write!(f, "{}", s),
             LLMProviderError::ToolRouterNotFound => write!(f, "Tool Router not found"),
+            LLMProviderError::UnexpectedResponseFormat(s) => write!(f, "Unexpected response format: {}", s),
         }
     }
 }
@@ -223,7 +223,6 @@ impl LLMProviderError {
             LLMProviderError::LLMServiceInferenceLimitReached(_) => "LLMServiceInferenceLimitReached",
             LLMProviderError::LLMServiceUnexpectedError(_) => "LLMServiceUnexpectedError",
             LLMProviderError::FailedSerdeParsingJSONString(_, _) => "FailedSerdeParsingJSONString",
-            LLMProviderError::FailedSerdeParsingXMLString(_, _) => "FailedSerdeParsingXMLString",
             LLMProviderError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
             LLMProviderError::TokenLimit(_) => "TokenLimit",
             LLMProviderError::WorkflowExecutionError(_) => "WorkflowExecutionError",
@@ -239,6 +238,7 @@ impl LLMProviderError {
             LLMProviderError::SheetManagerError(_) => "SheetManagerError",
             LLMProviderError::InputProcessingError(_) => "InputProcessingError",
             LLMProviderError::ToolRouterNotFound => "ToolRouterNotFound",
+            LLMProviderError::UnexpectedResponseFormat(_) => "UnexpectedResponseFormat",
         };
 
         let error_message = format!("{}", self);

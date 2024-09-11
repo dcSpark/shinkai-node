@@ -182,7 +182,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("moondream") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
-            model_type if model_type.contains("minicpm_llama3") => {
+            model_type if model_type.contains("minicpm-v") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             _ => vec![ModelCapability::TextInference],
@@ -327,7 +327,7 @@ impl ModelCapabilitiesManager {
                     || ollama
                         .model_type
                         .starts_with("adrienbrault/nous-hermes2theta-llama3-8b")
-                    || ollama.model_type.contains("minicpm_llama3")
+                    || ollama.model_type.contains("minicpm-v")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
@@ -370,6 +370,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type == "gpt-4o"
                     || openai.model_type == "gpt-4-1106-preview"
+                    || openai.model_type == "gpt-4o-mini"
                     || openai.model_type == "gpt-4-1106-preview"
                     || openai.model_type == "gpt-4-vision-preview"
                 {
@@ -416,13 +417,14 @@ impl ModelCapabilitiesManager {
     fn get_max_tokens_for_model_type(model_type: &str) -> usize {
         match model_type {
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
+            model_type if model_type.starts_with("mistral-nemo") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
             model_type if model_type.starts_with("mixtral:8x22b") => 65_000,
             model_type if model_type.starts_with("llama3-gradient") => 256_000,
             model_type if model_type.starts_with("falcon2") => 8_000,
             model_type if model_type.starts_with("llama3-chatqa") => 8_000,
             model_type if model_type.starts_with("llava-phi3") => 4_000,
-            model_type if model_type.contains("minicpm_llama3") => 4_000,
+            model_type if model_type.contains("minicpm-v") => 8_000,
             model_type if model_type.starts_with("dolphin-llama3") => 8_000,
             model_type if model_type.starts_with("command-r-plus") => 128_000,
             model_type if model_type.starts_with("codestral") => 32_000,

@@ -1,7 +1,10 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::job::JobConfig;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama::{
-    ollama_conversation_prepare_messages, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
+use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use crate::network::ws_manager::{WSMessageType, WSMetadata, WSUpdateHandler};
 
@@ -24,12 +27,18 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
-    if let Some(images) = payload.get_mut("images") {
-        if let Some(array) = images.as_array_mut() {
-            for image in array {
-                if let Some(str_image) = image.as_str() {
-                    let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
-                    *image = JsonValue::String(truncated_image);
+    if let Some(messages) = payload.get_mut("messages") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(images) = message.get_mut("images") {
+                    if let Some(image_array) = images.as_array_mut() {
+                        for (_index, image) in image_array.iter_mut().enumerate() {
+                            if let Some(str_image) = image.as_str() {
+                                let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
+                                *image = JsonValue::String(truncated_image);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -47,12 +56,20 @@ impl LLMService for Ollama {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");
 
-            let messages_result = ollama_conversation_prepare_messages(&model, prompt)?;
+            let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
+            let messages_result = if is_stream {
+                ollama_conversation_prepare_messages(&model, prompt)?
+            } else {
+                ollama_conversation_prepare_messages_with_tooling(&model, prompt)?
+            };
+
             let messages_json = match messages_result.messages {
                 PromptResultEnum::Value(v) => v,
                 _ => {
@@ -61,6 +78,9 @@ impl LLMService for Ollama {
                     ))
                 }
             };
+
+            // Extract tools_json from the result
+            let tools_json = messages_result.functions.unwrap_or_else(Vec::new);
 
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -73,118 +93,233 @@ impl LLMService for Ollama {
             //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
             // };
 
+            match serde_json::to_string_pretty(&tools_json) {
+                Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
+                Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+            };
+
             let mut payload = json!({
                 "model": self.model_type,
                 "messages": messages_json,
-                "stream": true, // Yeah let's go wild and stream the response
                 // Include any other optional parameters as needed
-                // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
+                // https://github.com/jmorganca/ollama/blob/main/docs/api.md
+                // https://github.com/ollama/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values
             });
 
             // Modify payload to add options if needed
-            add_options_to_payload(&mut payload);
+            add_options_to_payload(&mut payload, config.as_ref());
+
+            // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true, then we need to remove to remove it
+            if is_stream {
+                if self.model_type.starts_with("minicpm-v") {
+                    payload.as_object_mut().unwrap().remove("stream");
+                }
+            }
+
+
+            // Conditionally add functions to the payload if tools_json is not empty
+            if !tools_json.is_empty() {
+                payload["tools"] = serde_json::Value::Array(tools_json);
+            }
 
             let mut payload_log = payload.clone();
             truncate_image_content_in_payload(&mut payload_log);
 
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
+                ShinkaiLogLevel::Info,
                 format!("Call API Body: {:?}", payload_log).as_str(),
             );
+            eprintln!("Call API Body: {:?}", payload_log);
 
             let res = client.post(url).json(&payload).send().await?;
 
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
+                ShinkaiLogLevel::Info,
                 format!("Call API Status: {:?}", res.status()).as_str(),
             );
 
-            let mut stream = res.bytes_stream();
-            let mut response_text = String::new();
-            let mut previous_json_chunk: String = String::new();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(chunk) => {
-                        let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
-                        if !previous_json_chunk.is_empty() {
-                            chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
+            if is_stream {
+                let mut stream = res.bytes_stream();
+                let mut response_text = String::new();
+                let mut previous_json_chunk: String = String::new();
+                let mut final_eval_count = None;
+                let mut final_eval_duration = None;
+
+                while let Some(item) = stream.next().await {
+                    // Check if we need to stop the LLM job
+                    if let Some(ref inbox_name) = inbox_name {
+                        if llm_stopper.should_stop(&inbox_name.to_string()) {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Info,
+                                "LLM job stopped by user request",
+                            );
+                            llm_stopper.reset(&inbox_name.to_string());
+                            return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
                         }
-                        let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
-                        match data_resp {
-                            Ok(data) => {
-                                previous_json_chunk = "".to_string();
-                                response_text.push_str(&data.message.content);
+                    }
 
-                                // Note: this is the code for enabling WS
-                                if let Some(ref manager) = ws_manager_trait {
-                                    if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
+                    match item {
+                        Ok(chunk) => {
+                            let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                            if !previous_json_chunk.is_empty() {
+                                chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
+                            }
+                            let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
+                            match data_resp {
+                                Ok(data) => {
+                                    previous_json_chunk = "".to_string();
+                                    response_text.push_str(&data.message.content);
 
-                                        let metadata = WSMetadata {
-                                            id: Some(session_id.clone()),
-                                            is_done: data.done,
-                                            done_reason: if data.done { data.done_reason.clone() } else { None },
-                                            total_duration: if data.done {
-                                                data.total_duration.map(|d| d as u64)
-                                            } else {
-                                                None
-                                            },
-                                            eval_count: if data.done {
-                                                data.eval_count.map(|c| c as u64)
-                                            } else {
-                                                None
-                                            },
-                                        };
+                                    // Capture eval_count and eval_duration from the final response
+                                    if data.done {
+                                        final_eval_count = data.eval_count;
+                                        final_eval_duration = data.eval_duration;
+                                    }
 
-                                        let ws_message_type = WSMessageType::Metadata(metadata);
+                                    // Note: this is the code for enabling WS
+                                    if let Some(ref manager) = ws_manager_trait {
+                                        if let Some(ref inbox_name) = inbox_name {
+                                            let m = manager.lock().await;
+                                            let inbox_name_string = inbox_name.to_string();
 
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                data.message.content,
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
+                                            let metadata = WSMetadata {
+                                                id: Some(session_id.clone()),
+                                                is_done: data.done,
+                                                done_reason: if data.done { data.done_reason.clone() } else { None },
+                                                total_duration: if data.done {
+                                                    data.total_duration.map(|d| d as u64)
+                                                } else {
+                                                    None
+                                                },
+                                                eval_count: if data.done {
+                                                    data.eval_count.map(|c| c as u64)
+                                                } else {
+                                                    None
+                                                },
+                                            };
+
+                                            let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                            let _ = m
+                                                .queue_message(
+                                                    WSTopic::Inbox,
+                                                    inbox_name_string,
+                                                    data.message.content,
+                                                    ws_message_type,
+                                                    true,
+                                                )
+                                                .await;
+                                        }
                                     }
                                 }
-                            }
-                            Err(_e) => {
-                                previous_json_chunk += chunk_str.as_str();
-                                // Handle JSON parsing error here...
+                                Err(_e) => {
+                                    eprintln!("Error while receiving chunk: {:?}", _e);
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        format!("Error while receiving chunk: {:?}", _e).as_str(),
+                                    );
+                                    previous_json_chunk += chunk_str.as_str();
+                                    // Handle JSON parsing error here...
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Error,
-                            format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
-                        );
-                        return Err(LLMProviderError::NetworkError(e.to_string()));
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source())
+                                    .as_str(),
+                            );
+                            return Err(LLMProviderError::NetworkError(e.to_string()));
+                        }
                     }
                 }
+
+                // Calculate tps
+                let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
+                    if eval_duration > 0 {
+                        Some(eval_count as f64 / eval_duration as f64 * 1e9)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                Ok(LLMInferenceResponse::new(response_text, json!({}), None, tps))
+            } else {
+                // Handle non-streaming response
+                let response_body = res.text().await?;
+                let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
+
+                if let Some(message) = response_json.get("message") {
+                    if let Some(content) = message.get("content") {
+                        if let Some(content_str) = content.as_str() {
+                            let function_call = message
+                                .get("tool_calls")
+                                .and_then(|tool_calls| {
+                                    tool_calls.as_array().and_then(|calls| {
+                                        calls.iter().find_map(|call| {
+                                            call.get("function").map(|function| {
+                                                let name = function.get("name")?.as_str()?.to_string();
+                                                let arguments = function.get("arguments")?.clone();
+                                                Some(FunctionCall { name, arguments })
+                                            })
+                                        })
+                                    })
+                                })
+                                .flatten();
+
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Info,
+                                format!("Function Call: {:?}", function_call).as_str(),
+                            );
+
+                            // Calculate tps
+                            let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let eval_duration =
+                                response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1); // Avoid division by zero
+                            let tps = if eval_duration > 0 {
+                                Some(eval_count as f64 / eval_duration as f64 * 1e9)
+                            } else {
+                                None
+                            };
+
+                            Ok(LLMInferenceResponse::new(
+                                content_str.to_string(),
+                                json!({}),
+                                function_call,
+                                tps,
+                            ))
+                        } else {
+                            Err(LLMProviderError::UnexpectedResponseFormat(
+                                "Content is not a string".to_string(),
+                            ))
+                        }
+                    } else {
+                        Err(LLMProviderError::UnexpectedResponseFormat(
+                            "No content field in message".to_string(),
+                        ))
+                    }
+                } else {
+                    Err(LLMProviderError::UnexpectedResponseFormat(
+                        "No message field in response".to_string(),
+                    ))
+                }
             }
-
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                format!("Cleaned Response Text: {:?}", response_text).as_str(),
-            );
-
-            // Directly return response_text with an empty JSON object
-            Ok(LLMInferenceResponse::new(response_text, json!({}), None))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value) {
+fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+    eprintln!("config: {:?}", config);
     let mut options = serde_json::Map::new();
 
     // Helper function to read and parse environment variables
@@ -192,93 +327,64 @@ fn add_options_to_payload(payload: &mut serde_json::Value) {
         env::var(key).ok().and_then(|val| val.parse::<T>().ok())
     }
 
-    // Read and add options from environment variables
-    if let Some(seed) = read_env_var::<u64>("LLM_SEED") {
+    // Helper function to get value from env or config
+    fn get_value<T: Clone + std::str::FromStr>(env_key: &str, config_value: Option<&T>) -> Option<T> {
+        config_value.cloned().or_else(|| read_env_var::<T>(env_key))
+    }
+
+    // Read options from environment variables or config
+    if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
         options.insert("seed".to_string(), serde_json::json!(seed));
     }
-    if let Some(temp) = read_env_var::<f64>("LLM_TEMPERATURE") {
+    if let Some(temp) = get_value("LLM_TEMPERATURE", config.and_then(|c| c.temperature.as_ref())) {
         options.insert("temperature".to_string(), serde_json::json!(temp));
     }
-    if let Some(num_keep) = read_env_var::<u64>("LLM_NUM_KEEP") {
-        options.insert("num_keep".to_string(), serde_json::json!(num_keep));
-    }
-    if let Some(num_predict) = read_env_var::<u64>("LLM_NUM_PREDICT") {
-        options.insert("num_predict".to_string(), serde_json::json!(num_predict));
-    }
-    if let Some(top_k) = read_env_var::<u64>("LLM_TOP_K") {
+    if let Some(top_k) = get_value("LLM_TOP_K", config.and_then(|c| c.top_k.as_ref())) {
         options.insert("top_k".to_string(), serde_json::json!(top_k));
     }
-    if let Some(top_p) = read_env_var::<f64>("LLM_TOP_P") {
+    if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
         options.insert("top_p".to_string(), serde_json::json!(top_p));
     }
-    if let Some(tfs_z) = read_env_var::<f64>("LLM_TFS_Z") {
-        options.insert("tfs_z".to_string(), serde_json::json!(tfs_z));
-    }
-    if let Some(typical_p) = read_env_var::<f64>("LLM_TYPICAL_P") {
-        options.insert("typical_p".to_string(), serde_json::json!(typical_p));
-    }
-    if let Some(repeat_last_n) = read_env_var::<u64>("LLM_REPEAT_LAST_N") {
-        options.insert("repeat_last_n".to_string(), serde_json::json!(repeat_last_n));
-    }
-    if let Some(repeat_penalty) = read_env_var::<f64>("LLM_REPEAT_PENALTY") {
-        options.insert("repeat_penalty".to_string(), serde_json::json!(repeat_penalty));
-    }
-    if let Some(presence_penalty) = read_env_var::<f64>("LLM_PRESENCE_PENALTY") {
-        options.insert("presence_penalty".to_string(), serde_json::json!(presence_penalty));
-    }
-    if let Some(frequency_penalty) = read_env_var::<f64>("LLM_FREQUENCY_PENALTY") {
-        options.insert("frequency_penalty".to_string(), serde_json::json!(frequency_penalty));
-    }
-    if let Some(mirostat) = read_env_var::<u64>("LLM_MIROSTAT") {
-        options.insert("mirostat".to_string(), serde_json::json!(mirostat));
-    }
-    if let Some(mirostat_tau) = read_env_var::<f64>("LLM_MIROSTAT_TAU") {
-        options.insert("mirostat_tau".to_string(), serde_json::json!(mirostat_tau));
-    }
-    if let Some(mirostat_eta) = read_env_var::<f64>("LLM_MIROSTAT_ETA") {
-        options.insert("mirostat_eta".to_string(), serde_json::json!(mirostat_eta));
-    }
-    if let Some(penalize_newline) = read_env_var::<bool>("LLM_PENALIZE_NEWLINE") {
-        options.insert("penalize_newline".to_string(), serde_json::json!(penalize_newline));
-    }
-    if let Some(stop) = read_env_var::<String>("LLM_STOP") {
-        options.insert(
-            "stop".to_string(),
-            serde_json::json!(stop.split(',').collect::<Vec<&str>>()),
-        );
-    }
-    if let Some(numa) = read_env_var::<bool>("LLM_NUMA") {
-        options.insert("numa".to_string(), serde_json::json!(numa));
-    }
-    if let Some(num_ctx) = read_env_var::<u64>("LLM_NUM_CTX") {
-        options.insert("num_ctx".to_string(), serde_json::json!(num_ctx));
-    }
-    if let Some(num_batch) = read_env_var::<u64>("LLM_NUM_BATCH") {
-        options.insert("num_batch".to_string(), serde_json::json!(num_batch));
-    }
-    if let Some(num_gpu) = read_env_var::<u64>("LLM_NUM_GPU") {
-        options.insert("num_gpu".to_string(), serde_json::json!(num_gpu));
-    }
-    if let Some(main_gpu) = read_env_var::<u64>("LLM_MAIN_GPU") {
-        options.insert("main_gpu".to_string(), serde_json::json!(main_gpu));
-    }
-    if let Some(low_vram) = read_env_var::<bool>("LLM_LOW_VRAM") {
-        options.insert("low_vram".to_string(), serde_json::json!(low_vram));
-    }
-    if let Some(f16_kv) = read_env_var::<bool>("LLM_F16_KV") {
-        options.insert("f16_kv".to_string(), serde_json::json!(f16_kv));
-    }
-    if let Some(vocab_only) = read_env_var::<bool>("LLM_VOCAB_ONLY") {
-        options.insert("vocab_only".to_string(), serde_json::json!(vocab_only));
-    }
-    if let Some(use_mmap) = read_env_var::<bool>("LLM_USE_MMAP") {
-        options.insert("use_mmap".to_string(), serde_json::json!(use_mmap));
-    }
-    if let Some(use_mlock) = read_env_var::<bool>("LLM_USE_MLOCK") {
-        options.insert("use_mlock".to_string(), serde_json::json!(use_mlock));
-    }
-    if let Some(num_thread) = read_env_var::<u64>("LLM_NUM_THREAD") {
-        options.insert("num_thread".to_string(), serde_json::json!(num_thread));
+
+    // Handle streaming option
+    let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref())).unwrap_or(true); // Default to true if not specified
+    payload["stream"] = serde_json::json!(streaming);
+
+    // Handle other model params
+    if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
+        if let Some(obj) = other_params.as_object() {
+            for (key, value) in obj {
+                match key.as_str() {
+                    "num_ctx" => options.insert("num_ctx".to_string(), value.clone()),
+                    "num_predict" => options.insert("num_predict".to_string(), value.clone()),
+                    "num_keep" => options.insert("num_keep".to_string(), value.clone()),
+                    "repeat_last_n" => options.insert("repeat_last_n".to_string(), value.clone()),
+                    "repeat_penalty" => options.insert("repeat_penalty".to_string(), value.clone()),
+                    "presence_penalty" => options.insert("presence_penalty".to_string(), value.clone()),
+                    "frequency_penalty" => options.insert("frequency_penalty".to_string(), value.clone()),
+                    "tfs_z" => options.insert("tfs_z".to_string(), value.clone()),
+                    "typical_p" => options.insert("typical_p".to_string(), value.clone()),
+                    "mirostat" => options.insert("mirostat".to_string(), value.clone()),
+                    "mirostat_tau" => options.insert("mirostat_tau".to_string(), value.clone()),
+                    "mirostat_eta" => options.insert("mirostat_eta".to_string(), value.clone()),
+                    "penalize_newline" => options.insert("penalize_newline".to_string(), value.clone()),
+                    "stop" => options.insert("stop".to_string(), value.clone()),
+                    "numa" => options.insert("numa".to_string(), value.clone()),
+                    "num_batch" => options.insert("num_batch".to_string(), value.clone()),
+                    "num_gpu" => options.insert("num_gpu".to_string(), value.clone()),
+                    "main_gpu" => options.insert("main_gpu".to_string(), value.clone()),
+                    "low_vram" => options.insert("low_vram".to_string(), value.clone()),
+                    "f16_kv" => options.insert("f16_kv".to_string(), value.clone()),
+                    "vocab_only" => options.insert("vocab_only".to_string(), value.clone()),
+                    "use_mmap" => options.insert("use_mmap".to_string(), value.clone()),
+                    "use_mlock" => options.insert("use_mlock".to_string(), value.clone()),
+                    "rope_frequency_base" => options.insert("rope_frequency_base".to_string(), value.clone()),
+                    "rope_frequency_scale" => options.insert("rope_frequency_scale".to_string(), value.clone()),
+                    "num_thread" => options.insert("num_thread".to_string(), value.clone()),
+                    _ => None,
+                };
+            }
+        }
     }
 
     // Add options to payload if not empty

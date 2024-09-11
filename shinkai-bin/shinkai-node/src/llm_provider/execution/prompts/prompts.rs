@@ -240,7 +240,7 @@ impl Prompt {
     pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Vec<SubPrompt> {
         let mut removed_subprompts = vec![];
 
-        let mut current_token_count = self.generate_chat_completion_messages().1;
+        let mut current_token_count = self.generate_chat_completion_messages(None).1;
         while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
@@ -279,14 +279,15 @@ impl Prompt {
         Ok(content)
     }
 
-    fn generate_chat_completion_messages(&self) -> (Vec<LlmMessage>, usize) {
+    fn generate_chat_completion_messages(&self, tool_response_field_name: Option<String>) -> (Vec<LlmMessage>, usize) {
         let mut tiktoken_messages: Vec<LlmMessage> = Vec::new();
         let mut current_length: usize = 0;
 
         // Accumulator for ExtraContext content
         let mut extra_context_content = String::new();
-        let mut processing_extra_context = false;
         let mut last_user_message: Option<String> = None;
+        let mut function_calls: Vec<LlmMessage> = Vec::new();
+        let mut function_call_responses: Vec<LlmMessage> = Vec::new();
 
         for sub_prompt in &self.sub_prompts {
             match sub_prompt {
@@ -294,7 +295,6 @@ impl Prompt {
                 SubPrompt::Content(SubPromptType::ExtraContext, content, _) => {
                     extra_context_content.push_str(content);
                     extra_context_content.push('\n');
-                    processing_extra_context = true;
                 }
                 SubPrompt::ToolAvailable(_, content, _) => {
                     let tool_message = LlmMessage::import_functions_from_value(content.clone()).unwrap();
@@ -320,11 +320,12 @@ impl Prompt {
                         });
                     }
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
-                    tiktoken_messages.push(new_message);
+                    function_calls.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
                     let mut new_message = LlmMessage {
-                        role: Some("function".to_string()),
+                        // OpenAI works using "function" while ollama uses "tool"
+                        role: tool_response_field_name.clone().or(Some("function".to_string())),
                         content: None,
                         name: None,
                         function_call: None,
@@ -339,7 +340,7 @@ impl Prompt {
                     new_message.content = content.get("response").and_then(|r| r.as_str()).map(|r| r.to_string());
 
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
-                    tiktoken_messages.push(new_message);
+                    function_call_responses.push(new_message);
                 }
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
                     last_user_message = Some(content.clone());
@@ -374,6 +375,16 @@ impl Prompt {
             tiktoken_messages.push(combined_message);
         }
 
+        // Add function calls after the last user message
+        for function_call in function_calls {
+            tiktoken_messages.push(function_call);
+        }
+
+        // Add function call responses after function calls
+        for response in function_call_responses {
+            tiktoken_messages.push(response);
+        }
+
         (tiktoken_messages, current_length)
     }
 
@@ -381,6 +392,7 @@ impl Prompt {
     pub fn generate_openai_messages(
         &self,
         max_prompt_tokens: Option<usize>,
+        tool_response_field_name: Option<String>,
     ) -> Result<Vec<LlmMessage>, LLMProviderError> {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
         let limit = max_prompt_tokens.unwrap_or(2700_usize);
@@ -390,7 +402,7 @@ impl Prompt {
         prompt_copy.remove_subprompts_until_under_max(limit);
 
         // Generate the output chat completion request messages
-        let (output_messages, _) = prompt_copy.generate_chat_completion_messages();
+        let (output_messages, _) = prompt_copy.generate_chat_completion_messages(tool_response_field_name);
 
         Ok(output_messages)
     }
@@ -508,7 +520,7 @@ mod tests {
             SubPrompt::Content(SubPromptType::User, "summarize this".to_string(), 97),
             SubPrompt::Content(SubPromptType::Assistant, "## What are the benefits of using Vector Resources ...\n\n".to_string(), 97),
             SubPrompt::Content(SubPromptType::ExtraContext, "Here is a list of relevant new content provided for you to potentially use while answering:".to_string(), 97),
-            SubPrompt::Content(SubPromptType::ExtraContext, "- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00".to_string(), 97),
+            SubPrompt::Content(SubPromptType::ExtraContext, "- FAQ Shinkai Overview What's Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00".to_string(), 97),
             SubPrompt::Content(SubPromptType::ExtraContext, "- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string(), 97),
             SubPrompt::Content(SubPromptType::User, "tell me more about Shinkai. Answer the question using this markdown and the extra context provided: \n # Answer \n here goes the answer\n".to_string(), 100),
             SubPrompt::ToolAvailable(SubPromptType::AvailableTool, shinkai_tool.json_function_call_format().expect("mh"), 98),
@@ -517,7 +529,7 @@ mod tests {
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(sub_prompts);
 
-        let (messages, _token_length) = prompt.generate_chat_completion_messages();
+        let (messages, _token_length) = prompt.generate_chat_completion_messages(None);
 
         // Expected messages
         let expected_messages = vec![
@@ -586,7 +598,7 @@ mod tests {
             },
             LlmMessage {
                 role: Some("user".to_string()),
-                content: Some("Here is a list of relevant new content provided for you to potentially use while answering:\n- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00\n- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string()),
+                content: Some("Here is a list of relevant new content provided for you to potentially use while answering:\n- FAQ Shinkai Overview What's Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00\n- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string()),
                 name: None,
                 function_call: None,
                 functions: None,
@@ -664,7 +676,7 @@ mod tests {
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(sub_prompts);
 
-        let (messages, _token_length) = prompt.generate_chat_completion_messages();
+        let (messages, _token_length) = prompt.generate_chat_completion_messages(None);
 
         // Expected messages
         let expected_messages = vec![

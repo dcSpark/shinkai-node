@@ -1,9 +1,11 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use super::vector_fs::VectorFS;
 use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};
 use super::vector_fs_writer::VFSWriter;
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
-use async_recursion::async_recursion;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -189,75 +191,77 @@ impl VectorFS {
         let mut folder_merkle_hash_map = std::collections::HashMap::new();
 
         // Recursive function to process each entry and populate the VRPack
-        #[async_recursion]
-        async fn process_entry(
-            entry: &FSEntry,
-            vrpack: &mut VRPack,
+        fn process_entry<'a>(
+            entry: &'a FSEntry,
+            vrpack: &'a mut VRPack,
             current_path: VRPath,
-            vector_fs: &VectorFS,
-            reader: &VFSReader,
+            vector_fs: &'a VectorFS,
+            reader: &'a VFSReader,
             vec_fs_base_path: VRPath,
-            folder_merkle_hash_map: &mut std::collections::HashMap<VRPath, String>,
-        ) -> Result<(), VectorFSError> {
-            match entry {
-                FSEntry::Root(folder) => {
-                    for child in &folder.child_folders {
-                        let entry = FSEntry::Folder(child.clone());
-                        process_entry(
-                            &entry,
-                            vrpack,
-                            current_path.clone(),
-                            vector_fs,
-                            reader,
-                            vec_fs_base_path.clone(),
-                            folder_merkle_hash_map,
-                        )
-                        .await?;
+            folder_merkle_hash_map: &'a mut std::collections::HashMap<VRPath, String>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), VectorFSError>> + Send + 'a>> {
+            Box::pin(async move {
+                match entry {
+                    FSEntry::Root(folder) => {
+                        for child in &folder.child_folders {
+                            let entry = FSEntry::Folder(child.clone());
+                            process_entry(
+                                &entry,
+                                vrpack,
+                                current_path.clone(),
+                                vector_fs,
+                                reader,
+                                vec_fs_base_path.clone(),
+                                folder_merkle_hash_map,
+                            )
+                            .await?;
+                        }
                     }
-                }
-                FSEntry::Folder(folder) => {
-                    let inner_path = current_path.push_cloned(folder.name.clone());
-                    vrpack.create_folder(&folder.name, current_path.clone())?;
-                    for child in &folder.child_folders {
-                        let entry = FSEntry::Folder(child.clone());
-                        process_entry(
-                            &entry,
-                            vrpack,
-                            inner_path.clone(),
-                            vector_fs,
-                            reader,
-                            vec_fs_base_path.clone(),
-                            folder_merkle_hash_map,
-                        )
-                        .await?;
-                    }
-                    for child in &folder.child_items {
-                        let entry = FSEntry::Item(child.clone());
-                        process_entry(
-                            &entry,
-                            vrpack,
-                            inner_path.clone(),
-                            vector_fs,
-                            reader,
-                            vec_fs_base_path.clone(),
-                            folder_merkle_hash_map,
-                        )
-                        .await?;
-                    }
+                    FSEntry::Folder(folder) => {
+                        let inner_path = current_path.push_cloned(folder.name.clone());
+                        vrpack.create_folder(&folder.name, current_path.clone())?;
+                        for child in &folder.child_folders {
+                            let entry = FSEntry::Folder(child.clone());
+                            process_entry(
+                                &entry,
+                                vrpack,
+                                inner_path.clone(),
+                                vector_fs,
+                                reader,
+                                vec_fs_base_path.clone(),
+                                folder_merkle_hash_map,
+                            )
+                            .await?;
+                        }
+                        for child in &folder.child_items {
+                            let entry = FSEntry::Item(child.clone());
+                            process_entry(
+                                &entry,
+                                vrpack,
+                                inner_path.clone(),
+                                vector_fs,
+                                reader,
+                                vec_fs_base_path.clone(),
+                                folder_merkle_hash_map,
+                            )
+                            .await?;
+                        }
 
-                    folder_merkle_hash_map.insert(inner_path.clone(), folder.merkle_hash.to_string());
-                }
-                FSEntry::Item(item) => {
-                    // For each item, use retrieve_vrkai to get the VRKai object
-                    let item_path = vec_fs_base_path.append_path_cloned(&current_path.push_cloned(item.name.clone()));
-                    let item_reader = reader.new_reader_copied_data(item_path, vector_fs).await?;
-                    match vector_fs.retrieve_vrkai(&item_reader).await {
-                        Ok(vrkai) => vrpack.insert_vrkai(&vrkai, current_path.clone(), false)?,
-                        Err(e) => return Err(e),
+                        folder_merkle_hash_map.insert(inner_path.clone(), folder.merkle_hash.to_string());
+                    }
+                    FSEntry::Item(item) => {
+                        // For each item, use retrieve_vrkai to get the VRKai object
+                        let item_path =
+                            vec_fs_base_path.append_path_cloned(&current_path.push_cloned(item.name.clone()));
+                        let item_reader = reader.new_reader_copied_data(item_path, vector_fs).await?;
+                        match vector_fs.retrieve_vrkai(&item_reader).await {
+                            Ok(vrkai) => vrpack.insert_vrkai(&vrkai, current_path.clone(), false)?,
+                            Err(e) => return Err(e),
+                        }
                     }
                 }
-            }
-            Ok(())
+                Ok(())
+            })
         }
 
         // Start processing from the root or folder of the FSEntry

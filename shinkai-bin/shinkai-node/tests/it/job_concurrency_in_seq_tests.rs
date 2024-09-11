@@ -17,7 +17,7 @@
 // TODO: will enable back again
 // #[test]
 // fn job_concurrency_in_seq() {
-//     init_default_tracing();
+//     
 //     run_test_one_node_network(|env| {
 //         Box::pin(async move {
 //             let node1_commands_sender = env.node1_commands_sender.clone();

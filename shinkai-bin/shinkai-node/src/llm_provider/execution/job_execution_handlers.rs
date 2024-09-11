@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use ed25519_dalek::SigningKey;
-use serde_json::to_string;
 use shinkai_message_primitives::{
     schemas::{
         llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
@@ -13,15 +12,17 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
-use shinkai_vector_resources::utils::random_string;
 use tokio::sync::Mutex;
 
 use crate::{
-    db::{db_errors::ShinkaiDBError, ShinkaiDB},
-    llm_provider::{error::LLMProviderError, job::Job, job_manager::JobManager},
+    db::ShinkaiDB,
+    llm_provider::{
+        error::LLMProviderError,
+        job::{Job, JobConfig},
+        job_manager::JobManager,
+        llm_stopper::LLMStopper,
+    },
     network::ws_manager::WSUpdateHandler,
-    planner::kai_files::KaiJobFile,
-    vector_fs::vector_fs::VectorFS,
 };
 
 impl JobManager {
@@ -37,9 +38,12 @@ impl JobManager {
         identity_secret_key: SigningKey,
         file_extension: String,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        job_config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
+        // Directly encode the binary content to base64
         let base64_image = match &agent_found {
             Some(agent) => match agent.model {
                 LLMProviderInterface::OpenAI(_) => {
@@ -65,6 +69,8 @@ impl JobManager {
             0,
             3,
             ws_manager.clone(),
+            job_config,
+            llm_stopper.clone(),
         )
         .await?;
 
@@ -96,35 +102,5 @@ impl JobManager {
         db.set_job_execution_context(full_job.job_id.clone(), prev_execution_context, None)?;
 
         Ok(())
-    }
-
-    /// Inserts a KaiJobFile into a specific inbox
-    pub async fn insert_kai_job_file_into_inbox(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        file_name_no_ext: String,
-        kai_file: KaiJobFile,
-    ) -> Result<String, LLMProviderError> {
-        let inbox_name = random_string();
-
-        // Create the inbox
-        match db.create_files_message_inbox(inbox_name.clone()) {
-            Ok(_) => {
-                // Convert the KaiJobFile to a JSON string
-                let kai_file_json = to_string(&kai_file)?;
-
-                // Convert the JSON string to bytes
-                let kai_file_bytes = kai_file_json.into_bytes();
-
-                // Save the KaiJobFile to the inbox
-                vector_fs.db.add_file_to_files_message_inbox(
-                    inbox_name.clone(),
-                    format!("{}.jobkai", file_name_no_ext).to_string(),
-                    kai_file_bytes,
-                )?;
-                Ok(inbox_name)
-            }
-            Err(err) => Err(LLMProviderError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
-        }
     }
 }

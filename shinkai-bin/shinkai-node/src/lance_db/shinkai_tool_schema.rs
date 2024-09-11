@@ -8,13 +8,14 @@ impl ShinkaiToolSchema {
     /// Creates a new Schema for Shinkai tools with the following fields:
     /// - tool_key: UTF-8 string (non-nullable)
     /// - vector: Fixed-size list of 32-bit floats (nullable)
-    /// - tool_data: UTF-8 string (non-nullable)
+    /// - tool_data: Binary (non-nullable)
     /// - tool_type: UTF-8 string (non-nullable)
     /// - tool_header: UTF-8 string (non-nullable)
     /// - author: UTF-8 string (non-nullable)
     /// - version: UTF-8 string (non-nullable)
     /// - is_enabled: Boolean (non-nullable)
-    /// - config: UTF-8 string (nullable)
+    /// - on_demand_price: 32-bit float (nullable)
+    /// - is_network: Boolean (non-nullable)
     ///
     /// The vector field's size is determined by the embedding model's dimensions.
     pub fn create_schema(embedding_model: &EmbeddingModelType) -> Result<Arc<Schema>, VRError> {
@@ -31,11 +32,13 @@ impl ShinkaiToolSchema {
                 true,
             ),
             Field::new(Self::tool_type_field(), DataType::Utf8, false),
-            Field::new(Self::tool_data_field(), DataType::Utf8, false),
+            Field::new(Self::tool_data_field(), DataType::Binary, false),
             Field::new(Self::tool_header_field(), DataType::Utf8, false),
             Field::new(Self::author_field(), DataType::Utf8, false),
             Field::new(Self::version_field(), DataType::Utf8, false),
             Field::new(Self::is_enabled_field(), DataType::Boolean, false),
+            Field::new(Self::on_demand_price_field(), DataType::Float32, true),
+            Field::new(Self::is_network_field(), DataType::Boolean, false),
         ])))
     }
 
@@ -69,6 +72,14 @@ impl ShinkaiToolSchema {
 
     pub fn is_enabled_field() -> &'static str {
         "is_enabled"
+    }
+
+    pub fn on_demand_price_field() -> &'static str {
+        "on_demand_price"
+    }
+
+    pub fn is_network_field() -> &'static str {
+        "is_network"
     }
 
     pub fn vector_dimensions(embedding_model: &EmbeddingModelType) -> Result<usize, VRError> {

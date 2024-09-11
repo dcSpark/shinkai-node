@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::job::JobConfig;
+use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::network::ws_manager::WSUpdateHandler;
 
@@ -28,6 +30,8 @@ impl LLMService for GenericAPI {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        config: Option<JobConfig>,
+        llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
@@ -104,7 +108,7 @@ impl LLMService for GenericAPI {
                             .map(|choice| choice.text.clone())
                             .unwrap_or_else(String::new);
 
-                        return Ok(LLMInferenceResponse::new(response_string, json!({}), None));
+                        return Ok(LLMInferenceResponse::new(response_string, json!({}), None, None));
                     }
                     Err(e) => {
                         shinkai_log(

@@ -62,7 +62,7 @@ impl TCPProxy {
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
-            .unwrap_or("https://public.stackup.sh/api/v1/node/arbitrum-sepolia".to_string());
+            .unwrap_or("https://arbitrum-sepolia.blockpi.network/v1/rpc/public".to_string());
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());

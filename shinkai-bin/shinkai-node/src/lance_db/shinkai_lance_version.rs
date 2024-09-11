@@ -14,7 +14,12 @@ impl LanceShinkaiDb {
     pub async fn create_version_table(connection: &Connection) -> Result<Table, ShinkaiLanceDBError> {
         let schema = arrow_schema::Schema::new(vec![Field::new("version", DataType::Utf8, false)]);
 
-        match connection.create_empty_table("version", schema.into()).execute().await {
+        match connection
+            .create_empty_table("version", schema.into())
+            // .data_storage_version(LanceFileVersion::V2_1)
+            .execute()
+            .await
+        {
             Ok(table) => Ok(table),
             Err(LanceDbError::TableAlreadyExists { .. }) => connection
                 .open_table("version")
@@ -50,6 +55,12 @@ impl LanceShinkaiDb {
     }
 
     pub async fn set_version(&self, version: &str) -> Result<(), ShinkaiLanceDBError> {
+        // Clear existing data in the version table
+        self.version_table
+            .delete("true") // Provide a predicate to delete all rows
+            .await
+            .map_err(ShinkaiLanceDBError::from)?;
+
         let schema = self.version_table.schema().await.map_err(ShinkaiLanceDBError::from)?;
         let batch = RecordBatch::try_new(
             schema.clone(),
@@ -70,7 +81,6 @@ impl LanceShinkaiDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
     use std::fs;
@@ -83,7 +93,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_version_management() -> Result<(), ShinkaiLanceDBError> {
-        init_default_tracing();
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -100,6 +109,13 @@ mod tests {
         // Read the version again (should return "1")
         let current_version = db.get_current_version().await?;
         assert_eq!(current_version, Some("1".to_string()), "Version should be '1'");
+
+        // Set the version to "2"
+        db.set_version("2").await?;
+
+        // Read the version again (should return "2")
+        let current_version = db.get_current_version().await?;
+        assert_eq!(current_version, Some("2".to_string()), "Version should be '2'");
 
         Ok(())
     }
