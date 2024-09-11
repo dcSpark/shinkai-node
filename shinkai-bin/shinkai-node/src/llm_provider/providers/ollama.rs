@@ -127,7 +127,7 @@ impl LLMService for Ollama {
 
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
+                ShinkaiLogLevel::Info,
                 format!("Call API Body: {:?}", payload_log).as_str(),
             );
             eprintln!("Call API Body: {:?}", payload_log);
@@ -136,7 +136,7 @@ impl LLMService for Ollama {
 
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
+                ShinkaiLogLevel::Info,
                 format!("Call API Status: {:?}", res.status()).as_str(),
             );
 
