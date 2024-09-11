@@ -745,10 +745,15 @@ pub async fn add_ollama_models_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct StopLLMRequest {
+    pub inbox_name: String,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/stop_llm",
-    request_body = String,
+    request_body = StopLLMRequest,
     responses(
         (status = 200, description = "Successfully stopped LLM", body = String),
         (status = 500, description = "Internal server error", body = APIError)
@@ -757,14 +762,14 @@ pub async fn add_ollama_models_handler(
 pub async fn stop_llm_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    inbox_name: String,
+    payload: StopLLMRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiStopLLM {
             bearer,
-            inbox_name,
+            inbox_name: payload.inbox_name,
             res: res_sender,
         })
         .await

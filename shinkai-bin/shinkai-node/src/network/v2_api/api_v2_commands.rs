@@ -939,8 +939,39 @@ impl Node {
             return Ok(());
         }
 
+        // Check if the inbox_name starts with "jobid_"
+        let inbox_name = if inbox_name.starts_with("jobid_") {
+            match InboxName::get_job_inbox_name_from_params(inbox_name.clone()) {
+                Ok(name) => name,
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: "Invalid job ID format".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        } else {
+            match InboxName::new(inbox_name.clone()) {
+                Ok(name) => name,
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: "Invalid inbox name format".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        };
+
         // Stop the LLM
-        stopper.stop(&inbox_name);
+        stopper.stop(&inbox_name.get_value());
         let _ = res.send(Ok(())).await;
         Ok(())
     }
