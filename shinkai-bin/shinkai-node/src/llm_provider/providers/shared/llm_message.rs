@@ -55,6 +55,9 @@ pub struct LlmMessage {
     /// The available functions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub functions: Option<Vec<FunctionDetails>>,
+    /// The images associated with the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<String>>,
 }
 
 #[derive(Debug, Error)]
@@ -69,6 +72,10 @@ impl LlmMessage {
         let role = None;
         let content = None;
         let name = None;
+
+        let images = value.get("images").and_then(|v| v.as_array().map(|arr| {
+            arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+        }));
 
         // Extract the functions from the "function" key
         let functions_value = value.get("function").ok_or_else(|| {
@@ -93,6 +100,7 @@ impl LlmMessage {
             name,
             function_call: None,
             functions: Some(functions),
+            images,
         })
     }
 }
@@ -190,7 +198,8 @@ mod tests {
             }
         });
 
-        let message: LlmMessage = serde_json::from_value(json_value).expect("Failed to convert JSON value to LlmMessage");
+        let message: LlmMessage =
+            serde_json::from_value(json_value).expect("Failed to convert JSON value to LlmMessage");
 
         assert_eq!(message.role, Some("assistant".to_string()));
         assert!(message.content.is_none());
@@ -199,6 +208,42 @@ mod tests {
 
         let function_call = message.function_call.unwrap();
         assert_eq!(function_call.name, "concat_strings");
-        assert_eq!(function_call.arguments, "{\"first_string\":\"hola\",\"second_string\":\"chao\"}");
+        assert_eq!(
+            function_call.arguments,
+            "{\"first_string\":\"hola\",\"second_string\":\"chao\"}"
+        );
+    }
+
+    #[test]
+    fn test_llm_message_from_json_value_with_images() {
+        let json_value = json!({
+            "role": "user",
+            "content": "This is a test message",
+            "images": ["image1", "image2"],
+            "function_call": {
+                "name": "concat_strings",
+                "arguments": "{\"first_string\":\"hola\",\"second_string\":\"chao\"}"
+            }
+        });
+
+        let message: LlmMessage =
+            serde_json::from_value(json_value).expect("Failed to convert JSON value to LlmMessage");
+
+        assert_eq!(message.role, Some("user".to_string()));
+        assert_eq!(message.content, Some("This is a test message".to_string()));
+        assert!(message.name.is_none());
+        assert!(message.functions.is_none());
+
+        let function_call = message.function_call.unwrap();
+        assert_eq!(function_call.name, "concat_strings");
+        assert_eq!(
+            function_call.arguments,
+            "{\"first_string\":\"hola\",\"second_string\":\"chao\"}"
+        );
+
+        let images = message.images.unwrap();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0], "image1");
+        assert_eq!(images[1], "image2");
     }
 }

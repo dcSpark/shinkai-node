@@ -295,6 +295,8 @@ impl JobManager {
         // Retrieve image files from the message
         // Note: this could be other type of files later on e.g. video, audio, etc.
         let image_files = JobManager::get_image_files_from_message(vector_fs.clone(), &job_message).await?;
+        eprintln!("# of images: {:?}", image_files.len());
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
@@ -967,8 +969,9 @@ impl JobManager {
                     || filename_lower.ends_with(".jpeg")
                     || filename_lower.ends_with(".gif")
                 {
-                    let file_extension = filename.split('.').last().unwrap_or("jpg");
-                    let base64_content = format!("data:image/{};base64,{}", file_extension, base64::encode(&content));
+                    // Note: helpful for later, when we add other types like audio, video, etc.
+                    // let file_extension = filename.split('.').last().unwrap_or("jpg");
+                    let base64_content = base64::encode(&content);
                     Some((filename, base64_content))
                 } else {
                     None

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt};
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
 use crate::llm_provider::{execution::prompts::subprompts::SubPromptType, job::JobStepResult};
@@ -12,6 +14,7 @@ impl JobPromptGenerator {
         custom_system_prompt: Option<String>,
         custom_user_prompt: Option<String>,
         user_message: String,
+        image_files: HashMap<String, String>,
         ret_nodes: Vec<RetrievedNode>,
         _summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
@@ -40,6 +43,7 @@ impl JobPromptGenerator {
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages
+        // TODO: this should be full messages with assets and not just strings
         if let Some(step_history) = job_step_history {
             for step in &step_history {
                 if let Some(prompt) = step.get_result_prompt() {
@@ -84,7 +88,7 @@ impl JobPromptGenerator {
             } else {
                 format!("{}\n {}", user_message, user_prompt)
             };
-            prompt.add_content(content, SubPromptType::UserLastMessage, 100);
+            prompt.add_omni(content, image_files, SubPromptType::UserLastMessage, 100);
         }
 
         // If function_call exists, it means that the LLM requested a function call and we need to send the response back

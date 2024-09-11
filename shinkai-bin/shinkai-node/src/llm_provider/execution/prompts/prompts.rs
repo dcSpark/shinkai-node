@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     llm_provider::{
         error::LLMProviderError,
@@ -55,6 +57,19 @@ impl Prompt {
     pub fn add_content(&mut self, content: String, prompt_type: SubPromptType, priority_value: u8) {
         let capped_priority_value = std::cmp::min(priority_value, 100);
         let sub_prompt = SubPrompt::Content(prompt_type, content, capped_priority_value as u8);
+        self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds a sub-prompt that holds any Omni (String + Assets) content.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_omni(&mut self, content: String, files: HashMap<String, String>, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let assets: Vec<(SubPromptAssetType, SubPromptAssetContent, SubPromptAssetDetail)> = files
+            .into_iter()
+            // TODO: later on we will want to add more asset types. Do we really need the SubPromptAssetType?
+            .map(|(file_name, file_content)| (SubPromptAssetType::Image, file_content, file_name))
+            .collect();
+        let sub_prompt = SubPrompt::Omni(prompt_type, content, assets, capped_priority_value as u8);
         self.add_sub_prompt(sub_prompt);
     }
 
@@ -151,6 +166,10 @@ impl Prompt {
                     self.lowest_priority = self.lowest_priority.min(*priority);
                     self.highest_priority = self.highest_priority.max(*priority);
                 }
+                SubPrompt::Omni(_, _, _, priority) => {
+                    self.lowest_priority = self.lowest_priority.min(*priority);
+                    self.highest_priority = self.highest_priority.max(*priority);
+                }
             }
         }
     }
@@ -200,6 +219,7 @@ impl Prompt {
                 SubPrompt::Asset(_, _, _, _, priority) => *priority = capped_priority_value,
                 SubPrompt::FunctionCall(_, _, priority) => *priority = capped_priority_value,
                 SubPrompt::FunctionCallResponse(_, _, priority) => *priority = capped_priority_value,
+                SubPrompt::Omni(_, _, _, priority) => *priority = capped_priority_value,
             }
             updated_sub_prompts.push(sub_prompt);
         }
@@ -229,6 +249,7 @@ impl Prompt {
             SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
             SubPrompt::FunctionCall(_, _, priority) => *priority == lowest_priority,
             SubPrompt::FunctionCallResponse(_, _, priority) => *priority == lowest_priority,
+            SubPrompt::Omni(_, _, _, priority) => *priority == lowest_priority,
         }) {
             return Some(self.remove_sub_prompt(position));
         }
@@ -308,6 +329,7 @@ impl Prompt {
                         name: None,
                         function_call: None,
                         functions: None,
+                        images: None,
                     };
 
                     if let Some(name) = content.get("name").and_then(|n| n.as_str()) {
@@ -330,6 +352,7 @@ impl Prompt {
                         name: None,
                         function_call: None,
                         functions: None,
+                        images: None,
                     };
 
                     if let Some(function_call) = content.get("function_call") {
@@ -344,6 +367,12 @@ impl Prompt {
                 }
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
                     last_user_message = Some(content.clone());
+                }
+                SubPrompt::Omni(_, _, _, _) => {
+                    // Process the current sub-prompt
+                    let new_message = sub_prompt.into_chat_completion_request_message();
+                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+                    tiktoken_messages.push(new_message);
                 }
                 _ => {
                     // Process the current sub-prompt
@@ -370,6 +399,7 @@ impl Prompt {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             };
             current_length += ModelCapabilitiesManager::num_tokens_from_llama3(&[combined_message.clone()]);
             tiktoken_messages.push(combined_message);
@@ -461,6 +491,10 @@ impl Prompt {
                     let new_message = format!("{}\n", content.clone());
                     messages.push(new_message);
                 }
+                SubPrompt::Omni(_, _, _, _) => {
+                    // Ignore Omni
+                    // TODO: fix this
+                }
             }
         }
         let output = messages.join(" ");
@@ -539,6 +573,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -546,6 +581,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("assistant".to_string()),
@@ -553,6 +589,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -560,6 +597,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: None,
@@ -595,6 +633,7 @@ mod tests {
                         ],
                     },
                 }]),
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -602,6 +641,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
         ];
 
@@ -686,6 +726,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: None,
@@ -718,6 +759,7 @@ mod tests {
                         required: vec!["first_string".to_string(), "second_string".to_string()],
                     },
                 }]),
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -727,6 +769,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("assistant".to_string()),
@@ -737,6 +780,7 @@ mod tests {
                     arguments: "{\"first_string\":\"hola\",\"second_string\":\"chao\"}".to_string(),
                 }),
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("function".to_string()),
@@ -744,6 +788,7 @@ mod tests {
                 name: Some("concat_strings".to_string()),
                 function_call: None,
                 functions: None,
+                images: None,
             },
         ];
 

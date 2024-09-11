@@ -34,7 +34,7 @@ pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
                     if let Some(image_array) = images.as_array_mut() {
                         for (_index, image) in image_array.iter_mut().enumerate() {
                             if let Some(str_image) = image.as_str() {
-                                let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
+                                let truncated_image = format!("{}...", &str_image[0..100.min(str_image.len())]);
                                 *image = JsonValue::String(truncated_image);
                             }
                         }

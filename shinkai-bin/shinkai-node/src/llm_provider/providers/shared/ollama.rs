@@ -80,15 +80,17 @@ fn from_chat_completion_messages(
 
     while let Some(message) = iter.next() {
         if let Some(content) = message.content {
-            let mut images = None;
+            let mut images = message.images.clone();
 
             if message.role.clone().unwrap_or_default() == "user" {
                 if let Some(next_message) = iter.peek() {
-                    if next_message.role.clone().unwrap_or_default() == "user"
-                        && next_message.name.as_deref() == Some("image")
-                    {
-                        if let Some(image_content) = &next_message.content {
-                            images = Some(vec![image_content.clone()]);
+                    if next_message.role.clone().unwrap_or_default() == "user" {
+                        if let Some(next_images) = &next_message.images {
+                            if images.is_none() {
+                                images = Some(next_images.clone());
+                            } else {
+                                images.as_mut().unwrap().extend(next_images.clone());
+                            }
                             iter.next(); // Consume the next message
                         }
                     }
@@ -189,6 +191,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -196,6 +199,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -203,6 +207,7 @@ mod tests {
                 name: Some("image".to_string()),
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -210,6 +215,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
         ];
 
