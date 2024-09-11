@@ -2,6 +2,7 @@ use crate::network::node_commands::NodeCommand;
 
 use super::api_v2_handlers_ext_agent_offers::ext_agent_offers_routes;
 use super::api_v2_handlers_jobs::job_routes;
+use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_wallets::wallet_routes;
 use super::api_v2_handlers_workflows::workflows_routes;
@@ -23,6 +24,7 @@ pub fn v2_routes(
     let workflows_routes = workflows_routes(node_commands_sender.clone());
     let ext_agent_offers = ext_agent_offers_routes(node_commands_sender.clone());
     let wallet_routes = wallet_routes(node_commands_sender.clone());
+    let swagger_ui_routes = swagger_ui_routes();
 
     general_routes
         .or(vecfs_routes)
@@ -31,6 +33,7 @@ pub fn v2_routes(
         .or(workflows_routes)
         .or(ext_agent_offers)
         .or(wallet_routes)
+        .or(swagger_ui_routes)
 }
 
 pub fn with_sender(

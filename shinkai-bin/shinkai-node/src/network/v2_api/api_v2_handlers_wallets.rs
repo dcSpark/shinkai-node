@@ -1,11 +1,11 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
-// use utoipa::OpenApi;
+use utoipa::OpenApi;
 use warp::Filter;
 
 use crate::{
-    network::node_commands::NodeCommand,
+    network::{node_api_router::APIError, node_commands::NodeCommand},
     wallet::{
         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
         wallet_manager::WalletRole,
@@ -217,19 +217,19 @@ pub async fn restore_coinbase_mpc_wallet_handler(
     }
 }
 
-// #[derive(OpenApi)]
-// #[openapi(
-//     paths(
-//         restore_local_wallet_handler,
-//         create_local_wallet_handler,
-//         pay_invoice_handler,
-//         restore_coinbase_mpc_wallet_handler,
-//     ),
-//     components(
-//         schemas(Value, APIError)
-//     ),
-//     tags(
-//         (name = "wallet", description = "Wallet API endpoints")
-//     )
-// )]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        restore_local_wallet_handler,
+        create_local_wallet_handler,
+        pay_invoice_handler,
+        restore_coinbase_mpc_wallet_handler,
+    ),
+    components(
+        schemas(APIError)
+    ),
+    tags(
+        (name = "wallet", description = "Wallet API endpoints")
+    )
+)]
 pub struct WalletApiDoc;
