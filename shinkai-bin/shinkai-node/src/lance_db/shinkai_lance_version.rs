@@ -55,6 +55,12 @@ impl LanceShinkaiDb {
     }
 
     pub async fn set_version(&self, version: &str) -> Result<(), ShinkaiLanceDBError> {
+        // Clear existing data in the version table
+        self.version_table
+            .delete("true") // Provide a predicate to delete all rows
+            .await
+            .map_err(ShinkaiLanceDBError::from)?;
+
         let schema = self.version_table.schema().await.map_err(ShinkaiLanceDBError::from)?;
         let batch = RecordBatch::try_new(
             schema.clone(),
@@ -87,7 +93,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_version_management() -> Result<(), ShinkaiLanceDBError> {
-        
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -104,6 +109,13 @@ mod tests {
         // Read the version again (should return "1")
         let current_version = db.get_current_version().await?;
         assert_eq!(current_version, Some("1".to_string()), "Version should be '1'");
+
+        // Set the version to "2"
+        db.set_version("2").await?;
+
+        // Read the version again (should return "2")
+        let current_version = db.get_current_version().await?;
+        assert_eq!(current_version, Some("2".to_string()), "Version should be '2'");
 
         Ok(())
     }

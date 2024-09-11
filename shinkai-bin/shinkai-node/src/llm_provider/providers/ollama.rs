@@ -27,12 +27,18 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
-    if let Some(images) = payload.get_mut("images") {
-        if let Some(array) = images.as_array_mut() {
-            for image in array {
-                if let Some(str_image) = image.as_str() {
-                    let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
-                    *image = JsonValue::String(truncated_image);
+    if let Some(messages) = payload.get_mut("messages") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(images) = message.get_mut("images") {
+                    if let Some(image_array) = images.as_array_mut() {
+                        for (_index, image) in image_array.iter_mut().enumerate() {
+                            if let Some(str_image) = image.as_str() {
+                                let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
+                                *image = JsonValue::String(truncated_image);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -102,6 +108,14 @@ impl LLMService for Ollama {
 
             // Modify payload to add options if needed
             add_options_to_payload(&mut payload, config.as_ref());
+
+            // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true, then we need to remove to remove it
+            if is_stream {
+                if self.model_type.starts_with("minicpm-v") {
+                    payload.as_object_mut().unwrap().remove("stream");
+                }
+            }
+
 
             // Conditionally add functions to the payload if tools_json is not empty
             if !tools_json.is_empty() {
@@ -203,6 +217,11 @@ impl LLMService for Ollama {
                                 }
                                 Err(_e) => {
                                     eprintln!("Error while receiving chunk: {:?}", _e);
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        format!("Error while receiving chunk: {:?}", _e).as_str(),
+                                    );
                                     previous_json_chunk += chunk_str.as_str();
                                     // Handle JSON parsing error here...
                                 }
@@ -236,7 +255,6 @@ impl LLMService for Ollama {
                 // Handle non-streaming response
                 let response_body = res.text().await?;
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
-                eprintln!("\n\n Response JSON: {:?}\n\n", response_json);
 
                 if let Some(message) = response_json.get("message") {
                     if let Some(content) = message.get("content") {
@@ -256,7 +274,11 @@ impl LLMService for Ollama {
                                 })
                                 .flatten();
 
-                            eprintln!("Function Call: {:?}", function_call);
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Info,
+                                format!("Function Call: {:?}", function_call).as_str(),
+                            );
 
                             // Calculate tps
                             let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);

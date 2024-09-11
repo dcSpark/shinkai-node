@@ -15,19 +15,6 @@ use crate::{
     network::ws_manager::WSUpdateHandler,
 };
 
-#[derive(Debug, Clone, Default)]
-pub struct CronExecutionChainResponse {
-    pub summary: String,
-    pub needs_links: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct CronExecutionState {
-    stage: String,
-    summary: Option<String>,
-    needs_links: Option<bool>,
-}
-
 impl JobManager {
     pub async fn image_analysis_chain(
         _db: Arc<ShinkaiDB>,
