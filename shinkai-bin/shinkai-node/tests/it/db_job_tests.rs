@@ -229,7 +229,9 @@ mod tests {
             .add_step_history(
                 job_id.clone(),
                 "What is 10 + 25".to_string(),
+                None,
                 "The answer is 35".to_string(),
+                None,
                 None,
             )
             .unwrap();
@@ -238,7 +240,9 @@ mod tests {
             .add_step_history(
                 job_id.clone(),
                 "2) What is 10 + 25".to_string(),
+                None,
                 "2) The answer is 35".to_string(),
+                None,
                 None,
             )
             .unwrap();
@@ -525,7 +529,9 @@ mod tests {
                 .add_step_history(
                     job_id.clone(),
                     format!("Step {} Level {}", i, current_level),
+                    None,
                     result.clone(),
+                    None,
                     None,
                 )
                 .unwrap();
@@ -690,7 +696,7 @@ mod tests {
                 .unwrap();
 
             shinkai_db
-                .add_step_history(job_id.to_string(), user_message, agent_response, None)
+                .add_step_history(job_id.to_string(), user_message, None, agent_response, None, None)
                 .unwrap();
 
             // Update the parent message hash according to the tree structure
