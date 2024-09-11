@@ -43,6 +43,7 @@ impl JobManager {
     ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
+        // Directly encode the binary content to base64
         let base64_image = match &agent_found {
             Some(agent) => match agent.model {
                 LLMProviderInterface::OpenAI(_) => {
