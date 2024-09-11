@@ -7,7 +7,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
-use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -296,6 +296,23 @@ impl JobManager {
         // Note: this could be other type of files later on e.g. video, audio, etc.
         let image_files = JobManager::get_image_files_from_message(vector_fs.clone(), &job_message).await?;
         eprintln!("# of images: {:?}", image_files.len());
+
+        if image_files.len() > 0 {
+            let db_weak = Arc::downgrade(&db);
+            let agent_capabilities = ModelCapabilitiesManager::new(db_weak, user_profile.clone()).await;
+            let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
+
+            if !has_image_analysis {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    "Agent does not have ImageAnalysis capability",
+                );
+                return Err(LLMProviderError::LLMProviderMissingCapabilities(
+                    "Agent does not have ImageAnalysis capability".to_string(),
+                ));
+            }
+        }
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -706,107 +723,6 @@ impl JobManager {
             Ok(false)
         }
     }
-
-    // /// Temporary function to process the files in the job message for tasks
-    // #[allow(clippy::too_many_arguments)]
-    // pub async fn should_process_job_files_for_tasks_take_over(
-    //     db: Arc<ShinkaiDB>,
-    //     vector_fs: Arc<VectorFS>,
-    //     job_message: &JobMessage,
-    //     llm_provider_found: Option<SerializedLLMProvider>,
-    //     full_job: Job,
-    //     profile: ShinkaiName,
-    //     identity_secret_key: SigningKey,
-    //     _unstructured_api: UnstructuredAPI,
-    //     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    //     llm_stopper: Arc<LLMStopper>,
-    // ) -> Result<bool, LLMProviderError> {
-    //     if !job_message.files_inbox.is_empty() {
-    //         shinkai_log(
-    //             ShinkaiLogOption::JobExecution,
-    //             ShinkaiLogLevel::Debug,
-    //             format!(
-    //                 "Searching for a .jobkai file in files: {}",
-    //                 job_message.files_inbox.len()
-    //             )
-    //             .as_str(),
-    //         );
-
-    //         // Get the files from the DB
-    //         let files = {
-    //             let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
-    //             // Check if there was an error getting the files
-    //             match files_result {
-    //                 Ok(files) => files,
-    //                 Err(e) => return Err(LLMProviderError::VectorFS(e)),
-    //             }
-    //         };
-
-    //         for (filename, content) in files.into_iter() {
-    //             shinkai_log(
-    //                 ShinkaiLogOption::JobExecution,
-    //                 ShinkaiLogLevel::Debug,
-    //                 &format!("Processing file: {}", filename),
-    //             );
-
-    //             let filename_lower = filename.to_lowercase();
-    //             if filename_lower.ends_with(".png")
-    //                 || filename_lower.ends_with(".jpg")
-    //                 || filename_lower.ends_with(".jpeg")
-    //                 || filename_lower.ends_with(".gif")
-    //             {
-    //                 shinkai_log(
-    //                     ShinkaiLogOption::JobExecution,
-    //                     ShinkaiLogLevel::Debug,
-    //                     &format!("Found an image file: {}", filename),
-    //                 );
-
-    //                 let db_weak = Arc::downgrade(&db);
-    //                 let agent_capabilities = ModelCapabilitiesManager::new(db_weak, profile.clone()).await;
-    //                 let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
-
-    //                 if !has_image_analysis {
-    //                     shinkai_log(
-    //                         ShinkaiLogOption::JobExecution,
-    //                         ShinkaiLogLevel::Error,
-    //                         "Agent does not have ImageAnalysis capability",
-    //                     );
-    //                     return Err(LLMProviderError::LLMProviderMissingCapabilities(
-    //                         "Agent does not have ImageAnalysis capability".to_string(),
-    //                     ));
-    //                 }
-
-    //                 let task = job_message.content.clone();
-    //                 let file_extension = filename.split('.').last().unwrap_or("jpg");
-
-    //                 // Call a new function
-    //                 let job_config = full_job.config();
-
-    //                 JobManager::handle_image_file(
-    //                     db.clone(),
-    //                     llm_provider_found.clone(),
-    //                     full_job.clone(),
-    //                     task,
-    //                     content,
-    //                     profile.clone(),
-    //                     clone_signature_secret_key(&identity_secret_key),
-    //                     file_extension.to_string(),
-    //                     ws_manager.clone(),
-    //                     job_config.cloned(),
-    //                     llm_stopper.clone(),
-    //                 )
-    //                 .await?;
-    //                 return Ok(true);
-    //             }
-    //         }
-    //     }
-    //     shinkai_log(
-    //         ShinkaiLogOption::JobExecution,
-    //         ShinkaiLogLevel::Debug,
-    //         "No .jobkai files found".to_string().as_str(),
-    //     );
-    //     Ok(false)
-    // }
 
     /// Processes the files sent together with the current job_message into Vector Resources,
     /// and saves them either into the local job scope, or the DB depending on `save_to_db_directly`.

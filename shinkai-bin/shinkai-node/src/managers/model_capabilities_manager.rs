@@ -89,7 +89,6 @@ pub enum ModelCost {
 pub enum ModelPrivacy {
     Unknown,
     Local,
-    RemotePrivate,
     RemoteGreedy,
 }
 
