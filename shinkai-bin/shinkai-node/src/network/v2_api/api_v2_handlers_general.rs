@@ -2,6 +2,14 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    Exo, Gemini, GenericAPI, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
+};
+use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{
+    EncryptedShinkaiBody, ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage, ShinkaiVersion,
+};
+use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::{
     schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider,
     shinkai_message::shinkai_message_schemas::APIAddOllamaModels,
@@ -9,6 +17,7 @@ use shinkai_message_primitives::{
 use utoipa::OpenApi;
 use warp::Filter;
 
+use crate::network::v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use crate::network::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,
@@ -807,7 +816,11 @@ pub async fn stop_llm_handler(
         stop_llm_handler,
     ),
     components(
-        schemas(GetPublicKeysResponse, APIError)
+        schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
+            ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
+            OpenAI, GenericAPI, Ollama, LocalLLM, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
+            ShinkaiSubidentityType, ShinkaiBackend,
+            APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError)
     ),
     tags(
         (name = "general", description = "General API endpoints")

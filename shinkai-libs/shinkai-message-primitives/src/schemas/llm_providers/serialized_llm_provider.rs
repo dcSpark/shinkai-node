@@ -3,9 +3,10 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct SerializedLLMProvider {
     pub id: String,
     pub full_identity_name: ShinkaiName,
@@ -18,7 +19,7 @@ pub struct SerializedLLMProvider {
     pub allowed_message_senders: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, ToSchema)]
 pub enum LLMProviderInterface {
     OpenAI(OpenAI),
     GenericAPI(GenericAPI),
@@ -30,10 +31,10 @@ pub enum LLMProviderInterface {
     Exo(Exo),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct LocalLLM {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Ollama {
     pub model_type: String,
 }
@@ -44,7 +45,7 @@ impl Ollama {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Groq {
     pub model_type: String,
 }
@@ -55,7 +56,7 @@ impl Groq {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Exo {
     pub model_type: String,
 }
@@ -66,7 +67,7 @@ impl Exo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Gemini {
     pub model_type: String,
 }
@@ -77,7 +78,7 @@ impl Gemini {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct ShinkaiBackend {
     pub model_type: String,
 }
@@ -98,12 +99,12 @@ impl ShinkaiBackend {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct OpenAI {
     pub model_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct GenericAPI {
     pub model_type: String,
 }
@@ -218,7 +219,16 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini"],
+                &[
+                    "openai",
+                    "genericapi",
+                    "ollama",
+                    "shinkai-backend",
+                    "local-llm",
+                    "groq",
+                    "exo",
+                    "gemini",
+                ],
             )),
         }
     }

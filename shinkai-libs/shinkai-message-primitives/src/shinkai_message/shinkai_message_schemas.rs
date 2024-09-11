@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
+use utoipa::ToSchema;
 
 use super::shinkai_message::{NodeApiData, ShinkaiMessage};
 
@@ -90,7 +91,7 @@ pub enum MessageSchemaType {
     InvoiceRequest,
     Invoice,
     PaidInvoice,
-    InvoiceResult
+    InvoiceResult,
 }
 
 impl MessageSchemaType {
@@ -570,7 +571,7 @@ pub struct APIUnshareFolder {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAddOllamaModels {
     pub models: Vec<String>,
 }
