@@ -264,8 +264,6 @@ impl JobManager {
             );
 
             loop {
-                let mut continue_immediately = false;
-
                 // Scope for acquiring and releasing the lock quickly
                 let job_ids_to_process: Vec<String> = {
                     let mut processing_jobs_lock = processing_jobs.lock().await;
@@ -287,11 +285,7 @@ impl JobManager {
                                 None
                             }
                         })
-                        .take(max_parallel_jobs)
                         .collect::<Vec<_>>();
-
-                    // Check if the number of jobs to process is equal to max_parallel_jobs
-                    continue_immediately = filtered_jobs.len() == max_parallel_jobs;
 
                     std::mem::drop(processing_jobs_lock);
                     filtered_jobs
@@ -301,7 +295,7 @@ impl JobManager {
                 for job_id in job_ids_to_process {
                     let job_queue_manager = Arc::clone(&job_queue_manager);
                     let processing_jobs = Arc::clone(&processing_jobs);
-                    let semaphore = Arc::clone(&semaphore);
+
                     let db_clone_2 = db_clone.clone();
                     let vector_fs_clone_2 = vector_fs_clone.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
@@ -317,9 +311,11 @@ impl JobManager {
                     let ext_agent_payments_manager = ext_agent_payments_manager.clone();
                     let llm_stopper = Arc::clone(&llm_stopper);
 
-                    tokio::spawn(async move {
-                        let _permit = semaphore.acquire().await.unwrap();
+                    // Wait for an available permit then spawn the job processing task
+                    let semaphore = Arc::clone(&semaphore);
+                    let permit = semaphore.acquire_owned().await.unwrap();
 
+                    tokio::spawn(async move {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
@@ -369,15 +365,9 @@ impl JobManager {
                                 // Log the error
                             }
                         }
-                        drop(_permit);
+                        drop(permit);
                         processing_jobs.lock().await.remove(&job_id);
                     });
-                }
-
-                // If job_ids_to_process was equal to max_parallel_jobs, loop again immediately
-                // without waiting for a new job from receiver.recv().await
-                if continue_immediately {
-                    continue;
                 }
 
                 // Receive new jobs
