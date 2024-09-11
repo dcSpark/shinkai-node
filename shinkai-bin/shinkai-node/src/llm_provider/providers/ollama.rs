@@ -116,7 +116,6 @@ impl LLMService for Ollama {
                 }
             }
 
-
             // Conditionally add functions to the payload if tools_json is not empty
             if !tools_json.is_empty() {
                 payload["tools"] = serde_json::Value::Array(tools_json);
@@ -132,127 +131,204 @@ impl LLMService for Ollama {
             );
             eprintln!("Call API Body: {:?}", payload_log);
 
-            let res = client.post(url).json(&payload).send().await?;
-
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Info,
-                format!("Call API Status: {:?}", res.status()).as_str(),
-            );
-
             if is_stream {
-                let mut stream = res.bytes_stream();
-                let mut response_text = String::new();
-                let mut previous_json_chunk: String = String::new();
-                let mut final_eval_count = None;
-                let mut final_eval_duration = None;
+                handle_streaming_response(
+                    client,
+                    url,
+                    payload,
+                    inbox_name,
+                    ws_manager_trait,
+                    llm_stopper,
+                    session_id,
+                )
+                .await
+            } else {
+                handle_non_streaming_response(client, url, payload, inbox_name, llm_stopper).await
+            }
+        } else {
+            Err(LLMProviderError::UrlNotSet)
+        }
+    }
+}
 
-                while let Some(item) = stream.next().await {
-                    // Check if we need to stop the LLM job
-                    if let Some(ref inbox_name) = inbox_name {
-                        if llm_stopper.should_stop(&inbox_name.to_string()) {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Info,
-                                "LLM job stopped by user request",
-                            );
-                            llm_stopper.reset(&inbox_name.to_string());
-                            return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
-                        }
-                    }
+async fn handle_streaming_response(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    let res = client.post(url).json(&payload).send().await?;
 
-                    match item {
-                        Ok(chunk) => {
-                            let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
-                            if !previous_json_chunk.is_empty() {
-                                chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
-                            }
-                            let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
-                            match data_resp {
-                                Ok(data) => {
-                                    previous_json_chunk = "".to_string();
-                                    response_text.push_str(&data.message.content);
+    let mut stream = res.bytes_stream();
+    let mut response_text = String::new();
+    let mut previous_json_chunk: String = String::new();
+    let mut final_eval_count = None;
+    let mut final_eval_duration = None;
 
-                                    // Capture eval_count and eval_duration from the final response
-                                    if data.done {
-                                        final_eval_count = data.eval_count;
-                                        final_eval_duration = data.eval_duration;
-                                    }
+    while let Some(item) = stream.next().await {
+        // Check if we need to stop the LLM job
+        if let Some(ref inbox_name) = inbox_name {
+            if llm_stopper.should_stop(&inbox_name.to_string()) {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Info,
+                    "LLM job stopped by user request",
+                );
+                llm_stopper.reset(&inbox_name.to_string());
 
-                                    // Note: this is the code for enabling WS
-                                    if let Some(ref manager) = ws_manager_trait {
-                                        if let Some(ref inbox_name) = inbox_name {
-                                            let m = manager.lock().await;
-                                            let inbox_name_string = inbox_name.to_string();
+                // Send WS message indicating the job is done
+                if let Some(ref manager) = ws_manager_trait {
+                    let m = manager.lock().await;
+                    let inbox_name_string = inbox_name.to_string();
 
-                                            let metadata = WSMetadata {
-                                                id: Some(session_id.clone()),
-                                                is_done: data.done,
-                                                done_reason: if data.done { data.done_reason.clone() } else { None },
-                                                total_duration: if data.done {
-                                                    data.total_duration.map(|d| d as u64)
-                                                } else {
-                                                    None
-                                                },
-                                                eval_count: if data.done {
-                                                    data.eval_count.map(|c| c as u64)
-                                                } else {
-                                                    None
-                                                },
-                                            };
+                    let metadata = WSMetadata {
+                        id: Some(session_id.clone()),
+                        is_done: true,
+                        done_reason: Some("Stopped by user request".to_string()),
+                        total_duration: None,
+                        eval_count: None,
+                    };
 
-                                            let ws_message_type = WSMessageType::Metadata(metadata);
+                    let ws_message_type = WSMessageType::Metadata(metadata);
 
-                                            let _ = m
-                                                .queue_message(
-                                                    WSTopic::Inbox,
-                                                    inbox_name_string,
-                                                    data.message.content,
-                                                    ws_message_type,
-                                                    true,
-                                                )
-                                                .await;
-                                        }
-                                    }
-                                }
-                                Err(_e) => {
-                                    eprintln!("Error while receiving chunk: {:?}", _e);
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Error while receiving chunk: {:?}", _e).as_str(),
-                                    );
-                                    previous_json_chunk += chunk_str.as_str();
-                                    // Handle JSON parsing error here...
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source())
-                                    .as_str(),
-                            );
-                            return Err(LLMProviderError::NetworkError(e.to_string()));
-                        }
-                    }
+                    let _ = m
+                        .queue_message(
+                            WSTopic::Inbox,
+                            inbox_name_string,
+                            response_text.clone(),
+                            ws_message_type,
+                            true,
+                        )
+                        .await;
                 }
 
-                // Calculate tps
-                let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
-                    if eval_duration > 0 {
-                        Some(eval_count as f64 / eval_duration as f64 * 1e9)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
+            }
+        }
 
-                Ok(LLMInferenceResponse::new(response_text, json!({}), None, tps))
-            } else {
-                // Handle non-streaming response
+        match item {
+            Ok(chunk) => {
+                let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                if !previous_json_chunk.is_empty() {
+                    chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
+                }
+                let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
+                match data_resp {
+                    Ok(data) => {
+                        previous_json_chunk = "".to_string();
+                        response_text.push_str(&data.message.content);
+
+                        // Capture eval_count and eval_duration from the final response
+                        if data.done {
+                            final_eval_count = data.eval_count;
+                            final_eval_duration = data.eval_duration;
+                        }
+
+                        // Note: this is the code for enabling WS
+                        if let Some(ref manager) = ws_manager_trait {
+                            if let Some(ref inbox_name) = inbox_name {
+                                let m = manager.lock().await;
+                                let inbox_name_string = inbox_name.to_string();
+
+                                let metadata = WSMetadata {
+                                    id: Some(session_id.clone()),
+                                    is_done: data.done,
+                                    done_reason: if data.done { data.done_reason.clone() } else { None },
+                                    total_duration: if data.done {
+                                        data.total_duration.map(|d| d as u64)
+                                    } else {
+                                        None
+                                    },
+                                    eval_count: if data.done {
+                                        data.eval_count.map(|c| c as u64)
+                                    } else {
+                                        None
+                                    },
+                                };
+
+                                let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                let _ = m
+                                    .queue_message(
+                                        WSTopic::Inbox,
+                                        inbox_name_string,
+                                        data.message.content,
+                                        ws_message_type,
+                                        true,
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+                    Err(_e) => {
+                        eprintln!("Error while receiving chunk: {:?}", _e);
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            format!("Error while receiving chunk: {:?}", _e).as_str(),
+                        );
+                        previous_json_chunk += chunk_str.as_str();
+                        // Handle JSON parsing error here...
+                    }
+                }
+            }
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
+                );
+                return Err(LLMProviderError::NetworkError(e.to_string()));
+            }
+        }
+    }
+
+    // Calculate tps
+    let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
+        if eval_duration > 0 {
+            Some(eval_count as f64 / eval_duration as f64 * 1e9)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Ok(LLMInferenceResponse::new(response_text, json!({}), None, tps))
+}
+
+async fn handle_non_streaming_response(
+    client: &Client,
+    url: String,
+    payload: JsonValue,
+    inbox_name: Option<InboxName>,
+    llm_stopper: Arc<LLMStopper>,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+    let response_fut = client.post(url).json(&payload).send();
+    let mut response_fut = Box::pin(response_fut);
+
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                if let Some(ref inbox_name) = inbox_name {
+                    if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Info,
+                            "LLM job stopped by user request",
+                        );
+                        llm_stopper.reset(&inbox_name.to_string());
+
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
+                    }
+                }
+            },
+            response = &mut response_fut => {
+                let res = response?;
                 let response_body = res.text().await?;
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
 
@@ -290,30 +366,28 @@ impl LLMService for Ollama {
                                 None
                             };
 
-                            Ok(LLMInferenceResponse::new(
+                            break Ok(LLMInferenceResponse::new(
                                 content_str.to_string(),
                                 json!({}),
                                 function_call,
                                 tps,
-                            ))
+                            ));
                         } else {
-                            Err(LLMProviderError::UnexpectedResponseFormat(
+                            break Err(LLMProviderError::UnexpectedResponseFormat(
                                 "Content is not a string".to_string(),
-                            ))
+                            ));
                         }
                     } else {
-                        Err(LLMProviderError::UnexpectedResponseFormat(
+                        break Err(LLMProviderError::UnexpectedResponseFormat(
                             "No content field in message".to_string(),
-                        ))
+                        ));
                     }
                 } else {
-                    Err(LLMProviderError::UnexpectedResponseFormat(
+                    break Err(LLMProviderError::UnexpectedResponseFormat(
                         "No message field in response".to_string(),
-                    ))
+                    ));
                 }
             }
-        } else {
-            Err(LLMProviderError::UrlNotSet)
         }
     }
 }
