@@ -610,29 +610,29 @@ mod tests {
 
         assert_eq!(
             step1.step_revisions[0].sub_prompts[0],
-            SubPrompt::Content(User, "Step 1 Level 0".to_string(), 100)
+            SubPrompt::Omni(User, "Step 1 Level 0".to_string(), vec![], 100)
         );
         assert_eq!(
             step1.step_revisions[0].sub_prompts[1],
-            SubPrompt::Content(Assistant, "Result 1".to_string(), 100)
+            SubPrompt::Omni(Assistant, "Result 1".to_string(), vec![], 100)
         );
 
         assert_eq!(
             step2.step_revisions[0].sub_prompts[0],
-            SubPrompt::Content(User, "Step 2 Level 1".to_string(), 100)
+            SubPrompt::Omni(User, "Step 2 Level 1".to_string(), vec![], 100)
         );
         assert_eq!(
             step2.step_revisions[0].sub_prompts[1],
-            SubPrompt::Content(Assistant, "Result 2".to_string(), 100)
+            SubPrompt::Omni(Assistant, "Result 2".to_string(), vec![], 100)
         );
 
         assert_eq!(
             step4.step_revisions[0].sub_prompts[0],
-            SubPrompt::Content(User, "Step 4 Level 2".to_string(), 100)
+            SubPrompt::Omni(User, "Step 4 Level 2".to_string(), vec![], 100)
         );
         assert_eq!(
             step4.step_revisions[0].sub_prompts[1],
-            SubPrompt::Content(Assistant, "Result 4".to_string(), 100)
+            SubPrompt::Omni(Assistant, "Result 4".to_string(), vec![], 100)
         );
     }
 
@@ -733,11 +733,11 @@ mod tests {
             .iter()
             .map(|step| {
                 let user_message = match &step.step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
                 let agent_response = match &step.step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
                 format!("{} {}", user_message, agent_response)
@@ -753,11 +753,11 @@ mod tests {
             format!(
                 "{} {}",
                 match &step_history[0].step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
                 match &step_history[0].step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
             ),
@@ -767,11 +767,11 @@ mod tests {
             format!(
                 "{} {}",
                 match &step_history[1].step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
                 match &step_history[1].step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
             ),
@@ -781,11 +781,11 @@ mod tests {
             format!(
                 "{} {}",
                 match &step_history[2].step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
                 match &step_history[2].step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Content(_, text, _) => text,
+                    SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
             ),
