@@ -64,6 +64,7 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
+            self.context.image_files.clone(),
             self.context.llm_provider.clone(),
             self.context.execution_context.clone(),
             self.context.generator.clone(),
@@ -105,6 +106,7 @@ impl SheetUIInferenceChain {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
+        image_files: HashMap<String, String>,
         llm_provider: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -195,6 +197,7 @@ impl SheetUIInferenceChain {
             custom_prompt,
             None, // TODO: connect later on
             user_message.clone(),
+            image_files.clone(),
             ret_nodes.clone(),
             summary_node_text.clone(),
             Some(full_job.step_history.clone()),
@@ -298,6 +301,7 @@ impl SheetUIInferenceChain {
                         vector_fs.clone(),
                         full_job.clone(),
                         parsed_message,
+                        image_files.clone(),
                         llm_provider.clone(),
                         execution_context.clone(),
                         generator.clone(),
@@ -332,6 +336,7 @@ impl SheetUIInferenceChain {
                     None, // TODO: connect later on
                     None, // TODO: connect later on
                     user_message.clone(),
+                    image_files.clone(),
                     ret_nodes.clone(),
                     summary_node_text.clone(),
                     Some(full_job.step_history.clone()),

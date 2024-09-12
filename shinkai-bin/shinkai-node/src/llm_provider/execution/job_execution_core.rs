@@ -80,8 +80,6 @@ impl JobManager {
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e, ws_manager).await,
         };
 
-        eprintln!("full_job config: {:?}", full_job.config);
-
         // Ensure the user profile exists before proceeding with inference chain
         let user_profile = match user_profile {
             Some(profile) => profile,
@@ -179,29 +177,29 @@ impl JobManager {
             return Ok(job_id);
         }
 
-        // 4.- If a .jobkai file is found, processing job message is taken over by this alternate logic
-        let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
-            db.clone(),
-            vector_fs.clone(),
-            &job_message.job_message,
-            llm_provider_found.clone(),
-            full_job.clone(),
-            job_message.profile.clone(),
-            clone_signature_secret_key(&identity_secret_key),
-            unstructured_api.clone(),
-            ws_manager.clone(),
-            llm_stopper.clone(),
-        )
-        .await;
-        let jobkai_found = match jobkai_found_result {
-            Ok(found) => found,
-            Err(e) => {
-                return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
-            }
-        };
-        if jobkai_found {
-            return Ok(job_id);
-        }
+        // // 4.- If a .jobkai file is found, processing job message is taken over by this alternate logic
+        // let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
+        //     db.clone(),
+        //     vector_fs.clone(),
+        //     &job_message.job_message,
+        //     llm_provider_found.clone(),
+        //     full_job.clone(),
+        //     job_message.profile.clone(),
+        //     clone_signature_secret_key(&identity_secret_key),
+        //     unstructured_api.clone(),
+        //     ws_manager.clone(),
+        //     llm_stopper.clone(),
+        // )
+        // .await;
+        // let jobkai_found = match jobkai_found_result {
+        //     Ok(found) => found,
+        //     Err(e) => {
+        //         return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
+        //     }
+        // };
+        // if jobkai_found {
+        //     return Ok(job_id);
+        // }
 
         // Otherwise proceed forward with rest of logic.
         let inference_chain_result = JobManager::process_inference_chain(
@@ -294,6 +292,34 @@ impl JobManager {
             &format!("Inference chain - Processing Job: {:?}", full_job.job_id),
         );
 
+        // Retrieve image files from the message
+        // Note: this could be other type of files later on e.g. video, audio, etc.
+        let image_files = JobManager::get_image_files_from_message(vector_fs.clone(), &job_message).await?;
+        eprintln!("# of images: {:?}", image_files.len());
+
+        if image_files.len() > 0 {
+            let db_weak = Arc::downgrade(&db);
+            let agent_capabilities = ModelCapabilitiesManager::new(db_weak, user_profile.clone()).await;
+            let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
+
+            if !has_image_analysis {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    "Agent does not have ImageAnalysis capability",
+                );
+                return Err(LLMProviderError::LLMProviderMissingCapabilities(
+                    "Agent does not have ImageAnalysis capability".to_string(),
+                ));
+            }
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Retrieved {} image files", image_files.len()),
+        );
+
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
         shinkai_log(
@@ -310,6 +336,7 @@ impl JobManager {
             llm_provider_found,
             full_job,
             job_message.clone(),
+            image_files.clone(),
             prev_execution_context,
             generator,
             user_profile.clone(),
@@ -353,7 +380,9 @@ impl JobManager {
         db.add_step_history(
             job_message.job_id.clone(),
             job_message.content,
+            Some(image_files),
             inference_response_content.to_string(),
+            None,
             None,
         )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
@@ -464,7 +493,9 @@ impl JobManager {
         db.add_step_history(
             job_message.job_id.clone(),
             job_message.content.clone(),
+            None,
             response.to_string(),
+            None,
             None,
         )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
@@ -496,12 +527,14 @@ impl JobManager {
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
         let parsed_user_message = ParsedUserMessage::new(message_content);
         let full_execution_context = full_job.execution_context.clone();
+        let empty_files = HashMap::new();
 
         let mut chain_context = InferenceChainContext::new(
             db.clone(),
             vector_fs.clone(),
             full_job,
             parsed_user_message,
+            empty_files,
             llm_provider,
             full_execution_context,
             generator,
@@ -535,7 +568,6 @@ impl JobManager {
         let tools = {
             // get tool_router and then call get_tools_by_names
             if let Some(tool_router) = tool_router.clone() {
-                
                 tool_router.get_tools_by_names(js_functions_used).await?
             } else {
                 return Err(LLMProviderError::ToolRouterNotFound);
@@ -636,12 +668,15 @@ impl JobManager {
                 let mut job_message = job_message.clone();
                 job_message.content = input_string;
 
+                let empty_files = HashMap::new();
+
                 JobManager::inference_chain_router(
                     db.clone(),
                     vector_fs.clone(),
                     llm_provider_found,
                     full_job.clone(),
                     job_message.clone(),
+                    empty_files,
                     HashMap::new(), // Assuming prev_execution_context is an empty HashMap
                     generator,
                     user_profile.clone(),
@@ -691,108 +726,6 @@ impl JobManager {
         } else {
             Ok(false)
         }
-    }
-
-    /// Temporary function to process the files in the job message for tasks
-    #[allow(clippy::too_many_arguments)]
-    pub async fn should_process_job_files_for_tasks_take_over(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        job_message: &JobMessage,
-        llm_provider_found: Option<SerializedLLMProvider>,
-        full_job: Job,
-        profile: ShinkaiName,
-        identity_secret_key: SigningKey,
-        _unstructured_api: UnstructuredAPI,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        llm_stopper: Arc<LLMStopper>,
-    ) -> Result<bool, LLMProviderError> {
-        if !job_message.files_inbox.is_empty() {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                format!(
-                    "Searching for a .jobkai file in files: {}",
-                    job_message.files_inbox.len()
-                )
-                .as_str(),
-            );
-
-            // Get the files from the DB
-            let files = {
-                let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
-                // Check if there was an error getting the files
-                match files_result {
-                    Ok(files) => files,
-                    Err(e) => return Err(LLMProviderError::VectorFS(e)),
-                }
-            };
-
-            // Search for a .jobkai file
-            for (filename, content) in files.into_iter() {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    &format!("Processing file: {}", filename),
-                );
-
-                let filename_lower = filename.to_lowercase();
-                if filename_lower.ends_with(".png")
-                    || filename_lower.ends_with(".jpg")
-                    || filename_lower.ends_with(".jpeg")
-                    || filename_lower.ends_with(".gif")
-                {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Found an image file: {}", filename),
-                    );
-
-                    let db_weak = Arc::downgrade(&db);
-                    let agent_capabilities = ModelCapabilitiesManager::new(db_weak, profile.clone()).await;
-                    let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
-
-                    if !has_image_analysis {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Error,
-                            "Agent does not have ImageAnalysis capability",
-                        );
-                        return Err(LLMProviderError::LLMProviderMissingCapabilities(
-                            "Agent does not have ImageAnalysis capability".to_string(),
-                        ));
-                    }
-
-                    let task = job_message.content.clone();
-                    let file_extension = filename.split('.').last().unwrap_or("jpg");
-
-                    // Call a new function
-                    let job_config = full_job.config();
-
-                    JobManager::handle_image_file(
-                        db.clone(),
-                        llm_provider_found.clone(),
-                        full_job.clone(),
-                        task,
-                        content,
-                        profile.clone(),
-                        clone_signature_secret_key(&identity_secret_key),
-                        file_extension.to_string(),
-                        ws_manager.clone(),
-                        job_config.cloned(),
-                        llm_stopper.clone(),
-                    )
-                    .await?;
-                    return Ok(true);
-                }
-            }
-        }
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            "No .jobkai files found".to_string().as_str(),
-        );
-        Ok(false)
     }
 
     /// Processes the files sent together with the current job_message into Vector Resources,
@@ -925,6 +858,48 @@ impl JobManager {
         }
 
         Ok(())
+    }
+
+    /// Retrieves image files associated with a job message and converts them to base64
+    pub async fn get_image_files_from_message(
+        vector_fs: Arc<VectorFS>,
+        job_message: &JobMessage,
+    ) -> Result<HashMap<String, String>, LLMProviderError> {
+        if job_message.files_inbox.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
+        );
+
+        let files_vec = vector_fs
+            .db
+            .get_all_files_from_inbox(job_message.files_inbox.clone())
+            .map_err(LLMProviderError::VectorFS)?;
+
+        let image_files: HashMap<String, String> = files_vec
+            .into_iter()
+            .filter_map(|(filename, content)| {
+                let filename_lower = filename.to_lowercase();
+                if filename_lower.ends_with(".png")
+                    || filename_lower.ends_with(".jpg")
+                    || filename_lower.ends_with(".jpeg")
+                    || filename_lower.ends_with(".gif")
+                {
+                    // Note: helpful for later, when we add other types like audio, video, etc.
+                    // let file_extension = filename.split('.').last().unwrap_or("jpg");
+                    let base64_content = base64::encode(&content);
+                    Some((filename, base64_content))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(image_files)
     }
 
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.

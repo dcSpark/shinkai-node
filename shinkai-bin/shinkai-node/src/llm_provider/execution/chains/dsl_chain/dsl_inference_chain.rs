@@ -1,8 +1,8 @@
-use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, sync::Arc, time::Instant};
+use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
 
 use crate::{
     llm_provider::{
-        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike, llm_stopper::LLMStopper, providers::shared::openai::FunctionCall
+        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike, providers::shared::openai::FunctionCall
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
@@ -257,11 +257,14 @@ impl AsyncFunction for InferenceFunction {
         let full_job = self.context.full_job();
         let llm_provider = self.context.agent();
 
+        // TODO: extract files from args
+
         // TODO: add more debugging to (ie add to logs) the diff operations
         let filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_system_prompt,
             custom_user_prompt,
             user_message.clone(),
+            HashMap::new(),
             vec![],
             None,
             None,
@@ -336,6 +339,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         };
 
         // TODO: add more debugging to (ie add to logs) the diff operations
+        // TODO: extract files from args
 
         // If we need to search for nodes using the scope
         let scope_is_empty = full_job.scope().is_empty();
@@ -363,6 +367,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             custom_system_prompt,
             custom_user_prompt,
             effective_user_message.clone(),
+            HashMap::new(),
             ret_nodes,
             summary_node_text,
             Some(full_job.step_history.clone()),

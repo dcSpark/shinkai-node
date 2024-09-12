@@ -34,7 +34,7 @@ pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
                     if let Some(image_array) = images.as_array_mut() {
                         for (_index, image) in image_array.iter_mut().enumerate() {
                             if let Some(str_image) = image.as_str() {
-                                let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
+                                let truncated_image = format!("{}...", &str_image[0..100.min(str_image.len())]);
                                 *image = JsonValue::String(truncated_image);
                             }
                         }
@@ -82,17 +82,6 @@ impl LLMService for Ollama {
             // Extract tools_json from the result
             let tools_json = messages_result.functions.unwrap_or_else(Vec::new);
 
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Info,
-                format!("Messages JSON: {:?}", messages_json).as_str(),
-            );
-            // Print messages_json as a pretty JSON string
-            // match serde_json::to_string_pretty(&messages_json) {
-            //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-            //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-            // };
-
             match serde_json::to_string_pretty(&tools_json) {
                 Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
                 Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
@@ -124,12 +113,21 @@ impl LLMService for Ollama {
             let mut payload_log = payload.clone();
             truncate_image_content_in_payload(&mut payload_log);
 
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Info,
-                format!("Call API Body: {:?}", payload_log).as_str(),
-            );
-            eprintln!("Call API Body: {:?}", payload_log);
+            match serde_json::to_string_pretty(&payload_log) {
+                Ok(pretty_json) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Info,
+                        format!("Messages JSON: {}", pretty_json).as_str(),
+                    );
+                    eprintln!("Messages JSON: {}", pretty_json);
+                },
+                Err(e) => shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to serialize messages_json: {:?}", e).as_str(),
+                ),
+            };
 
             if is_stream {
                 handle_streaming_response(

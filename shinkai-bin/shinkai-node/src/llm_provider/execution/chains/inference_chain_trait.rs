@@ -57,6 +57,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn vector_fs(&self) -> Arc<VectorFS>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
+    fn image_files(&self) -> &HashMap<String, String>;
     fn agent(&self) -> &SerializedLLMProvider;
     fn execution_context(&self) -> &HashMap<String, String>;
     fn generator(&self) -> &RemoteEmbeddingGenerator;
@@ -109,6 +110,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn user_message(&self) -> &ParsedUserMessage {
         &self.user_message
+    }
+
+    fn image_files(&self) -> &HashMap<String, String> {
+        &self.image_files
     }
 
     fn agent(&self) -> &SerializedLLMProvider {
@@ -184,6 +189,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
+    pub image_files: HashMap<String, String>,
     pub llm_provider: SerializedLLMProvider,
     /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
@@ -209,6 +215,7 @@ impl InferenceChainContext {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
+        image_files: HashMap<String, String>,
         agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -228,6 +235,7 @@ impl InferenceChainContext {
             vector_fs,
             full_job,
             user_message,
+            image_files,
             llm_provider: agent,
             execution_context,
             generator,
@@ -264,6 +272,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("vector_fs", &self.vector_fs)
             .field("full_job", &self.full_job)
             .field("user_message", &self.user_message)
+            .field("image_files", &self.image_files.len())
             .field("llm_provider", &self.llm_provider)
             .field("execution_context", &self.execution_context)
             .field("generator", &self.generator)
@@ -369,6 +378,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).user_message()
     }
 
+    fn image_files(&self) -> &HashMap<String, String> {
+        (**self).image_files()
+    }
+
     fn agent(&self) -> &SerializedLLMProvider {
         (**self).agent()
     }
@@ -437,6 +450,7 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 /// A Mock implementation of the InferenceChainContextTrait for testing purposes.
 pub struct MockInferenceChainContext {
     pub user_message: ParsedUserMessage,
+    pub image_files: HashMap<String, String>,
     pub execution_context: HashMap<String, String>,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
@@ -471,6 +485,7 @@ impl MockInferenceChainContext {
     ) -> Self {
         Self {
             user_message,
+            image_files: HashMap::new(),
             execution_context,
             user_profile,
             max_iterations,
@@ -496,6 +511,7 @@ impl Default for MockInferenceChainContext {
         let user_profile = ShinkaiName::default_testnet_localhost();
         Self {
             user_message,
+            image_files: HashMap::new(),
             execution_context: HashMap::new(),
             user_profile,
             max_iterations: 10,
@@ -539,6 +555,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn user_message(&self) -> &ParsedUserMessage {
         &self.user_message
+    }
+
+    fn image_files(&self) -> &HashMap<String, String> {
+        &self.image_files
     }
 
     fn agent(&self) -> &SerializedLLMProvider {
@@ -610,6 +630,7 @@ impl Clone for MockInferenceChainContext {
     fn clone(&self) -> Self {
         Self {
             user_message: self.user_message.clone(),
+            image_files: self.image_files.clone(),
             execution_context: self.execution_context.clone(),
             user_profile: self.user_profile.clone(),
             max_iterations: self.max_iterations,

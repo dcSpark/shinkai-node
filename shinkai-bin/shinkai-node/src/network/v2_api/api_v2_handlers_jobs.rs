@@ -75,7 +75,7 @@ pub fn job_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::multipart::form())
+        .and(warp::multipart::form().max_length(500 * 1024 * 1024)) // Set max length to 500 MB
         .and_then(add_file_to_inbox_handler);
 
     let change_job_llm_provider_route = warp::path("change_job_llm_provider")

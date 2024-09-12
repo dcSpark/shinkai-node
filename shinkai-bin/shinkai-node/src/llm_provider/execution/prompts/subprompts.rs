@@ -4,7 +4,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::fmt;
 
 use super::prompts::Prompt;
@@ -44,23 +44,30 @@ pub enum SubPromptAssetType {
 
 pub type SubPromptAssetContent = String;
 pub type SubPromptAssetDetail = String;
+pub type PriorityValue = u8;
 
 /// Sub-prompts are composed of a 3-element tuple of (SubPromptType, text, priority_value)
 /// Priority_value is a number between 0-100, where the higher it is the less likely it will be
 /// removed if LLM context window limits are reached.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPrompt {
-    Content(SubPromptType, String, u8),
+    Content(SubPromptType, String, PriorityValue),
     Asset(
         SubPromptType,
         SubPromptAssetType,
         SubPromptAssetContent,
         SubPromptAssetDetail,
-        u8,
+        PriorityValue,
     ),
-    ToolAvailable(SubPromptType, JsonValue, u8),
-    FunctionCall(SubPromptType, JsonValue, u8),
-    FunctionCallResponse(SubPromptType, JsonValue, u8),
+    ToolAvailable(SubPromptType, JsonValue, PriorityValue),
+    FunctionCall(SubPromptType, JsonValue, PriorityValue),
+    FunctionCallResponse(SubPromptType, JsonValue, PriorityValue),
+    Omni(
+        SubPromptType,
+        String,
+        Vec<(SubPromptAssetType, SubPromptAssetContent, SubPromptAssetDetail)>,
+        PriorityValue,
+    ),
 }
 
 impl SubPrompt {
@@ -72,6 +79,7 @@ impl SubPrompt {
             SubPrompt::ToolAvailable(_, content, _) => content.to_string().len(),
             SubPrompt::FunctionCall(_, content, _) => content.to_string().len(),
             SubPrompt::FunctionCallResponse(_, content, _) => content.to_string().len(),
+            SubPrompt::Omni(_, content, _, _) => content.len(), // Note: shouldn't this account for the assets as well?
         }
     }
 
@@ -90,6 +98,16 @@ impl SubPrompt {
             SubPrompt::ToolAvailable(_, content, _) => content.to_string(),
             SubPrompt::FunctionCall(_, content, _) => content.to_string(),
             SubPrompt::FunctionCallResponse(_, content, _) => content.to_string(),
+            SubPrompt::Omni(_, content, assets, _) => {
+                let assets_str = assets
+                    .iter()
+                    .map(|(asset_type, _asset_content, asset_detail)| {
+                        format!("Asset Type: {:?}, Detail: {:?}", asset_type, asset_detail)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("Content: {}, Assets: [{}]", content, assets_str)
+            }
         }
     }
 
@@ -105,6 +123,7 @@ impl SubPrompt {
             SubPrompt::FunctionCallResponse(prompt_type, _, _) => {
                 (prompt_type.clone(), self.generate_output_string(), "text")
             }
+            SubPrompt::Omni(prompt_type, _, _, _) => (prompt_type.clone(), self.generate_output_string(), "omni"),
         }
     }
     /// Gets the content of the SubPrompt (aka. updates it to the provided string)
@@ -115,6 +134,7 @@ impl SubPrompt {
             SubPrompt::ToolAvailable(_, content, _) => content.to_string(),
             SubPrompt::FunctionCall(_, content, _) => content.to_string(),
             SubPrompt::FunctionCallResponse(_, content, _) => content.to_string(),
+            SubPrompt::Omni(_, content, _, _) => content.clone(),
         }
     }
 
@@ -126,6 +146,7 @@ impl SubPrompt {
             SubPrompt::ToolAvailable(_, content, _) => *content = serde_json::Value::String(new_content),
             SubPrompt::FunctionCall(_, content, _) => *content = serde_json::Value::String(new_content),
             SubPrompt::FunctionCallResponse(_, content, _) => *content = serde_json::Value::String(new_content),
+            SubPrompt::Omni(_, content, _, _) => *content = new_content, // Note: shouldn't this account for the assets as well?
         }
     }
 
@@ -139,13 +160,31 @@ impl SubPrompt {
 
     /// Converts a subprompt into a ChatCompletionRequestMessage
     pub fn into_chat_completion_request_message(&self) -> LlmMessage {
-        let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
-        LlmMessage {
-            role: Some(prompt_type.to_string()),
-            content: Some(content),
-            name: if type_ == "text" { None } else { Some(type_.to_string()) },
-            function_call: None,
-            functions: None,
+        match self {
+            SubPrompt::Omni(prompt_type, content, assets, _) => {
+                let images = assets.iter()
+                    .map(|(_, asset_content, _)| asset_content.clone())
+                    .collect::<Vec<_>>();
+                LlmMessage {
+                    role: Some(prompt_type.to_string()),
+                    content: Some(content.clone()),
+                    name: None,
+                    function_call: None,
+                    functions: None,
+                    images: Some(images),
+                }
+            },
+            _ => {
+                let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
+                LlmMessage {
+                    role: Some(prompt_type.to_string()),
+                    content: Some(content),
+                    name: if type_ == "text" { None } else { Some(type_.to_string()) },
+                    function_call: None,
+                    functions: None,
+                    images: None,
+                }
+            }
         }
     }
 
@@ -193,6 +232,7 @@ impl SubPrompt {
         temp_prompt.sub_prompts
     }
 
+    // TODO: if we have content with the same extra_info, don't repeat the extra info!
     pub fn convert_resource_into_subprompts_with_extra_info(
         resource: &BaseVectorResource,
         subprompt_priority: u8,

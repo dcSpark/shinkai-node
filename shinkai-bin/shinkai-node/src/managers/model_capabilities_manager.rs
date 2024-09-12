@@ -89,7 +89,6 @@ pub enum ModelCost {
 pub enum ModelPrivacy {
     Unknown,
     Local,
-    RemotePrivate,
     RemoteGreedy,
 }
 
@@ -585,6 +584,7 @@ impl ModelCapabilitiesManager {
         let mut token_count = 0;
         let mut alphabetic_count = 0; // Total count of alphabetic characters
         let mut space_count = 0; // Total count of spaces
+        // ^ need to fix this
 
         // First pass: count alphabetic characters and spaces
         for c in message.chars() {
@@ -689,6 +689,7 @@ mod tests {
             name: Some("Alice".to_string()),
             function_call: None,
             functions: None,
+            images: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
@@ -708,6 +709,7 @@ mod tests {
                 name: Some("Alice".to_string()),
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("bot".to_string()),
@@ -715,6 +717,7 @@ mod tests {
                 name: Some("Bob".to_string()),
                 function_call: None,
                 functions: None,
+                images: None,
             },
         ];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -734,6 +737,7 @@ mod tests {
             name: Some("Alice".to_string()),
             function_call: None,
             functions: None,
+            images: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
@@ -753,6 +757,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -760,6 +765,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -767,6 +773,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -774,14 +781,15 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
-
+                images: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
                 content: Some("```json".to_string()),
                 name: None,
                 function_call: None,
-                functions: None
+                functions: None,
+                images: None,
             },
         ];
 
@@ -827,6 +835,7 @@ mod tests {
                 name: Some("Alice".to_string()),
                 function_call: None,
                 functions: None,
+                images: None,
             })
             .collect();
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -849,6 +858,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -856,6 +866,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -863,6 +874,7 @@ mod tests {
                 name: None,
                 function_call: None,
                 functions: None,
+                images: None,
             },
         ];
 
@@ -1172,7 +1184,8 @@ mod tests {
                 Bulletin 56(1): 23-30. Portland, Oregon: Timber Press. 236 pp.".to_string()),
                 name: None,
                 function_call: None,
-                functions: None
+                functions: None,
+                images: None,
             }];
 
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);

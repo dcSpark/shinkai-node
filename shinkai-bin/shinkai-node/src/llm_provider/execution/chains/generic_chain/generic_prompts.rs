@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt};
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
 use crate::llm_provider::{execution::prompts::subprompts::SubPromptType, job::JobStepResult};
@@ -12,6 +14,7 @@ impl JobPromptGenerator {
         custom_system_prompt: Option<String>,
         custom_user_prompt: Option<String>,
         user_message: String,
+        image_files: HashMap<String, String>,
         ret_nodes: Vec<RetrievedNode>,
         _summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
@@ -24,23 +27,16 @@ impl JobPromptGenerator {
         let system_prompt = custom_system_prompt.unwrap_or_else(|| "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string());
         prompt.add_content(system_prompt, SubPromptType::System, 98);
 
-        // Commented because it was confusing the LLM in some cases
-        // If there is a document summary from the vector search add it with higher priority that the chunks
-        // if let Some(summary) = summary_text {
-        //     prompt.add_content(
-        //         format!(
-        //             "Here is the current summary of content another assistant found to answer the question: `{}`",
-        //             summary
-        //         ),
-        //         SubPromptType::User,
-        //         99,
-        //     );
-        // }
-
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages
+        // TODO: this should be full messages with assets and not just strings
         if let Some(step_history) = job_step_history {
+            for step in &step_history {
+                if let Some(prompt) = step.get_result_prompt() {
+                    println!("Step history content: {:?}", prompt);
+                }
+            }
             prompt.add_step_history(step_history, 97);
         }
 
@@ -79,7 +75,7 @@ impl JobPromptGenerator {
             } else {
                 format!("{}\n {}", user_message, user_prompt)
             };
-            prompt.add_content(content, SubPromptType::UserLastMessage, 100);
+            prompt.add_omni(content, image_files, SubPromptType::UserLastMessage, 100);
         }
 
         // If function_call exists, it means that the LLM requested a function call and we need to send the response back
