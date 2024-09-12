@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 
 use super::shinkai_message::{NodeApiData, ShinkaiMessage};
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
@@ -277,27 +277,27 @@ pub struct SymmetricKeyExchange {
     pub shared_secret_key: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum AssociatedUI {
     Sheet(String),
     // Add more variants as needed
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
     pub is_hidden: Option<bool>,
     pub associated_ui: Option<AssociatedUI>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum CallbackAction {
     Job(JobMessage),
     Sheet(SheetManagerAction),
     // Cron(CronManagerAction),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
@@ -324,7 +324,7 @@ where
     Ok(s)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct V2ChatMessage {
     pub job_message: JobMessage,
     pub sender: String,
@@ -335,14 +335,14 @@ pub struct V2ChatMessage {
     pub inbox: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct SheetManagerAction {
     pub job_message_next: Option<JobMessage>,
     // TODO: should this be m0re complex and have the actual desired action?
     pub sheet_action: SheetJobAction,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct SheetJobAction {
     pub sheet_id: String,
     pub row: RowUuid,
@@ -593,7 +593,7 @@ pub struct APIGetNotificationsBeforeTimestamp {
     pub count: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIChangeJobAgentRequest {
     pub job_id: String,
     pub new_agent_id: String,

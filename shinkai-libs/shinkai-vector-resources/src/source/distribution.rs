@@ -1,9 +1,10 @@
 use crate::vector_resource::VRPath;
 use chrono::{DateTime, Utc};
+use utoipa::ToSchema;
 
 pub type ShinkaiNameString = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 /// Info about where the source data was acquired from, and when it was originally distributed
 pub struct DistributionInfo {
     pub origin: Option<DistributionOrigin>,

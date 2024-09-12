@@ -5,15 +5,36 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
-    schemas::job_config::JobConfig, shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage}, shinkai_utils::job_scope::JobScope
+    schemas::{
+        llm_providers::serialized_llm_provider::{Exo, Gemini, GenericAPI, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+    },
+    shinkai_message::{
+        shinkai_message::NodeApiData,
+        shinkai_message_schemas::{
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetManagerAction, V2ChatMessage
+        },
+    },
+    shinkai_utils::job_scope::{
+        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, NetworkFolderScopeEntry, VectorFSFolderScopeEntry,
+        VectorFSItemScopeEntry,
+    },
 };
-use utoipa::OpenApi;
+use shinkai_vector_resources::{
+    source::{NotarizedSourceReference, SourceFileMap, SourceReference, VRSourceReference},
+    vector_resource::{BaseVectorResource, VRKai, VRKaiVersion, VRPack, VRPackVersion, VRPath},
+};
+use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
 use warp::Filter;
 
-use crate::network::{
-    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
-    node_commands::NodeCommand,
+use crate::{
+    llm_provider::job::JobConfig,
+    network::{
+        node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
+        node_commands::NodeCommand,
+    },
+    schemas::smart_inbox::{LLMProviderSubset, V2SmartInbox},
 };
 
 use super::api_v2_router::{create_success_response, with_sender};
@@ -141,38 +162,38 @@ pub fn job_routes(
         .or(get_job_scope_route)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateJobRequest {
     pub job_creation_info: JobCreationInfo,
     pub llm_provider: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct JobMessageRequest {
     pub job_message: JobMessage,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct GetLastMessagesRequest {
     pub inbox_name: String,
     pub limit: usize,
     pub offset_key: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateSmartInboxNameRequest {
     pub inbox_name: String,
     pub custom_name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AddFileToInboxRequest {
     pub file_inbox_name: String,
     pub filename: String,
     pub file: Vec<u8>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct GetLastMessagesWithBranchesRequest {
     pub inbox_name: String,
     pub limit: usize,
@@ -719,7 +740,7 @@ pub async fn get_last_messages_with_branches_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateJobConfigRequest {
     pub job_id: String,
     pub config: JobConfig,
@@ -923,7 +944,15 @@ pub async fn get_job_scope_handler(
         get_job_scope_handler
     ),
     components(
-        schemas(SendResponseBody, SendResponseBodyData, APIError)
+        schemas(AddFileToInboxRequest, V2SmartInbox, APIChangeJobAgentRequest, CreateJobRequest, JobConfig,
+            JobMessageRequest, GetLastMessagesRequest, V2ChatMessage, GetLastMessagesWithBranchesRequest,
+            UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
+            JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
+            VectorFSItemScopeEntry, VectorFSFolderScopeEntry, NetworkFolderScopeEntry, CallbackAction, ShinkaiName,
+            LLMProviderInterface, VRKai, VRPack, VRPath, VRSourceReference, EmbeddingModelTypeString, VRPackVersion,
+            ShinkaiSubidentityType, OpenAI, GenericAPI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
+            BaseVectorResource, SourceFileMap, VRKaiVersion, SourceReference, NotarizedSourceReference, 
+            SendResponseBody, SendResponseBodyData, APIError)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")

@@ -18,7 +18,7 @@ pub struct ShinkaiBody {
     pub internal_metadata: InternalMetadata,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct InternalMetadata {
     pub sender_subidentity: ShinkaiNameString,
     pub recipient_subidentity: ShinkaiNameString,
@@ -39,7 +39,7 @@ pub struct ExternalMetadata {
     pub other: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct NodeApiData {
     pub parent_hash: String,
     pub node_message_hash: String,
@@ -51,12 +51,12 @@ pub struct EncryptedShinkaiBody {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct EncryptedShinkaiData {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct ShinkaiData {
     pub message_raw_content: String,
     pub message_content_schema: MessageSchemaType,
@@ -70,7 +70,7 @@ pub enum MessageBody {
     Unencrypted(ShinkaiBody),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum MessageData {
     #[serde(rename = "encrypted")]
     Encrypted(EncryptedShinkaiData),

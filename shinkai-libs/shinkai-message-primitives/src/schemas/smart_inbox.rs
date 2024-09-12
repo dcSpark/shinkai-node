@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use utoipa::ToSchema;
 
 use crate::shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::V2ChatMessage};
 
 use super::{job_config::JobConfig, llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct LLMProviderSubset {
     pub id: String,
     pub full_identity_name: ShinkaiName,
@@ -22,7 +23,7 @@ impl LLMProviderSubset {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct SmartInbox {
     pub inbox_id: String,
     pub custom_name: String,
@@ -34,7 +35,7 @@ pub struct SmartInbox {
     pub job_config: Option<JobConfig>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct V2SmartInbox {
     pub inbox_id: String,
     pub custom_name: String,

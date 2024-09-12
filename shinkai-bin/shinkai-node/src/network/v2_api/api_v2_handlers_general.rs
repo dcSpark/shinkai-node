@@ -7,14 +7,15 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 };
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    EncryptedShinkaiBody, ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage, ShinkaiVersion,
+    EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion
 };
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::{
     schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider,
     shinkai_message::shinkai_message_schemas::APIAddOllamaModels,
 };
-use utoipa::OpenApi;
+use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 
 use crate::network::v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
@@ -754,7 +755,7 @@ pub async fn add_ollama_models_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct StopLLMRequest {
     pub inbox_name: String,
 }
@@ -792,6 +793,12 @@ pub async fn stop_llm_handler(
     }
 }
 
+// Workaround to put types in the schema
+#[derive(ToSchema)]
+enum ShinkaiNameString {
+   String,
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -819,7 +826,8 @@ pub async fn stop_llm_handler(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
             ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
             OpenAI, GenericAPI, Ollama, LocalLLM, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
-            ShinkaiSubidentityType, ShinkaiBackend,
+            ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest, ShinkaiNameString,
+            NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
             APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError)
     ),
     tags(

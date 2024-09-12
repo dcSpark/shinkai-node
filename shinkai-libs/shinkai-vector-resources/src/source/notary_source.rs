@@ -2,15 +2,14 @@ use super::DistributionInfo;
 
 use crate::resource_errors::VRError;
 use crate::source::TextChunkingStrategy;
-use crate::vector_resource::{SourceFileType};
-
+use crate::vector_resource::SourceFileType;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
-
+use utoipa::ToSchema;
 
 /// Struct which holds the contents of the TLSNotary proof for the source file
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct TLSNotaryProof {}
 
 impl TLSNotaryProof {
@@ -19,7 +18,7 @@ impl TLSNotaryProof {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 /// The source file that data was extracted from to create a VectorResource
 pub struct TLSNotarizedSourceFile {
     pub file_name: String,
@@ -69,7 +68,7 @@ impl TLSNotarizedSourceFile {
 
 /// Type that acts as a reference to a notarized source file
 /// (meaning one that has some cryptographic proof/signature of origin)
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum NotarizedSourceReference {
     /// Reference to TLSNotary notarized web content
     TLSNotarized(TLSNotarizedReference),
@@ -83,7 +82,7 @@ impl NotarizedSourceReference {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct TLSNotarizedReference {
     pub file_name: String,
     pub file_type: SourceFileType,

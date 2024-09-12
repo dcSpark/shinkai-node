@@ -12,11 +12,12 @@ use chrono::{DateTime, Utc};
 use serde_json;
 use std::any::Any;
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 /// A VectorResource which uses an internal numbered/ordered list data model,  
 /// thus providing an ideal interface for document-like content such as PDFs,
 /// epubs, web content, written works, and more.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct DocumentVectorResource {
     name: String,
     description: Option<String>,
@@ -368,11 +369,7 @@ impl VectorResourceCore for DocumentVectorResource {
             .last()
             .cloned()
             .unwrap_or_else(|| Node::new_text("".to_string(), "".to_string(), None, &vec![]));
-        let embedding_default = self
-            .embeddings
-            .last()
-            .cloned()
-            .unwrap_or_else(Embedding::new_empty);
+        let embedding_default = self.embeddings.last().cloned().unwrap_or_else(Embedding::new_empty);
         self.nodes
             .resize_with((self.node_count + 1) as usize, || node_default.clone());
         self.embeddings

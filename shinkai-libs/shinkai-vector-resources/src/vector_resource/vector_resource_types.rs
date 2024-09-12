@@ -20,6 +20,7 @@ use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use utoipa::ToSchema;
 
 /// A node that was retrieved from inside of a Vector Resource. Includes extra data like the retrieval path
 /// and the similarity score from the vector search. The resource_header is the VRHeader from the root
@@ -951,7 +952,7 @@ impl KeywordEmbedding {
 
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
 /// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
 }

@@ -4,10 +4,11 @@ use crate::resource_errors::VRError;
 use crate::vector_resource::OrderedVectorResource;
 use serde_json::Value as JsonValue;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
 /// The list of base/core VectorResource types which are fully
 /// composable within one another
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub enum BaseVectorResource {
     Document(DocumentVectorResource),
     Map(MapVectorResource),
