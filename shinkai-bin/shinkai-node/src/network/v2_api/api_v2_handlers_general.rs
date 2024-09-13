@@ -793,12 +793,6 @@ pub async fn stop_llm_handler(
     }
 }
 
-// Workaround to put types in the schema
-#[derive(ToSchema)]
-enum ShinkaiNameString {
-   String,
-}
-
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -826,7 +820,7 @@ enum ShinkaiNameString {
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
             ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
             OpenAI, GenericAPI, Ollama, LocalLLM, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
-            ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest, ShinkaiNameString,
+            ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
             APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError)
     ),

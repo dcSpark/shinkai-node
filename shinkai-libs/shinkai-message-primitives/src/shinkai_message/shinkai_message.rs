@@ -20,7 +20,9 @@ pub struct ShinkaiBody {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct InternalMetadata {
+    #[schema(value_type = String)]
     pub sender_subidentity: ShinkaiNameString,
+    #[schema(value_type = String)]
     pub recipient_subidentity: ShinkaiNameString,
     pub inbox: String,
     pub signature: String,
@@ -31,10 +33,13 @@ pub struct InternalMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct ExternalMetadata {
+    #[schema(value_type = String)]
     pub sender: ShinkaiNameString,
+    #[schema(value_type = String)]
     pub recipient: ShinkaiNameString,
     pub scheduled_time: String,
     pub signature: String,
+    #[schema(value_type = String)]
     pub intra_sender: ShinkaiNameString,
     pub other: String,
 }

@@ -8,6 +8,7 @@ pub type ShinkaiNameString = String;
 /// Info about where the source data was acquired from, and when it was originally distributed
 pub struct DistributionInfo {
     pub origin: Option<DistributionOrigin>,
+    #[schema(value_type = String, format = Date)]
     pub datetime: Option<DateTime<Utc>>,
 }
 
@@ -35,9 +36,10 @@ impl DistributionInfo {
 
 /// The origin where the original data was acquired from.
 /// Based on source file that was used to create the VR if one exists (ie. pdf/webpage), or based on the VR where/when it was released
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub enum DistributionOrigin {
     Uri(String),
+    #[schema(value_type = (String, VRPath))]
     ShinkaiNode((ShinkaiNameString, VRPath)),
     Other(String),
 }

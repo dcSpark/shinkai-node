@@ -142,7 +142,7 @@ impl From<MapVectorResource> for BaseVectorResource {
 ///
 /// `CustomUnsupported(s)` allows for devs to implement custom VectorResources that fulfill the trait,
 /// but which aren't composable with any of the base resources (we are open to PRs for adding new base types as well).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub enum VRBaseType {
     Document,
     Map,

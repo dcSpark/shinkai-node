@@ -24,13 +24,16 @@ pub struct DocumentVectorResource {
     source: VRSourceReference,
     resource_id: String,
     resource_embedding: Embedding,
+    #[schema(value_type = String)]
     embedding_model_used_string: EmbeddingModelTypeString,
     resource_base_type: VRBaseType,
     embeddings: Vec<Embedding>,
     node_count: u64,
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
+    #[schema(value_type = String, format = Date)]
     created_datetime: DateTime<Utc>,
+    #[schema(value_type = String, format = Date)]
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,

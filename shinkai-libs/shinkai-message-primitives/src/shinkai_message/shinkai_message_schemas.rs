@@ -345,7 +345,9 @@ pub struct SheetManagerAction {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct SheetJobAction {
     pub sheet_id: String,
+    #[schema(value_type = String)]
     pub row: RowUuid,
+    #[schema(value_type = String)]
     pub col: ColumnUuid,
 }
 

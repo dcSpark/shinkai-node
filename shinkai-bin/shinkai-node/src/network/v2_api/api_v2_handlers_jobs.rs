@@ -6,13 +6,17 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
     schemas::{
-        llm_providers::serialized_llm_provider::{Exo, Gemini, GenericAPI, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend},
+        llm_providers::serialized_llm_provider::{
+            Exo, Gemini, GenericAPI, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, SerializedLLMProvider,
+            ShinkaiBackend,
+        },
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
     shinkai_message::{
         shinkai_message::NodeApiData,
         shinkai_message_schemas::{
-            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetManagerAction, V2ChatMessage
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetJobAction,
+            SheetManagerAction, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::{
@@ -21,8 +25,19 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::{
-    source::{NotarizedSourceReference, SourceFileMap, SourceReference, VRSourceReference},
-    vector_resource::{BaseVectorResource, VRKai, VRKaiVersion, VRPack, VRPackVersion, VRPath},
+    data_tags::DataTagIndex,
+    embeddings::Embedding,
+    metadata_index::MetadataIndex,
+    source::{
+        AudioFileType, CodeFileType, ConfigFileType, DistributionInfo, DistributionOrigin, DocumentFileType,
+        ExternalURIReference, ImageFileType, NotarizedSourceReference, ShinkaiFileType, SourceFile, SourceFileMap,
+        SourceFileReference, SourceFileType, SourceReference, StandardSourceFile, TLSNotarizedReference,
+        TLSNotarizedSourceFile, TLSNotaryProof, TextChunkingStrategy, VRSourceReference, VideoFileType,
+    },
+    vector_resource::{
+        BaseVectorResource, DocumentVectorResource, KeywordEmbedding, MapVectorResource, Node, NodeContent, VRBaseType,
+        VRHeader, VRKai, VRKaiVersion, VRKeywords, VRPack, VRPackVersion, VRPath,
+    },
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
@@ -949,10 +964,13 @@ pub async fn get_job_scope_handler(
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
             VectorFSItemScopeEntry, VectorFSFolderScopeEntry, NetworkFolderScopeEntry, CallbackAction, ShinkaiName,
-            LLMProviderInterface, VRKai, VRPack, VRPath, VRSourceReference, EmbeddingModelTypeString, VRPackVersion,
+            LLMProviderInterface, VRKai, VRPack, VRPath, VRSourceReference, VRPackVersion,
             ShinkaiSubidentityType, OpenAI, GenericAPI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
-            BaseVectorResource, SourceFileMap, VRKaiVersion, SourceReference, NotarizedSourceReference, 
-            SendResponseBody, SendResponseBodyData, APIError)
+            BaseVectorResource, SourceFileMap, VRKaiVersion, SourceReference, NotarizedSourceReference, DocumentVectorResource, MapVectorResource,
+            TLSNotarizedReference, SheetJobAction, SourceFile, SourceFileReference, ExternalURIReference, DataTagIndex, DistributionInfo, Embedding,
+            VRKeywords, MetadataIndex, Node, VRBaseType, DistributionOrigin, NodeContent, StandardSourceFile, TLSNotarizedSourceFile, SourceFileType,
+            TextChunkingStrategy, KeywordEmbedding, VRHeader, DocumentFileType, ImageFileType, VideoFileType, CodeFileType, ConfigFileType, AudioFileType,
+            ShinkaiFileType, TLSNotaryProof, SendResponseBody, SendResponseBodyData, APIError)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")

@@ -13,11 +13,12 @@ use chrono::{DateTime, Utc};
 use serde_json;
 use std::any::Any;
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
 /// constantly-updating data streams, or any unordered/mutating source data.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct MapVectorResource {
     name: String,
     description: Option<String>,
@@ -25,12 +26,15 @@ pub struct MapVectorResource {
     resource_id: String,
     resource_embedding: Embedding,
     resource_base_type: VRBaseType,
+    #[schema(value_type = String)]
     embedding_model_used_string: EmbeddingModelTypeString,
     embeddings: HashMap<String, Embedding>,
     node_count: u64,
     nodes: HashMap<String, Node>,
     data_tag_index: DataTagIndex,
+    #[schema(value_type = String, format = Date)]
     created_datetime: DateTime<Utc>,
+    #[schema(value_type = String, format = Date)]
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
