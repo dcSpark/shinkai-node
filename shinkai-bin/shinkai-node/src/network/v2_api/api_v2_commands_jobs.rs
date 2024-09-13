@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
+use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
@@ -719,6 +720,256 @@ impl Node {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),
                     message: format!("Job with ID {} not found", job_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_retry_message(
+        db: Arc<ShinkaiDB>,
+        job_manager: Arc<Mutex<JobManager>>,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        node_signing_sk: SigningKey,
+        bearer: String,
+        inbox_name: String,
+        message_id: String,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the message from the inbox
+        let message = match db.fetch_message_and_hash(&message_id) {
+            Ok(msg) => msg,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Message not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let sender = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.0) {
+            Ok(sender) => sender,
+            Err(_) => {
+                let sender = match ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message.0) {
+                    Ok(sender) => sender,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Failed to get sender: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                sender
+            }
+        };
+
+        // Check if the message is from the agent
+        if !(sender.has_profile() == false || sender.has_profile() && sender.has_agent()) {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Message is not from the agent".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Retrieve the parent message
+        let parent_message_hash = match db.get_parent_message_hash(&inbox_name, &message_id) {
+            Ok(parent_message) => match parent_message {
+                Some(hash) => hash,
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::NOT_FOUND.as_u16(),
+                        error: "Not Found".to_string(),
+                        message: "Parent message not found".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get parent message: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let original_message = match db.fetch_message_and_hash(&parent_message_hash) {
+            Ok(msg) => msg.0,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Parent message not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let node_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&original_message)
+            .unwrap()
+            .to_string();
+
+        let sender = match ShinkaiName::from_node_and_profile_names(node_name, "main".to_string()) {
+            Ok(sender) => sender,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get sender: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let recipient = match ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&original_message) {
+            Ok(recipient) => recipient,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get recipient: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract Job ID from the inbox_name
+        let job_id = match InboxName::from_message(&original_message) {
+            Ok(inbox_name) => match inbox_name.get_job_id() {
+                Some(job_id) => job_id,
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Job ID not found in inbox name".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get job ID: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let message_content = match original_message.get_message_content() {
+            Ok(content) => content,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut job_message: JobMessage = match serde_json::from_str(&message_content) {
+            Ok(message) => message,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to deserialize message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let parent_parent_key = if !inbox_name.is_empty() {
+            match db.get_parent_message_hash(&inbox_name, &parent_message_hash) {
+                Ok(result) => result,
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        job_message.parent = parent_parent_key;
+
+        let shinkai_message = match Self::api_v2_create_shinkai_message(
+            sender,
+            recipient,
+            &serde_json::to_string(&job_message).unwrap(), 
+            MessageSchemaType::JobMessageSchema,
+            node_encryption_sk,
+            node_signing_sk,
+            node_encryption_pk,
+            Some(job_id.clone()),
+        ) {
+            Ok(message) => message,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create Shinkai message: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Send it for processing
+        // Process the job message
+        match Self::internal_job_message(job_manager, shinkai_message.clone()).await {
+            Ok(_) => {
+                let scheduled_time = shinkai_message.clone().external_metadata.scheduled_time;
+                let message_hash = shinkai_message.calculate_message_hash_for_pagination();
+
+                let parent_key = if !inbox_name.is_empty() {
+                    match db.get_parent_message_hash(&inbox_name, &message_hash) {
+                        Ok(result) => result,
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+
+                let response = SendResponseBodyData {
+                    message_id: message_hash,
+                    parent_message_id: parent_key,
+                    inbox: inbox_name,
+                    scheduled_time,
+                };
+
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
