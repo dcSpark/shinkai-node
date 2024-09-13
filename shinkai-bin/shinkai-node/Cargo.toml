@@ -78,7 +78,7 @@ rust_decimal = "1.17.0"
 aws-types = "1.2.0"
 aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
 shinkai_tools_runner = { version = "0.7.13", features = ["built-in-tools"] }
-lancedb = "0.8.0"
+lancedb = "0.10.0"
 arrow = "52.1"
 arrow-array = "52.1"
 arrow-schema = "52.1"

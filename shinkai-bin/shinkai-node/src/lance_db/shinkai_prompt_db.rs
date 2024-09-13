@@ -6,6 +6,7 @@ use arrow_array::{Array, FixedSizeListArray, Float32Array};
 use arrow_array::{BooleanArray, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::{StreamExt, TryStreamExt};
+use lancedb::connection::LanceFileVersion;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::{table::AddDataMode, Connection, Error as LanceDbError, Table};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
@@ -18,10 +19,16 @@ impl LanceShinkaiDb {
     ) -> Result<Table, ShinkaiLanceDBError> {
         let schema = ShinkaiPromptSchema::create_schema(embedding_model).map_err(ShinkaiLanceDBError::from)?;
 
-        match connection.create_empty_table("prompts", schema).execute().await {
+        match connection
+            .create_empty_table("prompts_v2", schema)
+            .data_storage_version(LanceFileVersion::V2_1)
+            .enable_v2_manifest_paths(true)
+            .execute()
+            .await
+        {
             Ok(table) => Ok(table),
             Err(LanceDbError::TableAlreadyExists { .. }) => connection
-                .open_table("prompts")
+                .open_table("prompts_v2")
                 .execute()
                 .await
                 .map_err(ShinkaiLanceDBError::from),

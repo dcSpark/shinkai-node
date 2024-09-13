@@ -5,6 +5,7 @@ use arrow_array::{Array, BinaryArray, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::{StreamExt, TryStreamExt};
+use lancedb::connection::LanceFileVersion;
 use lancedb::index::Index;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
@@ -22,7 +23,7 @@ use super::shinkai_lancedb_error::ShinkaiLanceDBError;
 use super::shinkai_tool_schema::ShinkaiToolSchema;
 
 // Note: Add 1 to the current number to force an old fashion migration (delete all and then add all)
-pub static LATEST_ROUTER_DB_VERSION: &str = "4";
+pub static LATEST_ROUTER_DB_VERSION: &str = "5";
 
 // TODO: we need a way to export and import the db (or tables). it could be much faster to reset.
 
@@ -75,8 +76,9 @@ impl LanceShinkaiDb {
             .map_err(|e| ShinkaiLanceDBError::Schema(e.to_string()))?;
 
         let table = match connection
-            .create_empty_table("tool_router_v4", schema)
-            // .data_storage_version(LanceFileVersion::V2_1)
+            .create_empty_table("tool_router_v5", schema)
+            .data_storage_version(LanceFileVersion::V2_1)
+            .enable_v2_manifest_paths(true)
             .execute()
             .await
         {
@@ -85,7 +87,7 @@ impl LanceShinkaiDb {
                 if let LanceDbError::TableAlreadyExists { .. } = e {
                     // If the table already exists, retrieve and return it
                     connection
-                        .open_table("tool_router_v4")
+                        .open_table("tool_router_v5")
                         .execute()
                         .await
                         .map_err(ShinkaiLanceDBError::from)?
