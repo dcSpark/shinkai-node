@@ -6,9 +6,15 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::{
-    db::ShinkaiDB, lance_db::shinkai_lance_db::LanceShinkaiDb, network::{node_api_router::APIError, node_error::NodeError, Node}, wallet::{
-        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::{Network, NetworkIdentifier}, wallet_manager::{WalletManager, WalletRole}
-    }
+    db::ShinkaiDB,
+    lance_db::shinkai_lance_db::LanceShinkaiDb,
+    network::{node_api_router::APIError, node_error::NodeError, Node},
+    wallet::{
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig,
+        local_ether_wallet::WalletSource,
+        mixed::{Network, NetworkIdentifier},
+        wallet_manager::{WalletManager, WalletRole},
+    },
 };
 
 impl Node {
@@ -178,7 +184,8 @@ impl Node {
         // Logic to restore Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let lance_db_weak = Arc::downgrade(&lance_db);
-        let restored_wallet_manager = WalletManager::recover_coinbase_mpc_wallet_manager(network, lance_db_weak, config, wallet_id).await;
+        let restored_wallet_manager =
+            WalletManager::recover_coinbase_mpc_wallet_manager(network, lance_db_weak, config, wallet_id).await;
 
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -253,7 +260,8 @@ impl Node {
         // Logic to create Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let lance_db_weak = Arc::downgrade(&lance_db);
-        let created_wallet_manager = WalletManager::create_coinbase_mpc_wallet_manager(network, lance_db_weak, config).await;
+        let created_wallet_manager =
+            WalletManager::create_coinbase_mpc_wallet_manager(network, lance_db_weak, config).await;
 
         match created_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -306,5 +314,47 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_api_list_wallets(
+        db: Arc<ShinkaiDB>,
+        wallet_manager: Arc<Mutex<Option<WalletManager>>>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let wallet_manager_lock = wallet_manager.lock().await;
+
+        // Check if wallet manager exists
+        if let Some(ref wallet_manager) = *wallet_manager_lock {
+            // Convert wallet manager to JSON
+            let wallets_json = match serde_json::to_value(wallet_manager) {
+                Ok(value) => value,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to serialize wallet manager: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            let _ = res.send(Ok(wallets_json)).await;
+        } else {
+            let api_error = APIError {
+                code: StatusCode::NOT_FOUND.as_u16(),
+                error: "Not Found".to_string(),
+                message: "No wallet manager found".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
+        Ok(())
     }
 }

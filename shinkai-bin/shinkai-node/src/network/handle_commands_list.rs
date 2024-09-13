@@ -2503,7 +2503,12 @@ impl Node {
                     let _ = Node::v2_api_change_job_llm_provider(db_clone, bearer, payload, res).await;
                 });
             }
-            NodeCommand::V2ApiUpdateJobConfig { bearer, job_id, config, res } => {
+            NodeCommand::V2ApiUpdateJobConfig {
+                bearer,
+                job_id,
+                config,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_job_config(db_clone, bearer, job_id, config, res).await;
@@ -2791,6 +2796,13 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiListWallets { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_wallets(db_clone, wallet_manager_clone, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiRequestInvoice {
                 bearer,
                 tool_key_name,
@@ -2848,7 +2860,11 @@ impl Node {
                     let _ = Node::v2_api_add_custom_prompt(db_clone, lance_db_clone, bearer, prompt, res).await;
                 });
             }
-            NodeCommand::V2ApiDeleteCustomPrompt { bearer, prompt_name, res } => {
+            NodeCommand::V2ApiDeleteCustomPrompt {
+                bearer,
+                prompt_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db_clone = self.lance_db.clone();
                 tokio::spawn(async move {
@@ -2862,7 +2878,11 @@ impl Node {
                     let _ = Node::v2_api_get_all_custom_prompts(db_clone, lance_db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiGetCustomPrompt { bearer, prompt_name, res } => {
+            NodeCommand::V2ApiGetCustomPrompt {
+                bearer,
+                prompt_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db_clone = self.lance_db.clone();
                 tokio::spawn(async move {
@@ -2883,11 +2903,42 @@ impl Node {
                     let _ = Node::v2_api_update_custom_prompt(db_clone, lance_db_clone, bearer, prompt, res).await;
                 });
             }
-            NodeCommand::V2ApiStopLLM { bearer, inbox_name, res } => {
+            NodeCommand::V2ApiStopLLM {
+                bearer,
+                inbox_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let stopper_clone = self.llm_stopper.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_stop_llm(db_clone, stopper_clone, bearer, inbox_name, res).await;
+                });
+            }
+            NodeCommand::V2ApiRetryMessage {
+                bearer,
+                inbox_name,
+                message_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let node_encryption_sk_clone = self.encryption_secret_key.clone();
+                let node_encryption_pk_clone = self.encryption_public_key.clone();
+                let node_signing_sk_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_retry_message(
+                        db_clone,
+                        job_manager_clone,
+                        node_encryption_sk_clone,
+                        node_encryption_pk_clone,
+                        node_signing_sk_clone,
+                        bearer,
+                        inbox_name,
+                        message_id,
+                        res,
+                    )
+                    .await;
                 });
             }
             _ => (),

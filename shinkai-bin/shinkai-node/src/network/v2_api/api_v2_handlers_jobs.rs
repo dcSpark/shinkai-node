@@ -106,6 +106,13 @@ pub fn job_routes(
         .and(warp::query::<GetJobConfigRequest>())
         .and_then(get_job_config_handler);
 
+    let retry_message_route = warp::path("retry_message")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(retry_message_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -118,6 +125,7 @@ pub fn job_routes(
         .or(update_job_config_route)
         .or(get_last_messages_with_branches_route)
         .or(get_job_config_route)
+        .or(retry_message_route)
 }
 
 #[derive(Deserialize)]
@@ -159,6 +167,52 @@ pub struct GetLastMessagesWithBranchesRequest {
 }
 
 // Code
+
+#[derive(Deserialize)]
+pub struct RetryMessageRequest {
+    pub message_id: String,
+    pub inbox_name: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/retry_message",
+    request_body = RetryMessageRequest,
+    responses(
+        (status = 200, description = "Successfully retried message", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn retry_message_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RetryMessageRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiRetryMessage {
+            bearer,
+            inbox_name: payload.inbox_name,
+            message_id: payload.message_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(json!({ "result": response }));
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
 
 #[utoipa::path(
     post,
@@ -758,7 +812,8 @@ pub async fn get_job_config_handler(
         change_job_llm_provider_handler,
         get_last_messages_with_branches_handler,
         update_job_config_handler,
-        get_job_config_handler
+        get_job_config_handler,
+        retry_message_handler
     ),
     components(
         schemas(SendResponseBody, SendResponseBodyData, APIError)

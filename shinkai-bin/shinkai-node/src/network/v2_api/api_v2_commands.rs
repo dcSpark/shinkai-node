@@ -154,12 +154,8 @@ impl Node {
         job: Option<String>,
     ) -> Result<ShinkaiMessage, &'static str> {
         let timestamp = ShinkaiStringTime::generate_time_now();
-        let sender_subidentity = sender
-            .get_fullname_string_without_node_name()
-            .ok_or("Failed to get sender subidentity")?;
-        let receiver_subidentity = receiver
-            .get_fullname_string_without_node_name()
-            .ok_or("Failed to get receiver subidentity")?;
+        let sender_subidentity = sender.get_fullname_string_without_node_name().unwrap_or_default();
+        let receiver_subidentity = receiver.get_fullname_string_without_node_name().unwrap_or_default();
 
         let inbox_name = job
             .map(|job_id| {

@@ -866,6 +866,10 @@ pub enum NodeCommand {
         role: WalletRole,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiListWallets {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiRequestInvoice {
         bearer: String,
         tool_key_name: String,
@@ -915,5 +919,11 @@ pub enum NodeCommand {
         bearer: String,
         inbox_name: String,
         res: Sender<Result<(), APIError>>,
+    },
+    V2ApiRetryMessage {
+        bearer: String,
+        inbox_name: String,
+        message_id: String,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     },
 }
