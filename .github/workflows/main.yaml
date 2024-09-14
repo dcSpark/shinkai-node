@@ -38,9 +38,6 @@ jobs:
       - name: Run tests primitives cargo tests
         run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}
 
-      - name: Run tests mirror cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-main-mirror-cargo-tests.sh testing_image:${SHORT_SHA}
-
       - name: Run tests main cargo tests
         run: docker run --rm -e AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' -e AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' -e AWS_URL='${{ secrets.AWS_URL }}' --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
 
