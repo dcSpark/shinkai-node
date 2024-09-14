@@ -30,7 +30,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopi
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use super::js_toolkit::JSToolkit;
 use super::network_tool::NetworkTool;
@@ -41,11 +41,11 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 
 #[derive(Clone)]
 pub struct ToolRouter {
-    pub lance_db: Arc<Mutex<LanceShinkaiDb>>,
+    pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
 }
 
 impl ToolRouter {
-    pub fn new(lance_db: Arc<Mutex<LanceShinkaiDb>>) -> Self {
+    pub fn new(lance_db: Arc<RwLock<LanceShinkaiDb>>) -> Self {
         ToolRouter { lance_db }
     }
 
@@ -53,7 +53,7 @@ impl ToolRouter {
         let is_empty;
         let has_any_js_tools;
         {
-            let lance_db = self.lance_db.lock().await;
+            let lance_db = self.lance_db.read().await;
             is_empty = lance_db.is_empty().await?;
             has_any_js_tools = lance_db.has_any_js_tools().await?;
         }
@@ -99,7 +99,6 @@ impl ToolRouter {
             return Ok(()); // Return right away and don't add anything
         }
 
-        let lance_db = self.lance_db.lock().await;
         let start_time = Instant::now();
 
         // Determine which set of prompts to use
@@ -135,6 +134,7 @@ impl ToolRouter {
                 custom_prompt.embedding = Some(embedding.vector);
             }
 
+            let lance_db = self.lance_db.write().await;
             lance_db.set_prompt(custom_prompt).await?;
         }
 
@@ -153,7 +153,6 @@ impl ToolRouter {
             return Ok(()); // Return right away and don't add anything
         }
 
-        let lance_db = self.lance_db.lock().await;
         let model_type = generator.model_type();
         let start_time = Instant::now();
 
@@ -175,6 +174,7 @@ impl ToolRouter {
                     }
                 };
 
+                let lance_db = self.lance_db.write().await;
                 lance_db.set_tool(&shinkai_tool).await?;
             }
         } else {
@@ -183,6 +183,7 @@ impl ToolRouter {
 
             for workflow_tool in workflows {
                 let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
+                let lance_db = self.lance_db.write().await;
                 lance_db.set_tool(&shinkai_tool).await?;
             }
         }
@@ -195,7 +196,7 @@ impl ToolRouter {
     }
 
     pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.write().await;
         lance_db.set_tool(&ShinkaiTool::Network(network_tool, true)).await?;
         Ok(())
     }
@@ -204,7 +205,6 @@ impl ToolRouter {
         let start_time = Instant::now(); // Start the timer
 
         let tools = built_in_tools::get_tools();
-        let lance_db = self.lance_db.lock().await;
 
         let only_testing_js_tools =
             std::env::var("ONLY_TESTING_JS_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
@@ -227,6 +227,7 @@ impl ToolRouter {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
                 let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                let lance_db = self.lance_db.write().await;
                 lance_db.set_tool(&shinkai_tool).await?;
             }
         }
@@ -264,7 +265,10 @@ impl ToolRouter {
             };
 
             let shinkai_tool = ShinkaiTool::Network(network_tool, true);
-            lance_db.set_tool(&shinkai_tool).await?;
+            {
+                let lance_db = self.lance_db.write().await;
+                lance_db.set_tool(&shinkai_tool).await?;
+            }
 
             // Manually create another NetworkTool
             let youtube_tool = NetworkTool {
@@ -287,19 +291,23 @@ impl ToolRouter {
             };
 
             let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
+            let lance_db = self.lance_db.write().await;
             lance_db.set_tool(&shinkai_tool).await?;
         }
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
+            let lance_db = self.lance_db.read().await;
             if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
                 if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
                     let modified_tool = ShinkaiTool::JS(js_tool, true);
+                    let lance_db = self.lance_db.write().await;
                     lance_db.set_tool(&modified_tool).await?;
                 }
             }
 
+            let lance_db = self.lance_db.read().await;
             if let Some(shinkai_tool) = lance_db
                 .get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
                 .await?
@@ -307,6 +315,7 @@ impl ToolRouter {
                 if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "youtube_transcript_with_timestamps".to_string();
                     let modified_tool = ShinkaiTool::JS(js_tool, true);
+                    let lance_db = self.lance_db.write().await;
                     lance_db.set_tool(&modified_tool).await?;
                 }
             }
@@ -319,7 +328,7 @@ impl ToolRouter {
     }
 
     pub async fn get_tool_by_name(&self, name: &str) -> Result<Option<ShinkaiTool>, ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         lance_db
             .get_tool(name)
             .await
@@ -327,7 +336,7 @@ impl ToolRouter {
     }
 
     pub async fn get_tools_by_names(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         let mut tools = Vec::new();
 
         for name in names {
@@ -355,7 +364,7 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         let tool_headers = lance_db
             .vector_search_enabled_tools(query, num_of_results, false)
             .await?;
@@ -367,7 +376,7 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         let tool_headers = lance_db
             .vector_search_enabled_tools(query, num_of_results, true)
             .await?;
@@ -379,7 +388,7 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         let tool_headers = lance_db.vector_search_all_tools(query, num_of_results, false).await?;
         Ok(tool_headers)
     }
@@ -393,7 +402,7 @@ impl ToolRouter {
             return Ok(Vec::new());
         }
 
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         let tool_headers = lance_db.workflow_vector_search(name_query, num_of_results).await?;
         Ok(tool_headers)
     }
@@ -665,7 +674,7 @@ impl ToolRouter {
     }
 
     pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.read().await;
         lance_db
             .get_current_version()
             .await
@@ -673,7 +682,7 @@ impl ToolRouter {
     }
 
     pub async fn set_lancedb_version(&self, version: &str) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.lock().await;
+        let lance_db = self.lance_db.write().await;
         lance_db
             .set_version(version)
             .await

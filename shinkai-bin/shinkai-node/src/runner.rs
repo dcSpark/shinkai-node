@@ -67,6 +67,11 @@ pub async fn initialize_node() -> Result<
     let args = parse_args();
     let node_env = fetch_node_environment();
 
+    // TODO:
+    // Read file encryption key from ENV variable and decrypt the secrets file
+    // Store in memory this file encryption key, which is used to encrypt / decrypt other information
+    // such as wallet information (private key, mnemonic, etc).
+
     let node_storage_path = node_env.node_storage_path.clone();
 
     let secrets_file_path = get_secrets_file_path(secrets_file, node_storage_path.clone());
@@ -76,8 +81,8 @@ pub async fn initialize_node() -> Result<
     let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
     let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
 
-    // Acquire the Node's keys. TODO: Should check with on
-    // and then it's with onchain data for matching with the keys provided
+    // Acquire the Node's keys. 
+    // TODO: Should check with on and then it's with onchain data for matching with the keys provided
     let secrets = parse_secrets_file(&secrets_file_path);
     let global_identity_name = secrets
         .get("GLOBAL_IDENTITY_NAME")

@@ -1,6 +1,5 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
@@ -13,7 +12,6 @@ use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -681,7 +679,7 @@ impl ExtAgentOfferingsManager {
     /// * `Result<Invoice, AgentOfferingManagerError>` - The processed invoice or an error.
     pub async fn confirm_invoice_payment_and_process(
         &mut self,
-        requester_node_name: ShinkaiName,
+        _requester_node_name: ShinkaiName,
         invoice: Invoice,
         // prehash_validation: String, // TODO: connect later on
     ) -> Result<Invoice, AgentOfferingManagerError> {
@@ -834,6 +832,7 @@ mod tests {
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
+    use tokio::sync::RwLock;
 
     #[derive(Clone, Debug)]
     struct MockIdentityManager {
@@ -953,7 +952,7 @@ mod tests {
         let shinkai_db =
             Arc::new(ShinkaiDB::new("shinkai_db_tests/shinkaidb").map_err(|e| ShinkaiLanceDBError::from(e))?);
 
-        let lance_db = Arc::new(Mutex::new(
+        let lance_db = Arc::new(RwLock::new(
             LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
         ));
 
@@ -1002,7 +1001,7 @@ mod tests {
                 shinkai_tool.set_embedding(embedding);
 
                 lance_db
-                    .lock()
+                    .write()
                     .await
                     .set_tool(&shinkai_tool)
                     .await

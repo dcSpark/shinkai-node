@@ -56,9 +56,9 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, model_type::EmbeddingModelType};
+use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -1571,7 +1571,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_add_toolkit(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1668,7 +1668,7 @@ impl Node {
         let toolkit = JSToolkit::new(&tool_definition.name.clone(), vec![tool_definition]);
 
         // Add the toolkit using LanceShinkaiDb
-        let lance_db = lance_db.lock().await;
+        let lance_db = lance_db.write().await;
         for tool in toolkit.tools {
             let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
             if let Err(err) = lance_db.set_tool(&shinkai_tool).await {
@@ -1687,7 +1687,7 @@ impl Node {
     }
 
     pub async fn api_list_toolkits(
-        db: Arc<Mutex<LanceShinkaiDb>>,
+        db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1723,7 +1723,7 @@ impl Node {
         let profile = profile.unwrap();
 
         // Fetch all toolkits for the user
-        let db = db.lock().await;
+        let db = db.read().await;
         let toolkits = match db.get_all_workflows().await {
             // TODO: this is wrong
             Ok(t) => t,
@@ -1759,7 +1759,7 @@ impl Node {
     }
 
     pub async fn api_remove_toolkit(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1798,7 +1798,7 @@ impl Node {
         let toolkit_name = msg.get_message_content()?;
 
         // Remove the toolkit using LanceShinkaiDb
-        let lance_db = lance_db.lock().await;
+        let lance_db = lance_db.write().await;
         match lance_db.remove_tool(&toolkit_name).await {
             Ok(_) => {
                 let _ = res.send(Ok("Toolkit removed successfully".to_string())).await;
@@ -3240,7 +3240,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_add_workflow(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3294,7 +3294,7 @@ impl Node {
 
         // Save the workflow to the LanceShinkaiDb
         {
-            let lance_db = lance_db.lock().await;
+            let lance_db = lance_db.write().await;
             if let Err(err) = lance_db.set_tool(&shinkai_tool).await {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -3312,7 +3312,7 @@ impl Node {
     }
 
     pub async fn api_remove_workflow(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3351,7 +3351,7 @@ impl Node {
 
         // Remove the workflow from the LanceShinkaiDb
         {
-            let lance_db = lance_db.lock().await;
+            let lance_db = lance_db.write().await;
             if let Err(err) = lance_db.remove_tool(&workflow_key_str).await {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -3369,7 +3369,7 @@ impl Node {
     }
 
     pub async fn api_get_workflow_info(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3408,7 +3408,7 @@ impl Node {
 
         // Get the workflow from the LanceShinkaiDb
         let workflow = {
-            let lance_db = lance_db.lock().await;
+            let lance_db = lance_db.read().await;
             match lance_db.get_tool(&workflow_key_str).await {
                 Ok(Some(workflow)) => workflow,
                 Ok(None) => {
@@ -3439,7 +3439,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_list_all_workflows(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3475,7 +3475,7 @@ impl Node {
 
         // List all workflows
         let workflows = {
-            let lance_db = lance_db.lock().await;
+            let lance_db = lance_db.read().await;
             match lance_db.get_all_workflows().await {
                 Ok(workflows) => workflows,
                 Err(err) => {
@@ -3496,7 +3496,7 @@ impl Node {
     }
 
     pub async fn api_list_all_shinkai_tools(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3532,7 +3532,7 @@ impl Node {
 
         // List all Shinkai tools
         let tools = {
-            let lance_db = lance_db.lock().await;
+            let lance_db = lance_db.read().await;
             match lance_db.get_all_tools(true).await {
                 Ok(tools) => tools,
                 Err(err) => {
@@ -3553,7 +3553,7 @@ impl Node {
     }
 
     pub async fn api_set_shinkai_tool(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3589,7 +3589,7 @@ impl Node {
         }
 
         // Get the full tool from lance_db
-        let existing_tool = match lance_db.lock().await.get_tool(&tool_router_key).await {
+        let existing_tool = match lance_db.read().await.get_tool(&tool_router_key).await {
             Ok(Some(tool)) => tool,
             Ok(None) => {
                 let api_error = APIError {
@@ -3644,7 +3644,7 @@ impl Node {
 
         // Save the tool to the LanceShinkaiDb
         let save_result = {
-            let lance_db_lock = lance_db.lock().await;
+            let lance_db_lock = lance_db.write().await;
             lance_db_lock.set_tool(&merged_tool).await
         };
 
@@ -3652,7 +3652,7 @@ impl Node {
             Ok(_) => {
                 // Fetch the updated tool from the database
                 let updated_tool = {
-                    let lance_db_lock = lance_db.lock().await;
+                    let lance_db_lock = lance_db.read().await;
                     lance_db_lock.get_tool(&tool_router_key).await
                 };
 
@@ -3695,7 +3695,7 @@ impl Node {
     }
 
     pub async fn api_get_shinkai_tool(
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3730,7 +3730,7 @@ impl Node {
         }
 
         // Fetch the tool from the LanceShinkaiDb
-        let tool = match lance_db.lock().await.get_tool(&tool_key).await {
+        let tool = match lance_db.read().await.get_tool(&tool_key).await {
             Ok(Some(tool)) => tool,
             Ok(None) => {
                 let api_error = APIError {

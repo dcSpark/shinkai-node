@@ -8,7 +8,7 @@ use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APISetWorkflow;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIWorkflowKeyname;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
 impl Node {
     pub async fn v2_api_search_workflows(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         query: String,
         res: Sender<Result<Value, APIError>>,
@@ -34,7 +34,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using LanceShinkaiDb
-        match lance_db.lock().await.workflow_vector_search(&query, 5).await {
+        match lance_db.read().await.workflow_vector_search(&query, 5).await {
             Ok(workflows) => {
                 let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
                     message: format!("Failed to serialize workflows: {}", err),
@@ -63,7 +63,7 @@ impl Node {
 
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         query: String,
         res: Sender<Result<Value, APIError>>,
@@ -77,7 +77,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using LanceShinkaiDb
-        match lance_db.lock().await.vector_search_all_tools(&query, 5, true).await {
+        match lance_db.read().await.vector_search_all_tools(&query, 5, true).await {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
@@ -106,7 +106,7 @@ impl Node {
 
     pub async fn v2_api_set_workflow(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         payload: APISetWorkflow,
         res: Sender<Result<Value, APIError>>,
@@ -137,7 +137,7 @@ impl Node {
         let shinkai_tool = ShinkaiTool::Workflow(workflow_tool, true);
 
         // Save the workflow to the LanceShinkaiDb
-        match lance_db.lock().await.set_tool(&shinkai_tool).await {
+        match lance_db.write().await.set_tool(&shinkai_tool).await {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Workflow added to LanceShinkaiDb" });
                 let _ = res.send(Ok(response)).await;
@@ -157,7 +157,7 @@ impl Node {
 
     pub async fn v2_api_remove_workflow(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         payload: APIWorkflowKeyname,
         res: Sender<Result<Value, APIError>>,
@@ -171,7 +171,7 @@ impl Node {
         let workflow_key_str = payload.generate_key();
 
         // Remove the workflow from the LanceShinkaiDb
-        match lance_db.lock().await.remove_tool(&workflow_key_str).await {
+        match lance_db.write().await.remove_tool(&workflow_key_str).await {
             Ok(_) => {
                 let response = json!({ "message": "Workflow removed from database" });
                 let _ = res.send(Ok(response)).await;
@@ -191,7 +191,7 @@ impl Node {
 
     pub async fn v2_api_get_workflow_info(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>, // Updated to use LanceShinkaiDb
+        lance_db: Arc<RwLock<LanceShinkaiDb>>, // Updated to use LanceShinkaiDb
         bearer: String,
         payload: APIWorkflowKeyname,
         res: Sender<Result<Value, APIError>>,
@@ -205,7 +205,7 @@ impl Node {
         let workflow_key_str = payload.generate_key();
 
         // Get the workflow from the database
-        match lance_db.lock().await.get_tool(&workflow_key_str).await {
+        match lance_db.read().await.get_tool(&workflow_key_str).await {
             Ok(Some(workflow)) => {
                 let response = json!(workflow);
                 let _ = res.send(Ok(response)).await;
@@ -234,7 +234,7 @@ impl Node {
 
     pub async fn v2_api_list_all_workflows(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -244,7 +244,7 @@ impl Node {
         }
 
         // List all workflows for the user
-        match lance_db.lock().await.get_all_workflows().await {
+        match lance_db.read().await.get_all_workflows().await {
             Ok(workflows) => {
                 let response = json!(workflows);
                 let _ = res.send(Ok(response)).await;
@@ -264,7 +264,7 @@ impl Node {
 
     pub async fn v2_api_list_all_shinkai_tools(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -274,7 +274,7 @@ impl Node {
         }
 
         // List all tools
-        match lance_db.lock().await.get_all_tools(true).await {
+        match lance_db.read().await.get_all_tools(true).await {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -294,7 +294,7 @@ impl Node {
 
     pub async fn v2_api_set_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         tool_router_key: String,
         input_value: Value,
@@ -307,7 +307,7 @@ impl Node {
 
         // Get the full tool from lance_db
         let existing_tool = {
-            let lance_db_lock = lance_db.lock().await;
+            let lance_db_lock = lance_db.read().await;
             match lance_db_lock.get_tool(&tool_router_key).await {
                 Ok(Some(tool)) => tool.clone(),
                 Ok(None) => {
@@ -364,7 +364,7 @@ impl Node {
 
         // Save the tool to the LanceShinkaiDb
         let save_result = {
-            let lance_db_lock = lance_db.lock().await;
+            let lance_db_lock = lance_db.write().await;
             lance_db_lock.set_tool(&merged_tool).await
         };
 
@@ -372,7 +372,7 @@ impl Node {
             Ok(_) => {
                 // Fetch the updated tool from the database
                 let updated_tool = {
-                    let lance_db_lock = lance_db.lock().await;
+                    let lance_db_lock = lance_db.read().await;
                     lance_db_lock.get_tool(&tool_router_key).await
                 };
 
@@ -415,7 +415,7 @@ impl Node {
 
     pub async fn v2_api_add_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         new_tool: ShinkaiTool,
         res: Sender<Result<Value, APIError>>,
@@ -427,7 +427,7 @@ impl Node {
 
         // Save the new tool to the LanceShinkaiDb
         let save_result = {
-            let lance_db_lock = lance_db.lock().await;
+            let lance_db_lock = lance_db.write().await;
             lance_db_lock.set_tool(&new_tool).await
         };
 
@@ -452,7 +452,7 @@ impl Node {
 
     pub async fn v2_api_get_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         payload: String,
         res: Sender<Result<Value, APIError>>,
@@ -463,7 +463,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match lance_db.lock().await.get_tool(&payload).await {
+        match lance_db.read().await.get_tool(&payload).await {
             Ok(Some(tool)) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;

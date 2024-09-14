@@ -16,8 +16,8 @@ static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 doctest = false
 
 [build-dependencies]
-reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "stream"] }
-shinkai_tools_runner = { version = "0.7.13" }
+# reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "stream"] }
+shinkai_tools_runner = { version = "0.7.14" }
 
 [dependencies]
 async-trait = "0.1.74"
@@ -77,11 +77,11 @@ console-subscriber = { version = "0.1", optional = true }
 rust_decimal = "1.17.0"
 aws-types = "1.2.0"
 aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
-shinkai_tools_runner = { version = "0.7.13", features = ["built-in-tools"] }
+shinkai_tools_runner = { version = "0.7.14", features = ["built-in-tools"] }
 lancedb = "0.10.0"
-arrow = "52.1"
-arrow-array = "52.1"
-arrow-schema = "52.1"
+arrow = "52.2"
+arrow-array = "52.2"
+arrow-schema = "52.2"
 bytes = "1.7.1"
 downcast-rs = "1.2.1"
 bip32 = "0.5.2"

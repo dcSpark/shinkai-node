@@ -2,7 +2,7 @@ use std::sync::Weak;
 
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::{
@@ -181,7 +181,7 @@ impl WalletManager {
 
     pub async fn create_coinbase_mpc_wallet_manager(
         network: Network,
-        lance_db: Weak<Mutex<LanceShinkaiDb>>,
+        lance_db: Weak<RwLock<LanceShinkaiDb>>,
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> =
@@ -197,7 +197,7 @@ impl WalletManager {
 
     pub async fn recover_coinbase_mpc_wallet_manager(
         network: Network,
-        lance_db: Weak<Mutex<LanceShinkaiDb>>,
+        lance_db: Weak<RwLock<LanceShinkaiDb>>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<WalletManager, WalletError> {

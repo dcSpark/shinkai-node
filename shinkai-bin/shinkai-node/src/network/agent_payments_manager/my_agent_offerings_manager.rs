@@ -655,7 +655,7 @@ mod tests {
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
     use std::{fs, path::Path, sync::Arc};
-    use tokio::sync::Mutex;
+    use tokio::sync::{Mutex, RwLock};
 
     #[derive(Clone, Debug)]
     struct MockIdentityManager {
@@ -768,7 +768,7 @@ mod tests {
             Arc::new(Mutex::new(MockIdentityManager::new()));
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
-        let lance_db = Arc::new(Mutex::new(
+        let lance_db = Arc::new(RwLock::new(
             LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
         ));
 

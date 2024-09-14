@@ -1,5 +1,5 @@
-use bigdecimal::BigDecimal;
 use bigdecimal::num_bigint::BigInt;
+use bigdecimal::BigDecimal;
 use ethers::prelude::*;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -8,7 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::tools::js_toolkit_headers::ToolConfig;
@@ -26,7 +26,7 @@ pub struct CoinbaseMPCWallet {
     pub network: Network,
     pub address: Address,
     pub config: CoinbaseMPCWalletConfig,
-    pub lance_db: Option<Weak<Mutex<LanceShinkaiDb>>>,
+    pub lance_db: Option<Weak<RwLock<LanceShinkaiDb>>>,
 }
 
 // Note: do we need access to ToolRouter? (maybe not, since we can call the Coinbase SDK directly)
@@ -50,7 +50,7 @@ impl Serialize for CoinbaseMPCWallet {
         state.serialize_field("address", &self.address)?;
         state.serialize_field("config", &self.config)?;
         // Serialize lance_db as a placeholder since Weak references cannot be serialized directly
-        state.serialize_field("lance_db", &"Option<Weak<Mutex<LanceShinkaiDb>>>")?;
+        state.serialize_field("lance_db", &"Option<Weak<RwLock<LanceShinkaiDb>>>")?;
         state.end()
     }
 }
@@ -82,20 +82,20 @@ impl<'de> Deserialize<'de> for CoinbaseMPCWallet {
 }
 
 impl CoinbaseMPCWallet {
-    pub fn update_lance_db(&mut self, lance_db: Arc<Mutex<LanceShinkaiDb>>) {
+    pub fn update_lance_db(&mut self, lance_db: Arc<RwLock<LanceShinkaiDb>>) {
         self.lance_db = Some(Arc::downgrade(&lance_db));
     }
-    
+
     pub async fn create_wallet(
         network: Network,
-        lance_db: Weak<Mutex<LanceShinkaiDb>>, // Changed to Weak
+        lance_db: Weak<RwLock<LanceShinkaiDb>>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<Self, WalletError> {
         let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
         let mut config = match config {
             Some(cfg) => cfg,
             None => {
-                let db = lance_db_strong.lock().await;
+                let db = lance_db_strong.read().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
 
@@ -179,7 +179,7 @@ impl CoinbaseMPCWallet {
 
     pub async fn restore_wallet(
         network: Network,
-        lance_db: Weak<Mutex<LanceShinkaiDb>>,
+        lance_db: Weak<RwLock<LanceShinkaiDb>>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<Self, WalletError> {
@@ -189,7 +189,7 @@ impl CoinbaseMPCWallet {
         let config = match config {
             Some(cfg) => cfg,
             None => {
-                let db = lance_db_strong.lock().await;
+                let db = lance_db_strong.read().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = db
                     .get_tool(tool_id)
@@ -276,14 +276,14 @@ impl CoinbaseMPCWallet {
 
     pub async fn call_function(
         config: CoinbaseMPCWalletConfig,
-        lance_db: Weak<Mutex<LanceShinkaiDb>>, // Changed to Weak
+        lance_db: Weak<RwLock<LanceShinkaiDb>>, // Changed to Weak
         function_name: ShinkaiToolCoinbase,
         params: Value,
     ) -> Result<Value, WalletError> {
         let lance_db_strong = lance_db
             .upgrade()
             .ok_or(WalletError::LanceDBError("LanceDB not found".to_string()))?;
-        let db = lance_db_strong.lock().await;
+        let db = lance_db_strong.read().await;
         let tool_id = function_name.definition_id();
         let shinkai_tool = db
             .get_tool(tool_id)
@@ -389,7 +389,8 @@ impl CommonActions for CoinbaseMPCWallet {
             });
 
             let response =
-                CoinbaseMPCWallet::call_function(config.clone(), lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
+                CoinbaseMPCWallet::call_function(config.clone(), lance_db, ShinkaiToolCoinbase::GetBalance, params)
+                    .await?;
 
             eprintln!("response: {:?}", response);
 
@@ -424,7 +425,11 @@ impl CommonActions for CoinbaseMPCWallet {
                 })
                 .collect();
 
-            let has_more = response.clone().get("has_more").and_then(|v| v.as_bool()).unwrap_or(false);
+            let has_more = response
+                .clone()
+                .get("has_more")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             let next_page = response
                 .get("next_page")
@@ -432,7 +437,11 @@ impl CommonActions for CoinbaseMPCWallet {
                 .map(|s| s.to_string())
                 .unwrap_or_default(); // Set to empty string if None
 
-            let total_count = response.clone().get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let total_count = response
+                .clone()
+                .get("total_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
 
             let address_balance_list = AddressBalanceList {
                 data,
@@ -608,7 +617,6 @@ impl ShinkaiToolCoinbase {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

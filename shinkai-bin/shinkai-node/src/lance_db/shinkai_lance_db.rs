@@ -6,6 +6,8 @@ use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIter
 use arrow_schema::{DataType, Field};
 use futures::{StreamExt, TryStreamExt};
 use lancedb::connection::LanceFileVersion;
+use lancedb::index::scalar::{FtsIndexBuilder, FullTextSearchQuery};
+use lancedb::index::vector::IvfHnswPqIndexBuilder;
 use lancedb::index::Index;
 use lancedb::query::QueryBase;
 use lancedb::query::{ExecutableQuery, Select};
@@ -14,6 +16,7 @@ use lancedb::Error as LanceDbError;
 use lancedb::{connect, Connection, Table};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
+use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
@@ -50,8 +53,11 @@ impl LanceShinkaiDb {
         } else {
             db_path.to_string()
         };
+        eprintln!("DB Path: {}", db_path);
 
         let connection = connect(&db_path).execute().await?;
+        eprintln!("Connected to DB: {:?}", connection.uri());
+        
         let version_table = Self::create_version_table(&connection).await?;
         let tool_table = Self::create_tool_router_table(&connection, &embedding_model).await?;
         let prompt_table = Self::create_prompt_table(&connection, &embedding_model).await?;
@@ -77,8 +83,8 @@ impl LanceShinkaiDb {
 
         let table = match connection
             .create_empty_table("tool_router_v5", schema)
-            .data_storage_version(LanceFileVersion::V2_1)
-            .enable_v2_manifest_paths(true)
+            // .data_storage_version(LanceFileVersion::V2_1)
+            // .enable_v2_manifest_paths(true)
             .execute()
             .await
         {
@@ -97,31 +103,40 @@ impl LanceShinkaiDb {
             }
         };
 
-        // Check if the table is empty
-        let is_empty = Self::is_table_empty(&table).await?;
-        if is_empty {
-            println!("Table is empty, skipping index creation.");
-            return Ok(table);
-        }
-
         // Check if the index already exists
         let indices = table.list_indices().await?;
-        let index_exists = indices.iter().any(|index| index.name == "tool_key");
+        let tool_key_index_exists = indices.iter().any(|index| index.name == "tool_key");
+        let tool_seo_index_exists = indices.iter().any(|index| index.name == "tool_seo");
 
         // Create the index if it doesn't exist
-        if !index_exists {
+        if !tool_key_index_exists {
             table.create_index(&["tool_key"], Index::Auto).execute().await?;
-            // Note: potentially add this and we will need FTS index as well (v0.10.0)
-            // table
-            //     .create_index(&["tool_key"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
-            //     .execute()
-            //     .await?;
+            table
+                .create_index(&["tool_key"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
+                .execute()
+                .await?;
+            table
+                .create_index(&["tool_key"], Index::FTS(FtsIndexBuilder::default()))
+                .execute()
+                .await?;
+        }
+
+        if !tool_seo_index_exists {
+            table.create_index(&["tool_seo"], Index::Auto).execute().await?;
+            table
+                .create_index(&["tool_seo"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
+                .execute()
+                .await?;
+            table
+                .create_index(&["tool_seo"], Index::FTS(FtsIndexBuilder::default()))
+                .execute()
+                .await?;
         }
 
         Ok(table)
     }
 
-    async fn is_table_empty(table: &Table) -> Result<bool, ShinkaiLanceDBError> {
+    pub async fn is_table_empty(table: &Table) -> Result<bool, ShinkaiLanceDBError> {
         let query = table.query().limit(1).execute().await?;
         let results = query.try_collect::<Vec<_>>().await?;
         Ok(results.is_empty())
@@ -132,6 +147,7 @@ impl LanceShinkaiDb {
     pub async fn set_tool(&self, shinkai_tool: &ShinkaiTool) -> Result<(), ToolError> {
         let tool_key = shinkai_tool.tool_router_key().to_lowercase();
         let tool_keys = vec![shinkai_tool.tool_router_key()];
+        let tool_seos = vec![shinkai_tool.format_embedding_string()];
         let tool_types = vec![shinkai_tool.tool_type().to_string()];
 
         // Check if the tool already exists and delete it if it does
@@ -253,6 +269,7 @@ impl LanceShinkaiDb {
             schema.clone(),
             vec![
                 Arc::new(StringArray::from(tool_keys)),
+                Arc::new(StringArray::from(tool_seos)),
                 Arc::new(
                     FixedSizeListArray::try_new(
                         Arc::new(Field::new("item", DataType::Float32, true)),
@@ -475,37 +492,59 @@ impl LanceShinkaiDb {
         }
 
         // Generate the embedding from the query string
-        let embedding = self
+        let vector_query = self
             .embedding_function
             .request_embeddings(query)
             .await
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
-        let mut query_builder = self
+        // Full-text search query
+        let mut fts_query_builder = self
             .tool_table
             .query()
+            .full_text_search(FullTextSearchQuery::new(query.to_owned()))
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
                 ShinkaiToolSchema::tool_type_field(),
                 ShinkaiToolSchema::tool_header_field(),
             ]))
-            .limit(num_results as usize)
-            .nearest_to(embedding)
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            .limit(num_results as usize);
+
+        // Vector search query
+        let mut vector_query_builder = self
+            .tool_table
+            .query()
+            .nearest_to(vector_query)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?
+            .select(Select::columns(&[
+                ShinkaiToolSchema::tool_key_field(),
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::tool_header_field(),
+            ]))
+            .limit(num_results as usize);
 
         if let Some(filter) = filter {
-            query_builder = query_builder.only_if(filter.to_string());
+            fts_query_builder = fts_query_builder.only_if(filter.to_string());
+            vector_query_builder = vector_query_builder.only_if(filter.to_string());
         }
 
-        let query = query_builder
+        // Execute the full-text search
+        let fts_query = fts_query_builder
+            .execute()
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        // Execute the vector search
+        let vector_query = vector_query_builder
             .execute()
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        let mut res = query;
-        let mut tool_headers = Vec::new();
+        // Collect results from both queries
+        let mut fts_results = Vec::new();
+        let mut vector_results = Vec::new();
 
-        while let Some(Ok(batch)) = res.next().await {
+        let mut fts_res = fts_query;
+        while let Some(Ok(batch)) = fts_res.next().await {
             let tool_header_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_header_field())
                 .unwrap()
@@ -517,11 +556,60 @@ impl LanceShinkaiDb {
                 let tool_header_json = tool_header_array.value(i).to_string();
                 let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
                     .map_err(|e| ToolError::SerializationError(e.to_string()))?;
-                tool_headers.push(tool_header);
+                fts_results.push(tool_header);
             }
         }
 
-        Ok(tool_headers)
+        let mut vector_res = vector_query;
+        while let Some(Ok(batch)) = vector_res.next().await {
+            let tool_header_array = batch
+                .column_by_name(ShinkaiToolSchema::tool_header_field())
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..tool_header_array.len() {
+                let tool_header_json = tool_header_array.value(i).to_string();
+                let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
+                    .map_err(|e| ToolError::SerializationError(e.to_string()))?;
+                vector_results.push(tool_header);
+            }
+        }
+
+        // Merge results using interleave and remove duplicates
+        let mut combined_results = Vec::new();
+        let mut seen = HashSet::new();
+        let mut fts_iter = fts_results.into_iter();
+        let mut vector_iter = vector_results.into_iter();
+
+        while combined_results.len() < num_results as usize {
+            match (fts_iter.next(), vector_iter.next()) {
+                (Some(fts_item), Some(vector_item)) => {
+                    if seen.insert(fts_item.tool_router_key.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(fts_item);
+                    }
+                    if seen.insert(vector_item.tool_router_key.clone()) && combined_results.len() < num_results as usize
+                    {
+                        combined_results.push(vector_item);
+                    }
+                }
+                (Some(fts_item), None) => {
+                    if seen.insert(fts_item.tool_router_key.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(fts_item);
+                    }
+                }
+                (None, Some(vector_item)) => {
+                    if seen.insert(vector_item.tool_router_key.clone()) && combined_results.len() < num_results as usize
+                    {
+                        combined_results.push(vector_item);
+                    }
+                }
+                (None, None) => break,
+            }
+        }
+
+        Ok(combined_results)
     }
 
     pub async fn workflow_vector_search(
@@ -540,9 +628,11 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
-        let query = self
+        // Full-text search query
+        let mut fts_query_builder = self
             .tool_table
             .query()
+            .full_text_search(FullTextSearchQuery::new(query.to_owned()))
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
                 ShinkaiToolSchema::tool_type_field(),
@@ -553,18 +643,43 @@ impl LanceShinkaiDb {
                 ShinkaiToolSchema::tool_type_field(),
                 ShinkaiToolSchema::is_enabled_field()
             ))
-            .limit(num_results as usize)
-            .nearest_to(embedding)
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            .limit(num_results as usize);
 
-        let mut res = query
+        // Vector search query
+        let mut vector_query_builder = self
+            .tool_table
+            .query()
+            .nearest_to(embedding)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?
+            .select(Select::columns(&[
+                ShinkaiToolSchema::tool_key_field(),
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::tool_header_field(),
+            ]))
+            .only_if(format!(
+                "{} = 'Workflow' AND {} = true",
+                ShinkaiToolSchema::tool_type_field(),
+                ShinkaiToolSchema::is_enabled_field()
+            ))
+            .limit(num_results as usize);
+
+        // Execute the full-text search
+        let fts_query = fts_query_builder
+            .execute()
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        // Execute the vector search
+        let vector_query = vector_query_builder
             .execute()
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        let mut tool_headers = Vec::new();
+        // Collect results from both queries
+        let mut fts_results = Vec::new();
+        let mut vector_results = Vec::new();
 
-        while let Some(Ok(batch)) = res.next().await {
+        let mut fts_res = fts_query;
+        while let Some(Ok(batch)) = fts_res.next().await {
             let tool_header_array = batch
                 .column_by_name(ShinkaiToolSchema::tool_header_field())
                 .unwrap()
@@ -576,11 +691,60 @@ impl LanceShinkaiDb {
                 let tool_header_json = tool_header_array.value(i).to_string();
                 let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
                     .map_err(|e| ToolError::SerializationError(e.to_string()))?;
-                tool_headers.push(tool_header);
+                fts_results.push(tool_header);
             }
         }
 
-        Ok(tool_headers)
+        let mut vector_res = vector_query;
+        while let Some(Ok(batch)) = vector_res.next().await {
+            let tool_header_array = batch
+                .column_by_name(ShinkaiToolSchema::tool_header_field())
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..tool_header_array.len() {
+                let tool_header_json = tool_header_array.value(i).to_string();
+                let tool_header: ShinkaiToolHeader = serde_json::from_str(&tool_header_json)
+                    .map_err(|e| ToolError::SerializationError(e.to_string()))?;
+                vector_results.push(tool_header);
+            }
+        }
+
+        // Merge results using interleave and remove duplicates
+        let mut combined_results = Vec::new();
+        let mut seen = HashSet::new();
+        let mut fts_iter = fts_results.into_iter();
+        let mut vector_iter = vector_results.into_iter();
+
+        while combined_results.len() < num_results as usize {
+            match (fts_iter.next(), vector_iter.next()) {
+                (Some(fts_item), Some(vector_item)) => {
+                    if seen.insert(fts_item.tool_router_key.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(fts_item);
+                    }
+                    if seen.insert(vector_item.tool_router_key.clone()) && combined_results.len() < num_results as usize
+                    {
+                        combined_results.push(vector_item);
+                    }
+                }
+                (Some(fts_item), None) => {
+                    if seen.insert(fts_item.tool_router_key.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(fts_item);
+                    }
+                }
+                (None, Some(vector_item)) => {
+                    if seen.insert(vector_item.tool_router_key.clone()) && combined_results.len() < num_results as usize
+                    {
+                        combined_results.push(vector_item);
+                    }
+                }
+                (None, None) => break,
+            }
+        }
+
+        Ok(combined_results)
     }
 
     pub async fn is_empty(&self) -> Result<bool, ShinkaiLanceDBError> {

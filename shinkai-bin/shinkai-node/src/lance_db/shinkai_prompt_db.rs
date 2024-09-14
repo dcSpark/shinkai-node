@@ -7,9 +7,13 @@ use arrow_array::{BooleanArray, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::{StreamExt, TryStreamExt};
 use lancedb::connection::LanceFileVersion;
+use lancedb::index::scalar::{FtsIndexBuilder, FullTextSearchQuery};
+use lancedb::index::vector::IvfHnswPqIndexBuilder;
+use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::{table::AddDataMode, Connection, Error as LanceDbError, Table};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 impl LanceShinkaiDb {
@@ -19,21 +23,52 @@ impl LanceShinkaiDb {
     ) -> Result<Table, ShinkaiLanceDBError> {
         let schema = ShinkaiPromptSchema::create_schema(embedding_model).map_err(ShinkaiLanceDBError::from)?;
 
-        match connection
+        let table = match connection
             .create_empty_table("prompts_v2", schema)
             .data_storage_version(LanceFileVersion::V2_1)
             .enable_v2_manifest_paths(true)
             .execute()
             .await
         {
-            Ok(table) => Ok(table),
-            Err(LanceDbError::TableAlreadyExists { .. }) => connection
-                .open_table("prompts_v2")
-                .execute()
-                .await
-                .map_err(ShinkaiLanceDBError::from),
-            Err(e) => Err(ShinkaiLanceDBError::from(e)),
+            Ok(table) => table,
+            Err(e) => {
+                if let LanceDbError::TableAlreadyExists { .. } = e {
+                    connection
+                        .open_table("prompts_v2")
+                        .execute()
+                        .await
+                        .map_err(ShinkaiLanceDBError::from)?
+                } else {
+                    return Err(ShinkaiLanceDBError::from(e));
+                }
+            }
+        };
+
+        // Check if the table is empty
+        let is_empty = Self::is_table_empty(&table).await?;
+        if is_empty {
+            println!("Table is empty, skipping index creation.");
+            return Ok(table);
         }
+
+        // Check if the index already exists
+        let indices = table.list_indices().await?;
+        let index_exists = indices.iter().any(|index| index.name == "name");
+
+        // Create the index if it doesn't exist
+        if !index_exists {
+            table.create_index(&["name"], Index::Auto).execute().await?;
+            table
+                .create_index(&["name"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
+                .execute()
+                .await?;
+            table
+                .create_index(&["prompt"], Index::FTS(FtsIndexBuilder::default()))
+                .execute()
+                .await?;
+        }
+
+        Ok(table)
     }
 
     fn convert_batch_to_prompt(batch: &RecordBatch) -> Option<CustomPrompt> {
@@ -253,9 +288,11 @@ impl LanceShinkaiDb {
             .await
             .map_err(|e| ShinkaiLanceDBError::EmbeddingGenerationError(e.to_string()))?;
 
-        let query = self
+        // Full-text search query
+        let fts_query_builder = self
             .prompt_table
             .query()
+            .full_text_search(FullTextSearchQuery::new(query.to_owned()))
             .select(Select::columns(&[
                 ShinkaiPromptSchema::name_field(),
                 ShinkaiPromptSchema::prompt_field(),
@@ -265,23 +302,85 @@ impl LanceShinkaiDb {
                 ShinkaiPromptSchema::is_favorite_field(),
                 ShinkaiPromptSchema::vector_field(),
             ]))
-            .limit(num_results as usize)
-            .nearest_to(embedding)
-            .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
+            .limit(num_results as usize);
 
-        let mut prompts = Vec::new();
-        let mut results = query
+        // Vector search query
+        let vector_query_builder = self
+            .prompt_table
+            .query()
+            .nearest_to(embedding)
+            .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?
+            .select(Select::columns(&[
+                ShinkaiPromptSchema::name_field(),
+                ShinkaiPromptSchema::prompt_field(),
+                ShinkaiPromptSchema::is_system_field(),
+                ShinkaiPromptSchema::is_enabled_field(),
+                ShinkaiPromptSchema::version_field(),
+                ShinkaiPromptSchema::is_favorite_field(),
+                ShinkaiPromptSchema::vector_field(),
+            ]))
+            .limit(num_results as usize);
+
+        // Execute the full-text search
+        let fts_query = fts_query_builder
+            .execute()
+            .await
+            .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
+        // Execute the vector search
+        let vector_query = vector_query_builder
             .execute()
             .await
             .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
 
-        while let Some(Ok(batch)) = results.next().await {
+        // Collect results from both queries
+        let mut fts_results = Vec::new();
+        let mut vector_results = Vec::new();
+
+        let mut fts_res = fts_query;
+        while let Some(Ok(batch)) = fts_res.next().await {
             if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
-                prompts.push(prompt);
+                fts_results.push(prompt);
             }
         }
 
-        Ok(prompts)
+        let mut vector_res = vector_query;
+        while let Some(Ok(batch)) = vector_res.next().await {
+            if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
+                vector_results.push(prompt);
+            }
+        }
+
+        // Merge results using interleave and remove duplicates
+        let mut combined_results = Vec::new();
+        let mut seen = HashSet::new();
+        let mut fts_iter = fts_results.into_iter();
+        let mut vector_iter = vector_results.into_iter();
+
+        while combined_results.len() < num_results as usize {
+            match (fts_iter.next(), vector_iter.next()) {
+                (Some(fts_item), Some(vector_item)) => {
+                    if seen.insert(fts_item.name.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(fts_item);
+                    }
+                    if seen.insert(vector_item.name.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(vector_item);
+                    }
+                }
+                (Some(fts_item), None) => {
+                    if seen.insert(fts_item.name.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(fts_item);
+                    }
+                }
+                (None, Some(vector_item)) => {
+                    if seen.insert(vector_item.name.clone()) && combined_results.len() < num_results as usize {
+                        combined_results.push(vector_item);
+                    }
+                }
+                (None, None) => break,
+            }
+        }
+
+        Ok(combined_results)
     }
 
     pub async fn get_all_prompts(&self) -> Result<Vec<CustomPrompt>, ShinkaiLanceDBError> {
