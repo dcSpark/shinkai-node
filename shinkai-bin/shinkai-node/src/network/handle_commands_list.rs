@@ -2941,6 +2941,17 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiUpdateJobScope {
+                bearer,
+                job_id,
+                job_scope,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_job_scope(db_clone, bearer, job_id, job_scope, res).await;
+                });
+            }
             _ => (),
         }
     }

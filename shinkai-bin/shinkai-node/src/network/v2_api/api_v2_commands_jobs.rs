@@ -13,6 +13,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::{
         APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
     },
+    shinkai_utils::job_scope::JobScope,
 };
 
 use tokio::sync::Mutex;
@@ -920,7 +921,7 @@ impl Node {
         let shinkai_message = match Self::api_v2_create_shinkai_message(
             sender,
             recipient,
-            &serde_json::to_string(&job_message).unwrap(), 
+            &serde_json::to_string(&job_message).unwrap(),
             MessageSchemaType::JobMessageSchema,
             node_encryption_sk,
             node_signing_sk,
@@ -970,6 +971,62 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_update_job_scope(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        job_scope: JobScope,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if the job exists
+        match db.get_job(&job_id) {
+            Ok(_) => {
+                // Job exists, proceed with updating the job scope
+                match db.update_job_scope(job_id.clone(), job_scope.clone()) {
+                    Ok(_) => {
+                        match serde_json::to_value(&job_scope) {
+                            Ok(job_scope_value) => {
+                                let _ = res.send(Ok(job_scope_value)).await;
+                            }
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to serialize job scope: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                            }
+                        }
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to update job scope: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Job with ID {} not found", job_id),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

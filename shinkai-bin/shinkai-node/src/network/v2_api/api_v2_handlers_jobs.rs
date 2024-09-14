@@ -4,9 +4,9 @@ use futures::StreamExt;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::{
     APIChangeJobAgentRequest, JobCreationInfo, JobMessage,
-};
+}, shinkai_utils::job_scope::JobScope};
 use utoipa::OpenApi;
 use warp::multipart::FormData;
 use warp::Filter;
@@ -113,6 +113,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(retry_message_handler);
 
+    let update_job_scope_route = warp::path("update_job_scope")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_job_scope_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -126,6 +133,7 @@ pub fn job_routes(
         .or(get_last_messages_with_branches_route)
         .or(get_job_config_route)
         .or(retry_message_route)
+        .or(update_job_scope_route)
 }
 
 #[derive(Deserialize)]
@@ -798,6 +806,52 @@ pub async fn get_job_config_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct UpdateJobScopeRequest {
+    pub job_id: String,
+    pub job_scope: JobScope,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/update_job_scope",
+    request_body = UpdateJobScopeRequest,
+    responses(
+        (status = 200, description = "Successfully updated job scope", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_job_scope_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: UpdateJobScopeRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUpdateJobScope {
+            bearer,
+            job_id: payload.job_id,
+            job_scope: payload.job_scope,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(_) => {
+            let response = create_success_response(json!({ "result": "Job scope updated successfully" }));
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -813,7 +867,8 @@ pub async fn get_job_config_handler(
         get_last_messages_with_branches_handler,
         update_job_config_handler,
         get_job_config_handler,
-        retry_message_handler
+        retry_message_handler,
+        update_job_scope_handler
     ),
     components(
         schemas(SendResponseBody, SendResponseBodyData, APIError)
