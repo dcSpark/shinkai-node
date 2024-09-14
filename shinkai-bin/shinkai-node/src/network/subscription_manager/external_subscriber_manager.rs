@@ -3,8 +3,10 @@ use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
+#[cfg(feature = "http-subscriptions")]
 use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::node::ProxyConnectionInfo;
+#[cfg(feature = "http-subscriptions")]
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::ws_manager::WSUpdateHandler;
@@ -21,6 +23,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
+#[cfg(feature = "http-subscriptions")]
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -37,7 +40,9 @@ use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, Semaphore};
 
+#[cfg(feature = "http-subscriptions")]
 use super::fs_entry_tree::FSEntryTree;
+#[cfg(feature = "http-subscriptions")]
 use super::http_manager::http_upload_manager::{FileLink, FolderSubscriptionWithPath, HttpSubscriptionUploadManager};
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -45,18 +50,21 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 const NUM_THREADS: usize = 2;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[cfg(feature = "http-subscriptions")]
 pub struct SubscriptionWithTree {
     pub subscription: ShinkaiSubscription,
     pub subscriber_folder_tree: FSEntryTree,
     pub symmetric_key: String,
 }
 
+#[cfg(feature = "http-subscriptions")]
 impl Ord for SubscriptionWithTree {
     fn cmp(&self, other: &Self) -> Ordering {
         self.subscription.cmp(&other.subscription)
     }
 }
 
+#[cfg(feature = "http-subscriptions")]
 impl PartialOrd for SubscriptionWithTree {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -64,6 +72,7 @@ impl PartialOrd for SubscriptionWithTree {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[cfg(feature = "http-subscriptions")]
 pub struct SharedFolderInfo {
     pub path: String,
     pub permission: String,
@@ -81,6 +90,7 @@ pub struct ExternalSubscriberManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
+    #[cfg(feature = "http-subscriptions")]
     pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
     pub last_refresh: Arc<Mutex<DateTime<Utc>>>,
     /// Maps subscription IDs to their sync status, where the `String` represents the folder path
@@ -88,9 +98,13 @@ pub struct ExternalSubscriberManager {
     /// with each change in the folder, providing a non-deterministic but sequential tracking of updates.
     pub subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
     pub shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+    #[cfg(feature = "http-subscriptions")]
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
+    #[cfg(feature = "http-subscriptions")]
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
+    #[cfg(feature = "http-subscriptions")]
     pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
+    #[cfg(feature = "http-subscriptions")]
     pub http_subscription_upload_manager: HttpSubscriptionUploadManager,
     pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -109,6 +123,7 @@ impl ExternalSubscriberManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
+        #[cfg(feature = "http-subscriptions")]
         let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
             db.clone(),
             Topic::AnyQueuesPrefixed.as_str(),
@@ -116,17 +131,21 @@ impl ExternalSubscriberManager {
         )
         .await
         .unwrap();
+    #[cfg(feature = "http-subscriptions")]
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
+        #[cfg(feature = "http-subscriptions")]
         let shared_folders_trees = Arc::new(DashMap::new());
         let subscription_ids_are_sync = Arc::new(DashMap::new());
         let shared_folders_to_ephemeral_versioning = Arc::new(DashMap::new());
         let last_refresh = Arc::new(Mutex::new(Utc::now()));
 
+        #[cfg(feature = "http-subscriptions")]
         let thread_number = env::var("SUBSCRIBER_MANAGER_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
             .parse::<usize>()
             .unwrap_or(NUM_THREADS); // Start processing the job queue
 
+        #[cfg(feature = "http-subscriptions")]
         let process_state_updates_queue_handler =
             ExternalSubscriberManager::process_subscription_request_state_updates(
                 subscriptions_queue_manager.clone(),
@@ -145,6 +164,7 @@ impl ExternalSubscriberManager {
             )
             .await;
 
+        #[cfg(feature = "http-subscriptions")]
         let subscription_queue_handler = ExternalSubscriberManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
             db.clone(),
@@ -186,6 +206,7 @@ impl ExternalSubscriberManager {
         )
         .await;
 
+        #[cfg(feature = "http-subscriptions")]
         let http_subscription_upload_manager = HttpSubscriptionUploadManager::new(
             db.clone(),
             vector_fs.clone(),
@@ -194,26 +215,34 @@ impl ExternalSubscriberManager {
         )
         .await;
 
+
         let mut manager = ExternalSubscriberManager {
             db,
             vector_fs,
             last_refresh,
             identity_manager,
+            #[cfg(feature = "http-subscriptions")]
             subscriptions_queue_manager,
+            #[cfg(feature = "http-subscriptions")]
             subscription_processing_task: Some(subscription_queue_handler),
+            #[cfg(feature = "http-subscriptions")]
             process_state_updates_queue_handler: Some(process_state_updates_queue_handler),
+            #[cfg(feature = "http-subscriptions")]
             shared_folders_trees,
             subscription_ids_are_sync,
             shared_folders_to_ephemeral_versioning,
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            #[cfg(feature = "http-subscriptions")]
             http_subscription_upload_manager,
             proxy_connection_info,
             ws_manager,
         };
 
+        #[cfg(feature = "http-subscriptions")]
         let result = manager.update_shared_folders().await;
+        #[cfg(feature = "http-subscriptions")]
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogLevel::Info,
@@ -223,6 +252,7 @@ impl ExternalSubscriberManager {
         manager
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn get_cached_shared_folder_tree(&mut self, path: &str) -> Vec<SharedFolderInfo> {
         let now = Utc::now();
         {
@@ -253,6 +283,7 @@ impl ExternalSubscriberManager {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "http-subscriptions")]
     async fn process_subscription_updates(
         _job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<ShinkaiDB>,
@@ -350,6 +381,7 @@ impl ExternalSubscriberManager {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "http-subscriptions")]
     pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<ShinkaiDB>,
@@ -419,6 +451,7 @@ impl ExternalSubscriberManager {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "http-subscriptions")]
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
         _db: Weak<ShinkaiDB>,
@@ -637,6 +670,7 @@ impl ExternalSubscriberManager {
         })
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn send_vr_pack_to_peer(
         vr_pack_plus_changes: VRPackPlusChanges,
         subscription_id: SubscriptionId,
@@ -677,6 +711,7 @@ impl ExternalSubscriberManager {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
@@ -871,6 +906,7 @@ impl ExternalSubscriberManager {
         })
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn update_shared_folders(&mut self) -> Result<(), SubscriberManagerError> {
         let profiles = {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
@@ -909,6 +945,7 @@ impl ExternalSubscriberManager {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn available_shared_folders(
         &mut self,
         streamer_node: ShinkaiName,
@@ -1098,6 +1135,7 @@ impl ExternalSubscriberManager {
         Ok(converted_results)
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn update_shareable_folder_requirements(
         &self,
         path: String,
@@ -1156,6 +1194,7 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn create_shareable_folder(
         &mut self,
         path: String,
@@ -1283,6 +1322,7 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn unshare_folder(
         &mut self,
         path: String,
@@ -1366,6 +1406,7 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn subscribe_to_shared_folder(
         &mut self,
         requester_shinkai_identity: ShinkaiName,
@@ -1496,6 +1537,7 @@ impl ExternalSubscriberManager {
 
     /// Unsubscribe from a shared folder
     /// This function will remove the subscription from the database, but will not remove already scheduled actions.
+    #[cfg(feature = "http-subscriptions")]
     pub async fn unsubscribe_from_shared_folder(
         &mut self,
         requester_shinkai_identity: ShinkaiName,
@@ -1573,6 +1615,7 @@ impl ExternalSubscriberManager {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "http-subscriptions")]
     pub async fn create_and_send_request_updated_state(
         subscription_id: SubscriptionId,
         db: Weak<ShinkaiDB>,
@@ -1656,6 +1699,7 @@ impl ExternalSubscriberManager {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn get_node_subscribers(
         &self,
         path: Option<String>,
@@ -1692,6 +1736,7 @@ impl ExternalSubscriberManager {
         Ok(subscribers_by_path)
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn subscriber_current_state_response(
         &self,
         subscription_unique_id: String,
@@ -1755,6 +1800,7 @@ impl ExternalSubscriberManager {
     }
 
     /// Get cached subscription files links (already filtered if there is anything expired)
+    #[cfg(feature = "http-subscriptions")]
     pub fn get_cached_subscription_files_links(
         &self,
         folder_subs_with_path: &FolderSubscriptionWithPath,
@@ -1763,6 +1809,7 @@ impl ExternalSubscriberManager {
             .get_cached_subscription_files_links(folder_subs_with_path)
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn test_process_subscription_updates(&self) {
         Self::process_subscription_updates(
             self.subscriptions_queue_manager.clone(),
@@ -1779,6 +1826,7 @@ impl ExternalSubscriberManager {
         .await;
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn test_process_http_upload_subscription_updates(&self) {
         HttpSubscriptionUploadManager::trigger_controlled_subscription_http_check(
             &self.http_subscription_upload_manager,
@@ -1787,6 +1835,7 @@ impl ExternalSubscriberManager {
     }
 }
 
+#[cfg(feature = "http-subscriptions")]
 #[cfg(test)]
 mod tests {
     use super::*;

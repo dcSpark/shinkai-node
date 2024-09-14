@@ -1,5 +1,5 @@
-use async_lock::Mutex;
 use governor::{Quota, RateLimiter};
+use tokio::sync::Mutex;
 use std::num::NonZeroU32;
 use std::collections::HashMap;
 use governor::clock::DefaultClock;

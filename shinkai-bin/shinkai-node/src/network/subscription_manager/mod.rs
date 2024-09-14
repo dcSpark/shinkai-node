@@ -1,7 +1,11 @@
 pub mod external_subscriber_manager;
+#[cfg(feature = "http-subscriptions")]
 pub mod fs_entry_tree;
+#[cfg(feature = "http-subscriptions")]
 pub mod fs_entry_tree_generator;
 pub mod my_subscription_manager;
+#[cfg(feature = "http-subscriptions")]
 pub mod shared_folder_sm;
 pub mod subscriber_manager_error;
+#[cfg(feature = "http-subscriptions")]
 pub mod http_manager;

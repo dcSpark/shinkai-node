@@ -129,7 +129,7 @@ impl ShinkaiDB {
         cf_opts.set_max_write_buffer_number(3);
         cf_opts.set_min_write_buffer_number_to_merge(1);
         cf_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
-        cf_opts.increase_parallelism(std::cmp::max(1, num_cpus::get() as i32 / 2));
+        cf_opts.increase_parallelism(2);
 
         let mut block_based_options = rocksdb::BlockBasedOptions::default();
         let cache_size = 64 * 1024 * 1024; // 64 MB for Block Cache

@@ -4,7 +4,9 @@ use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
+#[cfg(feature = "http-subscriptions")]
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
+#[cfg(feature = "http-subscriptions")]
 use crate::network::subscription_manager::http_manager::http_download_manager::HttpDownloadJob;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::ws_manager::WSUpdateHandler;
@@ -42,9 +44,13 @@ use std::sync::Weak;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
+#[cfg(feature = "http-subscriptions")]
 use super::external_subscriber_manager::SharedFolderInfo;
+#[cfg(feature = "http-subscriptions")]
 use super::fs_entry_tree::FSEntryTree;
+#[cfg(feature = "http-subscriptions")]
 use super::http_manager::http_download_manager::HttpDownloadManager;
+#[cfg(feature = "http-subscriptions")]
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -56,12 +62,17 @@ pub struct MySubscriptionsManager {
     pub db: Weak<ShinkaiDB>,
     pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
+    #[cfg(feature = "http-subscriptions")]
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
+    #[cfg(feature = "http-subscriptions")]
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+    #[cfg(feature = "http-subscriptions")]
     pub subscription_update_cache_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+    #[cfg(feature = "http-subscriptions")]
     pub http_download_manager: Arc<Mutex<HttpDownloadManager>>,
 
     // Cache for shared folders including the ones that you are not subscribed to
+    #[cfg(feature = "http-subscriptions")]
     pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
     // These values are already part of the node, but we want to minimize blocking the node mutex
     // The profile name of the node.
@@ -89,6 +100,7 @@ impl MySubscriptionsManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
+        #[cfg(feature = "http-subscriptions")]
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
             db.clone(),
             Topic::AnyQueuesPrefixed.as_str(),
@@ -96,6 +108,7 @@ impl MySubscriptionsManager {
         )
         .await
         .unwrap();
+        #[cfg(feature = "http-subscriptions")]
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
 
         let cache_capacity = env::var("MYSUBSCRIPTION_MANAGER_LRU_CAPACITY")
@@ -103,13 +116,17 @@ impl MySubscriptionsManager {
             .parse::<usize>()
             .unwrap_or(LRU_CAPACITY);
 
+        #[cfg(feature = "http-subscriptions")]
         let external_node_shared_folders = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
         // Instantiate HttpDownloadManager
+        #[cfg(feature = "http-subscriptions")]
         let http_download_manager = HttpDownloadManager::new(db.clone(), vector_fs.clone(), node_name.clone()).await;
+        #[cfg(feature = "http-subscriptions")]
         let http_download_manager = Arc::new(Mutex::new(http_download_manager));
 
         // Note(Nico): we can use this to update our subscription status
+        #[cfg(feature = "http-subscriptions")]
         let subscription_queue_handler = MySubscriptionsManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
             db.clone(),
@@ -128,6 +145,7 @@ impl MySubscriptionsManager {
         )
         .await;
 
+        #[cfg(feature = "http-subscriptions")]
         let subscription_update_cache_task = MySubscriptionsManager::process_subscription_shared_folder_cache_updates(
             db.clone(),
             identity_manager.clone(),
@@ -142,19 +160,25 @@ impl MySubscriptionsManager {
             db,
             vector_fs,
             identity_manager,
+            #[cfg(feature = "http-subscriptions")]
             subscriptions_queue_manager,
+            #[cfg(feature = "http-subscriptions")]
             subscription_processing_task: Some(subscription_queue_handler),
+            #[cfg(feature = "http-subscriptions")]
             external_node_shared_folders,
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            #[cfg(feature = "http-subscriptions")]
             http_download_manager,
             proxy_connection_info,
+            #[cfg(feature = "http-subscriptions")]
             subscription_update_cache_task: Some(subscription_update_cache_task),
             ws_manager,
         }
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn insert_shared_folder(
         &mut self,
         name: ShinkaiName,
@@ -172,6 +196,7 @@ impl MySubscriptionsManager {
     }
 
     #[allow(dead_code)]
+    #[cfg(feature = "http-subscriptions")]
     pub async fn insert_shared_folder_sm(
         &mut self,
         name: ShinkaiName,
@@ -182,6 +207,7 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn get_shared_folder(
         &mut self,
         streamer_full_name: &ShinkaiName,
@@ -301,6 +327,7 @@ impl MySubscriptionsManager {
         }
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn unsubscribe_to_shared_folder(
         &self,
         streamer_node_name: ShinkaiName,
@@ -415,6 +442,7 @@ impl MySubscriptionsManager {
     // it needs to be able to ping the API and check if the folder has been updated
     // probably we can expand the api endpoint to return some versioning (timestamp / merkle tree root hash)
     // here or in download_manager we should be checking every X time
+    #[cfg(feature = "http-subscriptions")]
     #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(
         &mut self,
@@ -580,6 +608,7 @@ impl MySubscriptionsManager {
         }
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn update_subscription_status(
         &mut self,
         streamer_node_name: ShinkaiName,
@@ -652,6 +681,7 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn handle_shared_folder_response_update(
         &mut self,
         shared_folder_name: ShinkaiName,
@@ -683,7 +713,8 @@ impl MySubscriptionsManager {
                     };
                     if streamer_full_name == shared_folder_name {
                         // Count the number of files for the specific subscription folder
-                        let file_count = shared_folder_infos.iter()
+                        let file_count = shared_folder_infos
+                            .iter()
                             .filter(|info| info.path == subscription.shared_folder)
                             .map(|info| info.tree.count_files())
                             .sum::<usize>();
@@ -713,6 +744,7 @@ impl MySubscriptionsManager {
     /// Shares the current shared folder state with the subscriber
     /// It will return empty if the subscription is http-preferred
     /// That way it doesn't trigger a TCP send from the streamer
+    #[cfg(feature = "http-subscriptions")]
     pub async fn share_local_shared_folder_copy_state(
         &self,
         streamer_node: ShinkaiName,
@@ -924,6 +956,7 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn send_message_to_peer(
         message: ShinkaiMessage,
         db: Weak<ShinkaiDB>,
@@ -987,6 +1020,7 @@ impl MySubscriptionsManager {
 
     /// Scheduler that sends a message to the network queue to update the shared folder cache
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "http-subscriptions")]
     pub async fn process_subscription_shared_folder_cache_updates(
         db: Weak<ShinkaiDB>,
         identity_manager: Weak<Mutex<IdentityManager>>,
@@ -1120,6 +1154,7 @@ impl MySubscriptionsManager {
         })
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<ShinkaiDB>,
@@ -1165,6 +1200,7 @@ impl MySubscriptionsManager {
         })
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn process_subscription_job_message_queued(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<ShinkaiDB>,
@@ -1242,6 +1278,7 @@ impl MySubscriptionsManager {
     }
 
     // Note: for now it doesn't work with updated files. Update the code to check if the files are up to date
+    #[cfg(feature = "http-subscriptions")]
     fn check_and_enqueue_files(
         vector_fs: Arc<VectorFS>,
         tree: Arc<FSEntryTree>,
@@ -1391,6 +1428,7 @@ impl MySubscriptionsManager {
         })
     }
 
+    #[cfg(feature = "http-subscriptions")]
     fn is_file_up_to_date(fs_entry: FSEntry, tree: &FSEntryTree) -> bool {
         if let Ok(item) = fs_entry.as_item() {
             let merkle_hash = item.merkle_hash.clone();
@@ -1398,7 +1436,9 @@ impl MySubscriptionsManager {
                 // Extracted the last 8 bytes of the merkle hash
                 if let Some(web_link) = &tree.web_link {
                     let last8_in_streamer = &web_link.file.last_8_hash;
-                    let last8_in_streamer = last8_in_streamer.get(last8_in_streamer.len().saturating_sub(8)..).unwrap_or("");
+                    let last8_in_streamer = last8_in_streamer
+                        .get(last8_in_streamer.len().saturating_sub(8)..)
+                        .unwrap_or("");
                     return last_8_bytes == last8_in_streamer;
                 }
             }
@@ -1406,6 +1446,7 @@ impl MySubscriptionsManager {
         false
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn call_process_subscription_job_message_queued(&self) -> Result<(), SubscriberManagerError> {
         MySubscriptionsManager::process_subscription_job_message_queued(
             self.subscriptions_queue_manager.clone(),
@@ -1417,6 +1458,7 @@ impl MySubscriptionsManager {
         .await
     }
 
+    #[cfg(feature = "http-subscriptions")]
     async fn get_proxy_builder_info(
         &self,
         identity_manager_lock: Arc<Mutex<IdentityManager>>,
@@ -1425,6 +1467,7 @@ impl MySubscriptionsManager {
             .await
     }
 
+    #[cfg(feature = "http-subscriptions")]
     async fn get_proxy_builder_info_static(
         identity_manager_lock: Arc<Mutex<IdentityManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,

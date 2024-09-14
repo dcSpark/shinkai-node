@@ -3,6 +3,7 @@ pub mod api_v2_commands_ext_agent_offers;
 pub mod api_v2_commands_jobs;
 pub mod api_v2_commands_my_agent_offers;
 pub mod api_v2_commands_prompts;
+#[cfg(feature = "http-subscriptions")]
 pub mod api_v2_commands_subscriptions;
 pub mod api_v2_commands_vecfs;
 pub mod api_v2_commands_wallets;
@@ -12,6 +13,7 @@ pub mod api_v2_handlers_general;
 pub mod api_v2_handlers_jobs;
 pub mod api_v2_handlers_my_agent_offers;
 pub mod api_v2_handlers_prompts;
+#[cfg(feature = "http-subscriptions")]
 pub mod api_v2_handlers_subscriptions;
 pub mod api_v2_handlers_swagger_ui;
 pub mod api_v2_handlers_vecfs;

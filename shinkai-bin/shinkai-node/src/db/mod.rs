@@ -20,6 +20,7 @@ pub mod db_subscribers;
 pub mod db_my_subscriptions;
 pub mod db_settings;
 pub mod db_network_notifications;
+#[cfg(feature = "http-subscriptions")]
 pub mod db_uploaded_files_links;
 pub mod db_sheet;
 pub mod db_invoice;

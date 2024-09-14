@@ -16,9 +16,10 @@ use shinkai_message_primitives::{
 use shinkai_node::network::{
     node_commands::NodeCommand,
     node_api_router::APIError,
-    subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination},
 };
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+#[cfg(feature = "http-subscriptions")]
+use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination};
 
 /// Struct to simplify testing by encapsulating common test components.
 pub struct ShinkaiTestingFramework {
@@ -144,6 +145,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Updates a file to an HTTP destination.
+    #[cfg(feature = "http-subscriptions")]
     pub async fn update_file_to_http(
         &self,
         destination: FileDestination,

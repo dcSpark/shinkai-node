@@ -1,7 +1,9 @@
 #![recursion_limit = "512"]
 
 mod it {
+    #[cfg(feature = "http-subscriptions")]
     mod a0_subscription_manager_tests;
+    #[cfg(feature = "http-subscriptions")]
     mod a1_http_subscription_tests;
     mod a2_sheet_workflow_tests;
     mod a3_micropayment_flow_tests;
@@ -26,6 +28,7 @@ mod it {
     // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
+    #[cfg(feature = "http-subscriptions")]
     mod subscription_http_upload_tests;
     mod utils;
     mod vector_fs_api_tests;
@@ -34,5 +37,4 @@ mod it {
 
     mod change_nodes_name_tests;
     mod tcp_proxy_tests;
-    mod z_shinkai_mirror_tests;
 }

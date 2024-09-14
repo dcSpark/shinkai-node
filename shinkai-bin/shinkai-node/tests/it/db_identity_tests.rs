@@ -1,10 +1,8 @@
-use async_std::task;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, unsafe_deterministic_signature_keypair,
 };
@@ -13,6 +11,7 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::db::Topic;
 use shinkai_node::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_vector_resources::utils::hash_string;
+use tokio::runtime::Runtime;
 use std::fs;
 use std::path::Path;
 
@@ -47,7 +46,8 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Create a local node profile
-    task::block_on(create_local_node_profile(
+    let rt = Runtime::new().unwrap();
+    rt.block_on(create_local_node_profile(
         &shinkai_db,
         node_profile_name.to_string(),
         encryption_pk,
@@ -102,7 +102,8 @@ fn test_generate_and_use_registration_code_for_device() {
     let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
     // first create the keys for the node
-    task::block_on(create_local_node_profile(
+    let rt = Runtime::new().unwrap();
+    rt.block_on(create_local_node_profile(
         &shinkai_db,
         node_profile_name.to_string(),
         encryption_pk,
@@ -181,7 +182,8 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
     let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
     // Create the keys for the node
-    task::block_on(create_local_node_profile(
+    let rt = Runtime::new().unwrap();
+    rt.block_on(create_local_node_profile(
         &shinkai_db,
         node_profile_name.to_string(),
         encryption_pk,
@@ -259,7 +261,8 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
     let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
     // first create the keys for the node
-    task::block_on(create_local_node_profile(
+    let rt = Runtime::new().unwrap();
+    rt.block_on(create_local_node_profile(
         &shinkai_db,
         node_profile_name.to_string(),
         encryption_pk,
@@ -303,7 +306,8 @@ fn test_new_load_all_sub_identities() {
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Create a local node profile
-    task::block_on(create_local_node_profile(
+    let rt = Runtime::new().unwrap();
+    rt.block_on(create_local_node_profile(
         &shinkai_db,
         node_profile_name.clone().to_string(),
         encryption_pk,

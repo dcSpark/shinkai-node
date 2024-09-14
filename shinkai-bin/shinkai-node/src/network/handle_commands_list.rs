@@ -1329,6 +1329,7 @@ impl Node {
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_available_shared_items(
                         db_clone,
@@ -1348,6 +1349,7 @@ impl Node {
             NodeCommand::APIAvailableSharedItemsOpen { msg, res } => {
                 let node_name_clone = self.node_name.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_available_shared_items_open(
                         node_name_clone,
@@ -1366,6 +1368,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_create_shareable_folder(
                         db_clone,
@@ -1388,6 +1391,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_update_shareable_folder(
                         db_clone,
@@ -1410,6 +1414,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_unshare_folder(
                         db_clone,
@@ -1432,6 +1437,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_subscribe_to_shared_folder(
                         db_clone,
@@ -1453,6 +1459,7 @@ impl Node {
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_subscription_my_subscriptions(
                         db_clone,
@@ -1472,6 +1479,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_unsubscribe_my_subscriptions(
                         node_name_clone,
@@ -1490,6 +1498,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_get_my_subscribers(
                         node_name_clone,
@@ -1510,6 +1519,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_get_http_free_subscription_links(
                         db_clone,
@@ -1564,6 +1574,7 @@ impl Node {
             // NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => self.local_ext_manager_process_subscription_updates(res).await,
             NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => {
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ =
                         Node::local_ext_manager_process_subscription_updates(ext_subscription_manager_clone, res).await;
@@ -1572,6 +1583,7 @@ impl Node {
             // NodeCommand::LocalHttpUploaderProcessSubscriptionUpdates { res } => self.local_http_uploader_process_subscription_updates(res).await,
             NodeCommand::LocalHttpUploaderProcessSubscriptionUpdates { res } => {
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::local_http_uploader_process_subscription_updates(ext_subscription_manager_clone, res)
                         .await;
@@ -1580,6 +1592,7 @@ impl Node {
             // NodeCommand:: { res } => self.local_mysubscription_manager_process_download_updates(res).await,
             NodeCommand::LocalMySubscriptionCallJobMessageProcessing { res } => {
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ =
                         Node::local_mysubscription_manager_process_download_updates(my_subscription_manager_clone, res)
@@ -1589,6 +1602,7 @@ impl Node {
             // NodeCommand:: { res } => self.local_mysubscription_trigger_http_download(res).await,
             NodeCommand::LocalMySubscriptionTriggerHttpDownload { res } => {
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::local_mysubscription_trigger_http_download(my_subscription_manager_clone, res).await;
                 });
@@ -1599,6 +1613,7 @@ impl Node {
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_get_last_notifications(
                         db_clone,
@@ -1617,6 +1632,7 @@ impl Node {
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::api_get_notifications_before_timestamp(
                         db_clone,
@@ -2200,6 +2216,7 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_available_shared_items(
                         db_clone,
@@ -2218,6 +2235,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_available_shared_items_open(
                         db_clone,
@@ -2234,6 +2252,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_create_shareable_folder(
                         db_clone,
@@ -2250,6 +2269,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_shareable_folder(
                         db_clone,
@@ -2266,6 +2286,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_unshare_folder(
                         db_clone,
@@ -2282,6 +2303,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_subscribe_to_shared_folder(
                         db_clone,
@@ -2299,6 +2321,7 @@ impl Node {
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_unsubscribe(
                         db_clone,
@@ -2316,6 +2339,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ =
                         Node::v2_api_my_subscriptions(db_clone, node_name_clone, identity_manager_clone, bearer, res)
@@ -2325,6 +2349,7 @@ impl Node {
             NodeCommand::V2ApiGetMySubscribers { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ =
                         Node::v2_api_get_my_subscribers(db_clone, ext_subscription_manager_clone, bearer, payload, res)
@@ -2338,6 +2363,7 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_http_free_subscription_links(
                         db_clone,
@@ -2353,6 +2379,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_last_notifications(
                         db_clone,
@@ -2369,6 +2396,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
+                #[cfg(feature = "http-subscriptions")]
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_notifications_before_timestamp(
                         db_clone,

@@ -13,10 +13,12 @@ use warp::{
 
 use super::{
     api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc,
-    api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_subscriptions::SubscriptionsApiDoc,
-    api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc,
+    api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc,
     api_v2_handlers_workflows::WorkflowsApiDoc,
 };
+
+#[cfg(feature = "http-subscriptions")]
+use super::api_v2_handlers_subscriptions::SubscriptionsApiDoc;
 
 pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let config = Arc::new(Config::new([
@@ -37,6 +39,7 @@ pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = wa
         .and(warp::get())
         .map(|| warp::reply::json(&JobsApiDoc::openapi()));
 
+    #[cfg(feature = "http-subscriptions")]
     let subscriptions_schema_route = warp::path!("openapi" / "subscriptions.json")
         .and(warp::get())
         .map(|| warp::reply::json(&SubscriptionsApiDoc::openapi()));
@@ -64,14 +67,17 @@ pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = wa
         .and(warp::any().map(move || config.clone()))
         .and_then(serve_swagger);
 
-    general_schema_route
+    let routes = general_schema_route
         .or(jobs_schema_route)
-        .or(subscriptions_schema_route)
         .or(vecfs_schema_route)
         .or(wallet_schema_route)
         .or(workflows_schema_route)
-        .or(ext_agent_offers_schema_route)
-        .or(swagger_ui)
+        .or(ext_agent_offers_schema_route);
+
+    #[cfg(feature = "http-subscriptions")]
+    let routes = routes.or(subscriptions_schema_route);
+
+    routes.or(swagger_ui)
 }
 
 async fn serve_swagger(

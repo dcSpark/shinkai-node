@@ -30,10 +30,12 @@ use crate::{
 
 use super::{
     http_upload_error::HttpUploadError,
-    subscription_file_uploader::{
-        delete_file_or_folder, generate_temporary_shareable_link, list_folder_contents, upload_file_http,
-        FileDestination,
-    },
+};
+
+#[cfg(feature = "http-subscriptions")]
+use super::subscription_file_uploader::{
+    delete_file_or_folder, generate_temporary_shareable_link, list_folder_contents, upload_file_http,
+    FileDestination,
 };
 
 #[derive(Debug, Clone, PartialEq)]

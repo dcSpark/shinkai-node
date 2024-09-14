@@ -8,12 +8,14 @@ use crate::{
         node_error::NodeError,
         subscription_manager::{
             external_subscriber_manager::ExternalSubscriberManager,
-            http_manager::http_upload_manager::FolderSubscriptionWithPath,
             my_subscription_manager::MySubscriptionsManager,
         }, Node,
     },
     vector_fs::vector_fs::VectorFS,
 };
+
+#[cfg(feature = "http-subscriptions")]
+use crate::network::subscription_manager::http_manager::http_upload_manager::FolderSubscriptionWithPath;
 
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -650,6 +652,7 @@ impl Node {
         Ok(())
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn api_get_http_free_subscription_links(
         db: Arc<ShinkaiDB>,
         _node_name: ShinkaiName,

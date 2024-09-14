@@ -378,6 +378,7 @@ impl Node {
         let _ = res.send(result).await;
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn local_ext_manager_process_subscription_updates(
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<(), String>>,
@@ -390,6 +391,7 @@ impl Node {
         let _ = res.send(Ok(())).await;
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn local_http_uploader_process_subscription_updates(
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<(), String>>,
@@ -402,6 +404,7 @@ impl Node {
         let _ = res.send(Ok(())).await;
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn local_mysubscription_manager_process_download_updates(
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         res: Sender<Result<(), String>>,
@@ -414,6 +417,7 @@ impl Node {
         let _ = res.send(Ok(())).await;
     }
 
+    #[cfg(feature = "http-subscriptions")]
     pub async fn local_mysubscription_trigger_http_download(
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         res: Sender<Result<(), String>>,

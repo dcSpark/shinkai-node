@@ -6,7 +6,9 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+#[cfg(feature = "http-subscriptions")]
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
+#[cfg(feature = "http-subscriptions")]
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::network::ws_manager::{self, WSUpdateHandler};
@@ -50,7 +52,9 @@ pub struct NetworkVRKai {
     pub symmetric_key_hash: String,
 }
 
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg(feature = "http-subscriptions")]
 pub struct VRPackPlusChanges {
     pub vr_pack: VRPack,
     pub diff: FSEntryTree,
@@ -492,6 +496,7 @@ impl NetworkJobManager {
                     ),
                 );
 
+                #[cfg(feature = "http-subscriptions")]
                 let _ = Self::handle_receiving_vr_pack_from_subscription(
                     network_vr_kai,
                     db.clone(),
@@ -523,6 +528,7 @@ impl NetworkJobManager {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "http-subscriptions")]
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
         db: Weak<ShinkaiDB>,

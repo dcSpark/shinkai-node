@@ -19,12 +19,15 @@ use crate::{
     network::{
         node_api_router::APIError,
         node_error::NodeError,
-        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
+        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager},
         Node,
     },
     schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };
+
+#[cfg(feature = "http-subscriptions")]
+use crate::network::subscription_manager::external_subscriber_manager::SharedFolderInfo;
 
 impl Node {
     pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
@@ -85,6 +88,7 @@ impl Node {
 
         let result = vector_fs.retrieve_fs_path_simplified_json_value(&reader).await;
 
+        #[cfg(feature = "http-subscriptions")]
         fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
             if let Some(path) = obj.get("path") {
                 if let Some(path_str) = path.as_str() {
@@ -110,6 +114,7 @@ impl Node {
             }
         }
 
+        #[cfg(feature = "http-subscriptions")]
         match result {
             Ok(mut result_value) => {
                 let mut subscription_manager = ext_subscription_manager.lock().await;
@@ -128,6 +133,22 @@ impl Node {
                     add_shared_folder_info(&mut result_value, &shared_folders);
                 }
 
+                let _ = res.send(Ok(result_value)).await.map_err(|_| ());
+                Ok(())
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve fs path json: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+        #[cfg(not(feature = "http-subscriptions"))]
+        match result {
+            Ok(mut result_value) => {
                 let _ = res.send(Ok(result_value)).await.map_err(|_| ());
                 Ok(())
             }

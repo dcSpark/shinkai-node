@@ -9,14 +9,19 @@ use crate::{
         },
         node::ProxyConnectionInfo,
         subscription_manager::{
-            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-            fs_entry_tree::FSEntryTree,
+            external_subscriber_manager::ExternalSubscriberManager,
             my_subscription_manager::MySubscriptionsManager,
         },
         ws_manager::WSUpdateHandler,
         Node,
     },
 };
+
+#[cfg(feature = "http-subscriptions")]
+use crate::network::subscription_manager::external_subscriber_manager::SharedFolderInfo;
+#[cfg(feature = "http-subscriptions")]
+use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
+
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
     schemas::{
@@ -472,6 +477,7 @@ pub async fn handle_network_message_cases(
     match message.get_message_content_schema() {
         Ok(schema) => {
             match schema {
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::AvailableSharedItems => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     shinkai_log(
@@ -539,6 +545,7 @@ pub async fn handle_network_message_cases(
                     );
                     return Ok(());
                 }
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::AvailableSharedItemsResponse => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     shinkai_log(
@@ -599,6 +606,7 @@ pub async fn handle_network_message_cases(
 
                     return Ok(());
                 }
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::SubscribeToSharedFolder => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
@@ -692,6 +700,7 @@ pub async fn handle_network_message_cases(
 
                     return Ok(());
                 }
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::SubscribeToSharedFolderResponse => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
@@ -759,6 +768,7 @@ pub async fn handle_network_message_cases(
 
                     return Ok(());
                 }
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::SubscriptionRequiresTreeUpdate => {
                     let streamer_node_with_profile =
                         ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
@@ -836,6 +846,7 @@ pub async fn handle_network_message_cases(
                 }
                 // Note(Nico): This is usually coming from a request but we also can allow it without the request
                 // for when the node transitions to a new state (e.g. hard reset, recovery to previous state, etc).
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::SubscriptionRequiresTreeUpdateResponse => {
                     let streamer_node_with_profile =
                         ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
@@ -944,6 +955,7 @@ pub async fn handle_network_message_cases(
                         }
                     }
                 }
+                #[cfg(feature = "http-subscriptions")]
                 MessageSchemaType::UnsubscribeToSharedFolder => {
                     let streamer_node_with_profile =
                         ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
@@ -1193,7 +1205,10 @@ pub async fn handle_network_message_cases(
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
-                        &format!("{} > InvoiceResult Received from: {:?} to: {:?}", receiver_address, requester, receiver),
+                        &format!(
+                            "{} > InvoiceResult Received from: {:?} to: {:?}",
+                            receiver_address, requester, receiver
+                        ),
                     );
                     println!("InvoiceResult Received from: {:?} to {:?}", requester, receiver);
 
