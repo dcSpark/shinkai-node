@@ -57,10 +57,16 @@ impl LanceShinkaiDb {
 
         let connection = connect(&db_path).execute().await?;
         eprintln!("Connected to DB: {:?}", connection.uri());
-        
+
         let version_table = Self::create_version_table(&connection).await?;
+        eprintln!("Version table created");
+
         let tool_table = Self::create_tool_router_table(&connection, &embedding_model).await?;
+        eprintln!("Tool table created");
+
         let prompt_table = Self::create_prompt_table(&connection, &embedding_model).await?;
+        eprintln!("Prompt table created");
+
         let api_url = generator.api_url;
         let embedding_function = OllamaEmbeddingFunction::new(&api_url, embedding_model.clone());
 
@@ -83,8 +89,8 @@ impl LanceShinkaiDb {
 
         let table = match connection
             .create_empty_table("tool_router_v5", schema)
-            // .data_storage_version(LanceFileVersion::V2_1)
-            // .enable_v2_manifest_paths(true)
+            .data_storage_version(LanceFileVersion::V2_1)
+            .enable_v2_manifest_paths(true)
             .execute()
             .await
         {
@@ -103,39 +109,51 @@ impl LanceShinkaiDb {
             }
         };
 
-        // Check if the index already exists
-        let indices = table.list_indices().await?;
-        let tool_key_index_exists = indices.iter().any(|index| index.name == "tool_key");
-        let tool_seo_index_exists = indices.iter().any(|index| index.name == "tool_seo");
-
-        // Create the index if it doesn't exist
-        if !tool_key_index_exists {
-            table.create_index(&["tool_key"], Index::Auto).execute().await?;
-            table
-                .create_index(&["tool_key"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
-                .execute()
-                .await?;
-            table
-                .create_index(&["tool_key"], Index::FTS(FtsIndexBuilder::default()))
-                .execute()
-                .await?;
-        }
-
-        if !tool_seo_index_exists {
-            table.create_index(&["tool_seo"], Index::Auto).execute().await?;
-            table
-                .create_index(&["tool_seo"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
-                .execute()
-                .await?;
-            table
-                .create_index(&["tool_seo"], Index::FTS(FtsIndexBuilder::default()))
-                .execute()
-                .await?;
-        }
-
         Ok(table)
     }
 
+    pub async fn create_tool_indices_if_needed(&self) -> Result<(), ShinkaiLanceDBError> {
+        // Check if the table is empty
+        let is_empty = Self::is_table_empty(&self.tool_table).await?;
+        if is_empty {
+            eprintln!("Tool Table is empty, skipping index creation.");
+            return Ok(());
+        }
+
+        // Check the number of elements in the table
+        let element_count = self.tool_table.count_rows(None).await?;
+        if element_count < 100 {
+            self.tool_table
+                .create_index(&["tool_seo"], Index::FTS(FtsIndexBuilder::default()))
+                .execute()
+                .await?;
+
+            eprintln!("Not enough elements to create other indices. Skipping index creation.");
+            return Ok(());
+        }
+
+        // Create the indices
+        self.tool_table
+            .create_index(&["tool_key"], Index::Auto)
+            .execute()
+            .await?;
+
+        self.tool_table
+            .create_index(&["tool_seo"], Index::Auto)
+            .execute()
+            .await?;
+
+        self.tool_table.create_index(&["vector"], Index::Auto).execute().await?;
+        self.tool_table
+            .create_index(
+                &[ShinkaiToolSchema::vector_field()],
+                Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()),
+            )
+            .execute()
+            .await?;
+
+        Ok(())
+    }
     pub async fn is_table_empty(table: &Table) -> Result<bool, ShinkaiLanceDBError> {
         let query = table.query().limit(1).execute().await?;
         let results = query.try_collect::<Vec<_>>().await?;
@@ -798,7 +816,6 @@ mod tests {
     use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-    use std::env;
     use std::fs;
     use std::path::Path;
     use std::time::Instant;
@@ -841,6 +858,8 @@ mod tests {
                 tool_count += 1;
             }
         }
+
+        db.create_tool_indices_if_needed().await?;
 
         // Stop the timer
         let duration = start_time.elapsed();

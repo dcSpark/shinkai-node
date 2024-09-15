@@ -47,9 +47,10 @@ impl LanceShinkaiDb {
         // Check if the table is empty
         let is_empty = Self::is_table_empty(&table).await?;
         if is_empty {
-            println!("Table is empty, skipping index creation.");
+            println!("Prompt Table is empty, skipping index creation.");
             return Ok(table);
         }
+        eprintln!("Prompt Table is not empty, creating index.");
 
         // Check if the index already exists
         let indices = table.list_indices().await?;
