@@ -6,7 +6,6 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
     },
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::V2ChatMessage},
-    shinkai_utils::job_scope::JobScope,
 };
 
 use crate::llm_provider::job::JobConfig;
