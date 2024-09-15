@@ -516,7 +516,7 @@ impl ShinkaiDB {
                         let job = self.get_job(&unique_id)?;
                         let scope_value = job.scope.to_json_value_minimal()?;
                         job_scope_value = Some(scope_value);
-                        job_config_value = Some(job.config);
+                        job_config_value = job.config;
                         datetime_created.clone_from(&job.datetime_created);
                         job.is_finished || job.is_hidden
                     }
