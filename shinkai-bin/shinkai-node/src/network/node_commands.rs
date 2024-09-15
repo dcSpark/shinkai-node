@@ -932,4 +932,9 @@ pub enum NodeCommand {
         job_scope: JobScope,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiGetJobScope {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }

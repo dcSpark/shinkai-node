@@ -55,6 +55,7 @@ impl Node {
             is_finished: smart_inbox.is_finished,
             job_scope: smart_inbox.job_scope,
             agent: smart_inbox.agent,
+            job_config: smart_inbox.job_config,
         })
     }
 
@@ -1021,6 +1022,49 @@ impl Node {
                         Ok(())
                     }
                 }
+            }
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Job with ID {} not found", job_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_get_job_scope(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if the job exists
+        match db.get_job(&job_id) {
+            Ok(job) => {
+                // Job exists, proceed with getting the job scope
+                let job_scope = job.scope();
+                match serde_json::to_value(&job_scope) {
+                    Ok(job_scope_value) => {
+                        let _ = res.send(Ok(job_scope_value)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize job scope: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+                Ok(())
             }
             Err(_) => {
                 let api_error = APIError {
