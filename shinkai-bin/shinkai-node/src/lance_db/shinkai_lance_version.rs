@@ -14,7 +14,6 @@ use std::sync::Arc;
 impl LanceShinkaiDb {
     pub async fn create_version_table(connection: &Connection) -> Result<Table, ShinkaiLanceDBError> {
         let schema = arrow_schema::Schema::new(vec![Field::new("version", DataType::Utf8, false)]);
-        println!("Schema: {:?}", schema); // Debug print to check the schema
 
         match connection
             .create_empty_table("version_v2", schema.into())
@@ -23,22 +22,13 @@ impl LanceShinkaiDb {
             .execute()
             .await
         {
-            Ok(table) => {
-                println!("Table created successfully"); // Debug print to confirm table creation
-                Ok(table)
-            },
-            Err(LanceDbError::TableAlreadyExists { .. }) => {
-                println!("Table already exists, opening existing table"); // Debug print for existing table
-                connection
-                    .open_table("version_v2")
-                    .execute()
-                    .await
-                    .map_err(ShinkaiLanceDBError::from)
-            },
-            Err(e) => {
-                println!("Error creating table: {:?}", e); // Debug print for errors
-                Err(ShinkaiLanceDBError::from(e))
-            },
+            Ok(table) => Ok(table),
+            Err(LanceDbError::TableAlreadyExists { .. }) => connection
+                .open_table("version_v2")
+                .execute()
+                .await
+                .map_err(ShinkaiLanceDBError::from),
+            Err(e) => Err(ShinkaiLanceDBError::from(e)),
         }
     }
 

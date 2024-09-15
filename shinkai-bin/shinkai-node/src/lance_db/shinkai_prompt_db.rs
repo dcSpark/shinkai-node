@@ -44,32 +44,50 @@ impl LanceShinkaiDb {
             }
         };
 
+        Ok(table)
+    }
+
+    pub async fn create_prompt_indices_if_needed(&self) -> Result<(), ShinkaiLanceDBError> {
         // Check if the table is empty
-        let is_empty = Self::is_table_empty(&table).await?;
+        let is_empty = Self::is_table_empty(&self.prompt_table).await?;
         if is_empty {
-            println!("Prompt Table is empty, skipping index creation.");
-            return Ok(table);
+            eprintln!("Prompt Table is empty, skipping index creation.");
+            return Ok(());
         }
-        eprintln!("Prompt Table is not empty, creating index.");
 
-        // Check if the index already exists
-        let indices = table.list_indices().await?;
-        let index_exists = indices.iter().any(|index| index.name == "name");
-
-        // Create the index if it doesn't exist
-        if !index_exists {
-            table.create_index(&["name"], Index::Auto).execute().await?;
-            table
-                .create_index(&["name"], Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()))
-                .execute()
-                .await?;
-            table
+        // Check the number of elements in the table
+        let element_count = self.prompt_table.count_rows(None).await?;
+        if element_count < 100 {
+            self.prompt_table
                 .create_index(&["prompt"], Index::FTS(FtsIndexBuilder::default()))
                 .execute()
                 .await?;
+
+            eprintln!("Not enough elements to create other indices. Skipping index creation for prompt table.");
+            return Ok(());
         }
 
-        Ok(table)
+        // Create the indices
+        self.prompt_table.create_index(&["name"], Index::Auto).execute().await?;
+
+        self.prompt_table
+            .create_index(&["prompt"], Index::Auto)
+            .execute()
+            .await?;
+
+        self.prompt_table
+            .create_index(&["vector"], Index::Auto)
+            .execute()
+            .await?;
+        self.prompt_table
+            .create_index(
+                &[ShinkaiPromptSchema::vector_field()],
+                Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()),
+            )
+            .execute()
+            .await?;
+
+        Ok(())
     }
 
     fn convert_batch_to_prompt(batch: &RecordBatch) -> Option<CustomPrompt> {
@@ -717,6 +735,9 @@ mod tests {
             prompt.embedding = Some(embedding.vector);
             db.set_prompt(prompt).await?;
         }
+
+        // Create the index
+        db.create_prompt_indices_if_needed().await?;
 
         // Get all prompts
         let all_prompts = db.get_all_prompts().await?;

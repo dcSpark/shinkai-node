@@ -75,6 +75,8 @@ impl ToolRouter {
             let _ = self.add_js_tools().await;
         }
 
+        self.lance_db.write().await.create_tool_indices_if_needed().await?;
+
         Ok(())
     }
 
@@ -87,6 +89,8 @@ impl ToolRouter {
 
         // Set the latest version in the database
         self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
+
+        self.lance_db.write().await.create_tool_indices_if_needed().await?;
 
         Ok(())
     }
@@ -541,7 +545,7 @@ impl ToolRouter {
                                 break;
                             }
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // Nothing to do here
                         }
                     }

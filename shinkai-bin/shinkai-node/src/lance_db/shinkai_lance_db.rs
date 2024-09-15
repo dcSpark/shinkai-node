@@ -128,7 +128,7 @@ impl LanceShinkaiDb {
                 .execute()
                 .await?;
 
-            eprintln!("Not enough elements to create other indices. Skipping index creation.");
+            eprintln!("Not enough elements to create other indices. Skipping index creation for tool table.");
             return Ok(());
         }
 
@@ -154,6 +154,7 @@ impl LanceShinkaiDb {
 
         Ok(())
     }
+
     pub async fn is_table_empty(table: &Table) -> Result<bool, ShinkaiLanceDBError> {
         let query = table.query().limit(1).execute().await?;
         let results = query.try_collect::<Vec<_>>().await?;
@@ -960,6 +961,8 @@ mod tests {
             }
         }
 
+        db.create_tool_indices_if_needed().await?;
+
         // Start the timer
         let start_time = Instant::now();
         // Install built-in toolkits
@@ -1258,6 +1261,8 @@ mod tests {
         db.set_tool(&shinkai_network_tool)
             .await
             .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+
+        db.create_tool_indices_if_needed().await?;
 
         // Test get_all_tools with include_network_tools = true
         let all_tools_with_network = db.get_all_tools(true).await?;
