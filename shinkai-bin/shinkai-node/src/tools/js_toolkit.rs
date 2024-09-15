@@ -4,6 +4,7 @@ use crate::tools::js_tools::JSTool;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
+use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig, js_tools::JSToolResult};
 
@@ -57,7 +58,10 @@ impl JSToolkit {
             keywords: definition.keywords.clone(),
             input_args,
             activated: false,
-            embedding: None,
+            embedding: definition.embedding_metadata.clone().map(|meta| Embedding {
+                id: "".to_string(),
+                vector: meta.embeddings,
+            }),
             result,
         }
     }
@@ -168,6 +172,7 @@ mod tests {
             author: "".to_string(),
             keywords: vec![],
             code: Some("var tool;\n/******/ (() => { // webpackBootstrap\n/*".to_string()),
+            embedding_metadata: None,
         };
 
         let toolkit = JSToolkit::new("Weather Toolkit", vec![definition]);

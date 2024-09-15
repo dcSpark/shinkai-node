@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     db::ShinkaiDB,
@@ -22,7 +22,7 @@ use crate::{
 impl Node {
     pub async fn v2_api_request_invoice(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         tool_key_name: String,
@@ -36,8 +36,8 @@ impl Node {
 
         // Fetch the tool from lance_db
         let network_tool = {
-            let lance_db_lock = lance_db.lock().await;
-            match lance_db_lock.get_tool(&tool_key_name).await {
+            let lance_db = lance_db.read().await;
+            match lance_db.get_tool(&tool_key_name).await {
                 Ok(Some(tool)) => match tool {
                     ShinkaiTool::Network(network_tool, _) => network_tool,
                     _ => {
@@ -106,7 +106,7 @@ impl Node {
 
     pub async fn v2_api_pay_invoice(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         invoice_id: String,
@@ -170,8 +170,8 @@ impl Node {
         // Step 4: Check that the data_for_tool is valid
         let tool_key_name = invoice.shinkai_offering.tool_key.clone();
         let tool = {
-            let lance_db_lock = lance_db.lock().await;
-            match lance_db_lock.get_tool(&tool_key_name).await {
+            let lance_db = lance_db.read().await;
+            match lance_db.get_tool(&tool_key_name).await {
                 Ok(tool) => tool,
                 Err(err) => {
                     let api_error = APIError {

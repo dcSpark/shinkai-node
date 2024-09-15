@@ -4,6 +4,7 @@ use arrow_array::Array;
 use arrow_array::{RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
 use futures::TryStreamExt;
+use lancedb::connection::LanceFileVersion;
 use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
 use lancedb::Table;
@@ -15,14 +16,15 @@ impl LanceShinkaiDb {
         let schema = arrow_schema::Schema::new(vec![Field::new("version", DataType::Utf8, false)]);
 
         match connection
-            .create_empty_table("version", schema.into())
-            // .data_storage_version(LanceFileVersion::V2_1)
+            .create_empty_table("version_v2", schema.into())
+            .data_storage_version(LanceFileVersion::V2_1)
+            .enable_v2_manifest_paths(true)
             .execute()
             .await
         {
             Ok(table) => Ok(table),
             Err(LanceDbError::TableAlreadyExists { .. }) => connection
-                .open_table("version")
+                .open_table("version_v2")
                 .execute()
                 .await
                 .map_err(ShinkaiLanceDBError::from),

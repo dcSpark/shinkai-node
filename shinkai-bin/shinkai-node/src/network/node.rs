@@ -57,7 +57,7 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -110,7 +110,7 @@ pub struct Node {
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
     // The LanceDB
-    pub lance_db: Arc<Mutex<LanceShinkaiDb>>,
+    pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -331,7 +331,7 @@ impl Node {
         )
         .await
         .unwrap();
-        let lance_db = Arc::new(Mutex::new(lance_db));
+        let lance_db = Arc::new(RwLock::new(lance_db));
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(lance_db.clone());

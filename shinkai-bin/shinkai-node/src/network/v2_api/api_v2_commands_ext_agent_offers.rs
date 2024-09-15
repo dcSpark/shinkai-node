@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::{
     db::ShinkaiDB,
@@ -90,7 +90,7 @@ impl Node {
 
     pub async fn v2_api_get_all_tool_offering(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -117,7 +117,7 @@ impl Node {
         let mut detailed_tool_headers = Vec::new();
         for tool_offering in tool_offerings {
             let tool_key = &tool_offering.tool_key;
-            match lance_db.lock().await.get_tool(tool_key).await {
+            match lance_db.read().await.get_tool(tool_key).await {
                 Ok(Some(tool)) => {
                     let mut tool_header = tool.to_header();
                     tool_header.sanitize_config();
@@ -152,7 +152,7 @@ impl Node {
 
     pub async fn v2_api_set_tool_offering(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -163,7 +163,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match lance_db.lock().await.tool_exists(&tool_offering.tool_key).await {
+        match lance_db.write().await.tool_exists(&tool_offering.tool_key).await {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {

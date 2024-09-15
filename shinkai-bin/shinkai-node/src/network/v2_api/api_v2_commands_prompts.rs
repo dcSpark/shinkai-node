@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use async_channel::Sender;
 use reqwest::StatusCode;
-use tokio::sync::Mutex;
+use tokio::sync::{RwLock};
 
 use crate::{
     db::ShinkaiDB,
@@ -13,7 +13,7 @@ use crate::{
 impl Node {
     pub async fn v2_api_add_custom_prompt(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -24,7 +24,7 @@ impl Node {
         }
 
         // Save the new prompt to the LanceShinkaiDb
-        match lance_db.lock().await.set_prompt(prompt.clone()).await {
+        match lance_db.write().await.set_prompt(prompt.clone()).await {
             Ok(_) => {
                 let _ = res.send(Ok(prompt)).await;
                 Ok(())
@@ -43,7 +43,7 @@ impl Node {
 
     pub async fn v2_api_delete_custom_prompt(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -54,10 +54,10 @@ impl Node {
         }
 
         // Get the prompt before deleting
-        let prompt = lance_db.lock().await.get_prompt(&prompt_name).await;
+        let prompt = lance_db.read().await.get_prompt(&prompt_name).await;
 
         // Delete the prompt from the LanceShinkaiDb
-        match lance_db.lock().await.remove_prompt(&prompt_name).await {
+        match lance_db.write().await.remove_prompt(&prompt_name).await {
             Ok(_) => {
                 match prompt {
                     Ok(Some(prompt)) => {
@@ -88,7 +88,7 @@ impl Node {
 
     pub async fn v2_api_get_all_custom_prompts(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -98,7 +98,7 @@ impl Node {
         }
 
         // Get all prompts from the LanceShinkaiDb
-        match lance_db.lock().await.get_all_prompts().await {
+        match lance_db.read().await.get_all_prompts().await {
             Ok(prompts) => {
                 let _ = res.send(Ok(prompts)).await;
                 Ok(())
@@ -117,7 +117,7 @@ impl Node {
 
     pub async fn v2_api_get_custom_prompt(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -128,7 +128,7 @@ impl Node {
         }
 
         // Get the prompt from the LanceShinkaiDb
-        match lance_db.lock().await.get_prompt(&prompt_name).await {
+        match lance_db.read().await.get_prompt(&prompt_name).await {
             Ok(Some(prompt)) => {
                 let _ = res.send(Ok(prompt)).await;
                 Ok(())
@@ -156,7 +156,7 @@ impl Node {
 
     pub async fn v2_api_search_custom_prompts(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         query: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,
@@ -170,7 +170,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using LanceShinkaiDb
-        match lance_db.lock().await.prompt_vector_search(&query, 5).await {
+        match lance_db.read().await.prompt_vector_search(&query, 5).await {
             Ok(prompts) => {
                 // Log the elapsed time if LOG_ALL is set to 1
                 if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
@@ -195,7 +195,7 @@ impl Node {
 
     pub async fn v2_api_update_custom_prompt(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<Mutex<LanceShinkaiDb>>,
+        lance_db: Arc<RwLock<LanceShinkaiDb>>,
         bearer: String,
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -206,7 +206,7 @@ impl Node {
         }
 
         // Update the prompt in the LanceShinkaiDb
-        match lance_db.lock().await.set_prompt(prompt.clone()).await {
+        match lance_db.write().await.set_prompt(prompt.clone()).await {
             Ok(_) => {
                 let _ = res.send(Ok(prompt)).await;
                 Ok(())

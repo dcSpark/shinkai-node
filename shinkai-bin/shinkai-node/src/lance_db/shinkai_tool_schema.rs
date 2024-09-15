@@ -7,6 +7,7 @@ pub struct ShinkaiToolSchema;
 impl ShinkaiToolSchema {
     /// Creates a new Schema for Shinkai tools with the following fields:
     /// - tool_key: UTF-8 string (non-nullable)
+    /// - tool_seo: UTF-8 string (non-nullable)
     /// - vector: Fixed-size list of 32-bit floats (nullable)
     /// - tool_data: Binary (non-nullable)
     /// - tool_type: UTF-8 string (non-nullable)
@@ -23,6 +24,7 @@ impl ShinkaiToolSchema {
 
         Ok(Arc::new(Schema::new(vec![
             Field::new(Self::tool_key_field(), DataType::Utf8, false),
+            Field::new(Self::tool_seo_field(), DataType::Utf8, false),
             Field::new(
                 Self::vector_field(),
                 DataType::FixedSizeList(
@@ -44,6 +46,10 @@ impl ShinkaiToolSchema {
 
     pub fn tool_key_field() -> &'static str {
         "tool_key"
+    }
+
+    pub fn tool_seo_field() -> &'static str {
+        "tool_seo"
     }
 
     pub fn vector_field() -> &'static str {
