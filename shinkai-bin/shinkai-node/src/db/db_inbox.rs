@@ -13,6 +13,7 @@ use shinkai_message_primitives::{
 };
 use tokio::sync::Mutex;
 
+use crate::llm_provider::job::JobConfig;
 use crate::network::ws_manager::WSMessageType;
 use crate::network::ws_manager::WSUpdateHandler;
 use crate::schemas::smart_inbox::LLMProviderSubset;
@@ -506,6 +507,7 @@ impl ShinkaiDB {
 
             let mut job_scope_value: Option<Value> = None;
             let mut datetime_created = String::new();
+            let mut job_config_value: Option<JobConfig> = None;
 
             // Determine if the inbox is finished
             let is_finished = if inbox_id.starts_with("job_inbox::") {
@@ -514,6 +516,7 @@ impl ShinkaiDB {
                         let job = self.get_job(&unique_id)?;
                         let scope_value = job.scope.to_json_value_minimal()?;
                         job_scope_value = Some(scope_value);
+                        job_config_value = job.config;
                         datetime_created.clone_from(&job.datetime_created);
                         job.is_finished || job.is_hidden
                     }
@@ -555,6 +558,7 @@ impl ShinkaiDB {
                 is_finished,
                 job_scope: job_scope_value,
                 agent: agent_subset,
+                job_config: job_config_value,
             };
 
             smart_inboxes.push(smart_inbox);

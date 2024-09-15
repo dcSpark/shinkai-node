@@ -20,7 +20,7 @@ use shinkai_message_primitives::{
             APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
             RegistrationCodeType, V2ChatMessage,
         },
-    },
+    }, shinkai_utils::job_scope::JobScope,
 };
 
 use crate::{
@@ -925,5 +925,16 @@ pub enum NodeCommand {
         inbox_name: String,
         message_id: String,
         res: Sender<Result<SendResponseBodyData, APIError>>,
+    },
+    V2ApiUpdateJobScope {
+        bearer: String,
+        job_id: String,
+        job_scope: JobScope,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetJobScope {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
     },
 }
