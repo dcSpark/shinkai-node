@@ -120,6 +120,7 @@ impl LocalFileParser {
                                     heading_parents.len(),
                                     node_text.trim().to_owned(),
                                     max_node_text_size,
+                                    None,
                                 );
                                 node_text.clear();
                             }
@@ -131,6 +132,7 @@ impl LocalFileParser {
                                     heading_parents.len(),
                                     node_text.trim().to_owned(),
                                     max_node_text_size,
+                                    None,
                                 );
                                 node_text.clear();
 
@@ -229,6 +231,7 @@ impl LocalFileParser {
                                             heading_depth,
                                             inner_text.trim().to_owned(),
                                             max_node_text_size,
+                                            None,
                                         );
                                     }
                                     "a" => {
@@ -284,6 +287,7 @@ impl LocalFileParser {
                                             heading_parents.len(),
                                             inner_text.trim().to_owned(),
                                             max_node_text_size,
+                                            None,
                                         );
                                     }
                                     "caption" => {
@@ -339,6 +343,7 @@ impl LocalFileParser {
             heading_parents.len(),
             result_text.trim().to_owned(),
             max_node_text_size,
+            None,
         );
 
         Ok(text_groups)

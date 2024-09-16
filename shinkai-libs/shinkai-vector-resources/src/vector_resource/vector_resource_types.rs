@@ -211,7 +211,7 @@ impl RetrievedNode {
         if let Some(metadata) = &self.node.metadata {
             if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
                 if !page_numbers.is_empty() {
-                    return format!("Pgs: {}", page_numbers);
+                    return format!("Pages: {}", page_numbers);
                 }
             }
         }

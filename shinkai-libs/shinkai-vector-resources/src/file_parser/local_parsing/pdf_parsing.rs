@@ -20,7 +20,13 @@ impl LocalFileParser {
 
         for page in parsed_pages.into_iter() {
             for pdf_text in page.content.into_iter() {
-                ShinkaiFileParser::push_text_group_by_depth(&mut text_groups, 0, pdf_text.text, max_node_text_size);
+                ShinkaiFileParser::push_text_group_by_depth(
+                    &mut text_groups,
+                    0,
+                    pdf_text.text,
+                    max_node_text_size,
+                    Some(page.page_number.try_into().unwrap_or_default()),
+                );
             }
         }
 

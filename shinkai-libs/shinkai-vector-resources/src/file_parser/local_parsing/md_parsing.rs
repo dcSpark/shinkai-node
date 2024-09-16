@@ -73,6 +73,7 @@ impl LocalFileParser {
                         heading_parents.len(),
                         current_text.clone(),
                         max_node_text_size,
+                        None,
                     );
                     current_text = "".to_string();
 
@@ -104,6 +105,7 @@ impl LocalFileParser {
                         heading_depth,
                         text.to_string(),
                         max_node_text_size,
+                        None,
                     );
                 }
                 NodeValue::Paragraph => {
@@ -169,6 +171,7 @@ impl LocalFileParser {
                     heading_parents.len(),
                     current_text.clone(),
                     max_node_text_size,
+                    None,
                 );
                 current_text = "".to_string();
             }
@@ -181,6 +184,7 @@ impl LocalFileParser {
             heading_parents.len(),
             current_text.clone(),
             max_node_text_size,
+            None,
         );
 
         Ok(text_groups)
