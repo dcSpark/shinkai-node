@@ -128,6 +128,20 @@ pub fn job_routes(
         .and(warp::query::<GetJobScopeRequest>())
         .and_then(get_job_scope_handler);
 
+    let add_extra_screen_route = warp::path("add_extra_screen")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_extra_screen_handler);
+
+    let remove_extra_screen_route = warp::path("remove_extra_screen")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(remove_extra_screen_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -143,6 +157,8 @@ pub fn job_routes(
         .or(retry_message_route)
         .or(update_job_scope_route)
         .or(get_job_scope_route)
+        .or(add_extra_screen_route)
+        .or(remove_extra_screen_route)
 }
 
 #[derive(Deserialize)]
@@ -907,6 +923,90 @@ pub async fn get_job_scope_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/add_extra_screen",
+    request_body = CreateJobRequest,
+    responses(
+        (status = 200, description = "Successfully added extra screen", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_extra_screen_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: CreateJobRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiAddExtraScreen {
+            bearer,
+            job_creation_info: payload.job_creation_info,
+            llm_provider: payload.llm_provider,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(json!({ "result": response }));
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RemoveExtraScreenRequest {
+    pub job_id: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/remove_extra_screen",
+    request_body = RemoveExtraScreenRequest,
+    responses(
+        (status = 200, description = "Successfully removed extra screen", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn remove_extra_screen_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RemoveExtraScreenRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiRemoveExtraScreen {
+            bearer,
+            job_id: payload.job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(json!({ "result": response }));
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -924,7 +1024,9 @@ pub async fn get_job_scope_handler(
         get_job_config_handler,
         retry_message_handler,
         update_job_scope_handler,
-        get_job_scope_handler
+        get_job_scope_handler,
+        add_extra_screen_handler,
+        remove_extra_screen_handler
     ),
     components(
         schemas(SendResponseBody, SendResponseBodyData, APIError)

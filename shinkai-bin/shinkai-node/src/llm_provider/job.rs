@@ -30,6 +30,7 @@ pub trait JobLike: Send + Sync {
     fn conversation_inbox_name(&self) -> &InboxName;
     fn associated_ui(&self) -> Option<&AssociatedUI>;
     fn config(&self) -> Option<&JobConfig>;
+    fn screen_positions(&self) -> Vec<String>;
 }
 
 // Todo: Add a persistent_context: String
@@ -63,6 +64,8 @@ pub struct Job {
     pub associated_ui: Option<AssociatedUI>,
     /// The job's configuration
     pub config: Option<JobConfig>,
+    /// A list of screen positions for the job
+    pub screen_positions: Vec<String>,
 }
 
 impl JobLike for Job {
@@ -100,6 +103,10 @@ impl JobLike for Job {
 
     fn config(&self) -> Option<&JobConfig> {
         self.config.as_ref()
+    }
+
+    fn screen_positions(&self) -> Vec<String> {
+        self.screen_positions.clone()
     }
 }
 

@@ -55,11 +55,13 @@ impl ShinkaiDB {
         let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
         let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
         let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
+        let job_screen_positions_key = format!("jobinbox_{}_screen_positions", job_id);
 
         // Content
         let conversation_inbox_prefix = format!("inbox_{}", Self::job_id_to_hash(&job_id)); // 47 characters so prefix works
         let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
         let initial_job_name = format!("New Job: {}", job_id);
+        let screen_positions = vec![job_id.clone()];
 
         let inbox_searchable = format!(
             "inbox_placeholder_value_to_match_prefix_abcdef_{}",
@@ -91,6 +93,11 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
         batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "");
+        batch.put_cf(
+            cf_inbox,
+            job_screen_positions_key.as_bytes(),
+            serde_json::to_vec(&screen_positions)?.as_bytes(),
+        );
 
         // Serialize and put associated_ui if it exists
         if let Some(ui) = &associated_ui {
@@ -127,13 +134,13 @@ impl ShinkaiDB {
     pub fn update_job_config(&self, job_id: &str, config: JobConfig) -> Result<(), ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let config_key = format!("jobinbox_{}_config", job_id);
-    
+
         // Serialize the config
         let config_value = serde_json::to_vec(&config)?;
-    
+
         // Update the config in the database
         self.db.put_cf(cf_inbox, config_key.as_bytes(), &config_value)?;
-    
+
         Ok(())
     }
 
@@ -204,6 +211,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            screen_positions,
         ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
@@ -220,6 +228,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            screen_positions,
         };
 
         let duration = start.elapsed();
@@ -249,6 +258,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            screen_positions,
         ) = self.get_job_data(job_id, false)?;
 
         // Construct the job
@@ -265,6 +275,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            screen_positions,
         };
 
         let duration = start.elapsed();
@@ -298,6 +309,7 @@ impl ShinkaiDB {
             HashMap<String, String>,
             Option<AssociatedUI>,
             Option<JobConfig>,
+            Vec<String>,
         ),
         ShinkaiDBError,
     > {
@@ -363,6 +375,14 @@ impl ShinkaiDB {
             .flatten()
             .and_then(|value| serde_json::from_slice(&value).ok());
 
+        let screen_positions_value = self
+            .db
+            .get_cf(cf_jobs, format!("jobinbox_{}_screen_positions", job_id).as_bytes())
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_slice(&value).ok())
+            .unwrap_or_else(|| vec![job_id.to_string()]);
+
         Ok((
             scope,
             is_finished,
@@ -375,6 +395,7 @@ impl ShinkaiDB {
             self.get_job_execution_context(job_id)?,
             associated_ui_value,
             config_value,
+            screen_positions_value,
         ))
     }
 
@@ -711,6 +732,105 @@ impl ShinkaiDB {
     ) -> Result<(), ShinkaiDBError> {
         self.unsafe_insert_inbox_message(message, parent_message_key, ws_manager)
             .await?;
+        Ok(())
+    }
+
+    /// Adds a screen position for a job
+    pub fn add_screen_position(&self, job_id: &str, position: Option<usize>) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let screen_positions_key = format!("jobinbox_{}_screen_positions", job_id);
+
+        // Fetch current screen positions
+        let mut screen_positions: Vec<String> = self
+            .db
+            .get_cf(cf_inbox, screen_positions_key.as_bytes())?
+            .map(|value| serde_json::from_slice(&value).unwrap_or_default())
+            .unwrap_or_default();
+
+        // Check if job_id already exists
+        if screen_positions.contains(&job_id.to_string()) {
+            return Err(ShinkaiDBError::SomeError(format!(
+                "Job ID {} already exists in screen positions",
+                job_id
+            )));
+        }
+
+        // Add job_id to the specified position or at the end
+        match position {
+            Some(pos) => {
+                if pos > screen_positions.len() {
+                    return Err(ShinkaiDBError::SomeError("Position out of bounds".to_string()));
+                }
+                screen_positions.insert(pos, job_id.to_string());
+            }
+            None => screen_positions.push(job_id.to_string()),
+        }
+
+        // Update the screen positions in the database
+        let screen_positions_value = serde_json::to_vec(&screen_positions)?;
+        self.db
+            .put_cf(cf_inbox, screen_positions_key.as_bytes(), &screen_positions_value)?;
+
+        Ok(())
+    }
+
+    /// Removes a screen position for a job
+    pub fn remove_screen_position(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let screen_positions_key = format!("jobinbox_{}_screen_positions", job_id);
+
+        // Fetch current screen positions
+        let mut screen_positions: Vec<String> = self
+            .db
+            .get_cf(cf_inbox, screen_positions_key.as_bytes())?
+            .map(|value| serde_json::from_slice(&value).unwrap_or_default())
+            .unwrap_or_default();
+
+        // Remove job_id from the screen positions
+        screen_positions.retain(|id| id != job_id);
+
+        // Update the screen positions in the database
+        let screen_positions_value = serde_json::to_vec(&screen_positions)?;
+        self.db
+            .put_cf(cf_inbox, screen_positions_key.as_bytes(), &screen_positions_value)?;
+
+        Ok(())
+    }
+
+    /// Updates a screen position for a job
+    pub fn update_screen_position(&self, job_id: &str, new_position: usize) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let screen_positions_key = format!("jobinbox_{}_screen_positions", job_id);
+
+        // Fetch current screen positions
+        let mut screen_positions: Vec<String> = self
+            .db
+            .get_cf(cf_inbox, screen_positions_key.as_bytes())?
+            .map(|value| serde_json::from_slice(&value).unwrap_or_default())
+            .unwrap_or_default();
+
+        // Check if job_id exists
+        if !screen_positions.contains(&job_id.to_string()) {
+            return Err(ShinkaiDBError::SomeError(format!(
+                "Job ID {} does not exist in screen positions",
+                job_id
+            )));
+        }
+
+        // Remove job_id from the current position
+        screen_positions.retain(|id| id != job_id);
+
+        // Insert job_id at the new position
+        if new_position > screen_positions.len() {
+            return Err(ShinkaiDBError::SomeError("New position out of bounds".to_string()));
+        }
+        screen_positions.insert(new_position, job_id.to_string());
+
+        // Update the screen positions in the database
+        let screen_positions_value = serde_json::to_vec(&screen_positions)?;
+        self.db
+            .put_cf(cf_inbox, screen_positions_key.as_bytes(), &screen_positions_value)?;
+
         Ok(())
     }
 }

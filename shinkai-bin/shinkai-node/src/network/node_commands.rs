@@ -937,4 +937,15 @@ pub enum NodeCommand {
         job_id: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiAddExtraScreen {
+        bearer: String,
+        job_creation_info: JobCreationInfo,
+        llm_provider: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiRemoveExtraScreen {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<String, APIError>>,
+    },
 }

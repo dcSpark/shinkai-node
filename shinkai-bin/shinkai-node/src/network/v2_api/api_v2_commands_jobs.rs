@@ -1077,4 +1077,83 @@ impl Node {
             }
         }
     }
+
+    pub async fn v2_api_add_extra_screen(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_creation_info: JobCreationInfo,
+        llm_provider: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Create a new job with is_hidden: true
+        let new_job_result = db.create_new_job(
+            job_creation_info.job_id.clone(),
+            llm_provider.clone(),
+            job_creation_info.scope.clone(),
+            true, // is_hidden
+            job_creation_info.associated_ui.clone(),
+            job_creation_info.config.clone(),
+        );
+
+        if let Err(err) = new_job_result {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to create new job: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Add extra screen logic here
+        match db.add_screen_position(&job_creation_info.job_id, None) {
+            Ok(_) => {
+                let _ = res.send(Ok("Extra screen added successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add extra screen: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_remove_extra_screen(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Remove extra screen logic here
+        match db.remove_screen_position(&job_id) {
+            Ok(_) => {
+                let _ = res.send(Ok("Extra screen removed successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove extra screen: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
 }
