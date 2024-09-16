@@ -166,7 +166,7 @@ impl LanceShinkaiDb {
     pub async fn set_tool(&self, shinkai_tool: &ShinkaiTool) -> Result<(), ToolError> {
         let tool_key = shinkai_tool.tool_router_key().to_lowercase();
         let tool_keys = vec![shinkai_tool.tool_router_key()];
-        let tool_seos = vec![shinkai_tool.format_embedding_string()];
+        let tool_seos = vec![shinkai_tool.formatted_seo_name()];
         let tool_types = vec![shinkai_tool.tool_type().to_string()];
 
         // Check if the tool already exists and delete it if it does
@@ -521,7 +521,7 @@ impl LanceShinkaiDb {
         let mut fts_query_builder = self
             .tool_table
             .query()
-            .full_text_search(FullTextSearchQuery::new(query.to_owned()))
+            .full_text_search(FullTextSearchQuery::new(query.to_owned().to_lowercase()))
             .select(Select::columns(&[
                 ShinkaiToolSchema::tool_key_field(),
                 ShinkaiToolSchema::tool_type_field(),
@@ -648,7 +648,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
         // Full-text search query
-        let mut fts_query_builder = self
+        let fts_query_builder = self
             .tool_table
             .query()
             .full_text_search(FullTextSearchQuery::new(query.to_owned()))
@@ -665,7 +665,7 @@ impl LanceShinkaiDb {
             .limit(num_results as usize);
 
         // Vector search query
-        let mut vector_query_builder = self
+        let vector_query_builder = self
             .tool_table
             .query()
             .nearest_to(embedding)

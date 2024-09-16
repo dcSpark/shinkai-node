@@ -210,8 +210,38 @@ impl ShinkaiTool {
 
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
     pub fn format_embedding_string(&self) -> String {
-        let formatted_name = self.name().replace("shinkai__", "").replace('_', " ");
-        format!("{} {}", formatted_name, self.description())
+        let mut formatted_name = self
+            .name()
+            .replace("shinkai__", "")
+            .replace('_', " ")
+            .replace("  ", " ");
+
+        if let ShinkaiTool::JS(js_tool, _) = self {
+            let keywords = js_tool.keywords.join(", ");
+            formatted_name = format!("{}. {}", formatted_name, keywords);
+        }
+
+        let formatted_name = format!("{}. {}", formatted_name, self.description());
+        eprintln!("Formatted embedding string: {}", formatted_name);
+        formatted_name
+    }
+
+    /// Returns the formatted name of the tool. If the tool is a JS tool, it will include the keywords in the name.
+    /// Meant to be used for Full Text Search
+    pub fn formatted_seo_name(&self) -> String {
+        let mut formatted_name = self
+            .name()
+            .replace("shinkai__", "")
+            .replace('_', " ")
+            .replace("  ", " ");
+
+        if let ShinkaiTool::JS(js_tool, _) = self {
+            let keywords = js_tool.keywords.join(", ");
+            formatted_name = format!("{}. {}", formatted_name, keywords);
+        }
+
+        eprintln!("Formatted SEO name: {}", formatted_name);
+        formatted_name
     }
 
     /// Returns the embedding if it exists
