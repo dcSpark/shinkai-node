@@ -62,7 +62,13 @@ impl Prompt {
 
     /// Adds a sub-prompt that holds any Omni (String + Assets) content.
     /// Of note, priority value must be between 0-100, where higher is greater priority
-    pub fn add_omni(&mut self, content: String, files: HashMap<String, String>, prompt_type: SubPromptType, priority_value: u8) {
+    pub fn add_omni(
+        &mut self,
+        content: String,
+        files: HashMap<String, String>,
+        prompt_type: SubPromptType,
+        priority_value: u8,
+    ) {
         let capped_priority_value = std::cmp::min(priority_value, 100);
         let assets: Vec<(SubPromptAssetType, SubPromptAssetContent, SubPromptAssetDetail)> = files
             .into_iter()
@@ -368,11 +374,15 @@ impl Prompt {
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
                     last_user_message = Some(content.clone());
                 }
-                SubPrompt::Omni(_, _, _, _) => {
-                    // Process the current sub-prompt
-                    let new_message = sub_prompt.into_chat_completion_request_message();
-                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
-                    tiktoken_messages.push(new_message);
+                SubPrompt::Omni(prompt_type, content, _, _) => {
+                    if let SubPromptType::UserLastMessage = prompt_type {
+                        last_user_message = Some(content.clone());
+                    } else {
+                        // Process the current sub-prompt
+                        let new_message = sub_prompt.into_chat_completion_request_message();
+                        current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+                        tiktoken_messages.push(new_message);
+                    }
                 }
                 _ => {
                     // Process the current sub-prompt
