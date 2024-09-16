@@ -312,7 +312,7 @@ impl Prompt {
 
         // Accumulator for ExtraContext content
         let mut extra_context_content = String::new();
-        let mut last_user_message: Option<String> = None;
+        let mut last_user_message: Option<LlmMessage> = None;
         let mut function_calls: Vec<LlmMessage> = Vec::new();
         let mut function_call_responses: Vec<LlmMessage> = Vec::new();
 
@@ -372,15 +372,23 @@ impl Prompt {
                     function_call_responses.push(new_message);
                 }
                 SubPrompt::Content(SubPromptType::UserLastMessage, content, _) => {
-                    last_user_message = Some(content.clone());
+                    last_user_message = Some(LlmMessage {
+                        role: Some(SubPromptType::User.to_string()),
+                        content: Some(content.clone()),
+                        name: None,
+                        function_call: None,
+                        functions: None,
+                        images: None,
+                    });
                 }
-                SubPrompt::Omni(prompt_type, content, _, _) => {
+                SubPrompt::Omni(prompt_type, _, _, _) => {
+                    // Process the current sub-prompt
+                    let new_message = sub_prompt.into_chat_completion_request_message();
+                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+
                     if let SubPromptType::UserLastMessage = prompt_type {
-                        last_user_message = Some(content.clone());
+                        last_user_message = Some(new_message);
                     } else {
-                        // Process the current sub-prompt
-                        let new_message = sub_prompt.into_chat_completion_request_message();
-                        current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
                         tiktoken_messages.push(new_message);
                     }
                 }
@@ -398,18 +406,21 @@ impl Prompt {
             let combined_content = format!(
                 "{}\n{}",
                 extra_context_content.trim(),
-                last_user_message.unwrap_or_default()
+                last_user_message
+                    .as_ref()
+                    .and_then(|msg| msg.content.clone())
+                    .unwrap_or_default()
             )
             .trim()
             .to_string();
 
-            let combined_message = LlmMessage {
+            let mut combined_message = LlmMessage {
                 role: Some(SubPromptType::User.to_string()),
                 content: Some(combined_content),
                 name: None,
                 function_call: None,
                 functions: None,
-                images: None,
+                images: last_user_message.and_then(|msg| msg.images),
             };
             current_length += ModelCapabilitiesManager::num_tokens_from_llama3(&[combined_message.clone()]);
             tiktoken_messages.push(combined_message);
