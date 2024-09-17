@@ -110,7 +110,7 @@ impl Node {
                     })
                     .collect();
 
-                let _ = res.send(Ok(prompts)).await;
+                let _ = res.send(Ok(prompts_without_embeddings)).await;
                 Ok(())
             }
             Err(err) => {
