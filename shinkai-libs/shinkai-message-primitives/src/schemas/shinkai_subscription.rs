@@ -2,12 +2,13 @@ use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use super::{shinkai_name::ShinkaiName, shinkai_subscription_req::SubscriptionPayment};
 use shinkai_vector_resources::vector_resource::VRPath;
 
 // TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub struct SubscriptionId {
     pub unique_id: String,
     pub include_folders: Option<Vec<VRPath>>,
@@ -149,7 +150,7 @@ impl SubscriptionId {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub enum ShinkaiSubscriptionStatus {
     SubscriptionRequested,
     SubscriptionConfirmed,
@@ -159,7 +160,7 @@ pub enum ShinkaiSubscriptionStatus {
     UpdateSubscriptionConfirmed,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, ToSchema)]
 pub struct ShinkaiSubscription {
     pub subscription_id: SubscriptionId,
     pub shared_folder: String,
@@ -171,8 +172,11 @@ pub struct ShinkaiSubscription {
     pub subscriber_profile: String,
     pub payment: Option<SubscriptionPayment>,
     pub state: ShinkaiSubscriptionStatus,
+    #[schema(value_type = String, format = Date)]
     pub date_created: DateTime<Utc>,
+    #[schema(value_type = String, format = Date)]
     pub last_modified: DateTime<Utc>,
+    #[schema(value_type = String, format = Date)]
     pub last_sync: Option<DateTime<Utc>>,
     pub http_preferred: Option<bool>,
 }

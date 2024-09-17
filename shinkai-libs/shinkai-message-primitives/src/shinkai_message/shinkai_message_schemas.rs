@@ -351,13 +351,13 @@ pub struct SheetJobAction {
     pub col: ColumnUuid,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub enum FileDestinationSourceType {
     S3,
     R2,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct FileDestinationCredentials {
     pub source: FileDestinationSourceType,
     pub access_key_id: String,
@@ -531,14 +531,14 @@ pub struct APIVecFsCopyItem {
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAvailableSharedItems {
     pub path: String,
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APISubscribeToSharedFolder {
     pub path: String,
     pub streamer_node_name: String,
@@ -548,27 +548,27 @@ pub struct APISubscribeToSharedFolder {
     pub http_preferred: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIUnsubscribeToSharedFolder {
     pub path: String,
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APICreateShareableFolder {
     pub path: String,
     pub subscription_req: FolderSubscription,
     pub credentials: Option<FileDestinationCredentials>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIUpdateShareableFolder {
     pub path: String,
     pub subscription: FolderSubscription,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIUnshareFolder {
     pub path: String,
 }
@@ -578,18 +578,18 @@ pub struct APIAddOllamaModels {
     pub models: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIGetMySubscribers {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct APIGetLastNotifications {
     pub count: usize,
     pub timestamp: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct APIGetNotificationsBeforeTimestamp {
     pub timestamp: String,
     pub count: usize,

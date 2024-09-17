@@ -4,6 +4,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Represents an address in a wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,7 +65,7 @@ pub struct AddressList {
 }
 
 /// Represents an asset onchain scoped to a particular network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Asset {
     /// The ID of the blockchain network.
     pub network_id: NetworkIdentifier,
@@ -314,7 +315,7 @@ pub enum NetworkProtocolFamilyEnum {
 }
 
 /// Enum representing the ID of the blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub enum NetworkIdentifier {
     BaseSepolia,
     BaseMainnet,

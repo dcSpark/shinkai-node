@@ -217,7 +217,7 @@ pub struct GetLastMessagesWithBranchesRequest {
 
 // Code
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RetryMessageRequest {
     pub message_id: String,
     pub inbox_name: String,
@@ -847,7 +847,7 @@ pub async fn get_job_config_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateJobScopeRequest {
     pub job_id: String,
     pub job_scope: JobScope,
@@ -964,7 +964,7 @@ pub async fn get_job_scope_handler(
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
             VectorFSItemScopeEntry, VectorFSFolderScopeEntry, NetworkFolderScopeEntry, CallbackAction, ShinkaiName,
-            LLMProviderInterface, VRKai, VRPack, VRPath, VRSourceReference, VRPackVersion,
+            LLMProviderInterface, VRKai, VRPack, VRPath, VRSourceReference, VRPackVersion, RetryMessageRequest, UpdateJobScopeRequest,
             ShinkaiSubidentityType, OpenAI, GenericAPI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
             BaseVectorResource, SourceFileMap, VRKaiVersion, SourceReference, NotarizedSourceReference, DocumentVectorResource, MapVectorResource,
             TLSNotarizedReference, SheetJobAction, SourceFile, SourceFileReference, ExternalURIReference, DataTagIndex, DistributionInfo, Embedding,

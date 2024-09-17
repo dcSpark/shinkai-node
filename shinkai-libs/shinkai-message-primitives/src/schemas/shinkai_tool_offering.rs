@@ -52,7 +52,7 @@ impl ShinkaiToolOffering {
 }
 
 // Updated enum to include aliases for prices
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum UsageType {
     PerUse(ToolPrice),
     Downloadable(ToolPrice),
@@ -92,9 +92,10 @@ impl ToolPrice {
 
 type KAIAmount = String;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum ToolPrice {
     Free,
+    #[schema(value_type = String)]
     DirectDelegation(KAIAmount),
     Payment(Vec<AssetPayment>),
 }
@@ -108,7 +109,7 @@ pub enum AssetType {
 }
 
 /// Represents a payment with an asset and amount.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct AssetPayment {
     /// The asset to be paid.
     pub asset: Asset,
