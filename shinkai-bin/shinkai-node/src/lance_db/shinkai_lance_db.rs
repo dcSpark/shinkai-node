@@ -120,18 +120,18 @@ impl LanceShinkaiDb {
             return Ok(());
         }
 
+        self.tool_table
+            .create_index(&["tool_seo"], Index::FTS(FtsIndexBuilder::default()))
+            .execute()
+            .await?;
+
         // Check the number of elements in the table
         let element_count = self.tool_table.count_rows(None).await?;
-        if element_count < 100 {
-            self.tool_table
-                .create_index(&["tool_seo"], Index::FTS(FtsIndexBuilder::default()))
-                .execute()
-                .await?;
-
+        if element_count < 256 {
             eprintln!("Not enough elements to create other indices. Skipping index creation for tool table.");
             return Ok(());
         }
-
+        
         // Create the indices
         self.tool_table
             .create_index(&["tool_key"], Index::Auto)
@@ -144,6 +144,7 @@ impl LanceShinkaiDb {
             .await?;
 
         self.tool_table.create_index(&["vector"], Index::Auto).execute().await?;
+
         self.tool_table
             .create_index(
                 &[ShinkaiToolSchema::vector_field()],

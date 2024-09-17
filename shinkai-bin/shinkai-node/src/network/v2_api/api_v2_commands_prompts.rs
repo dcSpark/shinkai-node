@@ -182,13 +182,22 @@ impl Node {
         // Perform the internal search using LanceShinkaiDb
         match lance_db.read().await.prompt_vector_search(&query, 5).await {
             Ok(prompts) => {
+                // Set embeddings to None before returning
+                let prompts_without_embeddings: Vec<CustomPrompt> = prompts
+                    .into_iter()
+                    .map(|mut prompt| {
+                        prompt.embedding = None;
+                        prompt
+                    })
+                    .collect();
+
                 // Log the elapsed time if LOG_ALL is set to 1
                 if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                     let elapsed_time = start_time.elapsed();
                     println!("Time taken for custom prompt search: {:?}", elapsed_time);
-                    println!("Number of custom prompt results: {}", prompts.len());
+                    println!("Number of custom prompt results: {}", prompts_without_embeddings.len());
                 }
-                let _ = res.send(Ok(prompts)).await;
+                let _ = res.send(Ok(prompts_without_embeddings)).await;
                 Ok(())
             }
             Err(err) => {
