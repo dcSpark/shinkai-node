@@ -491,6 +491,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APIImportSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIExportSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIUpdateDefaultEmbeddingModel {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,

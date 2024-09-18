@@ -334,6 +334,44 @@ impl SheetRustFunctions {
         Ok("Columns created successfully".to_string())
     }
 
+    pub async fn export_sheet_to_csv(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        sheet_id: String,
+    ) -> Result<String, String> {
+        let sheet_manager = sheet_manager.lock().await;
+        let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
+
+        let mut writer = csv::WriterBuilder::new().delimiter(b';').from_writer(vec![]);
+        let headers: Vec<String> = sheet
+            .display_columns
+            .iter()
+            .map(|column_id| {
+                sheet
+                    .columns
+                    .get(column_id)
+                    .map(|column| column.name.clone())
+                    .unwrap_or_else(|| "Unknown Column".to_string())
+            })
+            .collect();
+        writer.write_record(headers).map_err(|e| e.to_string())?;
+
+        for row_id in &sheet.display_rows {
+            let row_values: Vec<String> = sheet
+                .display_columns
+                .iter()
+                .map(|column_id| {
+                    sheet
+                        .get_cell_value(row_id.clone(), column_id.clone())
+                        .unwrap_or_else(|| "".to_string())
+                })
+                .collect();
+            writer.write_record(row_values).map_err(|e| e.to_string())?;
+        }
+
+        let csv_data = String::from_utf8(writer.into_inner().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        Ok(csv_data)
+    }
+
     fn get_tool_map() -> HashMap<&'static str, SheetToolFunction> {
         let mut tool_map: HashMap<&str, SheetToolFunction> = HashMap::new();
         tool_map.insert("create_new_column_with_values", |sheet_manager, sheet_id, args| {

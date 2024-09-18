@@ -83,6 +83,8 @@ pub enum MessageSchemaType {
     GetSheet,
     RemoveRows,
     AddRows,
+    ImportSheet,
+    ExportSheet,
     SetShinkaiTool,
     ListAllShinkaiTools,
     GetShinkaiTool,
@@ -168,6 +170,8 @@ impl MessageSchemaType {
             "GetSheet" => Some(Self::GetSheet),
             "RemoveRows" => Some(Self::RemoveRows),
             "AddRows" => Some(Self::AddRows),
+            "ImportSheet" => Some(Self::ImportSheet),
+            "ExportSheet" => Some(Self::ExportSheet),
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
@@ -253,6 +257,8 @@ impl MessageSchemaType {
             Self::GetSheet => "GetSheet",
             Self::RemoveRows => "RemoveRows",
             Self::AddRows => "AddRows",
+            Self::ImportSheet => "ImportSheet",
+            Self::ExportSheet => "ExportSheet",
             Self::SetShinkaiTool => "SetShinkaiTool",
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
@@ -641,6 +647,25 @@ pub struct APIAddRowsPayload {
     pub sheet_id: String,
     pub number_of_rows: usize,
     pub starting_row: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APIImportSheetPayload {
+    pub csv_data: String,
+    pub file_format: SheetFileFormat,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct APIExportSheetPayload {
+    pub sheet_id: String,
+    pub file_format: SheetFileFormat,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SheetFileFormat {
+    CSV,
+    XLSX,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

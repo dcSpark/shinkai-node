@@ -933,6 +933,42 @@ impl Node {
                     .await;
                 });
             }
+            // NodeCommand::APIGetSheet { msg, res }
+            NodeCommand::APIImportSheet { msg, res } => {
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let sheet_manager = self.sheet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::api_import_sheet(
+                        sheet_manager,
+                        node_name_clone,
+                        identity_manager_clone,
+                        encryption_secret_key_clone,
+                        msg,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            // NodeCommand::APIExportSheet { msg, res }
+            NodeCommand::APIExportSheet { msg, res } => {
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let sheet_manager = self.sheet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::api_export_sheet(
+                        sheet_manager,
+                        node_name_clone,
+                        identity_manager_clone,
+                        encryption_secret_key_clone,
+                        msg,
+                        res,
+                    )
+                    .await;
+                });
+            }
             // NodeCommand::APIScanOllamaModels { msg, res } => self.api_scan_ollama_models(msg, res).await,
             NodeCommand::APIScanOllamaModels { msg, res } => {
                 let node_name_clone = self.node_name.clone();
