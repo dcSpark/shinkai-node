@@ -351,7 +351,11 @@ impl ShinkaiFileParser {
         (parsed_result.to_string(), serialized_metadata)
     }
 
-    pub fn parse_and_split_into_text_groups(text: String, max_node_text_size: u64) -> Vec<TextGroup> {
+    pub fn parse_and_split_into_text_groups(
+        text: String,
+        max_node_text_size: u64,
+        page_number: Option<u32>,
+    ) -> Vec<TextGroup> {
         let mut text_groups = Vec::new();
         let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
         let (parsed_md_text, md_metadata) = ShinkaiFileParser::parse_and_extract_md_metadata(&parsed_text);
@@ -367,11 +371,23 @@ impl ShinkaiFileParser {
                 let (parsed_chunk, metadata, _) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
                 let (parsed_md_chunk, md_metadata) = ShinkaiFileParser::parse_and_extract_md_metadata(&parsed_chunk);
                 let metadata = metadata.into_iter().chain(md_metadata).collect();
-                text_groups.push(TextGroup::new(parsed_md_chunk, metadata, vec![], None));
+                let mut text_group = TextGroup::new(parsed_md_chunk, metadata, vec![], None);
+
+                if let Some(page_number) = page_number {
+                    text_group.push_page_number(page_number);
+                }
+
+                text_groups.push(text_group);
             }
         } else {
             let metadata = metadata.into_iter().chain(md_metadata).collect();
-            text_groups.push(TextGroup::new(parsed_md_text, metadata, vec![], None));
+            let mut text_group = TextGroup::new(parsed_md_text, metadata, vec![], None);
+
+            if let Some(page_number) = page_number {
+                text_group.push_page_number(page_number);
+            }
+
+            text_groups.push(text_group);
         }
 
         text_groups
@@ -384,9 +400,11 @@ impl ShinkaiFileParser {
         depth: usize,
         text: String,
         max_node_text_size: u64,
+        page_number: Option<u32>,
     ) {
         if !text.is_empty() {
-            let created_text_groups = ShinkaiFileParser::parse_and_split_into_text_groups(text, max_node_text_size);
+            let created_text_groups =
+                ShinkaiFileParser::parse_and_split_into_text_groups(text, max_node_text_size, page_number);
 
             if depth > 0 {
                 let mut parent_group = text_groups.last_mut();

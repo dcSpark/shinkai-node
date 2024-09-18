@@ -94,6 +94,7 @@ impl LocalFileParser {
                         heading_depth,
                         current_text.clone(),
                         max_node_text_size,
+                        None,
                     );
                     current_text = "".to_string();
 
@@ -108,6 +109,7 @@ impl LocalFileParser {
                         heading_depth,
                         text,
                         max_node_text_size,
+                        None,
                     );
                     heading_depth += 1;
                     return;
@@ -127,6 +129,7 @@ impl LocalFileParser {
                         heading_depth,
                         current_text.clone(),
                         max_node_text_size,
+                        None,
                     );
                     current_text = text;
                 }
@@ -156,6 +159,7 @@ impl LocalFileParser {
                     heading_depth,
                     current_text.clone(),
                     max_node_text_size,
+                    None,
                 );
                 current_text = "".to_string();
 
@@ -165,12 +169,19 @@ impl LocalFileParser {
                     heading_depth,
                     table_text,
                     max_node_text_size,
+                    None,
                 );
             }
             _ => {}
         });
 
-        ShinkaiFileParser::push_text_group_by_depth(&mut text_groups, heading_depth, current_text, max_node_text_size);
+        ShinkaiFileParser::push_text_group_by_depth(
+            &mut text_groups,
+            heading_depth,
+            current_text,
+            max_node_text_size,
+            None,
+        );
 
         Ok(text_groups)
     }

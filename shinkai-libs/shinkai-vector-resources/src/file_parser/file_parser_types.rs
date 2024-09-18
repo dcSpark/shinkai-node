@@ -75,39 +75,44 @@ impl TextGroup {
         }
 
         if let Some(page_number) = page_number {
-            let mut unique_page_numbers: HashSet<u32> = HashSet::new();
-
-            if let Some(page_numbers_metadata) = self.metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
-                let page_numbers_metadata: Result<Vec<u32>, _> = page_numbers_metadata
-                    .trim_matches(|c| c == '[' || c == ']')
-                    .split(",")
-                    .map(|n| n.trim().parse::<u32>())
-                    .collect();
-
-                match page_numbers_metadata {
-                    Ok(page_numbers) => {
-                        for page_number in page_numbers {
-                            unique_page_numbers.insert(page_number);
-                        }
-                    }
-                    Err(_) => {}
-                }
-            }
-
-            unique_page_numbers.insert(page_number);
-
-            self.metadata.insert(
-                ShinkaiFileParser::page_numbers_metadata_key(),
-                format!(
-                    "[{}]",
-                    unique_page_numbers
-                        .iter()
-                        .map(|n| n.to_string())
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                ),
-            );
+            self.push_page_number(page_number);
         }
+    }
+
+    /// Pushes a page number into this TextGroup
+    pub fn push_page_number(&mut self, page_number: u32) {
+        let mut unique_page_numbers: HashSet<u32> = HashSet::new();
+
+        if let Some(page_numbers_metadata) = self.metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
+            let page_numbers_metadata: Result<Vec<u32>, _> = page_numbers_metadata
+                .trim_matches(|c| c == '[' || c == ']')
+                .split(",")
+                .map(|n| n.trim().parse::<u32>())
+                .collect();
+
+            match page_numbers_metadata {
+                Ok(page_numbers) => {
+                    for page_number in page_numbers {
+                        unique_page_numbers.insert(page_number);
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+
+        unique_page_numbers.insert(page_number);
+
+        self.metadata.insert(
+            ShinkaiFileParser::page_numbers_metadata_key(),
+            format!(
+                "[{}]",
+                unique_page_numbers
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        );
     }
 
     /// Pushes a sub-group into this TextGroup
