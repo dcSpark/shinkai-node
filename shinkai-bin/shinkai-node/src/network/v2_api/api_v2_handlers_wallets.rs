@@ -1,14 +1,16 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
-use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
-use utoipa::OpenApi;
+use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 
 use crate::{
     network::{node_api_router::APIError, node_commands::NodeCommand},
     wallet::{
-        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig,
+        local_ether_wallet::{LocalEthersWalletData, WalletSource},
+        mixed::{Address, Asset, Network, NetworkIdentifier, NetworkProtocolFamilyEnum},
+        wallet_manager::WalletRole,
     },
 };
 
@@ -58,7 +60,7 @@ pub fn wallet_routes(
         .or(list_wallets_route)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RestoreLocalWalletRequest {
     pub network: NetworkIdentifier,
     pub source: WalletSource,
@@ -100,7 +102,7 @@ pub async fn restore_local_wallet_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateLocalWalletRequest {
     pub network: NetworkIdentifier,
     pub role: WalletRole,
@@ -140,7 +142,7 @@ pub async fn create_local_wallet_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct PayInvoiceRequest {
     pub invoice_id: String,
     pub data_for_tool: Value,
@@ -180,7 +182,7 @@ pub async fn pay_invoice_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RestoreCoinbaseMPCWalletRequest {
     pub network: NetworkIdentifier,
     pub config: Option<CoinbaseMPCWalletConfig>,
@@ -263,7 +265,8 @@ pub async fn list_wallets_handler(
         restore_coinbase_mpc_wallet_handler,
     ),
     components(
-        schemas(APIError)
+        schemas(APIError, CreateLocalWalletRequest, LocalEthersWalletData, PayInvoiceRequest, RestoreCoinbaseMPCWalletRequest, RestoreLocalWalletRequest,
+            Network, NetworkIdentifier, NetworkProtocolFamilyEnum, WalletRole, WalletSource, CoinbaseMPCWalletConfig, Address, Asset)
     ),
     tags(
         (name = "wallet", description = "Wallet API endpoints")

@@ -548,7 +548,7 @@ pub async fn add_shinkai_tool_handler(
         add_shinkai_tool_handler,
     ),
     components(
-        schemas(APIError)
+        schemas(APIError, APIWorkflowKeyname, APISetWorkflow)
     ),
     tags(
         (name = "workflows", description = "Workflow API endpoints")

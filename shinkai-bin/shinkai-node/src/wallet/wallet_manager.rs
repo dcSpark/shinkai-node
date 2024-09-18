@@ -7,7 +7,8 @@ use shinkai_message_primitives::schemas::{
     shinkai_tool_offering::ToolPrice,
     wallet_mixed::{Asset, Balance, Network, PublicAddress},
 };
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
@@ -20,7 +21,7 @@ use super::{
 };
 
 /// Enum to represent different wallet roles. Useful for the API.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum WalletRole {
     Payment,
     Receiving,

@@ -6,12 +6,14 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems,
 };
 
-use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
-use warp::Filter;
-use warp::multipart::FormData;
-use futures::StreamExt;
+use crate::network::{
+    node_api_router::APIError, node_commands::NodeCommand, v2_api::api_v2_handlers_jobs::AddFileToInboxRequest,
+};
 use bytes::Buf;
+use futures::StreamExt;
 use utoipa::OpenApi;
+use warp::multipart::FormData;
+use warp::Filter;
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -525,7 +527,6 @@ pub async fn search_items_handler(
     }
 }
 
-
 #[utoipa::path(
     post,
     path = "/v2/upload_file_to_folder",
@@ -713,7 +714,8 @@ pub async fn upload_file_to_folder_handler(
         upload_file_to_folder_handler,
     ),
     components(
-        schemas(APIError)
+        schemas(APIError, APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, AddFileToInboxRequest)
     ),
     tags(
         (name = "vecfs", description = "VecFS API endpoints")

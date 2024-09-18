@@ -446,15 +446,16 @@ pub struct APIAddAgentRequest {
     pub agent: SerializedLLMProvider,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsRetrievePathSimplifiedJson {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIConvertFilesAndSaveToFolder {
     pub path: String,
     pub file_inbox: String,
+    #[schema(value_type = String, format = Date)]
     pub file_datetime: Option<DateTime<Utc>>,
 }
 
@@ -468,7 +469,7 @@ pub struct APIVecFSRetrieveVRObject {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
     pub search: String,
     pub path: Option<String>,
@@ -476,7 +477,7 @@ pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
     pub max_files_to_scan: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsSearchItems {
     pub path: Option<String>,
     pub search: String,
@@ -484,48 +485,48 @@ pub struct APIVecFsSearchItems {
     pub max_files_to_scan: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCreateFolder {
     pub path: String,
     pub folder_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsDeleteFolder {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsDeleteItem {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsMoveFolder {
     pub origin_path: String,
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCopyFolder {
     pub origin_path: String,
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCreateItem {
     pub path: String,
     pub item_name: String,
     pub item_content: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsMoveItem {
     pub origin_path: String,
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCopyItem {
     pub origin_path: String,
     pub destination_path: String,
@@ -607,7 +608,7 @@ pub struct TopicSubscription {
     pub subtopic: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct APISetWorkflow {
     pub workflow_raw: String,
     pub description: String,
@@ -646,7 +647,7 @@ pub struct APIAddRowsPayload {
     pub starting_row: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct APIWorkflowKeyname {
     pub name: String,
     pub version: String,

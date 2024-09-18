@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Represents an address in a wallet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Address {
     /// The ID of the wallet that owns the address.
     pub wallet_id: String,
@@ -178,7 +178,7 @@ pub struct ModelError {
 }
 
 /// Represents a blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Network {
     /// The ID of the blockchain network.
     pub id: NetworkIdentifier,
@@ -309,7 +309,7 @@ impl Network {
 }
 
 /// Enum representing the protocol family of the blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub enum NetworkProtocolFamilyEnum {
     Evm,
 }

@@ -1,0 +1,2047 @@
+openapi: 3.0.3
+info:
+  title: shinkai_node
+  description: ''
+  contact:
+    name: Nico Arqueros
+    email: nico@shinkai.com
+  license:
+    name: ''
+  version: 0.8.4
+paths:
+  /v2/add_file_to_inbox:
+    post:
+      tags:
+      - crate
+      operationId: add_file_to_inbox_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddFileToInboxRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully added file to inbox
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/all_inboxes:
+    get:
+      tags:
+      - crate
+      operationId: get_all_smart_inboxes_handler
+      responses:
+        '200':
+          description: Successfully retrieved all smart inboxes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/V2SmartInbox'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/available_llm_providers:
+    get:
+      tags:
+      - crate
+      operationId: get_available_llm_providers_handler
+      responses:
+        '200':
+          description: Successfully retrieved available LLM providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SerializedLLMProvider'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/change_job_llm_provider:
+    post:
+      tags:
+      - crate
+      operationId: change_job_llm_provider_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIChangeJobAgentRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully changed job LLM provider
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/create_files_inbox:
+    post:
+      tags:
+      - crate
+      operationId: create_files_inbox_handler
+      responses:
+        '200':
+          description: Successfully created files inbox
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/create_job:
+    post:
+      tags:
+      - crate
+      operationId: create_job_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully created job
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/get_job_config:
+    get:
+      tags:
+      - crate
+      operationId: get_job_config_handler
+      parameters:
+      - name: job_id
+        in: query
+        description: Job ID to retrieve configuration for
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Successfully retrieved job configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobConfig'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/get_job_scope:
+    get:
+      tags:
+      - crate
+      operationId: get_job_scope_handler
+      parameters:
+      - name: job_id
+        in: query
+        description: Job ID to retrieve scope for
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Successfully retrieved job scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobScope'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/job_message:
+    post:
+      tags:
+      - crate
+      operationId: job_message_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobMessageRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully processed job message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendResponseBody'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/last_messages:
+    post:
+      tags:
+      - crate
+      operationId: get_last_messages_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetLastMessagesRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved last messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/V2ChatMessage'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/last_messages_with_branches:
+    post:
+      tags:
+      - crate
+      operationId: get_last_messages_with_branches_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetLastMessagesWithBranchesRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved last messages with branches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/V2ChatMessage'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/retry_message:
+    post:
+      tags:
+      - crate
+      operationId: retry_message_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetryMessageRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully retried message
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/update_job_config:
+    post:
+      tags:
+      - crate
+      operationId: update_job_config_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateJobConfigRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully updated job configuration
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/update_job_scope:
+    post:
+      tags:
+      - crate
+      operationId: update_job_scope_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateJobScopeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully updated job scope
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/update_smart_inbox_name:
+    post:
+      tags:
+      - crate
+      operationId: update_smart_inbox_name_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSmartInboxNameRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully updated smart inbox name
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+components:
+  schemas:
+    APIChangeJobAgentRequest:
+      type: object
+      required:
+      - job_id
+      - new_agent_id
+      properties:
+        job_id:
+          type: string
+        new_agent_id:
+          type: string
+    APIError:
+      type: object
+      required:
+      - code
+      - error
+      - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          minimum: 0
+        error:
+          type: string
+        message:
+          type: string
+    AddFileToInboxRequest:
+      type: object
+      required:
+      - file_inbox_name
+      - filename
+      - file
+      properties:
+        file:
+          type: string
+          format: binary
+        file_inbox_name:
+          type: string
+        filename:
+          type: string
+    AssociatedUI:
+      oneOf:
+      - type: object
+        required:
+        - Sheet
+        properties:
+          Sheet:
+            type: string
+    AudioFileType:
+      oneOf:
+      - type: string
+        enum:
+        - Mp3
+      - type: string
+        enum:
+        - Wav
+      - type: string
+        enum:
+        - Ogg
+      - type: string
+        enum:
+        - Flac
+      - type: string
+        enum:
+        - Aac
+      - type: string
+        enum:
+        - Wma
+      - type: string
+        enum:
+        - Alac
+      - type: string
+        enum:
+        - Ape
+      - type: string
+        enum:
+        - Dsf
+      - type: string
+        enum:
+        - M4a
+      - type: string
+        enum:
+        - Opus
+      - type: string
+        enum:
+        - Ra
+      - type: string
+        enum:
+        - Au
+      - type: string
+        enum:
+        - Aiff
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    BaseVectorResource:
+      oneOf:
+      - type: object
+        required:
+        - Document
+        properties:
+          Document:
+            $ref: '#/components/schemas/DocumentVectorResource'
+      - type: object
+        required:
+        - Map
+        properties:
+          Map:
+            $ref: '#/components/schemas/MapVectorResource'
+      description: |-
+        The list of base/core VectorResource types which are fully
+        composable within one another
+    CallbackAction:
+      oneOf:
+      - type: object
+        required:
+        - Job
+        properties:
+          Job:
+            $ref: '#/components/schemas/JobMessage'
+      - type: object
+        required:
+        - Sheet
+        properties:
+          Sheet:
+            $ref: '#/components/schemas/SheetManagerAction'
+    CodeFileType:
+      oneOf:
+      - type: string
+        enum:
+        - Python
+      - type: string
+        enum:
+        - Java
+      - type: string
+        enum:
+        - JavaScript
+      - type: string
+        enum:
+        - TypeScript
+      - type: string
+        enum:
+        - C
+      - type: string
+        enum:
+        - Cpp
+      - type: string
+        enum:
+        - CppHeader
+      - type: string
+        enum:
+        - CSharp
+      - type: string
+        enum:
+        - Go
+      - type: string
+        enum:
+        - Rust
+      - type: string
+        enum:
+        - Swift
+      - type: string
+        enum:
+        - Kotlin
+      - type: string
+        enum:
+        - Php
+      - type: string
+        enum:
+        - Ruby
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    ConfigFileType:
+      oneOf:
+      - type: string
+        enum:
+        - Toml
+      - type: string
+        enum:
+        - Ini
+      - type: string
+        enum:
+        - Yaml
+      - type: string
+        enum:
+        - Eslint
+      - type: string
+        enum:
+        - Prettier
+      - type: string
+        enum:
+        - Webpack
+      - type: string
+        enum:
+        - Dockerfile
+      - type: string
+        enum:
+        - Gitignore
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    CreateJobRequest:
+      type: object
+      required:
+      - job_creation_info
+      - llm_provider
+      properties:
+        job_creation_info:
+          $ref: '#/components/schemas/JobCreationInfo'
+        llm_provider:
+          type: string
+    DataTagIndex:
+      type: object
+      required:
+      - index
+      properties:
+        index:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    DistributionInfo:
+      type: object
+      description: Info about where the source data was acquired from, and when it was originally distributed
+      required:
+      - datetime
+      properties:
+        datetime:
+          type: string
+          format: date
+        origin:
+          allOf:
+          - $ref: '#/components/schemas/DistributionOrigin'
+          nullable: true
+    DistributionOrigin:
+      oneOf:
+      - type: object
+        required:
+        - Uri
+        properties:
+          Uri:
+            type: string
+      - type: object
+        required:
+        - ShinkaiNode
+        properties:
+          ShinkaiNode:
+            type: array
+            items:
+              allOf:
+              - type: string
+              - $ref: '#/components/schemas/VRPath'
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+      description: |-
+        The origin where the original data was acquired from.
+        Based on source file that was used to create the VR if one exists (ie. pdf/webpage), or based on the VR where/when it was released
+    DocumentFileType:
+      oneOf:
+      - type: string
+        enum:
+        - Pdf
+      - type: string
+        enum:
+        - Md
+      - type: string
+        enum:
+        - Txt
+      - type: string
+        enum:
+        - Epub
+      - type: string
+        enum:
+        - Doc
+      - type: string
+        enum:
+        - Docx
+      - type: string
+        enum:
+        - Rtf
+      - type: string
+        enum:
+        - Odt
+      - type: string
+        enum:
+        - Html
+      - type: string
+        enum:
+        - Csv
+      - type: string
+        enum:
+        - Xls
+      - type: string
+        enum:
+        - Xlsx
+      - type: string
+        enum:
+        - Ppt
+      - type: string
+        enum:
+        - Pptx
+      - type: string
+        enum:
+        - Xml
+      - type: string
+        enum:
+        - Json
+      - type: string
+        enum:
+        - Ps
+      - type: string
+        enum:
+        - Tex
+      - type: string
+        enum:
+        - Latex
+      - type: string
+        enum:
+        - Ods
+      - type: string
+        enum:
+        - Odp
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    DocumentVectorResource:
+      type: object
+      description: |-
+        A VectorResource which uses an internal numbered/ordered list data model,
+        thus providing an ideal interface for document-like content such as PDFs,
+        epubs, web content, written works, and more.
+      required:
+      - name
+      - source
+      - resource_id
+      - resource_embedding
+      - embedding_model_used_string
+      - resource_base_type
+      - embeddings
+      - node_count
+      - nodes
+      - data_tag_index
+      - created_datetime
+      - last_written_datetime
+      - metadata_index
+      - keywords
+      - distribution_info
+      properties:
+        created_datetime:
+          type: string
+          format: date
+        data_tag_index:
+          $ref: '#/components/schemas/DataTagIndex'
+        description:
+          type: string
+          nullable: true
+        distribution_info:
+          $ref: '#/components/schemas/DistributionInfo'
+        embedding_model_used_string:
+          type: string
+        embeddings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Embedding'
+        keywords:
+          $ref: '#/components/schemas/VRKeywords'
+        last_written_datetime:
+          type: string
+          format: date
+        merkle_root:
+          type: string
+          nullable: true
+        metadata_index:
+          $ref: '#/components/schemas/MetadataIndex'
+        name:
+          type: string
+        node_count:
+          type: integer
+          format: int64
+          minimum: 0
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        resource_base_type:
+          $ref: '#/components/schemas/VRBaseType'
+        resource_embedding:
+          $ref: '#/components/schemas/Embedding'
+        resource_id:
+          type: string
+        source:
+          $ref: '#/components/schemas/VRSourceReference'
+    Embedding:
+      type: object
+      description: A struct that represents a Vector Embedding with an added string id.
+      required:
+      - id
+      - vector
+      properties:
+        id:
+          type: string
+        vector:
+          type: array
+          items:
+            type: number
+            format: float
+    Exo:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    ExternalURIReference:
+      type: object
+      description: |-
+        Struct that represents an external URI like a website URL which
+        has not been downloaded into a SourceFile, but is just referenced.
+      required:
+      - uri
+      properties:
+        uri:
+          type: string
+    Gemini:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    GenericAPI:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    GetLastMessagesRequest:
+      type: object
+      required:
+      - inbox_name
+      - limit
+      properties:
+        inbox_name:
+          type: string
+        limit:
+          type: integer
+          minimum: 0
+        offset_key:
+          type: string
+          nullable: true
+    GetLastMessagesWithBranchesRequest:
+      type: object
+      required:
+      - inbox_name
+      - limit
+      properties:
+        inbox_name:
+          type: string
+        limit:
+          type: integer
+          minimum: 0
+        offset_key:
+          type: string
+          nullable: true
+    Groq:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    ImageFileType:
+      oneOf:
+      - type: string
+        enum:
+        - Png
+      - type: string
+        enum:
+        - Jpeg
+      - type: string
+        enum:
+        - Gif
+      - type: string
+        enum:
+        - Bmp
+      - type: string
+        enum:
+        - Tiff
+      - type: string
+        enum:
+        - Svg
+      - type: string
+        enum:
+        - Webp
+      - type: string
+        enum:
+        - Ico
+      - type: string
+        enum:
+        - Heic
+      - type: string
+        enum:
+        - Raw
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    JobConfig:
+      type: object
+      properties:
+        custom_prompt:
+          type: string
+          nullable: true
+        other_model_params:
+          nullable: true
+        seed:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        stream:
+          type: boolean
+          nullable: true
+        temperature:
+          type: number
+          format: double
+          nullable: true
+        top_k:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        top_p:
+          type: number
+          format: double
+          nullable: true
+    JobCreationInfo:
+      type: object
+      required:
+      - scope
+      properties:
+        associated_ui:
+          allOf:
+          - $ref: '#/components/schemas/AssociatedUI'
+          nullable: true
+        is_hidden:
+          type: boolean
+          nullable: true
+        scope:
+          $ref: '#/components/schemas/JobScope'
+    JobMessage:
+      type: object
+      required:
+      - job_id
+      - content
+      - files_inbox
+      properties:
+        callback:
+          allOf:
+          - $ref: '#/components/schemas/CallbackAction'
+          nullable: true
+        content:
+          type: string
+        files_inbox:
+          type: string
+        job_id:
+          type: string
+        parent:
+          type: string
+          nullable: true
+        sheet_job_data:
+          type: string
+          nullable: true
+        workflow_code:
+          type: string
+          nullable: true
+        workflow_name:
+          type: string
+          nullable: true
+    JobMessageRequest:
+      type: object
+      required:
+      - job_message
+      properties:
+        job_message:
+          $ref: '#/components/schemas/JobMessage'
+    JobScope:
+      type: object
+      description: |-
+        Job's scope which includes both Local entries (vrkai stored locally only in job)
+        and VecFS entries (source/vector resource stored in the FS, accessible to all jobs)
+      required:
+      - local_vrkai
+      - local_vrpack
+      - vector_fs_items
+      - vector_fs_folders
+      - network_folders
+      properties:
+        local_vrkai:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalScopeVRKaiEntry'
+        local_vrpack:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalScopeVRPackEntry'
+        network_folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetworkFolderScopeEntry'
+        vector_fs_folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/VectorFSFolderScopeEntry'
+        vector_fs_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/VectorFSItemScopeEntry'
+    KeywordEmbedding:
+      type: object
+      description: Struct which holds the embedding for a Vector Resource's keywords
+      required:
+      - embedding
+      - model_used
+      properties:
+        embedding:
+          $ref: '#/components/schemas/Embedding'
+        model_used:
+          type: string
+    LLMProviderInterface:
+      oneOf:
+      - type: object
+        required:
+        - OpenAI
+        properties:
+          OpenAI:
+            $ref: '#/components/schemas/OpenAI'
+      - type: object
+        required:
+        - GenericAPI
+        properties:
+          GenericAPI:
+            $ref: '#/components/schemas/GenericAPI'
+      - type: object
+        required:
+        - Ollama
+        properties:
+          Ollama:
+            $ref: '#/components/schemas/Ollama'
+      - type: object
+        required:
+        - ShinkaiBackend
+        properties:
+          ShinkaiBackend:
+            $ref: '#/components/schemas/ShinkaiBackend'
+      - type: object
+        required:
+        - LocalLLM
+        properties:
+          LocalLLM:
+            $ref: '#/components/schemas/LocalLLM'
+      - type: object
+        required:
+        - Groq
+        properties:
+          Groq:
+            $ref: '#/components/schemas/Groq'
+      - type: object
+        required:
+        - Gemini
+        properties:
+          Gemini:
+            $ref: '#/components/schemas/Gemini'
+      - type: object
+        required:
+        - Exo
+        properties:
+          Exo:
+            $ref: '#/components/schemas/Exo'
+    LLMProviderSubset:
+      type: object
+      required:
+      - id
+      - full_identity_name
+      - model
+      properties:
+        full_identity_name:
+          $ref: '#/components/schemas/ShinkaiName'
+        id:
+          type: string
+        model:
+          $ref: '#/components/schemas/LLMProviderInterface'
+    LocalLLM:
+      type: object
+    LocalScopeVRKaiEntry:
+      type: object
+      description: |-
+        A Scope Entry for a local VRKai that only lives in the
+        Job's scope (not in the VectorFS & thus not available to other jobs)
+      required:
+      - vrkai
+      properties:
+        vrkai:
+          $ref: '#/components/schemas/VRKai'
+    LocalScopeVRPackEntry:
+      type: object
+      description: |-
+        A Scope Entry for a local VRPack that only lives in the
+        Job's scope (not in the VectorFS & thus not available to other jobs)
+      required:
+      - vrpack
+      properties:
+        vrpack:
+          $ref: '#/components/schemas/VRPack'
+    MapVectorResource:
+      type: object
+      description: |-
+        A VectorResource which uses a HashMap data model, thus providing a
+        native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
+        constantly-updating data streams, or any unordered/mutating source data.
+      required:
+      - name
+      - source
+      - resource_id
+      - resource_embedding
+      - resource_base_type
+      - embedding_model_used_string
+      - embeddings
+      - node_count
+      - nodes
+      - data_tag_index
+      - created_datetime
+      - last_written_datetime
+      - metadata_index
+      - keywords
+      - distribution_info
+      properties:
+        created_datetime:
+          type: string
+          format: date
+        data_tag_index:
+          $ref: '#/components/schemas/DataTagIndex'
+        description:
+          type: string
+          nullable: true
+        distribution_info:
+          $ref: '#/components/schemas/DistributionInfo'
+        embedding_model_used_string:
+          type: string
+        embeddings:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Embedding'
+        keywords:
+          $ref: '#/components/schemas/VRKeywords'
+        last_written_datetime:
+          type: string
+          format: date
+        merkle_root:
+          type: string
+          nullable: true
+        metadata_index:
+          $ref: '#/components/schemas/MetadataIndex'
+        name:
+          type: string
+        node_count:
+          type: integer
+          format: int64
+          minimum: 0
+        nodes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Node'
+        resource_base_type:
+          $ref: '#/components/schemas/VRBaseType'
+        resource_embedding:
+          $ref: '#/components/schemas/Embedding'
+        resource_id:
+          type: string
+        source:
+          $ref: '#/components/schemas/VRSourceReference'
+    MetadataIndex:
+      type: object
+      required:
+      - index
+      properties:
+        index:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    NetworkFolderScopeEntry:
+      type: object
+      description: |-
+        A Scope Entry for a FSFolder that (potentially) exists on another node's VectorFS (if your node has perms).
+        Unsupported currently, struct added for future compatibility.
+      required:
+      - name
+      - external_identity
+      - path
+      properties:
+        external_identity:
+          $ref: '#/components/schemas/ShinkaiName'
+        name:
+          type: string
+        path:
+          $ref: '#/components/schemas/VRPath'
+    Node:
+      type: object
+      description: |-
+        Represents a Vector Resource Node which holds a unique id, one of the types of NodeContent,
+        metadata, and other internal relevant data.
+      required:
+      - id
+      - content
+      - data_tag_names
+      - last_written_datetime
+      properties:
+        content:
+          $ref: '#/components/schemas/NodeContent'
+        data_tag_names:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+        last_written_datetime:
+          type: string
+          format: date
+        merkle_hash:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+    NodeApiData:
+      type: object
+      required:
+      - parent_hash
+      - node_message_hash
+      - node_timestamp
+      properties:
+        node_message_hash:
+          type: string
+        node_timestamp:
+          type: string
+        parent_hash:
+          type: string
+    NodeContent:
+      oneOf:
+      - type: object
+        required:
+        - Text
+        properties:
+          Text:
+            type: string
+      - type: object
+        required:
+        - Resource
+        properties:
+          Resource:
+            $ref: '#/components/schemas/BaseVectorResource'
+      - type: object
+        required:
+        - ExternalContent
+        properties:
+          ExternalContent:
+            $ref: '#/components/schemas/SourceReference'
+      - type: object
+        required:
+        - VRHeader
+        properties:
+          VRHeader:
+            $ref: '#/components/schemas/VRHeader'
+      description: Contents of a Node
+    NotarizedSourceReference:
+      oneOf:
+      - type: object
+        required:
+        - TLSNotarized
+        properties:
+          TLSNotarized:
+            $ref: '#/components/schemas/TLSNotarizedReference'
+      description: |-
+        Type that acts as a reference to a notarized source file
+        (meaning one that has some cryptographic proof/signature of origin)
+    Ollama:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    OpenAI:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    RetryMessageRequest:
+      type: object
+      required:
+      - message_id
+      - inbox_name
+      properties:
+        inbox_name:
+          type: string
+        message_id:
+          type: string
+    SendResponseBody:
+      type: object
+      required:
+      - status
+      - message
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/SendResponseBodyData'
+          nullable: true
+        message:
+          type: string
+        status:
+          type: string
+    SendResponseBodyData:
+      type: object
+      required:
+      - message_id
+      - inbox
+      - scheduled_time
+      properties:
+        inbox:
+          type: string
+        message_id:
+          type: string
+        parent_message_id:
+          type: string
+          nullable: true
+        scheduled_time:
+          type: string
+    SerializedLLMProvider:
+      type: object
+      required:
+      - id
+      - full_identity_name
+      - perform_locally
+      - model
+      - toolkit_permissions
+      - storage_bucket_permissions
+      - allowed_message_senders
+      properties:
+        allowed_message_senders:
+          type: array
+          items:
+            type: string
+        api_key:
+          type: string
+          nullable: true
+        external_url:
+          type: string
+          nullable: true
+        full_identity_name:
+          $ref: '#/components/schemas/ShinkaiName'
+        id:
+          type: string
+        model:
+          $ref: '#/components/schemas/LLMProviderInterface'
+        perform_locally:
+          type: boolean
+        storage_bucket_permissions:
+          type: array
+          items:
+            type: string
+        toolkit_permissions:
+          type: array
+          items:
+            type: string
+    SheetJobAction:
+      type: object
+      required:
+      - sheet_id
+      - row
+      - col
+      properties:
+        col:
+          type: string
+        row:
+          type: string
+        sheet_id:
+          type: string
+    SheetManagerAction:
+      type: object
+      required:
+      - sheet_action
+      properties:
+        job_message_next:
+          allOf:
+          - $ref: '#/components/schemas/JobMessage'
+          nullable: true
+        sheet_action:
+          $ref: '#/components/schemas/SheetJobAction'
+    ShinkaiBackend:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    ShinkaiFileType:
+      oneOf:
+      - type: string
+        enum:
+        - ShinkaiJobKai
+      - type: string
+        enum:
+        - ShinkaiVRKai
+      - type: string
+        enum:
+        - ShinkaiVRPack
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+    ShinkaiName:
+      type: object
+      required:
+      - full_name
+      - node_name
+      properties:
+        full_name:
+          type: string
+        node_name:
+          type: string
+        profile_name:
+          type: string
+          nullable: true
+        subidentity_name:
+          type: string
+          nullable: true
+        subidentity_type:
+          allOf:
+          - $ref: '#/components/schemas/ShinkaiSubidentityType'
+          nullable: true
+    ShinkaiSubidentityType:
+      type: string
+      enum:
+      - Agent
+      - Device
+    SourceFile:
+      oneOf:
+      - type: object
+        required:
+        - Standard
+        properties:
+          Standard:
+            $ref: '#/components/schemas/StandardSourceFile'
+      - type: object
+        required:
+        - TLSNotarized
+        properties:
+          TLSNotarized:
+            $ref: '#/components/schemas/TLSNotarizedSourceFile'
+      description: Struct which holds the data of a source file which a VR was generated from
+    SourceFileMap:
+      type: object
+      description: |-
+        A map which stores SourceFiles based on VRPaths within a VectorResource.
+        A SourceFile at root represents the single source file for the whole VR.
+      required:
+      - map
+      - source_files_count
+      properties:
+        map:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SourceFile'
+        source_files_count:
+          type: integer
+          format: int64
+          minimum: 0
+    SourceFileReference:
+      type: object
+      required:
+      - file_name
+      - file_type
+      - text_chunking_strategy
+      properties:
+        file_name:
+          type: string
+        file_type:
+          $ref: '#/components/schemas/SourceFileType'
+        text_chunking_strategy:
+          $ref: '#/components/schemas/TextChunkingStrategy'
+    SourceFileType:
+      oneOf:
+      - type: object
+        required:
+        - Document
+        properties:
+          Document:
+            $ref: '#/components/schemas/DocumentFileType'
+      - type: object
+        required:
+        - Image
+        properties:
+          Image:
+            $ref: '#/components/schemas/ImageFileType'
+      - type: object
+        required:
+        - Code
+        properties:
+          Code:
+            $ref: '#/components/schemas/CodeFileType'
+      - type: object
+        required:
+        - ConfigFileType
+        properties:
+          ConfigFileType:
+            $ref: '#/components/schemas/ConfigFileType'
+      - type: object
+        required:
+        - Video
+        properties:
+          Video:
+            $ref: '#/components/schemas/VideoFileType'
+      - type: object
+        required:
+        - Audio
+        properties:
+          Audio:
+            $ref: '#/components/schemas/AudioFileType'
+      - type: object
+        required:
+        - Shinkai
+        properties:
+          Shinkai:
+            $ref: '#/components/schemas/ShinkaiFileType'
+    SourceReference:
+      oneOf:
+      - type: object
+        required:
+        - FileRef
+        properties:
+          FileRef:
+            $ref: '#/components/schemas/SourceFileReference'
+      - type: object
+        required:
+        - ExternalURI
+        properties:
+          ExternalURI:
+            $ref: '#/components/schemas/ExternalURIReference'
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+      description: Type that acts as a reference to external file/content/data
+    StandardSourceFile:
+      type: object
+      description: A standard source file that data was extracted from to create a VectorResource.
+      required:
+      - file_name
+      - file_type
+      - file_content
+      properties:
+        distribution_info:
+          allOf:
+          - $ref: '#/components/schemas/DistributionInfo'
+          nullable: true
+        file_content:
+          type: string
+          format: binary
+        file_name:
+          type: string
+        file_type:
+          $ref: '#/components/schemas/SourceFileType'
+    TLSNotarizedReference:
+      type: object
+      required:
+      - file_name
+      - file_type
+      - text_chunking_strategy
+      properties:
+        file_name:
+          type: string
+        file_type:
+          $ref: '#/components/schemas/SourceFileType'
+        text_chunking_strategy:
+          $ref: '#/components/schemas/TextChunkingStrategy'
+    TLSNotarizedSourceFile:
+      type: object
+      description: The source file that data was extracted from to create a VectorResource
+      required:
+      - file_name
+      - file_type
+      - file_content
+      - proof
+      properties:
+        distribution_info:
+          allOf:
+          - $ref: '#/components/schemas/DistributionInfo'
+          nullable: true
+        file_content:
+          type: string
+          format: binary
+        file_name:
+          type: string
+        file_type:
+          $ref: '#/components/schemas/SourceFileType'
+        proof:
+          $ref: '#/components/schemas/TLSNotaryProof'
+    TLSNotaryProof:
+      type: object
+      description: Struct which holds the contents of the TLSNotary proof for the source file
+    TextChunkingStrategy:
+      type: string
+      description: |-
+        What text chunking strategy was used to create this VR from the source file.
+        This is required for performing content validation/that it matches the VR nodes.
+        TODO: Think about how to make this more explicit/specific and future support
+      enum:
+      - V1
+    UpdateJobConfigRequest:
+      type: object
+      required:
+      - job_id
+      - config
+      properties:
+        config:
+          $ref: '#/components/schemas/JobConfig'
+        job_id:
+          type: string
+    UpdateJobScopeRequest:
+      type: object
+      required:
+      - job_id
+      - job_scope
+      properties:
+        job_id:
+          type: string
+        job_scope:
+          $ref: '#/components/schemas/JobScope'
+    UpdateSmartInboxNameRequest:
+      type: object
+      required:
+      - inbox_name
+      - custom_name
+      properties:
+        custom_name:
+          type: string
+        inbox_name:
+          type: string
+    V2ChatMessage:
+      type: object
+      required:
+      - job_message
+      - sender
+      - sender_subidentity
+      - receiver
+      - receiver_subidentity
+      - node_api_data
+      - inbox
+      properties:
+        inbox:
+          type: string
+        job_message:
+          $ref: '#/components/schemas/JobMessage'
+        node_api_data:
+          $ref: '#/components/schemas/NodeApiData'
+        receiver:
+          type: string
+        receiver_subidentity:
+          type: string
+        sender:
+          type: string
+        sender_subidentity:
+          type: string
+    V2SmartInbox:
+      type: object
+      required:
+      - inbox_id
+      - custom_name
+      - datetime_created
+      - is_finished
+      properties:
+        agent:
+          allOf:
+          - $ref: '#/components/schemas/LLMProviderSubset'
+          nullable: true
+        custom_name:
+          type: string
+        datetime_created:
+          type: string
+        inbox_id:
+          type: string
+        is_finished:
+          type: boolean
+        job_config:
+          allOf:
+          - $ref: '#/components/schemas/JobConfig'
+          nullable: true
+        job_scope:
+          nullable: true
+        last_message:
+          allOf:
+          - $ref: '#/components/schemas/V2ChatMessage'
+          nullable: true
+    VRBaseType:
+      oneOf:
+      - type: string
+        enum:
+        - Document
+      - type: string
+        enum:
+        - Map
+      - type: object
+        required:
+        - CustomUnsupported
+        properties:
+          CustomUnsupported:
+            type: string
+      description: |-
+        Enum used for VectorResources to self-attest their base type.
+
+        `CustomUnsupported(s)` allows for devs to implement custom VectorResources that fulfill the trait,
+        but which aren't composable with any of the base resources (we are open to PRs for adding new base types as well).
+    VRHeader:
+      type: object
+      description: Struct which holds descriptive information about a given Vector Resource.
+      required:
+      - resource_name
+      - resource_id
+      - resource_base_type
+      - resource_source
+      - resource_created_datetime
+      - resource_last_written_datetime
+      - resource_embedding_model_used
+      - resource_keywords
+      - resource_distribution_info
+      - data_tag_names
+      - metadata_index_keys
+      properties:
+        data_tag_names:
+          type: array
+          items:
+            type: string
+          description: List of data tag names matching in internal nodes
+        metadata_index_keys:
+          type: array
+          items:
+            type: string
+          description: List of metadata keys held in internal nodes
+        resource_base_type:
+          $ref: '#/components/schemas/VRBaseType'
+        resource_created_datetime:
+          type: string
+          format: date
+          description: ISO RFC3339 when then Vector Resource was created
+        resource_distribution_info:
+          $ref: '#/components/schemas/DistributionInfo'
+        resource_embedding:
+          allOf:
+          - $ref: '#/components/schemas/Embedding'
+          nullable: true
+        resource_embedding_model_used:
+          type: string
+        resource_id:
+          type: string
+        resource_keywords:
+          $ref: '#/components/schemas/VRKeywords'
+        resource_last_written_datetime:
+          type: string
+          format: date
+          description: ISO RFC3339 when then Vector Resource was last written into (a node was modified)
+        resource_merkle_root:
+          type: string
+          nullable: true
+        resource_name:
+          type: string
+        resource_source:
+          $ref: '#/components/schemas/VRSourceReference'
+    VRKai:
+      type: object
+      description: |-
+        Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap.
+        To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
+      required:
+      - resource
+      - version
+      - metadata
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        resource:
+          $ref: '#/components/schemas/BaseVectorResource'
+        sfm:
+          allOf:
+          - $ref: '#/components/schemas/SourceFileMap'
+          nullable: true
+        version:
+          $ref: '#/components/schemas/VRKaiVersion'
+    VRKaiVersion:
+      type: string
+      enum:
+      - V1
+    VRKeywords:
+      type: object
+      description: |-
+        A struct which holds a Vector Resource's keywords/optional
+        keywords embedding
+      required:
+      - keyword_list
+      properties:
+        keyword_list:
+          type: array
+          items:
+            type: string
+        keywords_embedding:
+          allOf:
+          - $ref: '#/components/schemas/KeywordEmbedding'
+          nullable: true
+    VRPack:
+      type: object
+      description: |-
+        Represents a parsed VRPack file, which contains a Map Vector Resource that holds a tree structure of folders & encoded VRKai nodes.
+        In other words, a `.vrpack` file is akin to a "compressed archive" of internally held VRKais with folder structure preserved.
+        Of note, VRPacks are not compressed at the top level because the VRKais held inside already are. This improves performance for large VRPacks.
+        To save as a file or transfer the VRPack, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
+      required:
+      - name
+      - resource
+      - version
+      - vrkai_count
+      - folder_count
+      - embedding_models_used
+      - metadata
+      properties:
+        embedding_models_used:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+            minimum: 0
+        folder_count:
+          type: integer
+          format: int64
+          minimum: 0
+        metadata:
+          type: object
+          description: VRPack metadata enables users to add extra info that may be needed for unique use cases
+          additionalProperties:
+            type: string
+        name:
+          type: string
+        resource:
+          $ref: '#/components/schemas/BaseVectorResource'
+        version:
+          $ref: '#/components/schemas/VRPackVersion'
+        vrkai_count:
+          type: integer
+          format: int64
+          minimum: 0
+    VRPackVersion:
+      type: string
+      enum:
+      - V1
+    VRPath:
+      type: object
+      description: |-
+        A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
+        Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
+      required:
+      - path_ids
+      properties:
+        path_ids:
+          type: array
+          items:
+            type: string
+    VRSourceReference:
+      oneOf:
+      - type: object
+        required:
+        - Standard
+        properties:
+          Standard:
+            $ref: '#/components/schemas/SourceReference'
+      - type: object
+        required:
+        - Notarized
+        properties:
+          Notarized:
+            $ref: '#/components/schemas/NotarizedSourceReference'
+      - type: string
+        enum:
+        - None
+      description: Information about the source content a Vector Resource came from
+    VectorFSFolderScopeEntry:
+      type: object
+      description: A Scope Entry for a FSFolder saved in the VectorFS.
+      required:
+      - name
+      - path
+      properties:
+        name:
+          type: string
+        path:
+          $ref: '#/components/schemas/VRPath'
+    VectorFSItemScopeEntry:
+      type: object
+      description: A Scope Entry for a FSItem saved in the VectorFS.
+      required:
+      - name
+      - path
+      - source
+      properties:
+        name:
+          type: string
+        path:
+          $ref: '#/components/schemas/VRPath'
+        source:
+          $ref: '#/components/schemas/VRSourceReference'
+    VideoFileType:
+      oneOf:
+      - type: string
+        enum:
+        - Mp4
+      - type: string
+        enum:
+        - Mkv
+      - type: string
+        enum:
+        - Avi
+      - type: string
+        enum:
+        - Flv
+      - type: string
+        enum:
+        - Mov
+      - type: string
+        enum:
+        - Wmv
+      - type: string
+        enum:
+        - Mpeg
+      - type: string
+        enum:
+        - Webm
+      - type: string
+        enum:
+        - Ogv
+      - type: string
+        enum:
+        - Vob
+      - type: string
+        enum:
+        - M4v
+      - type: string
+        enum:
+        - Mpg
+      - type: object
+        required:
+        - Other
+        properties:
+          Other:
+            type: string
+tags:
+- name: jobs
+  description: Job API endpoints

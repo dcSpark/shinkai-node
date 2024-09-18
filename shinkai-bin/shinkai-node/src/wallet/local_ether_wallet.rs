@@ -15,6 +15,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use ethers::signers::LocalWallet as EthersLocalWallet;
@@ -28,7 +29,7 @@ use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWall
 
 pub type LocalWalletProvider = Provider<Http>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ToSchema)]
 pub struct LocalEthersWallet {
     pub id: String,
     pub network: Network,
@@ -55,20 +56,21 @@ impl Serialize for LocalEthersWallet {
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+#[schema(as = LocalEthersWallet)]
+pub struct LocalEthersWalletData {
+    id: String,
+    network: Network,
+    address: Address,
+    wallet_private_key: String,
+    provider_url: String,
+}
+
 impl<'de> Deserialize<'de> for LocalEthersWallet {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct LocalEthersWalletData {
-            id: String,
-            network: Network,
-            address: Address,
-            wallet_private_key: String,
-            provider_url: String,
-        }
-
         let data = LocalEthersWalletData::deserialize(deserializer)?;
         let wallet_bytes = hex::decode(data.wallet_private_key).map_err(serde::de::Error::custom)?;
         let wallet_secret_key =
@@ -87,7 +89,7 @@ impl<'de> Deserialize<'de> for LocalEthersWallet {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub enum WalletSource {
     Mnemonic(String),
     PrivateKey(String),
