@@ -2,12 +2,13 @@ use std::{sync::Arc, time::Instant};
 
 use async_channel::Sender;
 use reqwest::StatusCode;
-use tokio::sync::{RwLock};
+use tokio::sync::RwLock;
 
 use crate::{
     db::ShinkaiDB,
     lance_db::shinkai_lance_db::LanceShinkaiDb,
-    network::{node_api_router::APIError, node_error::NodeError, Node}, prompts::custom_prompt::CustomPrompt,
+    network::{node_api_router::APIError, node_error::NodeError, Node},
+    prompts::custom_prompt::CustomPrompt,
 };
 
 impl Node {
@@ -100,7 +101,16 @@ impl Node {
         // Get all prompts from the LanceShinkaiDb
         match lance_db.read().await.get_all_prompts().await {
             Ok(prompts) => {
-                let _ = res.send(Ok(prompts)).await;
+                // Set embeddings to None before returning
+                let prompts_without_embeddings: Vec<CustomPrompt> = prompts
+                    .into_iter()
+                    .map(|mut prompt| {
+                        prompt.embedding = None;
+                        prompt
+                    })
+                    .collect();
+
+                let _ = res.send(Ok(prompts_without_embeddings)).await;
                 Ok(())
             }
             Err(err) => {
@@ -172,13 +182,22 @@ impl Node {
         // Perform the internal search using LanceShinkaiDb
         match lance_db.read().await.prompt_vector_search(&query, 5).await {
             Ok(prompts) => {
+                // Set embeddings to None before returning
+                let prompts_without_embeddings: Vec<CustomPrompt> = prompts
+                    .into_iter()
+                    .map(|mut prompt| {
+                        prompt.embedding = None;
+                        prompt
+                    })
+                    .collect();
+
                 // Log the elapsed time if LOG_ALL is set to 1
                 if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                     let elapsed_time = start_time.elapsed();
                     println!("Time taken for custom prompt search: {:?}", elapsed_time);
-                    println!("Number of custom prompt results: {}", prompts.len());
+                    println!("Number of custom prompt results: {}", prompts_without_embeddings.len());
                 }
-                let _ = res.send(Ok(prompts)).await;
+                let _ = res.send(Ok(prompts_without_embeddings)).await;
                 Ok(())
             }
             Err(err) => {

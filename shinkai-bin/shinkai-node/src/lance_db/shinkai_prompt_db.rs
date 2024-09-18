@@ -55,14 +55,14 @@ impl LanceShinkaiDb {
             return Ok(());
         }
 
+        self.prompt_table
+            .create_index(&["prompt"], Index::FTS(FtsIndexBuilder::default()))
+            .execute()
+            .await?;
+
         // Check the number of elements in the table
         let element_count = self.prompt_table.count_rows(None).await?;
-        if element_count < 100 {
-            self.prompt_table
-                .create_index(&["prompt"], Index::FTS(FtsIndexBuilder::default()))
-                .execute()
-                .await?;
-
+        if element_count < 256 {
             eprintln!("Not enough elements to create other indices. Skipping index creation for prompt table.");
             return Ok(());
         }
@@ -79,6 +79,7 @@ impl LanceShinkaiDb {
             .create_index(&["vector"], Index::Auto)
             .execute()
             .await?;
+
         self.prompt_table
             .create_index(
                 &[ShinkaiPromptSchema::vector_field()],

@@ -76,6 +76,7 @@ impl ToolRouter {
         }
 
         self.lance_db.write().await.create_tool_indices_if_needed().await?;
+        self.lance_db.write().await.create_prompt_indices_if_needed().await?;
 
         Ok(())
     }
@@ -87,10 +88,13 @@ impl ToolRouter {
         // Add JS tools
         let _ = self.add_js_tools().await;
 
+        let _ = self.add_static_prompts(generator).await;
+
         // Set the latest version in the database
         self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
 
         self.lance_db.write().await.create_tool_indices_if_needed().await?;
+        self.lance_db.write().await.create_prompt_indices_if_needed().await?;
 
         Ok(())
     }
