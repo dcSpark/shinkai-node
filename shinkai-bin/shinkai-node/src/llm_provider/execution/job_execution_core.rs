@@ -177,30 +177,6 @@ impl JobManager {
             return Ok(job_id);
         }
 
-        // // 4.- If a .jobkai file is found, processing job message is taken over by this alternate logic
-        // let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
-        //     db.clone(),
-        //     vector_fs.clone(),
-        //     &job_message.job_message,
-        //     llm_provider_found.clone(),
-        //     full_job.clone(),
-        //     job_message.profile.clone(),
-        //     clone_signature_secret_key(&identity_secret_key),
-        //     unstructured_api.clone(),
-        //     ws_manager.clone(),
-        //     llm_stopper.clone(),
-        // )
-        // .await;
-        // let jobkai_found = match jobkai_found_result {
-        //     Ok(found) => found,
-        //     Err(e) => {
-        //         return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await
-        //     }
-        // };
-        // if jobkai_found {
-        //     return Ok(job_id);
-        // }
-
         // Otherwise proceed forward with rest of logic.
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
