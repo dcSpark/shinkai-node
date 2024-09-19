@@ -4,10 +4,7 @@ use crate::{
     llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
     network::{
-        node_api_router::APIError,
-        node_error::NodeError,
-        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-        Node,
+        network_manager::external_subscriber_manager::ExternalSubscriberManager, node_api_router::APIError, node_error::NodeError, Node
     },
 };
 use async_channel::Sender;
@@ -27,6 +24,7 @@ use shinkai_message_primitives::{
         },
     },
 };
+use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,

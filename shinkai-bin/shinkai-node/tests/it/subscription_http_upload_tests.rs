@@ -8,14 +8,10 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     FileDestinationCredentials, FileDestinationSourceType,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::network::subscription_manager::http_manager::http_download_manager::{
-    HttpDownloadJob, HttpDownloadManager,
-};
-use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
-use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{
-    delete_all_in_folder, FileDestination,
-};
 use shinkai_node::network::Node;
+use shinkai_subscription_manager::subscription_manager::http_manager::http_download_manager::{HttpDownloadJob, HttpDownloadManager};
+use shinkai_subscription_manager::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
+use shinkai_subscription_manager::subscription_manager::http_manager::subscription_file_uploader::{delete_all_in_folder, FileDestination};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, Semaphore};

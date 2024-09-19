@@ -1,5 +1,3 @@
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::ShinkaiDB;
 use chrono::Utc;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -11,6 +9,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, Mutex};
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::db::db_errors::ShinkaiDBError;
 
 type MutexQueue<T> = Arc<Mutex<Vec<T>>>;
 type Subscriber<T> = mpsc::Sender<T>;

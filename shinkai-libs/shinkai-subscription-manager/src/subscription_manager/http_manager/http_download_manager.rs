@@ -1,9 +1,8 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
-use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::file_links::FileLink;
 use shinkai_message_primitives::schemas::shinkai_subscription::ShinkaiSubscription;
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_subscription::SubscriptionId};
@@ -15,6 +14,8 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Weak};
 use tokio::sync::{Mutex, RwLock, Semaphore};
+
+use crate::subscription_manager::fs_entry_tree::FSEntryTree;
 
 #[allow(dead_code)]
 const NUM_THREADS: usize = 2;

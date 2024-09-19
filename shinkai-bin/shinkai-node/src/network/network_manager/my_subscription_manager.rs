@@ -1,11 +1,3 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
-use crate::managers::identity_manager::IdentityManagerTrait;
-use crate::managers::IdentityManager;
-use crate::network::node::ProxyConnectionInfo;
-use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
-use crate::network::subscription_manager::http_manager::http_download_manager::HttpDownloadJob;
-use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::Node;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use futures::Future;
@@ -13,6 +5,7 @@ use lru::LruCache;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo;
@@ -31,6 +24,12 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
+use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
+use shinkai_subscription_manager::subscription_manager::http_manager::http_download_manager::{HttpDownloadJob, HttpDownloadManager};
+use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
+use shinkai_subscription_manager::subscription_manager::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
+use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_types::FSEntry;
 use shinkai_vector_resources::vector_resource::VRPath;
@@ -42,10 +41,11 @@ use std::sync::Weak;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
-use super::external_subscriber_manager::SharedFolderInfo;
-use super::fs_entry_tree::FSEntryTree;
-use super::http_manager::http_download_manager::HttpDownloadManager;
-use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
+use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::IdentityManager;
+use crate::network::node::ProxyConnectionInfo;
+use crate::network::Node;
+
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 const LRU_CAPACITY: usize = 100;

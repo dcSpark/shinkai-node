@@ -1,5 +1,5 @@
 use super::fs_entry_tree::{FSEntryTree, WebLink};
-use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
+use super::subscriber_manager_error::SubscriberManagerError;
 use chrono::{DateTime, Utc};
 use chrono::{NaiveDateTime, TimeZone};
 use shinkai_message_primitives::schemas::file_links::FileLink;

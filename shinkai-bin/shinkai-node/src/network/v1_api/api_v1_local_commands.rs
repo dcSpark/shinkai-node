@@ -1,9 +1,9 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
+use crate::network::network_manager::external_subscriber_manager::ExternalSubscriberManager;
+use crate::network::network_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::network::node_api_router::APIError;
-use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::network::Node;
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;

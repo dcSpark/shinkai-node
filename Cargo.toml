@@ -10,6 +10,8 @@ members = [
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-libs/shinkai-vector-fs",
   "shinkai-libs/shinkai-db",
+  "shinkai-libs/shinkai-subscription-manager",
+  "shinkai-libs/shinkai-job-queue-manager",
   "shinkai-bin/*",
 ]
 resolver = "2"
@@ -28,3 +30,5 @@ shinkai_sheet = { path = "./shinkai-libs/shinkai-sheet" }
 shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
 shinkai_vector_fs = { path = "./shinkai-libs/shinkai-vector-fs" }
 shinkai_db = { path = "./shinkai-libs/shinkai-db" }
+shinkai_subscription_manager = { path = "./shinkai-libs/shinkai-subscription-manager" }
+shinkai_job_queue_manager = { path = "./shinkai-libs/shinkai-job-queue-manager" }

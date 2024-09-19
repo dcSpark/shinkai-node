@@ -1,12 +1,12 @@
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use super::network_manager::external_subscriber_manager::ExternalSubscriberManager;
+use super::network_manager::my_subscription_manager::MySubscriptionsManager;
 use super::network_manager::network_job_manager::{
     NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
 };
 use super::node_commands::NodeCommand;
 use super::node_error::NodeError;
-use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
@@ -62,9 +62,9 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
-type TcpReadHalf = Arc<Mutex<ReadHalf<TcpStream>>>;
-type TcpWriteHalf = Arc<Mutex<WriteHalf<TcpStream>>>;
-type TcpConnection = Option<(TcpReadHalf, TcpWriteHalf)>;
+pub type TcpReadHalf = Arc<Mutex<ReadHalf<TcpStream>>>;
+pub type TcpWriteHalf = Arc<Mutex<WriteHalf<TcpStream>>>;
+pub type TcpConnection = Option<(TcpReadHalf, TcpWriteHalf)>;
 
 // Define the ConnectionInfo struct
 #[derive(Clone, Debug)]

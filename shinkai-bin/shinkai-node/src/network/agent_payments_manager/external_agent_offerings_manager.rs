@@ -1,9 +1,7 @@
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
 use crate::network::node::ProxyConnectionInfo;
-use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
@@ -11,6 +9,7 @@ use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
@@ -19,6 +18,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
 use std::pin::Pin;

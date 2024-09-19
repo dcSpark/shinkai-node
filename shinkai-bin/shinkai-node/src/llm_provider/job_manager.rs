@@ -1,7 +1,6 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
 use super::llm_stopper::LLMStopper;
-use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
@@ -12,6 +11,7 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;

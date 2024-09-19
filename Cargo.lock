@@ -9017,6 +9017,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_job_queue_manager"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "shinkai_db",
+ "shinkai_message_primitives",
+ "tokio",
+]
+
+[[package]]
 name = "shinkai_message_primitives"
 version = "0.7.6"
 dependencies = [
@@ -9058,9 +9070,6 @@ dependencies = [
  "async-lock 2.8.0",
  "async-std",
  "async-trait",
- "aws-config",
- "aws-sdk-s3",
- "aws-types",
  "base64 0.13.1",
  "bigdecimal",
  "bincode",
@@ -9102,8 +9111,10 @@ dependencies = [
  "shinkai_db",
  "shinkai_dsl",
  "shinkai_fs_mirror",
+ "shinkai_job_queue_manager",
  "shinkai_message_primitives",
  "shinkai_sheet",
+ "shinkai_subscription_manager",
  "shinkai_tcp_relayer",
  "shinkai_tools_runner",
  "shinkai_vector_fs",
@@ -9152,6 +9163,36 @@ dependencies = [
  "shinkai_message_primitives",
  "tokio",
  "uuid 1.10.0",
+]
+
+[[package]]
+name = "shinkai_subscription_manager"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-sdk-s3",
+ "aws-types",
+ "bincode",
+ "chacha20poly1305",
+ "chrono",
+ "chrono-tz 0.5.3",
+ "dashmap",
+ "ed25519-dalek",
+ "futures",
+ "lru 0.7.8",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "shinkai_db",
+ "shinkai_job_queue_manager",
+ "shinkai_message_primitives",
+ "shinkai_vector_fs",
+ "shinkai_vector_resources",
+ "thiserror",
+ "tokio",
+ "urlencoding 2.1.3",
+ "uuid 1.10.0",
+ "x25519-dalek",
 ]
 
 [[package]]

@@ -5,8 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::collections::HashMap;
 
+use super::shared_folder_info::SharedFolderInfo;
 
-use super::external_subscriber_manager::SharedFolderInfo;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ExternalNodeState {
@@ -158,8 +158,9 @@ impl<'de> Deserialize<'de> for SharedFoldersExternalNodeSM {
 
 #[cfg(test)]
 mod tests {
+    use crate::subscription_manager::fs_entry_tree::FSEntryTree;
+
     use super::*;
-    use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
     use chrono::{TimeZone, Utc};
     use serde_json;
     use std::collections::HashMap;

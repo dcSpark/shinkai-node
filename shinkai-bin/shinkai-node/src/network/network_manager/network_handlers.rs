@@ -6,11 +6,6 @@ use crate::{
             my_agent_offerings_manager::MyAgentOfferingsManager,
         },
         node::ProxyConnectionInfo,
-        subscription_manager::{
-            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-            fs_entry_tree::FSEntryTree,
-            my_subscription_manager::MySubscriptionsManager,
-        },
         Node,
     },
 };
@@ -36,12 +31,13 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
+use shinkai_subscription_manager::subscription_manager::{fs_entry_tree::FSEntryTree, shared_folder_info::SharedFolderInfo};
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::network_job_manager_error::NetworkJobQueueError;
+use super::{external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager, network_job_manager_error::NetworkJobQueueError};
 
 pub enum PingPong {
     Ping,

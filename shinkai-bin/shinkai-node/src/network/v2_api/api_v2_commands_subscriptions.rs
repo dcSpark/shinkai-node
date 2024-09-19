@@ -18,12 +18,7 @@ use tokio::sync::Mutex;
 use crate::{
     managers::IdentityManager,
     network::{
-        node_api_router::APIError,
-        node_error::NodeError,
-        subscription_manager::{
-            external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
-        },
-        Node,
+        network_manager::{external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager}, node_api_router::APIError, node_error::NodeError, Node
     },
 };
 

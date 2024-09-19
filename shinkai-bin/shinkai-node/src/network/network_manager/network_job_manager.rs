@@ -1,13 +1,8 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::node::ProxyConnectionInfo;
-use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
-use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
-use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_db::db::{ShinkaiDB, Topic};
@@ -19,12 +14,15 @@ use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
+use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
+use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
@@ -38,6 +36,8 @@ use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+use super::external_subscriber_manager::ExternalSubscriberManager;
+use super::my_subscription_manager::MySubscriptionsManager;
 use super::network_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,
 };

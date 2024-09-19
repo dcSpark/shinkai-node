@@ -18,10 +18,7 @@ use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_permissions::R
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
 use tokio::sync::Semaphore;
 
-use crate::network::subscription_manager::{
-    external_subscriber_manager::SharedFolderInfo, fs_entry_tree::FSEntryTree,
-    fs_entry_tree_generator::FSEntryTreeGenerator,
-};
+use crate::subscription_manager::{fs_entry_tree::FSEntryTree, fs_entry_tree_generator::FSEntryTreeGenerator, shared_folder_info::SharedFolderInfo};
 
 use super::{
     http_upload_error::HttpUploadError,

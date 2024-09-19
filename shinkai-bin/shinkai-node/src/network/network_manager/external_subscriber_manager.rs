@@ -1,10 +1,7 @@
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::node::ProxyConnectionInfo;
-use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
-use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
@@ -14,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::file_links::{FileLink, FolderSubscriptionWithPath};
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -26,6 +24,11 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
+use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
+use shinkai_subscription_manager::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
+use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
+use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_permissions::ReadPermission;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
@@ -38,8 +41,6 @@ use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, Semaphore};
 
-use super::fs_entry_tree::FSEntryTree;
-use super::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -62,15 +63,6 @@ impl PartialOrd for SubscriptionWithTree {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct SharedFolderInfo {
-    pub path: String,
-    pub permission: String,
-    pub profile: String,
-    pub tree: FSEntryTree,
-    pub subscription_requirement: Option<FolderSubscription>,
 }
 
 pub struct ExternalSubscriberManager {
