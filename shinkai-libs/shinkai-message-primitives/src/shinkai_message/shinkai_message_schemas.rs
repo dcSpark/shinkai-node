@@ -92,7 +92,7 @@ pub enum MessageSchemaType {
     InvoiceRequest,
     Invoice,
     PaidInvoice,
-    InvoiceResult
+    InvoiceResult,
 }
 
 impl MessageSchemaType {
@@ -651,7 +651,7 @@ pub struct APIAddRowsPayload {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct APIImportSheetPayload {
-    pub csv_data: String,
+    pub sheet_data: SpreadSheetPayload,
     pub file_format: SheetFileFormat,
 }
 
@@ -661,7 +661,14 @@ pub struct APIExportSheetPayload {
     pub file_format: SheetFileFormat,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", content = "content")]
+pub enum SpreadSheetPayload {
+    CSV(String),
+    XLSX(Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum SheetFileFormat {
     CSV,

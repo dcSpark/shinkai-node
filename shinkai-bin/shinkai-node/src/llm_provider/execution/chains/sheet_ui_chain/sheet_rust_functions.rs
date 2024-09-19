@@ -1,10 +1,15 @@
-use std::{any::Any, collections::HashMap, pin::Pin, sync::Arc};
+use std::{any::Any, collections::HashMap, io::Cursor, pin::Pin, sync::Arc};
 
-use crate::managers::sheet_manager::SheetManager;
+use crate::{
+    managers::sheet_manager::SheetManager,
+    tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
+};
+use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
 use tokio::sync::Mutex;
+use umya_spreadsheet::new_file;
 use uuid::Uuid;
 
 pub struct SheetRustFunctions;
@@ -370,6 +375,61 @@ impl SheetRustFunctions {
 
         let csv_data = String::from_utf8(writer.into_inner().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         Ok(csv_data)
+    }
+
+    pub async fn export_sheet_to_xlsx(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        sheet_id: String,
+    ) -> Result<Vec<u8>, String> {
+        let sheet_manager = sheet_manager.lock().await;
+        let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
+
+        let mut spreadsheet = new_file();
+
+        let headers: Vec<String> = sheet
+            .display_columns
+            .iter()
+            .map(|column_id| {
+                sheet
+                    .columns
+                    .get(column_id)
+                    .map(|column| column.name.clone())
+                    .unwrap_or_else(|| "Unknown Column".to_string())
+            })
+            .collect();
+
+        for (index, header) in headers.iter().enumerate() {
+            spreadsheet
+                .get_sheet_mut(&0)
+                .unwrap()
+                .get_cell_mut((1, index.to_u32().unwrap_or_default() + 1))
+                .set_value(header);
+        }
+
+        for row_id in &sheet.display_rows {
+            let row_values: Vec<String> = sheet
+                .display_columns
+                .iter()
+                .map(|column_id| {
+                    sheet
+                        .get_cell_value(row_id.clone(), column_id.clone())
+                        .unwrap_or_else(|| "".to_string())
+                })
+                .collect();
+
+            for (index, cell_value) in row_values.iter().enumerate() {
+                spreadsheet
+                    .get_sheet_mut(&0)
+                    .unwrap()
+                    .get_cell_mut((1, index.to_u32().unwrap_or_default() + 1))
+                    .set_value(cell_value);
+            }
+        }
+
+        let mut xlsx_data = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&spreadsheet, &mut xlsx_data).map_err(|e| e.to_string())?;
+
+        Ok(xlsx_data.into_inner())
     }
 
     fn get_tool_map() -> HashMap<&'static str, SheetToolFunction> {

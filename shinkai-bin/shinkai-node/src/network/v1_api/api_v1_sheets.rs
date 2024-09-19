@@ -10,7 +10,7 @@ use reqwest::StatusCode;
 use serde_json::{json, Value as JsonValue};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIExportSheetPayload, APIImportSheetPayload,
+    APIExportSheetPayload, APIImportSheetPayload, SheetFileFormat, SpreadSheetPayload,
 };
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -622,29 +622,34 @@ impl Node {
 
         let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
 
-        let mut args = HashMap::new();
-        args.insert(
-            "csv_data".to_string(),
-            Box::new(payload.csv_data.to_string()) as Box<dyn Any + Send>,
-        );
+        match payload.sheet_data {
+            SpreadSheetPayload::CSV(csv_data) => {
+                let mut args = HashMap::new();
+                args.insert("csv_data".to_string(), Box::new(csv_data) as Box<dyn Any + Send>);
 
-        let sheet_result =
-            SheetRustFunctions::create_new_columns_with_csv(sheet_manager.clone(), sheet_id.clone(), args).await;
+                let sheet_result =
+                    SheetRustFunctions::create_new_columns_with_csv(sheet_manager.clone(), sheet_id.clone(), args)
+                        .await;
 
-        match sheet_result {
-            Ok(_) => {
-                let response = json!({ "sheet_id": sheet_id });
-                let _ = res.send(Ok(response)).await;
-                Ok(())
+                match sheet_result {
+                    Ok(_) => {
+                        let response = json!({ "sheet_id": sheet_id });
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to import sheet: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to import sheet: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
+            SpreadSheetPayload::XLSX(xlsx_data) => {
+                unimplemented!();
             }
         }
     }
@@ -684,22 +689,48 @@ impl Node {
             return Ok(());
         }
 
-        let csv_result = SheetRustFunctions::export_sheet_to_csv(sheet_manager.clone(), payload.sheet_id.clone()).await;
+        match payload.file_format {
+            SheetFileFormat::CSV => {
+                let csv_result =
+                    SheetRustFunctions::export_sheet_to_csv(sheet_manager.clone(), payload.sheet_id.clone()).await;
 
-        match csv_result {
-            Ok(csv_data) => {
-                let response = json!({ "csv_data": csv_data });
-                let _ = res.send(Ok(response)).await;
-                Ok(())
+                match csv_result {
+                    Ok(csv_data) => {
+                        let response = json!({ "csv_data": csv_data });
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to export sheet: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to export sheet: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
+            SheetFileFormat::XLSX => {
+                let xlsx_result =
+                    SheetRustFunctions::export_sheet_to_xlsx(sheet_manager.clone(), payload.sheet_id.clone()).await;
+
+                match xlsx_result {
+                    Ok(xlsx_data) => {
+                        let response = json!({ "xlsx_data": xlsx_data });
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to export sheet: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
         }
     }
