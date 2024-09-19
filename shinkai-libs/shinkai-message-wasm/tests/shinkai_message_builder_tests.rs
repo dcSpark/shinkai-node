@@ -5,7 +5,7 @@ mod tests {
     use js_sys::Uint8Array;
     use serde_wasm_bindgen::from_value;
     use shinkai_message_primitives::schemas::inbox_name::InboxName;
-    use shinkai_message_primitives::schemas::registration_code::RegistrationCode;
+    use shinkai_message_primitives::schemas::registration_code::RegistrationCodeSimple;
     use shinkai_message_primitives::shinkai_message::shinkai_message::{
         ExternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage,
     };
@@ -474,7 +474,7 @@ mod tests {
         // Deserialize the body and check its content
         let content = decrypted_message.get_message_content().unwrap();
 
-        let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
+        let registration_code: RegistrationCodeSimple = serde_json::from_str(&content).unwrap();
         assert_eq!(registration_code.code, code);
         assert_eq!(registration_code.registration_name, registration_name);
         assert_eq!(registration_code.identity_type, identity_type);
@@ -542,7 +542,7 @@ mod tests {
         // Deserialize the body and check its content
         let content = message.get_message_content().unwrap();
 
-        let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
+        let registration_code: RegistrationCodeSimple = serde_json::from_str(&content).unwrap();
         assert_eq!(registration_code.registration_name, registration_name);
         assert_eq!(registration_code.identity_type, "device");
         assert_eq!(registration_code.permission_type, "admin");
