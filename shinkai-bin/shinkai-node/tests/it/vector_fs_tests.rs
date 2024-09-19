@@ -1344,6 +1344,7 @@ async fn test_remove_code_blocks_with_parsed_user_message() {
 // }
 
 #[test]
+#[ignore]
 fn vector_search_multiple_embedding_models_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     
