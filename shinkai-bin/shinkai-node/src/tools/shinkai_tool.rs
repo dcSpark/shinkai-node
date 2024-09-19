@@ -1,14 +1,13 @@
 use std::env;
 
-use crate::network::agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
-use crate::{network::agent_payments_manager::shinkai_tool_offering::UsageType, tools::argument::ToolArgument};
 use serde_json::{self};
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{js_toolkit_headers::ToolConfig, network_tool::NetworkTool, workflow_tool::WorkflowTool};
+use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig, network_tool::NetworkTool, workflow_tool::WorkflowTool};
 
 pub type IsEnabled = bool;
 

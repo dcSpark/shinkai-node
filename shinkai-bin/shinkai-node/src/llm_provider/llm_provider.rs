@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
-use crate::network::ws_manager::WSUpdateHandler;
-
 use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use super::execution::prompts::prompts::Prompt;
-use super::job::JobConfig;
 use super::llm_stopper::LLMStopper;
 use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
+use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,

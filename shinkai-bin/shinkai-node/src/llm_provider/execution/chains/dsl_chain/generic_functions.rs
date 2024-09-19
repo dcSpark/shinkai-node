@@ -1,12 +1,9 @@
 use futures::{future::join_all, StreamExt};
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::{schemas::subprompts::SubPrompt, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}};
 use std::{any::Any, collections::HashMap};
 
 use crate::{
-    llm_provider::{
-        execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt},
-        job_manager::JobManager,
-    },
+    llm_provider::{execution::chains::inference_chain_trait::InferenceChainContextTrait, job_manager::JobManager},
     workflows::sm_executor::WorkflowError,
 };
 
@@ -303,11 +300,13 @@ pub fn search_embeddings_in_job_scope(
 
 #[cfg(test)]
 mod tests {
+    use shinkai_db::db::ShinkaiDB;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
         LLMProviderInterface, OpenAI, SerializedLLMProvider,
     };
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
+    use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_vector_resources::source::VRSourceReference;
@@ -317,7 +316,6 @@ mod tests {
         vector_resource::{BaseVectorResource, VRPath},
     };
 
-    use crate::db::ShinkaiDB;
     use crate::llm_provider::execution::chains::dsl_chain::generic_functions::process_embeddings_in_job_scope;
     use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContext;
     use crate::llm_provider::execution::{
@@ -330,7 +328,6 @@ mod tests {
         user_message_parser::ParsedUserMessage,
     };
     use crate::llm_provider::llm_stopper::LLMStopper;
-    use crate::vector_fs::vector_fs::VectorFS;
 
     use std::{any::Any, collections::HashMap, fs, path::Path, sync::Arc};
 

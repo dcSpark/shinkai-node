@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt};
+use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
-use crate::llm_provider::{execution::prompts::subprompts::SubPromptType, job::JobStepResult};
 use crate::tools::shinkai_tool::ShinkaiTool;
+use shinkai_message_primitives::schemas::job::JobStepResult;
+use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::subprompts::SubPromptType;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 impl JobPromptGenerator {

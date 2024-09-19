@@ -1,25 +1,23 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    db::ShinkaiDB,
     managers::IdentityManager,
     network::{
         node_api_router::APIError,
         node_error::NodeError,
         subscription_manager::{
-            external_subscriber_manager::ExternalSubscriberManager,
-            http_manager::http_upload_manager::FolderSubscriptionWithPath,
-            my_subscription_manager::MySubscriptionsManager,
-        }, Node,
+            external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
+        },
+        Node,
     },
-    vector_fs::vector_fs::VectorFS,
 };
 
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
-    schemas::{shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
+    schemas::{file_links::FolderSubscriptionWithPath, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -29,6 +27,7 @@ use shinkai_message_primitives::{
         },
     },
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 

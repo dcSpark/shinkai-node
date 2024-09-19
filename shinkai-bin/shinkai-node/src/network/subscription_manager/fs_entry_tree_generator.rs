@@ -1,9 +1,5 @@
 use super::fs_entry_tree::{FSEntryTree, WebLink};
-use super::http_manager::http_upload_manager::FileLink;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_permissions::ReadPermission;
-use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder};
 use chrono::{DateTime, Utc};
 use chrono::{NaiveDateTime, TimeZone};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

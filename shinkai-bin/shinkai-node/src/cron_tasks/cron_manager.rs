@@ -30,6 +30,7 @@ use std::{
 use chrono::{Timelike, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use shinkai_db::{db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB}, schemas::{inbox_permission::InboxPermission, ws_types::WSUpdateHandler}};
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::{InboxName, InboxNameError},
@@ -43,15 +44,10 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 
-use crate::{
-    db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
-    llm_provider::{error::LLMProviderError, job_manager::JobManager},
-    network::ws_manager::WSUpdateHandler,
-    schemas::inbox_permission::InboxPermission,
-    vector_fs::vector_fs::VectorFS,
-};
+use crate::llm_provider::{error::LLMProviderError, job_manager::JobManager};
 
 pub struct CronManager {
     pub db: Weak<ShinkaiDB>,
@@ -67,7 +63,7 @@ pub enum CronManagerError {
     SomeError(String),
     JobCreationError(String),
     StrError(String),
-    DBError(db_errors::ShinkaiDBError),
+    DBError(ShinkaiDBError),
     InboxError(InboxNameError),
 }
 
@@ -83,8 +79,8 @@ impl From<&str> for CronManagerError {
     }
 }
 
-impl From<db_errors::ShinkaiDBError> for CronManagerError {
-    fn from(error: db_errors::ShinkaiDBError) -> Self {
+impl From<ShinkaiDBError> for CronManagerError {
+    fn from(error: ShinkaiDBError) -> Self {
         CronManagerError::DBError(error)
     }
 }

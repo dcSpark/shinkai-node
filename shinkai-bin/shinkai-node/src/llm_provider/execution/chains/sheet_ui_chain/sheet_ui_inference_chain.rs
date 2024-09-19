@@ -1,21 +1,21 @@
-use crate::db::ShinkaiDB;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::job::Job;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
-use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
+use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
-use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::network::ws_manager::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
-use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{

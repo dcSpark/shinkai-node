@@ -5,19 +5,15 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
-    shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage},
-    shinkai_utils::job_scope::JobScope,
+    schemas::job_config::JobConfig, shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage}, shinkai_utils::job_scope::JobScope
 };
 use utoipa::OpenApi;
 use warp::multipart::FormData;
 use warp::Filter;
 
-use crate::{
-    llm_provider::job::JobConfig,
-    network::{
-        node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
-        node_commands::NodeCommand,
-    },
+use crate::network::{
+    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
+    node_commands::NodeCommand,
 };
 
 use super::api_v2_router::{create_success_response, with_sender};

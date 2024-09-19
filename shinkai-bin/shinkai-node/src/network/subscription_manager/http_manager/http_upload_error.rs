@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::db_errors::ShinkaiDBError;
 use super::subscription_file_uploader::{FileDestinationError, FileTransferError};
 
 #[derive(Debug)]

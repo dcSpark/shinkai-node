@@ -805,8 +805,6 @@ impl LanceShinkaiDb {
 
 #[cfg(test)]
 mod tests {
-    use crate::network::agent_payments_manager::shinkai_tool_offering::ToolPrice;
-    use crate::network::agent_payments_manager::shinkai_tool_offering::UsageType;
     use crate::tools::js_toolkit::JSToolkit;
     use crate::tools::js_toolkit_headers::ToolConfig;
     use crate::tools::network_tool::NetworkTool;
@@ -815,6 +813,8 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
+    use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;

@@ -1,7 +1,6 @@
 use std::{env, fs, path::Path, sync::Arc};
 
 use crate::{
-    db::ShinkaiDB,
     llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
     network::{
@@ -10,15 +9,14 @@ use crate::{
         subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
         Node,
     },
-    schemas::identity::Identity,
-    vector_fs::vector_fs::VectorFS,
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
+    schemas::{identity::Identity, shinkai_name::ShinkaiName},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -29,6 +27,7 @@ use shinkai_message_primitives::{
         },
     },
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
     file_parser::{file_parser::FileParser, unstructured_api::UnstructuredAPI},

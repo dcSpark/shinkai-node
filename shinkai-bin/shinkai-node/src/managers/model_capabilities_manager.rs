@@ -11,8 +11,7 @@ use crate::{
     },
 };
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
-    shinkai_name::ShinkaiName,
+    llm_message::LlmMessage, llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName
 };
 use std::{
     fmt,

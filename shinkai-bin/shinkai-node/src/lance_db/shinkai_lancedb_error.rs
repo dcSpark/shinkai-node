@@ -1,6 +1,5 @@
 use crate::tools::error::ToolError;
 use lancedb::Error as LanceDbError;
-use rocksdb::Error as RocksDbError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 
@@ -51,12 +50,6 @@ impl From<LanceDbError> for ShinkaiLanceDBError {
 impl From<ShinkaiLanceDBError> for ToolError {
     fn from(error: ShinkaiLanceDBError) -> Self {
         ToolError::DatabaseError(error.to_string())
-    }
-}
-
-impl From<RocksDbError> for ShinkaiLanceDBError {
-    fn from(err: RocksDbError) -> Self {
-        ShinkaiLanceDBError::RocksDBError(err.to_string())
     }
 }
 

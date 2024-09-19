@@ -1,13 +1,18 @@
 use std::sync::Arc;
 
-use crate::{db::ShinkaiDB, network::{node_api_router::APIError, node_error::NodeError, Node}};
+use crate::network::{node_api_router::APIError, node_error::NodeError, Node};
 
 use async_channel::Sender;
 use reqwest::StatusCode;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 impl Node {
-    pub async fn api_private_devops_cron_list(db: Arc<ShinkaiDB>, node_name: ShinkaiName, res: Sender<Result<String, APIError>>) -> Result<(), NodeError> {
+    pub async fn api_private_devops_cron_list(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
         // Call the get_all_cron_tasks_from_all_profiles function
         match db.get_all_cron_tasks_from_all_profiles(node_name.clone()) {
             Ok(tasks) => {

@@ -1,7 +1,4 @@
-use crate::db::Topic;
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::{db::ShinkaiDB, llm_provider::queue::job_queue_manager::JobQueueManager};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -14,8 +11,6 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Weak};
 use tokio::sync::{Mutex, RwLock, Semaphore};
-
-use super::http_upload_manager::FileLink;
 
 #[allow(dead_code)]
 const NUM_THREADS: usize = 2;

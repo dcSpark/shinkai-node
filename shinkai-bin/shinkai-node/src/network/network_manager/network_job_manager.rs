@@ -1,4 +1,3 @@
-use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
@@ -9,8 +8,9 @@ use crate::network::subscription_manager::external_subscriber_manager::ExternalS
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
-use crate::network::ws_manager::{self, WSUpdateHandler};
-use crate::vector_fs::vector_fs::VectorFS;
+
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_db::db::{ShinkaiDB, Topic};
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;

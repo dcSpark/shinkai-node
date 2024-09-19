@@ -1,10 +1,8 @@
 use crate::{
-    db::ShinkaiDB,
     managers::IdentityManager,
     network::{
         agent_payments_manager::{
             external_agent_offerings_manager::ExtAgentOfferingsManager,
-            invoices::{Invoice, InvoiceRequest},
             my_agent_offerings_manager::MyAgentOfferingsManager,
         },
         node::ProxyConnectionInfo,
@@ -13,15 +11,14 @@ use crate::{
             fs_entry_tree::FSEntryTree,
             my_subscription_manager::MySubscriptionsManager,
         },
-        ws_manager::WSUpdateHandler,
         Node,
     },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::{ShinkaiName, ShinkaiNameError},
-        shinkai_subscription::SubscriptionId,
+        invoices::{Invoice, InvoiceRequest}, shinkai_name::{ShinkaiName, ShinkaiNameError}, shinkai_subscription::SubscriptionId
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -1193,7 +1190,10 @@ pub async fn handle_network_message_cases(
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
-                        &format!("{} > InvoiceResult Received from: {:?} to: {:?}", receiver_address, requester, receiver),
+                        &format!(
+                            "{} > InvoiceResult Received from: {:?} to: {:?}",
+                            receiver_address, requester, receiver
+                        ),
                     );
                     println!("InvoiceResult Received from: {:?} to {:?}", requester, receiver);
 

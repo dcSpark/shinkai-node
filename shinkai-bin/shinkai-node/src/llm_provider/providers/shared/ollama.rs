@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
+use shinkai_message_primitives::schemas::{
+    llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt,
+};
 
 use crate::{
-    llm_provider::{error::LLMProviderError, execution::prompts::prompts::Prompt},
+    llm_provider::error::LLMProviderError,
     managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
 
@@ -53,7 +55,11 @@ pub fn ollama_conversation_prepare_messages(
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens), Some("tool".to_string()))?;
+    let chat_completion_messages = prompt.generate_openai_messages(
+        Some(max_input_tokens),
+        Some("tool".to_string()),
+        &ModelCapabilitiesManager::num_tokens_from_llama3,
+    )?;
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
@@ -115,7 +121,11 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens), Some("tool".to_string()))?;
+    let chat_completion_messages = prompt.generate_openai_messages(
+        Some(max_input_tokens),
+        Some("tool".to_string()),
+        &ModelCapabilitiesManager::num_tokens_from_llama3,
+    )?;
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);

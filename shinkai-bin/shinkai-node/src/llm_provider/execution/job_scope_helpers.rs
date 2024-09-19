@@ -1,5 +1,5 @@
 use crate::llm_provider::job_manager::JobManager;
-use crate::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::db_errors::ShinkaiDBError;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_error::VectorFSError;
 use futures::stream::{Stream, StreamExt};

@@ -2,7 +2,7 @@ use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::I
 
 use crate::{
     llm_provider::{
-        execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike, providers::shared::openai::FunctionCall
+        execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator}, providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
@@ -19,10 +19,7 @@ use shinkai_vector_resources::{embeddings::Embedding, vector_resource::Retrieved
 
 use crate::llm_provider::{
     error::LLMProviderError,
-    execution::{
-        chains::inference_chain_trait::{InferenceChain, InferenceChainResult},
-        prompts::prompts::JobPromptGenerator,
-    },
+    execution::chains::inference_chain_trait::{InferenceChain, InferenceChainResult},
     job_manager::JobManager,
 };
 

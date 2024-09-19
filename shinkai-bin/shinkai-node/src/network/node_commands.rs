@@ -6,8 +6,7 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
-        shinkai_subscription::ShinkaiSubscription,
+        identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_mixed::NetworkIdentifier
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
@@ -20,22 +19,18 @@ use shinkai_message_primitives::{
             APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
             RegistrationCodeType, V2ChatMessage,
         },
-    }, shinkai_utils::job_scope::JobScope,
+    },
+    shinkai_utils::job_scope::JobScope,
 };
 
 use crate::{
-    llm_provider::job::JobConfig, prompts::custom_prompt::CustomPrompt, schemas::{
-        identity::{Identity, StandardIdentity},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-    }, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
-        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
-        wallet_manager::WalletRole,
+    prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
     }
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
-    agent_payments_manager::shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     v2_api::api_v2_handlers_general::InitialRegistrationRequest,
@@ -895,7 +890,7 @@ pub enum NodeCommand {
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
-    },    
+    },
     V2ApiGetAllCustomPrompts {
         bearer: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,

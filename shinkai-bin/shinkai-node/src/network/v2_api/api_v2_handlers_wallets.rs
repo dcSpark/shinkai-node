@@ -1,14 +1,14 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
+use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
 use utoipa::OpenApi;
 use warp::Filter;
 
 use crate::{
     network::{node_api_router::APIError, node_commands::NodeCommand},
     wallet::{
-        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, mixed::NetworkIdentifier,
-        wallet_manager::WalletRole,
+        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
     },
 };
 

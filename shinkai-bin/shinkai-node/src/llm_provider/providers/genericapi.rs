@@ -4,7 +4,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceR
 use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::network::ws_manager::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::togetherai::TogetherAPIResponse;

@@ -1,24 +1,22 @@
-use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::node_error::NodeError;
-use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::Node;
-use crate::schemas::{
-    identity::{Identity, StandardIdentity},
-    inbox_permission::InboxPermission,
-    smart_inbox::SmartInbox,
-};
-use crate::welcome_files::welcome_message::WELCOME_MESSAGE;
+
 use async_channel::Sender;
 use chashmap::CHashMap;
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::inbox_permission::InboxPermission;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentity};
+use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -35,6 +33,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_vector_fs::welcome_files::welcome_message::WELCOME_MESSAGE;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};

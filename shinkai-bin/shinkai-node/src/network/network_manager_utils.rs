@@ -1,17 +1,18 @@
 use std::sync::{Arc, Weak};
 
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
-    schemas::shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo,
+    schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use tokio::sync::Mutex;
 
+use crate::managers::identity_manager::IdentityManagerTrait;
+
 use super::{
     agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo, Node,
 };
-use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait, schemas::identity::StandardIdentity};
-
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 pub async fn get_proxy_builder_info_static(

@@ -8,6 +8,7 @@ use ethers::utils::{format_units, hex, to_checksum};
 use ethers::{core::k256::SecretKey, prelude::*};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -20,7 +21,6 @@ use futures::TryFutureExt;
 use crate::wallet::erc20_abi::ERC20_ABI;
 use crate::wallet::wallet_error::WalletError;
 
-use super::mixed::{self, Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 
@@ -331,7 +331,7 @@ impl SendActions for LocalEthersWallet {
 
     fn sign_transaction(
         &self,
-        tx: mixed::Transaction,
+        tx: Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
         let self_clone = self.clone();
         let fut = async move {
@@ -345,15 +345,24 @@ impl SendActions for LocalEthersWallet {
 }
 
 // Implement conversion from mixed::Transaction to TypedTransaction
-impl From<mixed::Transaction> for TypedTransaction {
-    fn from(tx: mixed::Transaction) -> Self {
-        let mut typed_tx = TypedTransaction::default();
-        typed_tx.set_to(NameOrAddress::Address(
-            EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
-        ));
-        typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-        typed_tx
-    }
+// impl From<Transaction> for TypedTransaction {
+//     fn from(tx: Transaction) -> Self {
+//         let mut typed_tx = TypedTransaction::default();
+//         typed_tx.set_to(NameOrAddress::Address(
+//             EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
+//         ));
+//         typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
+//         typed_tx
+//     }
+// }
+fn transaction_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
+    let mut typed_tx = TypedTransaction::default();
+    typed_tx.set_to(NameOrAddress::Address(
+        EthersAddress::from_str(&tx.to_address_id.ok_or(WalletError::MissingToAddress)?)
+            .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+    ));
+    typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
+    Ok(typed_tx)
 }
 
 impl CommonActions for LocalEthersWallet {
@@ -613,13 +622,9 @@ impl CommonActions for LocalEthersWallet {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::wallet::wallet_manager::WalletManager;
-
-    use super::super::mixed::{Address, Asset, Network};
     use super::*;
     use ethers::utils::Anvil;
-    use mixed::{NetworkIdentifier, NetworkProtocolFamilyEnum};
+    use shinkai_message_primitives::schemas::wallet_mixed::{NetworkIdentifier, NetworkProtocolFamilyEnum};
 
     fn create_test_network() -> Network {
         Network {

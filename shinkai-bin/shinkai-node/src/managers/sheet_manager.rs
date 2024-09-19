@@ -1,5 +1,5 @@
-use crate::db::db_errors::ShinkaiDBError;
-use crate::db::ShinkaiDB;
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManagerTrait;
 use crate::network::ws_manager::{WSMessageType, WSUpdateHandler};
 use async_channel::{Receiver, Sender};

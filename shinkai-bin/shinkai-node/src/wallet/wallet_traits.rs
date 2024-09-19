@@ -2,11 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 
 use super::{
-    mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction},
     wallet_error::WalletError, wallet_manager::WalletEnum,
 };
 
 use downcast_rs::{impl_downcast, Downcast};
+use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction};
 
 pub trait IsWallet {}
 

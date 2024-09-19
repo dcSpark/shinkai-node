@@ -1,6 +1,6 @@
 use super::identity_network_manager::IdentityNetworkManager;
-use crate::db::db_errors::ShinkaiDBError;
-use crate::db::ShinkaiDB;
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::ShinkaiDB;
 use crate::network::network_manager::network_handlers::verify_message_signature;
 use crate::network::node_error::NodeError;
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};

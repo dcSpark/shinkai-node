@@ -1,5 +1,3 @@
-use crate::db::db_errors::ShinkaiDBError;
-use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
@@ -7,15 +5,15 @@ use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::http_manager::http_download_manager::HttpDownloadJob;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::Node;
-use crate::schemas::identity::StandardIdentity;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_types::FSEntry;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use lru::LruCache;
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::identity::StandardIdentity;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
@@ -33,6 +31,8 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_fs::vector_fs::vector_fs_types::FSEntry;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;

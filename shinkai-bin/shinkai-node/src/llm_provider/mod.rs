@@ -3,7 +3,6 @@ pub mod llm_provider;
 pub mod llm_provider_to_serialization;
 pub mod error;
 pub mod execution;
-pub mod job;
 pub mod job_manager;
 pub mod parsing_helper;
 pub mod providers;

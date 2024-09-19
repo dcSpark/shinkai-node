@@ -1,13 +1,8 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::ollama::{
-    ollama_conversation_prepare_messages,
-};
+use crate::llm_provider::providers::shared::ollama::ollama_conversation_prepare_messages;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use crate::network::ws_manager::{WSMessageType, WSMetadata, WSUpdateHandler};
 
-use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::ollama::truncate_image_content_in_payload;
 use super::LLMService;
 use async_trait::async_trait;

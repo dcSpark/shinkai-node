@@ -7,7 +7,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceR
 use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
-use crate::network::ws_manager::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;

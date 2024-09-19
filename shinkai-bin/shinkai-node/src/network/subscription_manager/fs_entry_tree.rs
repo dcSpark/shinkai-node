@@ -2,11 +2,10 @@ use chrono::{DateTime, Utc};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
+use shinkai_message_primitives::schemas::file_links::FileLink;
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-
-use super::http_manager::http_upload_manager::FileLink;
 
 // Custom serialization for the children field
 fn serialize_children<S>(children: &HashMap<String, Arc<FSEntryTree>>, serializer: S) -> Result<S::Ok, S::Error>

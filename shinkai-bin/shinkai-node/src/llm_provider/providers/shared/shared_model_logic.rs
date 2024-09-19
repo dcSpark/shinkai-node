@@ -5,11 +5,8 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
-use crate::{
-    llm_provider::{error::LLMProviderError, execution::prompts::{prompts::Prompt, subprompts::SubPrompt}},
-    managers::model_capabilities_manager::{
-        Base64ImageString, ModelCapabilitiesManager, PromptResult, PromptResultEnum,
-    },
+use crate::managers::model_capabilities_manager::{
+    Base64ImageString, ModelCapabilitiesManager, PromptResult, PromptResultEnum,
 };
 
 pub fn llama_prepare_messages(
@@ -51,7 +48,10 @@ pub fn llava_prepare_messages(
         );
 
         Ok(PromptResult {
-            messages: PromptResultEnum::ImageAnalysis(messages_string.clone(), Base64ImageString(asset_content.clone())),
+            messages: PromptResultEnum::ImageAnalysis(
+                messages_string.clone(),
+                Base64ImageString(asset_content.clone()),
+            ),
             functions: None,
             remaining_tokens: total_tokens - messages_string.len(),
         })

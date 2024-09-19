@@ -1,8 +1,9 @@
 use std::fmt;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
+use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 
-use crate::{network::agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, vector_fs::vector_fs_error::VectorFSError};
+use crate::network::agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError;
 
 // Define your new error type
 #[derive(Debug)]
@@ -22,7 +23,7 @@ pub enum NetworkJobQueueError {
     VectorFSUpgradeFailed,
     InvalidVRPath(String),
     ProxyConnectionInfoUpgradeFailed,
-    ManagerUnavailable
+    ManagerUnavailable,
 }
 
 // Implement std::fmt::Display for NetworkJobQueueError

@@ -3,16 +3,16 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::wallet_mixed::{Network, NetworkIdentifier};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::{
-    db::ShinkaiDB,
     lance_db::shinkai_lance_db::LanceShinkaiDb,
     network::{node_api_router::APIError, node_error::NodeError, Node},
     wallet::{
         coinbase_mpc_wallet::CoinbaseMPCWalletConfig,
         local_ether_wallet::WalletSource,
-        mixed::{Network, NetworkIdentifier},
         wallet_manager::{WalletManager, WalletRole},
     },
 };

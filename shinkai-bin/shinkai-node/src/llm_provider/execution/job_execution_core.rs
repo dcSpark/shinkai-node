@@ -1,7 +1,8 @@
-use crate::db::ShinkaiDB;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::job::Job;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
-use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -11,9 +12,8 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Mode
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::network::ws_manager::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
-use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;

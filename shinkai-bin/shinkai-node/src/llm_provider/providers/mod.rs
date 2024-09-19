@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::network::ws_manager::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 
 use super::{
     error::LLMProviderError,

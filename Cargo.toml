@@ -8,8 +8,9 @@ members = [
   "shinkai-libs/shinkai-ocr",
   "shinkai-libs/shinkai-tcp-relayer",
   "shinkai-libs/shinkai-vector-resources",
+  "shinkai-libs/shinkai-vector-fs",
+  "shinkai-libs/shinkai-db",
   "shinkai-bin/*",
-  "shinkai-cli-tools/*"
 ]
 resolver = "2"
 
@@ -25,3 +26,5 @@ shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
 shinkai_dsl = { path = "./shinkai-libs/shinkai-dsl" }
 shinkai_sheet = { path = "./shinkai-libs/shinkai-sheet" }
 shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
+shinkai_vector_fs = { path = "./shinkai-libs/shinkai-vector-fs" }
+shinkai_db = { path = "./shinkai-libs/shinkai-db" }

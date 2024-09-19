@@ -10,15 +10,13 @@ use std::str::FromStr;
 use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
 
+use super::wallet_manager::WalletEnum;
+use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::tools::js_toolkit_headers::ToolConfig;
 use crate::tools::shinkai_tool::ShinkaiTool;
-use crate::wallet::mixed::AssetType;
 use crate::wallet::wallet_error::WalletError;
-
-use super::mixed::{self, Address, AddressBalanceList, Asset, Balance, Network, PublicAddress};
-use super::wallet_manager::WalletEnum;
-use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
+use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
 
 #[derive(Debug, Clone)]
 pub struct CoinbaseMPCWallet {
@@ -565,7 +563,7 @@ impl SendActions for CoinbaseMPCWallet {
 
     fn sign_transaction(
         &self,
-        tx: mixed::Transaction,
+        tx: Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
         let fut = async move {
             // Mock implementation for signing a transaction
@@ -622,6 +620,7 @@ impl ShinkaiToolCoinbase {
 mod tests {
     use super::*;
     use bigdecimal::BigDecimal;
+    use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
     use std::str::FromStr;
 
     #[tokio::test]
@@ -629,7 +628,7 @@ mod tests {
         let token = Some(Asset {
             asset_id: "USDC".to_string(),
             decimals: Some(6),
-            network_id: mixed::NetworkIdentifier::BaseSepolia,
+            network_id: NetworkIdentifier::BaseSepolia,
             contract_address: None,
         });
 

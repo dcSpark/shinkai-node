@@ -10,22 +10,20 @@ use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslC
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
-use crate::network::agent_payments_manager::invoices::{Invoice, InvoiceStatusEnum};
-use crate::network::agent_payments_manager::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
-};
-use crate::network::ws_manager::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use crate::prompts::custom_prompt::CustomPrompt;
 use crate::prompts::prompts_data;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::tools::workflow_tool::WorkflowTool;
-use crate::wallet::mixed::{Asset, NetworkIdentifier};
 use crate::workflows::sm_executor::AsyncFunction;
 use serde_json::Value;
+use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry};
+use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;

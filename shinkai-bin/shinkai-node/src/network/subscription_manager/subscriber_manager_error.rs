@@ -1,4 +1,5 @@
-use crate::{db::db_errors::ShinkaiDBError, vector_fs::vector_fs_error::VectorFSError};
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 

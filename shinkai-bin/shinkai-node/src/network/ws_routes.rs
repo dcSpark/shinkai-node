@@ -1,8 +1,8 @@
 use super::ws_manager::WebSocketManager;
-use super::ws_manager::WebSocketManagerError;
 use futures::stream::SplitSink;
 use futures::SinkExt;
 use futures::StreamExt;
+use shinkai_db::schemas::ws_types::WebSocketManagerError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
