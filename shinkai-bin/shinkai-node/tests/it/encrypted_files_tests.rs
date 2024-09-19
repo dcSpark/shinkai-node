@@ -31,6 +31,8 @@ fn sandwich_messages_with_files_test() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     unsafe { std::env::set_var("ONLY_TESTING_JS_TOOLS", "true") };
     
+    let mut server = Server::new();
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -64,7 +66,7 @@ fn sandwich_messages_with_files_test() {
                 )
                 .await;
             }
-            let mut server = Server::new();
+            
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
@@ -200,7 +202,7 @@ fn sandwich_messages_with_files_test() {
                 eprintln!("\n\n### Sending Second message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
                 // Prepare the file to be read
-                let filename = "../../files/zeko_mini.pdf";
+                let filename = "../../files/zeko_mini.vrkai";
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
@@ -268,7 +270,7 @@ fn sandwich_messages_with_files_test() {
 
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                assert_eq!(response, vec!["../../files/zeko_mini.pdf"]);
+                assert_eq!(response, vec!["../../files/zeko_mini.vrkai"]);
             }
             // {
             //     let _m = server

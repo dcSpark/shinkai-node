@@ -56,6 +56,8 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
 #[test]
 fn job_branchs_retries_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+
+    let mut server = Server::new();
     
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -88,7 +90,6 @@ fn job_branchs_retries_tests() {
                 )
                 .await;
             }
-            let mut server = Server::new();
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");

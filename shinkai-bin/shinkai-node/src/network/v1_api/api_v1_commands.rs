@@ -652,6 +652,7 @@ impl Node {
                         message: format!("Failed to parse encryption public key: {}", err),
                     }))
                     .await;
+                eprintln!("Failed to parse encryption public key: {}", err);
                 return Ok(());
             }
         };

@@ -27,6 +27,8 @@ use mockito::Server;
 #[test]
 #[ignore]
 fn job_image_analysis() {
+
+    let mut server = Server::new();
     
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -60,7 +62,6 @@ fn job_image_analysis() {
                 )
                 .await;
             }
-            let mut server = Server::new();
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");

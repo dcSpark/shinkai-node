@@ -32,6 +32,8 @@ use mockito::Server;
 #[ignore]
 fn job_tree_usage_tests() {
      
+    let mut server = Server::new();
+    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -64,7 +66,7 @@ fn job_tree_usage_tests() {
                 )
                 .await;
             }
-            let mut server = Server::new();
+            
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");

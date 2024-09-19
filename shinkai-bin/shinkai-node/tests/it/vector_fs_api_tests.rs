@@ -65,6 +65,8 @@ pub fn generate_message_with_payload<T: ToString>(
 #[test]
 fn vector_fs_api_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+
+    let mut server = Server::new();
     
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -101,7 +103,6 @@ fn vector_fs_api_tests() {
                 )
                 .await;
             }
-            let mut server = Server::new();
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
