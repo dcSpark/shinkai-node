@@ -1,5 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry};
+use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
 };
@@ -7,15 +9,11 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::agent_payments_manager::shinkai_tool_offering::{
-    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
-};
 use shinkai_node::network::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::tools::argument::ToolArgument;
 use shinkai_node::tools::network_tool::NetworkTool;
 use shinkai_node::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_node::wallet::mixed::{Asset, NetworkIdentifier};
 use shinkai_node::wallet::wallet_manager::WalletRole;
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};

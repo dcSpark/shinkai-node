@@ -21,8 +21,9 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use shinkai_node::network::node_commands::NodeCommand;
-use shinkai_node::vector_fs::vector_fs::VectorFS;
-use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
+use shinkai_vector_fs::vector_fs;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_fs::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
@@ -476,7 +477,7 @@ async fn test_vector_fs_saving_reading() {
         .set_whitelist_permission(
             &writer,
             invalid_requester.clone(),
-            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+            shinkai_vector_fs::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
         )
         .await
         .unwrap();
@@ -514,7 +515,7 @@ async fn test_vector_fs_saving_reading() {
         .set_whitelist_permission(
             &writer,
             invalid_requester.clone(),
-            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+            shinkai_vector_fs::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
         )
         .await
         .unwrap();
@@ -564,7 +565,7 @@ async fn test_vector_fs_saving_reading() {
         .set_whitelist_permission(
             &writer,
             invalid_requester.clone(),
-            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+            vector_fs::vector_fs_permissions::WhitelistPermission::Read,
         )
         .await
         .unwrap();

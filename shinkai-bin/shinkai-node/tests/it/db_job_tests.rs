@@ -1,11 +1,11 @@
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::db::ShinkaiDB;
-use shinkai_node::llm_provider::execution::prompts::subprompts::SubPromptType::{Assistant, User};
+use shinkai_message_primitives::schemas::subprompts::SubPromptType::{Assistant, User};
 use std::{fs, path::Path};
 use tokio::time::{sleep, Duration};
 
@@ -63,17 +63,12 @@ fn generate_message_with_text(
 mod tests {
     use std::collections::{HashMap, HashSet};
 
+    use shinkai_db::db::db_errors::ShinkaiDBError;
     use shinkai_message_primitives::{
-        schemas::inbox_name::InboxName,
+        schemas::{inbox_name::InboxName, subprompts::SubPrompt},
         shinkai_message::shinkai_message_schemas::JobMessage,
-        shinkai_utils::signatures::clone_signature_secret_key,
-        shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope,
-            shinkai_logging::init_default_tracing, shinkai_message_builder::ShinkaiMessageBuilder,
-            signatures::unsafe_deterministic_signature_keypair,
-        },
+        shinkai_utils::{encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope, shinkai_logging::init_default_tracing, shinkai_message_builder::ShinkaiMessageBuilder, signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}},
     };
-    use shinkai_node::{db::db_errors::ShinkaiDBError, llm_provider::execution::prompts::subprompts::SubPrompt};
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;

@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_primitives::schemas::file_links::{FileLink, FileStatus};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
@@ -6,14 +7,11 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     FileDestinationCredentials, FileDestinationSourceType,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::subscription_manager::http_manager::http_download_manager::{
     HttpDownloadJob, HttpDownloadManager,
 };
-use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::{
-    FileLink, FileStatus, HttpSubscriptionUploadManager,
-};
+use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
 use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{
     delete_all_in_folder, FileDestination,
 };
@@ -30,7 +28,7 @@ use super::utils::shinkai_testing_framework::ShinkaiTestingFramework;
 #[test]
 fn subscription_http_upload() {
     std::env::set_var("SUBSCRIPTION_HTTP_UPLOAD_INTERVAL_MINUTES", "1000");
-    
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
