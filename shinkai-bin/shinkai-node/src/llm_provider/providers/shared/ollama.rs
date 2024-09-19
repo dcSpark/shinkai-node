@@ -1,15 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt,
+    llm_message::LlmMessage, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
 };
 
 use crate::{
     llm_provider::error::LLMProviderError,
     managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
-
-use super::llm_message::LlmMessage;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OllamaAPIResponse {
@@ -190,7 +188,6 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm_provider::providers::shared::llm_message::LlmMessage;
 
     #[test]
     fn test_from_llm_messages() {

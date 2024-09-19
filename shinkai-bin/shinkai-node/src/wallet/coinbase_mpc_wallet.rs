@@ -563,7 +563,7 @@ impl SendActions for CoinbaseMPCWallet {
 
     fn sign_transaction(
         &self,
-        tx: Transaction,
+        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
         let fut = async move {
             // Mock implementation for signing a transaction

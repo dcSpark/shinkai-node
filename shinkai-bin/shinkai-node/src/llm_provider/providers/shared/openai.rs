@@ -1,5 +1,4 @@
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
@@ -8,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
+use shinkai_message_primitives::schemas::prompts::Prompt;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -87,7 +87,11 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens), None)?;
+    let chat_completion_messages = prompt.generate_openai_messages(
+        Some(max_input_tokens),
+        None,
+        &ModelCapabilitiesManager::num_tokens_from_llama3,
+    )?;
     let filtered_chat_completion_messages: Vec<_> = chat_completion_messages
         .clone()
         .into_iter()
@@ -246,7 +250,10 @@ mod tests {
         assert_eq!(choice.index, 0);
         assert_eq!(choice.message.role, "assistant");
         if let Some(MessageContent::Text(content)) = &choice.message.content {
-            assert_eq!(content, "The concatenated result of \"hola\" and \"chao\" is \"hola chao\".");
+            assert_eq!(
+                content,
+                "The concatenated result of \"hola\" and \"chao\" is \"hola chao\"."
+            );
         } else {
             panic!("Expected text content");
         }

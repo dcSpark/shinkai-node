@@ -7,7 +7,7 @@ use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity, inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
+        identity::Identity, inbox_name::InboxName, job::JobLike, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
     },
     shinkai_message::shinkai_message_schemas::{
         APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,

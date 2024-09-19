@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
 use crate::tools::shinkai_tool::ShinkaiTool;
+use serde_json::json;
 use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
@@ -77,11 +78,17 @@ impl JobPromptGenerator {
 
         // If function_call exists, it means that the LLM requested a function call and we need to send the response back
         if let Some(function_call) = function_call {
+            // Convert FunctionCall to Value
+            let function_call_value = json!({
+                "name": function_call.function_call.name,
+                "arguments": function_call.function_call.arguments
+            });
+
             // We add the assistant request to the prompt
-            prompt.add_function_call(function_call.function_call.clone(), 100);
+            prompt.add_function_call(function_call_value, 100);
 
             // We add the function response to the prompt
-            prompt.add_function_call_response(function_call, 100);
+            prompt.add_function_call_response(serde_json::to_value(function_call).unwrap(), 100);
         }
 
         prompt

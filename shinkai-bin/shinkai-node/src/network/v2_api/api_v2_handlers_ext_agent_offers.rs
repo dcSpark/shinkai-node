@@ -228,7 +228,7 @@ pub async fn get_all_tool_offerings_handler(
         get_all_tool_offerings_handler
     ),
     components(
-        schemas(ShinkaiToolOffering, APIError)
+        schemas(APIError)
     ),
     tags(
         (name = "tool_offerings", description = "Tool Offering API endpoints")

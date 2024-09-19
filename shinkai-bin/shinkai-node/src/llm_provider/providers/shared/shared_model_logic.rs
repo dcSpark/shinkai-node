@@ -1,13 +1,13 @@
 use serde_json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
-    schemas::llm_providers::serialized_llm_provider::LLMProviderInterface,
+    schemas::{llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt, subprompts::SubPrompt},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
-use crate::managers::model_capabilities_manager::{
+use crate::{llm_provider::error::LLMProviderError, managers::model_capabilities_manager::{
     Base64ImageString, ModelCapabilitiesManager, PromptResult, PromptResultEnum,
-};
+}};
 
 pub fn llama_prepare_messages(
     _model: &LLMProviderInterface,
@@ -15,7 +15,7 @@ pub fn llama_prepare_messages(
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, LLMProviderError> {
-    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
+    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens), &ModelCapabilitiesManager::num_tokens_from_llama3)?;
 
     let used_tokens = ModelCapabilitiesManager::count_tokens_from_message_llama3(&messages_string);
 
@@ -32,7 +32,7 @@ pub fn llava_prepare_messages(
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, LLMProviderError> {
-    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
+    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens), &ModelCapabilitiesManager::num_tokens_from_llama3)?;
 
     if let Some((_, _, asset_content, _, _)) = prompt.sub_prompts.iter().rev().find_map(|sub_prompt| {
         if let SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, priority) = sub_prompt {

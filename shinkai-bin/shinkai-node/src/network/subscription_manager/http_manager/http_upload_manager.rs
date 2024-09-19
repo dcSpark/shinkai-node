@@ -1,31 +1,26 @@
 use std::{
     collections::HashMap,
-    env, fmt,
+    env,
     sync::{Arc, Weak},
     time::{Duration, SystemTime},
 };
 
-use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use serde::{
-    de::{self, Visitor},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
-    schemas::{file_links::FileMapPath, shinkai_name::ShinkaiName, shinkai_subscription_req::FolderSubscription},
+    schemas::{
+        file_links::{FileLink, FileMapPath, FileStatus, FolderSubscriptionWithPath, SubscriptionStatus},
+        shinkai_name::ShinkaiName,
+    },
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_permissions::ReadPermission};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
-use std::hash::{Hash, Hasher};
 use tokio::sync::Semaphore;
 
-use crate::{
-    db::ShinkaiDB,
-    network::subscription_manager::{
-        external_subscriber_manager::SharedFolderInfo, fs_entry_tree::FSEntryTree,
-        fs_entry_tree_generator::FSEntryTreeGenerator,
-    },
-    vector_fs::{vector_fs::VectorFS, vector_fs_permissions::ReadPermission},
+use crate::network::subscription_manager::{
+    external_subscriber_manager::SharedFolderInfo, fs_entry_tree::FSEntryTree,
+    fs_entry_tree_generator::FSEntryTreeGenerator,
 };
 
 use super::{
@@ -852,7 +847,7 @@ impl HttpSubscriptionUploadManager {
         //      for (file_path, status) in value.iter() {
         //          println!("  {} - {:?}", file_path, status);
         //      }
-        //  } 
+        //  }
 
         // Access the specific subscription's files
         if let Some(files_status) = subscription_file_map.get(&folder_subs_with_path) {

@@ -6,7 +6,10 @@ use reqwest::StatusCode;
 use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, IdentityType}, inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, registration_code::RegistrationCode, shinkai_name::ShinkaiName
+        identity::{Identity, IdentityType, RegistrationCode},
+        inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        shinkai_name::ShinkaiName,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},

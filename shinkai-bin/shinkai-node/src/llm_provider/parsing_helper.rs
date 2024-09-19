@@ -1,10 +1,10 @@
 use super::error::LLMProviderError;
+use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
 use regex::Regex;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use shinkai_message_primitives::schemas::prompts::JobPromptGenerator;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};

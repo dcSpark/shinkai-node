@@ -330,7 +330,7 @@ impl Prompt {
         Ok(content)
     }
 
-    fn generate_chat_completion_messages<F>(
+    pub fn generate_chat_completion_messages<F>(
         &self,
         tool_response_field_name: Option<String>,
         token_counter: &F,

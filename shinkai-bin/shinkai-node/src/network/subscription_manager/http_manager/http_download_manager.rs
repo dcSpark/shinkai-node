@@ -1,10 +1,14 @@
+use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_message_primitives::schemas::file_links::FileLink;
 use shinkai_message_primitives::schemas::shinkai_subscription::ShinkaiSubscription;
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_subscription::SubscriptionId};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use std::cmp::Ordering;
 use std::collections::HashMap;

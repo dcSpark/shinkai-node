@@ -28,16 +28,15 @@ use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::db_retry::RetryMessage;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::db_retry::RetryMessage;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -49,6 +48,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_tcp_relayer::NetworkMessage;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
@@ -337,13 +337,19 @@ impl Node {
         let tool_router = ToolRouter::new(lance_db.clone());
 
         // Read wallet_manager from db if it exists, if not, None
-        let mut wallet_manager = match db_arc.read_wallet_manager() {
-            Ok(manager) => Some(manager),
+        let mut wallet_manager: Option<WalletManager> = match db_arc.read_wallet_manager() {
+            Ok(manager_value) => match serde_json::from_value::<WalletManager>(manager_value) {
+                Ok(manager) => Some(manager),
+                Err(e) => {
+                    eprintln!("Failed to deserialize WalletManager: {}", e);
+                    None
+                }
+            },
             Err(ShinkaiDBError::DataNotFound) => None,
             Err(e) => panic!("Failed to read wallet manager from database: {}", e),
         };
 
-        // Update LanceDB in CoinbaseMPCWallet if it exists (not ideal to have this logic here, but it's convenient for now)
+        // Update LanceDB in CoinbaseMPCWallet if it exists
         if let Some(ref mut manager) = wallet_manager {
             if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
                 coinbase_wallet.update_lance_db(lance_db.clone());
@@ -358,7 +364,7 @@ impl Node {
         }
 
         let wallet_manager = Arc::new(Mutex::new(wallet_manager));
-
+        
         let tool_router = Arc::new(tool_router);
 
         let my_agent_payments_manager = Arc::new(Mutex::new(
@@ -1355,6 +1361,7 @@ impl Node {
 
         // The body should only be decrypted if it's currently encrypted.
         if is_body_encrypted {
+            #[allow(unused_assignments)]
             let mut counterpart_identity: String = "".to_string();
             shinkai_log(
                 ShinkaiLogOption::Node,

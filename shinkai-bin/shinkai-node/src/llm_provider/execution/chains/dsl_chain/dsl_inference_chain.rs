@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
-    schemas::inbox_name::InboxName,
+    schemas::{inbox_name::InboxName, job::JobLike},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::RetrievedNode};

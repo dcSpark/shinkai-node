@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
+use shinkai_message_primitives::schemas::prompts::Prompt;
 
-use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
+use super::super::error::LLMProviderError;
 use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMService;
 use async_trait::async_trait;
@@ -40,7 +41,7 @@ impl LLMService for GenericAPI {
                 let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&model);
                 let max_output_tokens = ModelCapabilitiesManager::get_max_output_tokens(&model);
-                let messages_string = prompt.generate_genericapi_messages(Some(max_input_tokens))?;
+                let messages_string = prompt.generate_genericapi_messages(Some(max_input_tokens), &ModelCapabilitiesManager::num_tokens_from_llama3)?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,

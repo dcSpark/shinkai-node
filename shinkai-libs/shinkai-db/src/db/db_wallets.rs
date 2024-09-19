@@ -3,7 +3,7 @@ use serde_json::Value;
 
 impl ShinkaiDB {
     /// Saves the wallet data as a JSON Value to the database
-    pub fn save_wallet_data(&self, wallet_data: &Value) -> Result<(), ShinkaiDBError> {
+    pub fn save_wallet_manager(&self, wallet_data: &Value) -> Result<(), ShinkaiDBError> {
         let cf = self.cf_handle(Topic::NodeAndUsers.as_str())?;
         let key = b"wallet_data";
         let serialized_wallet_data = serde_json::to_vec(wallet_data).map_err(ShinkaiDBError::JsonSerializationError)?;
@@ -13,7 +13,7 @@ impl ShinkaiDB {
     }
 
     /// Reads the wallet data as a JSON Value from the database
-    pub fn read_wallet_data(&self) -> Result<Value, ShinkaiDBError> {
+    pub fn read_wallet_manager(&self) -> Result<Value, ShinkaiDBError> {
         let cf = self.cf_handle(Topic::NodeAndUsers.as_str())?;
         let key = b"wallet_data";
 

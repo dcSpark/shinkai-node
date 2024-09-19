@@ -1,7 +1,7 @@
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::ws_types::{WSMessageType, WSUpdateHandler};
 use crate::llm_provider::job_manager::JobManagerTrait;
-use crate::network::ws_manager::{WSMessageType, WSUpdateHandler};
 use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::sheet::{
     APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, WorkflowSheetJobData,

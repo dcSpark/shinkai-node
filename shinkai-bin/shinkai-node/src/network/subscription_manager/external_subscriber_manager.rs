@@ -1791,6 +1791,7 @@ impl ExternalSubscriberManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal::Decimal;
     use serde_json::from_str;
     use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 

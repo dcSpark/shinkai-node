@@ -8,7 +8,9 @@ use ethers::utils::{format_units, hex, to_checksum};
 use ethers::{core::k256::SecretKey, prelude::*};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
+use shinkai_message_primitives::schemas::wallet_mixed::{
+    Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
+};
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -236,15 +238,30 @@ impl LocalEthersWallet {
         Ok(tx.into())
     }
 
-    pub async fn internal_sign_transaction(&self, tx_request: TypedTransaction) -> Result<Signature, WalletError> {
-        let typed_tx: TypedTransaction = tx_request.into();
-        let signature = self
-            .wallet
-            .sign_transaction(&typed_tx)
-            .map_err(|e| WalletError::SigningError(e.to_string()))
-            .await?;
+    // pub async fn internal_sign_transaction(&self, tx_request: TypedTransaction) -> Result<Signature, WalletError> {
+    //     let typed_tx: TypedTransaction = tx_request.into();
+    //     let signature = self
+    //         .wallet
+    //         .sign_transaction(&typed_tx)
+    //         .map_err(|e| WalletError::SigningError(e.to_string()))
+    //         .await?;
 
-        Ok(signature)
+    //     Ok(signature)
+    // }
+
+    pub async fn internal_sign_transaction(
+        &self,
+        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
+    ) -> Result<Signature, WalletError> {
+        unimplemented!("after refactor");
+        // let typed_tx = Self::convert_to_typed_transaction(tx)?;
+        // let signature = self
+        //     .wallet
+        //     .sign_transaction(&typed_tx)
+        //     .map_err(|e| WalletError::SigningError(e.to_string()))
+        //     .await?;
+
+        // Ok(signature)
     }
 
     pub async fn internal_send_transaction(
@@ -287,6 +304,45 @@ impl LocalEthersWallet {
         } else {
             Err(WalletError::MissingTransactionReceipt)
         }
+    }
+
+    pub fn convert_to_typed_transaction(
+        tx: Transaction,
+    ) -> Result<TypedTransaction, WalletError> {
+        unimplemented!("after refactor");
+
+        // Code from LLM. It doesn't seem correct
+        // let to_address = EthersAddress::from_str(&tx.to_address_id.unwrap_or_default())
+        //     .map_err(|e| WalletError::InvalidAddress(e.to_string()))?;
+
+        // let value = U256::from_dec_str(&tx.value.unwrap_or_default())
+        //     .map_err(|e| WalletError::ConversionError(e.to_string()))?;
+
+        // let data = tx.unsigned_payload.into_bytes();
+
+        // let mut eip1559_request = Eip1559TransactionRequest::new().to(to_address).value(value).data(data);
+
+        // if let Some(chain_id) = tx.chain_id {
+        //     eip1559_request = eip1559_request.chain_id(chain_id);
+        // }
+
+        // if let Some(nonce) = tx.nonce {
+        //     eip1559_request = eip1559_request.nonce(nonce);
+        // }
+
+        // if let Some(gas_limit) = tx.gas_limit {
+        //     eip1559_request = eip1559_request.gas(U256::from(gas_limit));
+        // }
+
+        // if let Some(max_fee_per_gas) = tx.max_fee_per_gas {
+        //     eip1559_request = eip1559_request.max_fee_per_gas(U256::from(max_fee_per_gas));
+        // }
+
+        // if let Some(max_priority_fee_per_gas) = tx.max_priority_fee_per_gas {
+        //     eip1559_request = eip1559_request.max_priority_fee_per_gas(U256::from(max_priority_fee_per_gas));
+        // }
+
+        // Ok(TypedTransaction::Eip1559(eip1559_request))
     }
 }
 
@@ -331,16 +387,17 @@ impl SendActions for LocalEthersWallet {
 
     fn sign_transaction(
         &self,
-        tx: Transaction,
+        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
-        let self_clone = self.clone();
-        let fut = async move {
-            let typed_tx: TypedTransaction = tx.into();
-            let signature = self_clone.internal_sign_transaction(typed_tx).await?;
-            Ok(signature.to_string())
-        };
+        unimplemented!("after refactor");
+        // let self_clone = self.clone();
+        // let fut = async move {
+        //     let typed_tx = Self::convert_to_typed_transaction(tx)?;
+        //     let signature = self_clone.internal_sign_transaction(typed_tx).await?;
+        //     Ok(signature.to_string())
+        // };
 
-        Box::pin(fut)
+        // Box::pin(fut)
     }
 }
 
@@ -355,15 +412,16 @@ impl SendActions for LocalEthersWallet {
 //         typed_tx
 //     }
 // }
-fn transaction_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
-    let mut typed_tx = TypedTransaction::default();
-    typed_tx.set_to(NameOrAddress::Address(
-        EthersAddress::from_str(&tx.to_address_id.ok_or(WalletError::MissingToAddress)?)
-            .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-    ));
-    typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-    Ok(typed_tx)
-}
+
+// fn transaction_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
+//     let mut typed_tx = TypedTransaction::default();
+//     typed_tx.set_to(NameOrAddress::Address(
+//         EthersAddress::from_str(&tx.to_address_id.ok_or(WalletError::MissingToAddress)?)
+//             .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
+//     ));
+//     typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
+//     Ok(typed_tx)
+// }
 
 impl CommonActions for LocalEthersWallet {
     fn get_payment_address(&self) -> PublicAddress {
@@ -401,11 +459,7 @@ impl CommonActions for LocalEthersWallet {
             let mut balances = Vec::new();
 
             // Check ETH balance
-            if let Ok(eth_balance_wei) = self_clone
-                .provider
-                .get_balance(self_clone.wallet.address(), None)
-                .await
-            {
+            if let Ok(eth_balance_wei) = self_clone.provider.get_balance(self_clone.wallet.address(), None).await {
                 let eth_balance = Balance {
                     amount: eth_balance_wei.to_string(),
                     decimals: Some(18),

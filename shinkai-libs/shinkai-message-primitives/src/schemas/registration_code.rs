@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 // but re-using it means to import a lot of chained things
 // so we are making a dummy slightly diff compatible clone here
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RegistrationCode {
+pub struct RegistrationCodeSimple {
     pub code: String,
     pub registration_name: String,
     pub device_identity_pk: String,

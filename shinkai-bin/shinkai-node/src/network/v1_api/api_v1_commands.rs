@@ -28,8 +28,10 @@ use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::inbox_permission::InboxPermission;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_dsl::dsl_schemas::Workflow;
-use shinkai_message_primitives::schemas::identity::{DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType};
-use shinkai_message_primitives::schemas::registration_code::RegistrationCode;
+use shinkai_message_primitives::schemas::identity::{
+    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
+};
+use shinkai_message_primitives::schemas::registration_code::RegistrationCodeSimple;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::{
     schemas::{

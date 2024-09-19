@@ -57,6 +57,7 @@ pub enum ShinkaiDBError {
     InvalidToolType(String),
     WorkflowNotFound(String),
     SheetNotFound(String),
+    Other(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -123,6 +124,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::InvalidToolType(e) => write!(f, "Invalid tool type: {}", e),
             ShinkaiDBError::WorkflowNotFound(e) => write!(f, "Workflow not found: {}", e),
             ShinkaiDBError::SheetNotFound(e) => write!(f, "Sheet not found: {}", e),
+            ShinkaiDBError::Other(e) => write!(f, "Other error: {}", e),
         }
     }
 }
@@ -185,6 +187,7 @@ impl PartialEq for ShinkaiDBError {
                 msg1 == msg2
             }
             (ShinkaiDBError::DeviceNameNonExistent(msg1), ShinkaiDBError::DeviceNameNonExistent(msg2)) => msg1 == msg2,
+            (ShinkaiDBError::Other(msg1), ShinkaiDBError::Other(msg2)) => msg1 == msg2,
             _ => false,
         }
     }

@@ -261,10 +261,9 @@ impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::Topic;
-
     use super::*;
     use serde_json::Value as JsonValue;
+    use shinkai_db::db::Topic;
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
     use std::{fs, path::Path};
 

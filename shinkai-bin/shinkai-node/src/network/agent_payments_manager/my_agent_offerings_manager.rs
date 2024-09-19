@@ -2,35 +2,36 @@ use std::sync::{Arc, Weak};
 
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
-    schemas::{shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
+    schemas::{
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment},
+        shinkai_name::ShinkaiName,
+        shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo,
+        shinkai_tool_offering::{ToolPrice, UsageTypeInquiry},
+        wallet_mixed::AddressBalanceList,
+    },
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
     shinkai_utils::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
-    db::ShinkaiDB,
     managers::identity_manager::IdentityManagerTrait,
     network::{
-        agent_payments_manager::shinkai_tool_offering::ToolPrice,
         network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer},
         node::ProxyConnectionInfo,
     },
     tools::{network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader, tool_router::ToolRouter},
-    vector_fs::vector_fs::VectorFS,
-    wallet::{mixed::AddressBalanceList, wallet_manager::WalletManager},
+    wallet::wallet_manager::WalletManager,
 };
 
-use super::{
-    external_agent_offerings_manager::AgentOfferingManagerError,
-    invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment},
-    shinkai_tool_offering::UsageTypeInquiry,
-};
+use super::external_agent_offerings_manager::AgentOfferingManagerError;
 
 pub struct MyAgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
@@ -630,25 +631,16 @@ impl MyAgentOfferingsManager {
 mod tests {
     use super::*;
     use crate::{
-        db::ShinkaiDB,
         lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
         managers::identity_manager::IdentityManagerTrait,
-        network::agent_payments_manager::{
-            invoices::InvoiceStatusEnum,
-            shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType},
-        },
-        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::tool_router::ToolRouter,
-        vector_fs::vector_fs::VectorFS,
-        wallet::mixed::{NetworkIdentifier, PublicAddress},
     };
     use async_trait::async_trait;
     use chrono::Utc;
     use shinkai_message_primitives::{
-        shinkai_message::shinkai_message_schemas::IdentityPermissions,
-        shinkai_utils::{
+        schemas::{identity::{Identity, StandardIdentity, StandardIdentityType}, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}, wallet_mixed::{NetworkIdentifier, PublicAddress}}, shinkai_message::shinkai_message_schemas::IdentityPermissions, shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
-        },
+        }
     };
     use shinkai_vector_resources::{
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},

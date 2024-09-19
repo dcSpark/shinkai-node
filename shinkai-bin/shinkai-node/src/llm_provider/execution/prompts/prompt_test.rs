@@ -1,15 +1,10 @@
-
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::schemas::{prompts::Prompt, subprompts::{SubPrompt, SubPromptType}};
-
-    use super::*;
-    use crate::{
-        llm_provider::providers::shared::llm_message::{
-            DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage,
-        },
-        tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
+    use shinkai_message_primitives::schemas::{
+        llm_message::{DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage}, prompts::Prompt, subprompts::{SubPrompt, SubPromptType}
     };
+
+    use crate::{managers::model_capabilities_manager::ModelCapabilitiesManager, tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool}};
 
     #[test]
     fn test_generate_llm_messages() {
@@ -61,7 +56,7 @@ mod tests {
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(sub_prompts);
 
-        let (messages, _token_length) = prompt.generate_chat_completion_messages(None);
+        let (messages, _token_length) = prompt.generate_chat_completion_messages(None, &ModelCapabilitiesManager::num_tokens_from_llama3);
 
         // Expected messages
         let expected_messages = vec![
@@ -214,7 +209,8 @@ mod tests {
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(sub_prompts);
 
-        let (messages, _token_length) = prompt.generate_chat_completion_messages(None);
+        let (messages, _token_length) =
+            prompt.generate_chat_completion_messages(None, &ModelCapabilitiesManager::num_tokens_from_llama3);
 
         // Expected messages
         let expected_messages = vec![

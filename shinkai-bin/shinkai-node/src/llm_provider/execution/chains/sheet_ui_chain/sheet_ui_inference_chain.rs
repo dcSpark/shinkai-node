@@ -1,5 +1,5 @@
 use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::job::Job;
+use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
