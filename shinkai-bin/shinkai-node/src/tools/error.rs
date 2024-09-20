@@ -1,5 +1,4 @@
 use reqwest::Error as ReqwestError;
-use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::error::Error;
@@ -7,7 +6,6 @@ use std::fmt::{self};
 
 #[derive(Debug)]
 pub enum ToolError {
-    RocksDBError(RocksError),
     RegexError(regex::Error),
     FailedJSONParsing,
     ParseError(String),
@@ -38,7 +36,6 @@ impl fmt::Display for ToolError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ToolError::RegexError(ref e) => write!(f, "Regex error: {}", e),
-            ToolError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
             ToolError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             ToolError::ParseError(ref s) => write!(f, "Failed to parse {}", s),
             ToolError::ToolkitNotFound => write!(f, "Toolkit was not found."),
@@ -81,12 +78,6 @@ impl From<VRError> for ToolError {
 impl From<ReqwestError> for ToolError {
     fn from(err: ReqwestError) -> ToolError {
         ToolError::RequestError(err)
-    }
-}
-
-impl From<RocksError> for ToolError {
-    fn from(err: RocksError) -> ToolError {
-        ToolError::RocksDBError(err)
     }
 }
 

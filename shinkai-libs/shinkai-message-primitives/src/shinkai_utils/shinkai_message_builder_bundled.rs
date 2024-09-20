@@ -4,7 +4,7 @@ use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCodeSimple},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -280,7 +280,7 @@ impl ShinkaiMessageBuilder {
         let profile_signature_pk = profile_signature_sk.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
 
-        let registration_code = RegistrationCode {
+        let registration_code = RegistrationCodeSimple {
             code,
             registration_name: registration_name.clone(),
             device_identity_pk: "".to_string(),
@@ -325,7 +325,7 @@ impl ShinkaiMessageBuilder {
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
         let other = encryption_public_key_to_string(my_device_encryption_pk);
 
-        let registration_code = RegistrationCode {
+        let registration_code = RegistrationCodeSimple {
             code,
             registration_name: registration_name.clone(),
             device_identity_pk: signature_public_key_to_string(my_device_signature_pk),
@@ -369,7 +369,7 @@ impl ShinkaiMessageBuilder {
         let identity_type = "device".to_string();
         let permission_type = "admin".to_string();
 
-        let registration_code = RegistrationCode {
+        let registration_code = RegistrationCodeSimple {
             code: "".to_string(),
             registration_name: registration_name.clone(),
             device_identity_pk: signature_public_key_to_string(my_device_signature_pk),

@@ -1,5 +1,5 @@
+use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::{
-    db::db_errors::ShinkaiDBError,
     lance_db::shinkai_lance_db::LanceShinkaiDb,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
@@ -9,19 +9,11 @@ use crate::{
         node_error::NodeError,
         node_shareable_logic::validate_message_main_logic,
         v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-        ws_manager::WSUpdateHandler,
         Node,
-    },
-    schemas::{
-        identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
-        inbox_permission::InboxPermission,
-        smart_inbox::SmartInbox,
     },
     tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool, tool_router::ToolRouter, workflow_tool::WorkflowTool},
     utils::update_global_identity::update_global_identity_name,
-    vector_fs::vector_fs::VectorFS,
 };
-use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -31,7 +23,16 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::error;
 use reqwest::StatusCode;
 use serde_json::{json, Value as JsonValue};
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::inbox_permission::InboxPermission;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_message_primitives::schemas::identity::{
+    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
+};
+use shinkai_message_primitives::schemas::registration_code::RegistrationCodeSimple;
+use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
@@ -55,6 +56,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
@@ -650,6 +652,7 @@ impl Node {
                         message: format!("Failed to parse encryption public key: {}", err),
                     }))
                     .await;
+                eprintln!("Failed to parse encryption public key: {}", err);
                 return Ok(());
             }
         };

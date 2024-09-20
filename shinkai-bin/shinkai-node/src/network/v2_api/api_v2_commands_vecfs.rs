@@ -4,26 +4,23 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::{schemas::identity::Identity, shinkai_message::shinkai_message_schemas::{
     APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
     APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems,
-};
+}};
+use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI, vector_resource::VRPath,
 };
 use tokio::sync::Mutex;
 
 use crate::{
-    db::ShinkaiDB,
     managers::IdentityManager,
     network::{
-        node_api_router::APIError,
-        node_error::NodeError,
-        subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-        Node,
+        network_manager::external_subscriber_manager::ExternalSubscriberManager, node_api_router::APIError, node_error::NodeError, Node
     },
-    schemas::identity::Identity,
-    vector_fs::vector_fs::VectorFS,
 };
 
 impl Node {

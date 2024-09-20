@@ -2,16 +2,12 @@
 #![recursion_limit = "512"]
 mod llm_provider;
 mod cron_tasks;
-mod db;
 mod managers;
 mod network;
 mod runner;
-mod schemas;
 mod tools;
 mod prompts;
 mod utils;
-mod vector_fs;
-mod welcome_files;
 mod workflows;
 mod lance_db;
 mod wallet;

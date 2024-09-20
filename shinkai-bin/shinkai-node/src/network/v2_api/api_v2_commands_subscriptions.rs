@@ -3,29 +3,23 @@ use std::{collections::HashMap, sync::Arc};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
-    schemas::{shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
+    schemas::{file_links::FolderSubscriptionWithPath, identity::Identity, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder
+        APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
+        APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
+        APIUpdateShareableFolder,
     },
 };
 
 use tokio::sync::Mutex;
 
 use crate::{
-    db::ShinkaiDB,
     managers::IdentityManager,
     network::{
-        node_api_router::APIError,
-        node_error::NodeError,
-        subscription_manager::{
-            external_subscriber_manager::ExternalSubscriberManager,
-            http_manager::http_upload_manager::FolderSubscriptionWithPath,
-            my_subscription_manager::MySubscriptionsManager,
-        },
-        Node,
+        network_manager::{external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager}, node_api_router::APIError, node_error::NodeError, Node
     },
-    schemas::identity::Identity,
 };
 
 impl Node {

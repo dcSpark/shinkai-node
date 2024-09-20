@@ -3,7 +3,6 @@ use std::any::Any;
 use crate::llm_provider::error::LLMProviderError;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
 

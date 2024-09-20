@@ -1,27 +1,19 @@
 use crate::{
-    db::ShinkaiDB,
     managers::IdentityManager,
     network::{
         agent_payments_manager::{
             external_agent_offerings_manager::ExtAgentOfferingsManager,
-            invoices::{Invoice, InvoiceRequest},
             my_agent_offerings_manager::MyAgentOfferingsManager,
         },
         node::ProxyConnectionInfo,
-        subscription_manager::{
-            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
-            fs_entry_tree::FSEntryTree,
-            my_subscription_manager::MySubscriptionsManager,
-        },
-        ws_manager::WSUpdateHandler,
         Node,
     },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::{ShinkaiName, ShinkaiNameError},
-        shinkai_subscription::SubscriptionId,
+        invoices::{Invoice, InvoiceRequest}, shinkai_name::{ShinkaiName, ShinkaiNameError}, shinkai_subscription::SubscriptionId
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -39,12 +31,13 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
+use shinkai_subscription_manager::subscription_manager::{fs_entry_tree::FSEntryTree, shared_folder_info::SharedFolderInfo};
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::network_job_manager_error::NetworkJobQueueError;
+use super::{external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager, network_job_manager_error::NetworkJobQueueError};
 
 pub enum PingPong {
     Ping,
@@ -1193,7 +1186,10 @@ pub async fn handle_network_message_cases(
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
-                        &format!("{} > InvoiceResult Received from: {:?} to: {:?}", receiver_address, requester, receiver),
+                        &format!(
+                            "{} > InvoiceResult Received from: {:?} to: {:?}",
+                            receiver_address, requester, receiver
+                        ),
                     );
                     println!("InvoiceResult Received from: {:?} to {:?}", requester, receiver);
 

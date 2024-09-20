@@ -1,11 +1,12 @@
-use crate::db::db_errors::ShinkaiDBError;
-use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
-use crate::vector_fs::vector_fs::VectorFS;
 use keyphrases::KeyPhraseExtractor;
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{
@@ -310,7 +311,8 @@ impl JobManager {
             for folder in &job_scope.vector_fs_folders {
                 let reader = vector_fs
                     .new_reader(profile.clone(), folder.path.clone(), profile.clone())
-                    .await?;
+                    .await
+                    .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
 
                 let results = vector_fs
                     .deep_vector_search_customized(
@@ -321,7 +323,8 @@ impl JobManager {
                         deep_traversal_options.clone(),
                         average_out_deep_search_scores,
                     )
-                    .await?;
+                    .await
+                    .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
 
                 // Fetch the intros
                 let mut bare_results = vec![];
@@ -331,7 +334,9 @@ impl JobManager {
                     if let std::collections::hash_map::Entry::Vacant(e) = intro_hashmap.entry(ref_string) {
                         let result_reader = reader
                             .new_reader_copied_data(result.fs_item_path().clone(), &vector_fs)
-                            .await?;
+                            .await
+                            .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
+
                         if let Ok(intro_nodes) = vector_fs._internal_get_vr_intro_ret_nodes(&result_reader).await {
                             e.insert(intro_nodes);
                         }

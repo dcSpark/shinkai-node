@@ -1,14 +1,12 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama::{
     ollama_conversation_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
 use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use crate::network::ws_manager::{WSMessageType, WSMetadata, WSUpdateHandler};
 
-use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
+use super::super::error::LLMProviderError;
 use super::LLMService;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -16,8 +14,11 @@ use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
+use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
@@ -121,7 +122,7 @@ impl LLMService for Ollama {
                         format!("Messages JSON: {}", pretty_json).as_str(),
                     );
                     eprintln!("Messages JSON: {}", pretty_json);
-                },
+                }
                 Err(e) => shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Error,

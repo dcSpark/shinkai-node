@@ -1,20 +1,19 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
 use super::llm_stopper::LLMStopper;
-use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
-use crate::db::{ShinkaiDB, Topic};
-use crate::llm_provider::job::JobLike;
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::tool_router::ToolRouter;
-use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
@@ -25,6 +24,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;

@@ -1,23 +1,25 @@
-use crate::db::{ShinkaiDB, Topic};
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
 use crate::network::node::ProxyConnectionInfo;
-use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::tools::tool_router::ToolRouter;
-use crate::vector_fs::vector_fs::VectorFS;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
+use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -27,9 +29,6 @@ use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-
-use super::invoices::{Invoice, InvoiceRequest, InvoiceStatusEnum};
-use super::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 
 #[derive(Debug, Clone)]
 pub enum AgentOfferingManagerError {
@@ -49,6 +48,12 @@ impl fmt::Display for AgentOfferingManagerError {
 impl From<wallet_error::WalletError> for AgentOfferingManagerError {
     fn from(error: wallet_error::WalletError) -> Self {
         AgentOfferingManagerError::OperationFailed(format!("Wallet error: {:?}", error))
+    }
+}
+
+impl From<InvoiceError> for AgentOfferingManagerError {
+    fn from(error: InvoiceError) -> Self {
+        AgentOfferingManagerError::OperationFailed(format!("Invoice error: {:?}", error))
     }
 }
 
@@ -813,15 +818,17 @@ mod tests {
 
     use crate::{
         lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
-        network::agent_payments_manager::shinkai_tool_offering::{AssetPayment, ToolPrice},
-        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool},
-        wallet::mixed::{Asset, NetworkIdentifier},
     };
 
     use super::*;
     use async_trait::async_trait;
     use shinkai_message_primitives::{
+        schemas::{
+            identity::{Identity, StandardIdentity, StandardIdentityType},
+            shinkai_tool_offering::{AssetPayment, ToolPrice},
+            wallet_mixed::{Asset, NetworkIdentifier},
+        },
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
@@ -948,9 +955,12 @@ mod tests {
 
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
+        
         // Initialize ShinkaiDB
-        let shinkai_db =
-            Arc::new(ShinkaiDB::new("shinkai_db_tests/shinkaidb").map_err(|e| ShinkaiLanceDBError::from(e))?);
+        let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
+            Ok(db) => Arc::new(db),
+            Err(e) => return Err(ShinkaiLanceDBError::ShinkaiDBError(e.to_string())),
+        };
 
         let lance_db = Arc::new(RwLock::new(
             LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,

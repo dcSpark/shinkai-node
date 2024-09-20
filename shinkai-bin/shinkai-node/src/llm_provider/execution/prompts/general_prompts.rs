@@ -1,8 +1,9 @@
-use super::{
-    prompts::{JobPromptGenerator, Prompt},
+use lazy_static::lazy_static;
+use shinkai_message_primitives::schemas::{
+    prompts::Prompt,
     subprompts::{SubPromptAssetType, SubPromptType},
 };
-use lazy_static::lazy_static;
+pub struct JobPromptGenerator {}
 
 impl JobPromptGenerator {
     pub fn simple_doc_description(nodes: Vec<String>) -> Prompt {

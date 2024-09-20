@@ -1,20 +1,21 @@
 use std::sync::Arc;
 
-use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
+use super::super::error::LLMProviderError;
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
-use crate::network::ws_manager::WSUpdateHandler;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Groq, LLMProviderInterface};
+use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
 

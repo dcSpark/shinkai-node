@@ -4,11 +4,10 @@ use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        identity::Identity, inbox_name::InboxName, job::JobLike, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
     },
     shinkai_message::shinkai_message_schemas::{
         APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
@@ -16,26 +15,18 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    db::ShinkaiDB,
-    llm_provider::{
-        job::{JobConfig, JobLike},
-        job_manager::JobManager,
-    },
+    llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{
         node_api_router::{APIError, SendResponseBodyData},
         node_error::NodeError,
         Node,
     },
-    schemas::{
-        identity::Identity,
-        smart_inbox::{SmartInbox, V2SmartInbox},
-    },
-    vector_fs::vector_fs::VectorFS,
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;

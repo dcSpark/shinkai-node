@@ -3,15 +3,18 @@ use std::{env, sync::Arc};
 use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
+use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
+        identity::{Identity, IdentityType, RegistrationCode},
+        inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        shinkai_name::ShinkaiName,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddOllamaModels, APIChangeJobAgentRequest, IdentityPermissions, JobMessage, MessageSchemaType,
-            V2ChatMessage,
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
         },
     },
     shinkai_utils::{
@@ -20,6 +23,7 @@ use shinkai_message_primitives::{
         signatures::signature_public_key_to_string,
     },
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
 };
@@ -27,19 +31,15 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    db::ShinkaiDB,
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
     network::{
         node_api_router::{APIError, GetPublicKeysResponse},
         node_error::NodeError,
         v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-        ws_manager::WSUpdateHandler,
         Node,
     },
-    schemas::identity::{Identity, IdentityType, RegistrationCode},
     utils::update_global_identity::update_global_identity_name,
-    vector_fs::vector_fs::VectorFS,
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;

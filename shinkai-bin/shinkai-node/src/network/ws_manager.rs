@@ -5,9 +5,14 @@ use aes_gcm::KeyInit;
 use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
-use serde::Deserialize;
-use serde::Serialize;
-use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::ws_types::MessageQueue;
+use shinkai_db::schemas::ws_types::MessageType;
+use shinkai_db::schemas::ws_types::WSMessagePayload;
+use shinkai_db::schemas::ws_types::WSMessageType;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WebSocketManagerError;
+use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -15,7 +20,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMess
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_sheet::sheet::CellUpdateInfo;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Weak;
@@ -27,110 +31,10 @@ use warp::ws::Message;
 use warp::ws::WebSocket;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use crate::db::ShinkaiDB;
-use crate::schemas::identity::Identity;
-
-use super::agent_payments_manager::invoices::InternalInvoiceRequest;
-use super::agent_payments_manager::shinkai_tool_offering::UsageType;
 use super::node_api_router::APIError;
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MessageType {
-    ShinkaiMessage,
-    Stream,
-    Sheet,
-    Widget,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WSMessagePayload {
-    pub message_type: MessageType,
-    pub inbox: String,
-    pub message: Option<String>,
-    pub error_message: Option<String>,
-    pub metadata: Option<WSMetadata>,
-    pub widget: Option<Value>,
-    pub is_stream: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WSMetadata {
-    pub id: Option<String>,
-    pub is_done: bool,
-    pub done_reason: Option<String>,
-    pub total_duration: Option<u64>,
-    pub eval_count: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaymentMetadata {
-    pub tool_key: String,
-    pub description: String,
-    pub usage_type: UsageType,
-    pub invoice_id: String,
-    pub invoice: Value,
-    pub function_args: Value,
-    pub wallet_balances: Value,
-}
-
-#[derive(Debug)]
-pub enum WebSocketManagerError {
-    UserValidationFailed(String),
-    AccessDenied(String),
-    InvalidSharedKey(String),
-}
-
-impl fmt::Display for WebSocketManagerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            WebSocketManagerError::UserValidationFailed(msg) => write!(f, "User validation failed: {}", msg),
-            WebSocketManagerError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
-            WebSocketManagerError::InvalidSharedKey(msg) => write!(f, "Invalid shared key: {}", msg),
-        }
-    }
-}
-
-impl fmt::Debug for WebSocketManager {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("WebSocketManager")
-            .field("connections", &self.connections.keys()) // Only print the keys
-            .field("subscriptions", &self.subscriptions)
-            .field("shinkai_db", &self.shinkai_db)
-            .field("node_name", &self.node_name)
-            .field("identity_manager_trait", &"Box<dyn IdentityManagerTrait + Send>") // Print a placeholder
-            .finish()
-    }
-}
-
-#[async_trait]
-pub trait WSUpdateHandler {
-    async fn queue_message(
-        &self,
-        topic: WSTopic,
-        subtopic: String,
-        update: String,
-        metadata: WSMessageType,
-        is_stream: bool,
-    );
-}
-
-#[derive(Debug, Clone)]
-pub enum WSMessageType {
-    Metadata(WSMetadata),
-    Sheet(CellUpdateInfo),
-    Widget(WidgetMetadata),
-    None,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WidgetMetadata {
-    PaymentRequest(PaymentMetadata),
-}
-
-pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, WSMessageType, bool)>>>;
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
@@ -156,6 +60,18 @@ impl Clone for WebSocketManager {
             encryption_secret_key: self.encryption_secret_key.clone(),
             message_queue: Arc::clone(&self.message_queue),
         }
+    }
+}
+
+impl fmt::Debug for WebSocketManager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WebSocketManager")
+            .field("connections", &self.connections.keys()) // Only print the keys
+            .field("subscriptions", &self.subscriptions)
+            .field("shinkai_db", &self.shinkai_db)
+            .field("node_name", &self.node_name)
+            .field("identity_manager_trait", &"Box<dyn IdentityManagerTrait + Send>") // Print a placeholder
+            .finish()
     }
 }
 

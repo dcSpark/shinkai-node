@@ -3,15 +3,13 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
 use tokio::sync::RwLock;
 
 use crate::{
-    db::ShinkaiDB,
     lance_db::shinkai_lance_db::LanceShinkaiDb,
-    network::{
-        agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering, node_api_router::APIError,
-        node_error::NodeError, Node,
-    },
+    network::{node_api_router::APIError, node_error::NodeError, Node},
     tools::shinkai_tool::ShinkaiToolHeader,
 };
 

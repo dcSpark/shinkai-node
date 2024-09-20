@@ -6,7 +6,6 @@ pub mod ws_manager;
 pub mod ws_routes;
 pub mod node_shareable_logic;
 pub mod network_limiter;
-pub mod subscription_manager;
 pub mod network_manager;
 pub mod handle_commands_list;
 pub mod v1_api;

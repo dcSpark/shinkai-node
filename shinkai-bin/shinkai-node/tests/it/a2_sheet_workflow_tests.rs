@@ -20,6 +20,8 @@ use mockito::Server;
 fn create_a_sheet_and_check_workflows() {
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     
+    let mut server = Server::new();
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -51,7 +53,7 @@ fn create_a_sheet_and_check_workflows() {
                 )
                 .await;
             }
-            let mut server = Server::new();
+            
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");

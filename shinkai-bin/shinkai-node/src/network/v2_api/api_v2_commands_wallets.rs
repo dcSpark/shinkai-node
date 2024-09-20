@@ -3,16 +3,16 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::wallet_mixed::{Network, NetworkIdentifier};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::{
-    db::ShinkaiDB,
     lance_db::shinkai_lance_db::LanceShinkaiDb,
     network::{node_api_router::APIError, node_error::NodeError, Node},
     wallet::{
         coinbase_mpc_wallet::CoinbaseMPCWalletConfig,
         local_ether_wallet::WalletSource,
-        mixed::{Network, NetworkIdentifier},
         wallet_manager::{WalletManager, WalletRole},
     },
 };
@@ -62,14 +62,27 @@ impl Node {
 
                 // Save the updated WalletManager to the database
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
-                    if let Err(e) = db.save_wallet_manager(wallet_manager) {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to save wallet manager: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
+                    match serde_json::to_value(wallet_manager) {
+                        Ok(wallet_manager_value) => {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to save wallet manager: {}", e),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to serialize wallet manager: {}", e),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
                     }
                 }
 
@@ -134,14 +147,27 @@ impl Node {
 
                 // Save the updated WalletManager to the database
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
-                    if let Err(e) = db.save_wallet_manager(wallet_manager) {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to save wallet manager: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
+                    match serde_json::to_value(wallet_manager) {
+                        Ok(wallet_manager_value) => {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to save wallet manager: {}", e),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to serialize wallet manager: {}", e),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
                     }
                 }
 
@@ -211,14 +237,27 @@ impl Node {
 
                 // Save the updated WalletManager to the database
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
-                    if let Err(e) = db.save_wallet_manager(wallet_manager) {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to save wallet manager: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
+                    match serde_json::to_value(wallet_manager) {
+                        Ok(wallet_manager_value) => {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to save wallet manager: {}", e),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to serialize wallet manager: {}", e),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
                     }
                 }
 
@@ -287,14 +326,27 @@ impl Node {
 
                 // Save the updated WalletManager to the database
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
-                    if let Err(e) = db.save_wallet_manager(wallet_manager) {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to save wallet manager: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
+                    match serde_json::to_value(wallet_manager) {
+                        Ok(wallet_manager_value) => {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to save wallet manager: {}", e),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to serialize wallet manager: {}", e),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
                     }
                 }
 

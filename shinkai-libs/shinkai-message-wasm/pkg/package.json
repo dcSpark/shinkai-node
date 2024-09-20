@@ -1,5 +1,6 @@
 {
   "name": "shinkai_message_wasm",
+  "type": "module",
   "collaborators": [
     "Nico Arqueros <nico@shinkai.com>"
   ],
@@ -10,7 +11,7 @@
     "shinkai_message_wasm_bg.js",
     "shinkai_message_wasm.d.ts"
   ],
-  "module": "shinkai_message_wasm.js",
+  "main": "shinkai_message_wasm.js",
   "types": "shinkai_message_wasm.d.ts",
   "sideEffects": [
     "./shinkai_message_wasm.js",

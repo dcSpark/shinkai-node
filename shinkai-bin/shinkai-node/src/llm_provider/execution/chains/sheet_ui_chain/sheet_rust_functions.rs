@@ -463,9 +463,10 @@ impl SheetRustFunctions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{db::ShinkaiDB, llm_provider::job_manager::JobManagerTrait, network::ws_manager::WSUpdateHandler};
+    use crate::llm_provider::job_manager::JobManagerTrait;
     use async_trait::async_trait;
     use futures::Future;
+    use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},

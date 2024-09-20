@@ -33,6 +33,7 @@ pub enum WalletError {
     ToolNotFound(String),
     LanceDBError(String),
     ParsingError(String),
+    MissingToAddress,
     // Add other error types as needed
 }
 
@@ -69,6 +70,7 @@ impl fmt::Display for WalletError {
             WalletError::ToolNotFound(e) => write!(f, "ToolNotFound: {}", e),
             WalletError::LanceDBError(e) => write!(f, "LanceDBError: {}", e),
             WalletError::ParsingError(e) => write!(f, "ParsingError: {}", e),
+            WalletError::MissingToAddress => write!(f, "MissingToAddress"),
         }
     }
 }
@@ -104,6 +106,7 @@ impl Error for WalletError {
             WalletError::ToolNotFound(_) => None,
             WalletError::LanceDBError(_) => None,
             WalletError::ParsingError(_) => None,
+            WalletError::MissingToAddress => None,
         }
     }
 }

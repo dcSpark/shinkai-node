@@ -1,4 +1,6 @@
 use ed25519_dalek::SigningKey;
+use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -13,13 +15,11 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_node::db::{ShinkaiDB, Topic};
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::llm_stopper::LLMStopper;
-use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::managers::sheet_manager::SheetManager;
-use shinkai_node::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};

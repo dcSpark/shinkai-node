@@ -4,6 +4,7 @@ use std::time::Instant;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use shinkai_db::db::ShinkaiDB;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APISetWorkflow;
 
@@ -12,7 +13,6 @@ use tokio::sync::RwLock;
 
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::{
-    db::ShinkaiDB,
     network::{node_api_router::APIError, node_error::NodeError, Node},
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
 };

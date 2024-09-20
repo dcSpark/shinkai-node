@@ -1,14 +1,17 @@
-use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError, tools::error::ToolError, vector_fs::vector_fs_error::VectorFSError, workflows::sm_executor::WorkflowError};
+use crate::{
+    managers::model_capabilities_manager::ModelCapabilitiesManagerError, tools::error::ToolError,
+    workflows::sm_executor::WorkflowError,
+};
 use anyhow::Error as AnyhowError;
+use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
+    schemas::{inbox_name::InboxNameError, prompts::PromptError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
-
-
 
 #[derive(Debug)]
 pub enum LLMProviderError {
@@ -78,7 +81,7 @@ pub enum LLMProviderError {
     SheetManagerError(String),
     InputProcessingError(String),
     ToolRouterNotFound,
-    UnexpectedResponseFormat(String)
+    UnexpectedResponseFormat(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -246,13 +249,10 @@ impl LLMProviderError {
         serde_json::json!({
             "error": error_name,
             "error_message": error_message
-        }).to_string()
+        })
+        .to_string()
     }
 }
-
-
-
-
 
 impl From<AnyhowError> for LLMProviderError {
     fn from(error: AnyhowError) -> Self {
@@ -352,5 +352,11 @@ impl From<WorkflowError> for LLMProviderError {
 impl From<ToolError> for LLMProviderError {
     fn from(err: ToolError) -> LLMProviderError {
         LLMProviderError::ToolRouterError(err.to_string())
+    }
+}
+
+impl From<PromptError> for LLMProviderError {
+    fn from(err: PromptError) -> LLMProviderError {
+        LLMProviderError::ContentParseFailed
     }
 }

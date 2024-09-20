@@ -1,18 +1,16 @@
-use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
-use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
-use crate::network::ws_manager::WSUpdateHandler;
+use crate::network::network_manager::external_subscriber_manager::ExternalSubscriberManager;
+use crate::network::network_manager::my_subscription_manager::MySubscriptionsManager;
+use crate::network::node_api_router::APIError;
 use crate::network::Node;
-use crate::{
-    network::node_api_router::APIError,
-    schemas::{identity::Identity, inbox_permission::InboxPermission},
-};
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use log::error;
+use shinkai_db::{db::ShinkaiDB, schemas::inbox_permission::InboxPermission};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::{
     schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
     shinkai_message::{
@@ -396,7 +394,9 @@ impl Node {
     ) {
         {
             let subscription_manager = ext_subscription_manager.lock().await;
-            subscription_manager.test_process_http_upload_subscription_updates().await;
+            subscription_manager
+                .test_process_http_upload_subscription_updates()
+                .await;
         }
 
         let _ = res.send(Ok(())).await;
@@ -408,7 +408,9 @@ impl Node {
     ) {
         {
             let subscription_manager = my_subscription_manager.lock().await;
-            let _ = subscription_manager.call_process_subscription_job_message_queued().await;
+            let _ = subscription_manager
+                .call_process_subscription_job_message_queued()
+                .await;
         }
 
         let _ = res.send(Ok(())).await;

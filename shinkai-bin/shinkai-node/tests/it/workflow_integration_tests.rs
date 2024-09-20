@@ -42,6 +42,8 @@ fn workflow_integration_test() {
     setup();
     let rt = Runtime::new().unwrap();
 
+    let mut server = Server::new();
+
     rt.block_on(async {
         let node1_identity_name = "@@node1_test.arb-sep-shinkai";
         let node1_subidentity_name = "main";
@@ -64,8 +66,6 @@ fn workflow_integration_test() {
         let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
 
         // Agent pre-creation
-
-        let mut server = Server::new();
         let _m = server
             .mock("POST", "/v1/chat/completions")
             .match_header("authorization", "Bearer mockapikey")

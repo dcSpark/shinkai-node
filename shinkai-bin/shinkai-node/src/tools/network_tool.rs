@@ -1,7 +1,5 @@
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
-
-use crate::network::agent_payments_manager::shinkai_tool_offering::UsageType;
 
 use super::{argument::ToolArgument, error::ToolError, js_toolkit_headers::ToolConfig, shinkai_tool::ShinkaiTool};
 

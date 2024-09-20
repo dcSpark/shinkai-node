@@ -6,7 +6,7 @@ use crate::shinkai_wasm_wrappers::{
 use serde::Deserialize;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
-    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCodeSimple},
     shinkai_message::shinkai_message_schemas::{
         APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
         JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
@@ -433,7 +433,7 @@ impl ShinkaiMessageBuilderWrapper {
         let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
-        let registration_code = RegistrationCode {
+        let registration_code = RegistrationCodeSimple {
             code,
             registration_name: registration_name.clone(),
             device_identity_pk: "".to_string(),
@@ -489,7 +489,7 @@ impl ShinkaiMessageBuilderWrapper {
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
-        let registration_code = RegistrationCode {
+        let registration_code = RegistrationCodeSimple {
             code,
             registration_name: registration_name.clone(),
             device_identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
@@ -544,7 +544,7 @@ impl ShinkaiMessageBuilderWrapper {
         let identity_type = "device".to_string();
         let permission_type = "admin".to_string();
 
-        let registration_code = RegistrationCode {
+        let registration_code = RegistrationCodeSimple {
             code: "".to_string(),
             registration_name: registration_name.clone(),
             device_identity_pk: signature_public_key_to_string(my_device_signature_pk),

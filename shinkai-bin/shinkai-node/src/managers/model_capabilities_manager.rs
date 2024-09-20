@@ -1,18 +1,7 @@
-use crate::{
-    db::ShinkaiDB,
-    llm_provider::{
-        error::LLMProviderError,
-        execution::prompts::prompts::Prompt,
-        providers::shared::{
-            llm_message::LlmMessage,
-            openai::openai_prepare_messages,
-            shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
-        },
-    },
-};
+use crate::llm_provider::{error::LLMProviderError, providers::shared::{openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}}};
+use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
-    shinkai_name::ShinkaiName,
+    llm_message::LlmMessage, llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, prompts::Prompt, shinkai_name::ShinkaiName
 };
 use std::{
     fmt,
@@ -584,7 +573,7 @@ impl ModelCapabilitiesManager {
         let mut token_count = 0;
         let mut alphabetic_count = 0; // Total count of alphabetic characters
         let mut space_count = 0; // Total count of spaces
-        // ^ need to fix this
+                                 // ^ need to fix this
 
         // First pass: count alphabetic characters and spaces
         for c in message.chars() {

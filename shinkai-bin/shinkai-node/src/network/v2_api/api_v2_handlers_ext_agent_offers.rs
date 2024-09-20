@@ -1,14 +1,12 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::json;
+use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
 use utoipa::OpenApi;
 use warp::http::StatusCode;
 use warp::Filter;
 
-use crate::network::{
-    agent_payments_manager::shinkai_tool_offering::ShinkaiToolOffering, node_api_router::APIError,
-    node_commands::NodeCommand,
-};
+use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -230,7 +228,7 @@ pub async fn get_all_tool_offerings_handler(
         get_all_tool_offerings_handler
     ),
     components(
-        schemas(ShinkaiToolOffering, APIError)
+        schemas(APIError)
     ),
     tags(
         (name = "tool_offerings", description = "Tool Offering API endpoints")

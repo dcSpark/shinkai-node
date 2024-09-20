@@ -1,5 +1,5 @@
 use super::error::LLMProviderError;
-use super::execution::prompts::prompts::JobPromptGenerator;
+use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;

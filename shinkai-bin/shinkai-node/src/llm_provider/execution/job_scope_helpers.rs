@@ -1,14 +1,11 @@
 use crate::llm_provider::job_manager::JobManager;
-use crate::db::db_errors::ShinkaiDBError;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_error::VectorFSError;
 use futures::stream::{Stream, StreamExt};
+use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, VRPath,
-};
+use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_error::VectorFSError};
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -132,8 +129,7 @@ impl JobManager {
                             ShinkaiLogLevel::Error,
                             &format!(
                                 "retrieve_all_resources_in_job_scope reader create failed: {} with error: {:?}",
-                                folder_path,
-                                e
+                                folder_path, e
                             ),
                         );
                         continue;
@@ -244,9 +240,13 @@ impl JobManager {
         for fs_item in &job_scope.vector_fs_items {
             let reader = vector_fs
                 .new_reader(profile.clone(), fs_item.path.clone(), profile.clone())
-                .await?;
+                .await
+                .map_err(|e| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
 
-            let ret_resource = vector_fs.retrieve_vector_resource(&reader).await?;
+            let ret_resource = vector_fs
+                .retrieve_vector_resource(&reader)
+                .await
+                .map_err(|e| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
             resources.push(ret_resource);
         }
 

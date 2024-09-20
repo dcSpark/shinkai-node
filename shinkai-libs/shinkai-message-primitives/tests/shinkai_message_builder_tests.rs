@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::{
-        schemas::registration_code::RegistrationCode,
+        schemas::registration_code::RegistrationCodeSimple,
         shinkai_message::{
             shinkai_message::{MessageBody, MessageData},
             shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType},
@@ -261,7 +261,7 @@ mod tests {
         if let MessageBody::Unencrypted(shinkai_body) = decrypted_message.body {
             if let MessageData::Unencrypted(shinkai_data) = shinkai_body.message_data {
                 // Parse the decrypted content from a JSON string to a RegistrationCode struct
-                let parsed_content: Result<RegistrationCode, _> =
+                let parsed_content: Result<RegistrationCodeSimple, _> =
                     serde_json::from_str(&shinkai_data.message_raw_content);
                 match &parsed_content {
                     Ok(registration_code) => {
@@ -318,7 +318,7 @@ mod tests {
         if let MessageBody::Unencrypted(shinkai_body) = message.body {
             if let MessageData::Unencrypted(shinkai_data) = shinkai_body.message_data {
                 // Parse the decrypted content from a JSON string to a RegistrationCode struct
-                let parsed_content: Result<RegistrationCode, _> =
+                let parsed_content: Result<RegistrationCodeSimple, _> =
                     serde_json::from_str(&shinkai_data.message_raw_content);
                 match &parsed_content {
                     Ok(registration_code) => {

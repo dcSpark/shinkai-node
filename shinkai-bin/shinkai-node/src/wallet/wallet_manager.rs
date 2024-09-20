@@ -2,21 +2,19 @@ use std::sync::Weak;
 
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
-use tokio::sync::{Mutex, RwLock};
+use shinkai_message_primitives::schemas::{
+    invoices::{Invoice, Payment, PaymentStatusEnum},
+    shinkai_tool_offering::ToolPrice,
+    wallet_mixed::{Asset, Balance, Network, PublicAddress},
+};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{
-    lance_db::shinkai_lance_db::LanceShinkaiDb,
-    network::agent_payments_manager::{
-        invoices::{Invoice, Payment, PaymentStatusEnum},
-        shinkai_tool_offering::ToolPrice,
-    },
-};
+use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 use super::{
     coinbase_mpc_wallet::{CoinbaseMPCWallet, CoinbaseMPCWalletConfig},
     local_ether_wallet::{LocalEthersWallet, WalletSource},
-    mixed::{self, Balance, Network, PublicAddress},
     wallet_error::WalletError,
     wallet_traits::{PaymentWallet, ReceivingWallet},
 };
@@ -134,7 +132,7 @@ impl WalletManager {
     pub async fn check_balance_payment_wallet(
         &self,
         public_address: PublicAddress,
-        asset: mixed::Asset,
+        asset: Asset,
     ) -> Result<Balance, WalletError> {
         self.payment_wallet.check_asset_balance(public_address, asset).await
     }
@@ -202,7 +200,8 @@ impl WalletManager {
         wallet_id: String,
     ) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> = Box::new(
-            CoinbaseMPCWallet::restore_wallet(network.clone(), lance_db.clone(), config.clone(), wallet_id.clone()).await?,
+            CoinbaseMPCWallet::restore_wallet(network.clone(), lance_db.clone(), config.clone(), wallet_id.clone())
+                .await?,
         );
         let receiving_wallet: Box<dyn ReceivingWallet> =
             Box::new(CoinbaseMPCWallet::restore_wallet(network, lance_db, config, wallet_id).await?);
@@ -216,7 +215,7 @@ impl WalletManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::wallet::mixed::{Asset, NetworkIdentifier, NetworkProtocolFamilyEnum};
+    use shinkai_message_primitives::schemas::wallet_mixed::{Network, NetworkIdentifier, NetworkProtocolFamilyEnum};
 
     use super::*;
 

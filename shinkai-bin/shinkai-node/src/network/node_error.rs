@@ -1,12 +1,12 @@
-use crate::{
-    llm_provider::error::LLMProviderError, db::db_errors::ShinkaiDBError, tools::error::ToolError,
-    vector_fs::vector_fs_error::VectorFSError,
-};
+use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
+
+use crate::{llm_provider::error::LLMProviderError, tools::error::ToolError};
 
 #[derive(Debug)]
 pub struct NodeError {

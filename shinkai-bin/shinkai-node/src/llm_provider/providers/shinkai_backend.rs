@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::job::JobConfig;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use crate::network::ws_manager::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
+use shinkai_message_primitives::schemas::prompts::Prompt;
 
-use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
+use super::super::error::LLMProviderError;
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use async_trait::async_trait;
@@ -171,7 +172,12 @@ impl LLMService for ShinkaiBackend {
                                 .choices
                                 .iter()
                                 .find_map(|choice| choice.message.function_call.clone());
-                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call, None))
+                            Ok(LLMInferenceResponse::new(
+                                response_string,
+                                json!({}),
+                                function_call,
+                                None,
+                            ))
                         } else {
                             let data: OpenAIResponse =
                                 serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
@@ -188,7 +194,12 @@ impl LLMService for ShinkaiBackend {
                                 .choices
                                 .iter()
                                 .find_map(|choice| choice.message.function_call.clone());
-                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call, None))
+                            Ok(LLMInferenceResponse::new(
+                                response_string,
+                                json!({}),
+                                function_call,
+                                None,
+                            ))
                         }
                     }
                     Err(e) => {
