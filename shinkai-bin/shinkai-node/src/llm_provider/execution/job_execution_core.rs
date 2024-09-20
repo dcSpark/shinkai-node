@@ -552,6 +552,7 @@ impl JobManager {
 
         dsl_inference.add_inference_function();
         dsl_inference.add_inference_no_ws_function();
+        dsl_inference.add_baml_inference_function();
         dsl_inference.add_opinionated_inference_function();
         dsl_inference.add_opinionated_inference_no_ws_function();
         dsl_inference.add_multi_inference_function();
