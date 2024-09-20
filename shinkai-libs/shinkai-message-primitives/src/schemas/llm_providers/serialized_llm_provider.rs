@@ -18,6 +18,35 @@ pub struct SerializedLLMProvider {
     pub allowed_message_senders: Vec<String>,
 }
 
+impl SerializedLLMProvider {
+    pub fn get_provider_string(&self) -> String {
+        match &self.model {
+            LLMProviderInterface::OpenAI(_) => "openai",
+            LLMProviderInterface::GenericAPI(_) => "genericapi",
+            LLMProviderInterface::Ollama(_) => "ollama",
+            LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend",
+            LLMProviderInterface::LocalLLM(_) => "local-llm",
+            LLMProviderInterface::Groq(_) => "groq",
+            LLMProviderInterface::Gemini(_) => "gemini",
+            LLMProviderInterface::Exo(_) => "exo",
+        }
+        .to_string()
+    }
+
+    pub fn get_model_string(&self) -> String {
+        match &self.model {
+            LLMProviderInterface::OpenAI(openai) => openai.model_type.clone(),
+            LLMProviderInterface::GenericAPI(genericapi) => genericapi.model_type.clone(),
+            LLMProviderInterface::Ollama(ollama) => ollama.model_type.clone(),
+            LLMProviderInterface::ShinkaiBackend(shinkaibackend) => shinkaibackend.model_type.clone(),
+            LLMProviderInterface::LocalLLM(_) => "local-llm".to_string(),
+            LLMProviderInterface::Groq(groq) => groq.model_type.clone(),
+            LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
+            LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum LLMProviderInterface {
     OpenAI(OpenAI),

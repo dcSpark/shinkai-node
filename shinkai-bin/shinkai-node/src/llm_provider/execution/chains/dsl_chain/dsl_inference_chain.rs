@@ -2,7 +2,10 @@ use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::I
 
 use crate::{
     llm_provider::{
-        execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator}, providers::shared::openai::FunctionCall,
+        execution::{
+            chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
+        },
+        providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
@@ -10,6 +13,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
+use shinkai_baml::baml_builder::{BamlConfig, ClientConfig, GeneratorConfig};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike},
@@ -127,6 +131,16 @@ impl<'a> DslChain<'a> {
             Box::new(InferenceFunction {
                 context: self.context.clone_box(),
                 use_ws_manager: false,
+            }),
+        );
+    }
+
+    pub fn add_baml_inference_function(&mut self) {
+        self.functions.insert(
+            "baml_inference".to_string(),
+            Box::new(BamlInference {
+                context: self.context.clone_box(),
+                use_ws_manager: true,
             }),
         );
     }
@@ -401,6 +415,70 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         );
 
         Ok(Box::new(answer))
+    }
+}
+
+#[derive(Clone)]
+struct BamlInference {
+    context: Box<dyn InferenceChainContextTrait>,
+    use_ws_manager: bool,
+}
+
+#[async_trait]
+impl AsyncFunction for BamlInference {
+    async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+        let user_message = args[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
+            .clone();
+
+        let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
+
+        let dsl_class_file: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let fn_name: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let param_name: Option<String> = args.get(5).and_then(|arg| arg.downcast_ref::<String>().cloned());
+
+        // TODO: do we need the job for something?
+        let full_job = self.context.full_job();
+        let llm_provider = self.context.agent();
+
+        let generator_config = GeneratorConfig::default();
+
+        let client_config = ClientConfig {
+            provider: llm_provider.get_provider_string(),
+            base_url: llm_provider.external_url.clone().unwrap_or_default(),
+            model: llm_provider.get_model_string(),
+            default_role: "user".to_string(),
+        };
+
+        // Note(nico): we need to pass the env vars from the job here if we are using an LLM behind an API
+        let env_vars = HashMap::new();
+
+        // Prepare BAML execution
+        let baml_config = BamlConfig::builder(generator_config, client_config)
+            .dsl_class_file(&dsl_class_file.unwrap_or_default())
+            .input(&user_message)
+            .function_name(&fn_name.unwrap_or_default())
+            .param_name(&param_name.unwrap_or_default())
+            .build();
+
+        let runtime = baml_config
+            .initialize_runtime(env_vars)
+            .map_err(|e| WorkflowError::ExecutionError(format!("Failed to initialize BAML runtime: {}", e)))?;
+
+        // Execute BAML
+        let result = baml_config
+            .execute(&runtime)
+            .map_err(|e| WorkflowError::ExecutionError(format!("BAML execution failed: {}", e)))?;
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("BAML Inference Answer: {:?}", result).as_str(),
+        );
+
+        Ok(Box::new(result))
     }
 }
 
