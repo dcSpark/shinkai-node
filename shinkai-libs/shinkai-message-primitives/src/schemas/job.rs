@@ -1,25 +1,8 @@
-use super::execution::prompts::prompts::Prompt;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use shinkai_message_primitives::{
-    schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::AssociatedUI,
-    shinkai_utils::job_scope::JobScope,
-};
-use std::collections::HashMap;
-use utoipa::ToSchema;
+use crate::{shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::JobScope};
 
-#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-pub struct JobConfig {
-    pub custom_prompt: Option<String>,
-    // pub custom_system_prompt: String
-    pub temperature: Option<f64>,
-    // pub max_output_tokens: u64,
-    pub seed: Option<u64>,
-    pub top_k: Option<u64>,
-    pub top_p: Option<f64>,
-    pub stream: Option<bool>,
-    pub other_model_params: Option<Value>,
-}
+use super::{inbox_name::InboxName, job_config::JobConfig, prompts::Prompt};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;

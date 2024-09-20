@@ -1,6 +1,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use super::wallet_mixed::Asset;
 
@@ -19,7 +20,7 @@ impl fmt::Display for UsageTypeInquiry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, ToSchema)]
 pub struct ShinkaiToolOffering {
     pub tool_key: String,
     pub usage_type: UsageType,

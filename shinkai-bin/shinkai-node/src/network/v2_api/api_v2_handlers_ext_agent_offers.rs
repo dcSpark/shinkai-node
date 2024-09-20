@@ -5,14 +5,12 @@ use utoipa::{OpenApi, ToSchema};
 use warp::http::StatusCode;
 use warp::Filter;
 
-use crate::{
-    network::{
-        agent_payments_manager::shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType},
-        node_api_router::APIError,
-        node_commands::NodeCommand,
-    },
-    wallet::mixed::{Asset, NetworkIdentifier},
+use shinkai_message_primitives::schemas::{
+    shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType},
+    wallet_mixed::{Asset, NetworkIdentifier},
 };
+
+use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
 
 use super::api_v2_router::{create_success_response, with_sender};
 

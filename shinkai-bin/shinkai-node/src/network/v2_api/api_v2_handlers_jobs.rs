@@ -6,11 +6,13 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
     schemas::{
+        job_config::JobConfig,
         llm_providers::serialized_llm_provider::{
             Exo, Gemini, GenericAPI, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, SerializedLLMProvider,
             ShinkaiBackend,
         },
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        smart_inbox::{LLMProviderSubset, V2SmartInbox},
     },
     shinkai_message::{
         shinkai_message::NodeApiData,
@@ -43,13 +45,9 @@ use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
 use warp::Filter;
 
-use crate::{
-    llm_provider::job::JobConfig,
-    network::{
-        node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
-        node_commands::NodeCommand,
-    },
-    schemas::smart_inbox::{LLMProviderSubset, V2SmartInbox},
+use crate::network::{
+    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
+    node_commands::NodeCommand,
 };
 
 use super::api_v2_router::{create_success_response, with_sender};

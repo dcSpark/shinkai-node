@@ -1,6 +1,9 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
+use shinkai_message_primitives::schemas::wallet_mixed::{
+    Address, Asset, Network, NetworkIdentifier, NetworkProtocolFamilyEnum,
+};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 
@@ -9,7 +12,6 @@ use crate::{
     wallet::{
         coinbase_mpc_wallet::CoinbaseMPCWalletConfig,
         local_ether_wallet::{LocalEthersWalletData, WalletSource},
-        mixed::{Address, Asset, Network, NetworkIdentifier, NetworkProtocolFamilyEnum},
         wallet_manager::WalletRole,
     },
 };
