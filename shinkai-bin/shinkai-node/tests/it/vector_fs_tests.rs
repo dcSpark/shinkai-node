@@ -16,7 +16,6 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -1344,10 +1343,11 @@ async fn test_remove_code_blocks_with_parsed_user_message() {
 // }
 
 #[test]
-#[ignore]
 fn vector_search_multiple_embedding_models_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    
+
+    let server = Server::new();
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -1383,7 +1383,7 @@ fn vector_search_multiple_embedding_models_test() {
                 )
                 .await;
             }
-            let server = Server::new();
+
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
