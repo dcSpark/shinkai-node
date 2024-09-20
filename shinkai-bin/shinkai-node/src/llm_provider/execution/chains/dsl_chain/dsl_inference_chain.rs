@@ -439,6 +439,7 @@ impl AsyncFunction for BamlInference {
         let fn_name: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let param_name: Option<String> = args.get(5).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
+        // TODO: do we need the job for something?
         let full_job = self.context.full_job();
         let llm_provider = self.context.agent();
 
@@ -456,9 +457,10 @@ impl AsyncFunction for BamlInference {
 
         // Prepare BAML execution
         let baml_config = BamlConfig::builder(generator_config, client_config)
+            .dsl_class_file(&dsl_class_file.unwrap_or_default())
             .input(&user_message)
-            .function_name(&fn_name.unwrap())
-            .param_name(&param_name.unwrap())
+            .function_name(&fn_name.unwrap_or_default())
+            .param_name(&param_name.unwrap_or_default())
             .build();
 
         let runtime = baml_config
