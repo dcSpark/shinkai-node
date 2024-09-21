@@ -206,41 +206,6 @@ impl JobManager {
         keywords.into_iter().map(|(_score, keyword)| keyword).collect()
     }
 
-    /// Perform a vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
-    /// If include_description is true then adds the description of the highest scored Vector Resource as an auto-included
-    /// RetrievedNode at the front of the returned list.
-    #[allow(clippy::too_many_arguments)]
-    async fn internal_job_scope_vector_search(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        job_scope: &JobScope,
-        query: Embedding,
-        query_text: String,
-        num_of_top_results: u64,
-        profile: &ShinkaiName,
-        include_description: bool,
-        generator: RemoteEmbeddingGenerator,
-        max_tokens_in_prompt: usize,
-    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let results = Self::internal_job_scope_vector_search_groups(
-            db,
-            vector_fs,
-            job_scope,
-            query,
-            query_text,
-            num_of_top_results,
-            profile,
-            include_description,
-            generator,
-            max_tokens_in_prompt,
-        )
-        .await?;
-
-        let sorted_retrieved_node_groups = results.0;
-        let sorted_retrieved_nodes = sorted_retrieved_node_groups.into_iter().flatten().collect::<Vec<_>>();
-        Ok(sorted_retrieved_nodes)
-    }
-
     //TODOs:
     // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
     //

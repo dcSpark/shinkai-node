@@ -77,7 +77,7 @@ fn main() -> Result<()> {
 
     let env_vars = HashMap::new();
     let runtime = baml_config.initialize_runtime(env_vars)?;
-    let result = baml_config.execute(&runtime)?;
+    let result = baml_config.execute(&runtime, true)?;
     println!("Execution result: {}", result);
 
     Ok(())
