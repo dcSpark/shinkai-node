@@ -1,6 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_vector_resources::utils::hash_string;
+use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use core::panic;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -13,9 +14,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node_commands::NodeCommand;
-use shinkai_node::network::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
+use shinkai_vector_resources::utils::hash_string;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -38,7 +38,6 @@ fn setup() {
 
 #[test]
 fn subidentity_registration() {
-    
     setup();
     let rt = Runtime::new().unwrap();
 

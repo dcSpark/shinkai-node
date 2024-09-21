@@ -3,7 +3,7 @@
 // use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 // use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 // use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-// use shinkai_node::network::node_commands::NodeCommand;
+// use shinkai_http_api::node_commands::NodeCommand;
 // use std::time::Duration;
 // use std::time::Instant;
 // use utils::test_boilerplate::run_test_one_node_network;

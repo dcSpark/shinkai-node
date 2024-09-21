@@ -1,8 +1,11 @@
-use shinkai_node::network::v2_api::{
-    api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc,
-    api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_subscriptions::SubscriptionsApiDoc,
-    api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc,
-    api_v2_handlers_workflows::WorkflowsApiDoc,
+use shinkai_http_api::{
+    node_api_router::{
+        api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc,
+        api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_subscriptions::SubscriptionsApiDoc,
+        api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc,
+        api_v2_handlers_workflows::WorkflowsApiDoc,
+    },
+    node_api_router::APIError,
 };
 use utoipa::OpenApi;
 

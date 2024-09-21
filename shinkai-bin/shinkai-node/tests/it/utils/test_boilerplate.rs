@@ -3,9 +3,9 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::managers::sheet_manager::SheetManager;
+use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_node::network::network_manager::external_subscriber_manager::ExternalSubscriberManager;
 use shinkai_node::network::network_manager::my_subscription_manager::MySubscriptionsManager;
-use shinkai_node::tools::tool_router::ToolRouter;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -21,7 +21,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node_commands::NodeCommand;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
