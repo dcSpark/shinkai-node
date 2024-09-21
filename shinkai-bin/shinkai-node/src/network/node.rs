@@ -5,7 +5,6 @@ use super::network_manager::my_subscription_manager::MySubscriptionsManager;
 use super::network_manager::network_job_manager::{
     NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
 };
-use super::node_commands::NodeCommand;
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -15,10 +14,10 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::sheet_manager::SheetManager;
+use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::network::ws_routes::run_ws_api;
-use crate::tools::tool_router::ToolRouter;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use aes_gcm::aead::generic_array::GenericArray;
@@ -28,6 +27,7 @@ use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_http_api::node_commands::NodeCommand;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};

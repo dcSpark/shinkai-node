@@ -8,7 +8,6 @@ use crate::{
         providers::shared::openai::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
@@ -19,6 +18,7 @@ use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool};
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::RetrievedNode};
 
 use crate::llm_provider::{
@@ -431,14 +431,20 @@ impl AsyncFunction for BamlInference {
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
+        eprintln!("user_message: {:?}", user_message);
 
         let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
         let dsl_class_file: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let dsl_class_file = BamlConfig::convert_dsl_class_file(&dsl_class_file.unwrap_or_default());
+        eprintln!("dsl_class_file: {:?}", dsl_class_file);
+
         let fn_name: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        eprintln!("fn_name: {:?}", fn_name);
+
         let param_name: Option<String> = args.get(5).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        eprintln!("param_name: {:?}", param_name);
 
         // TODO: do we need the job for something?
         let full_job = self.context.full_job();
@@ -459,6 +465,7 @@ impl AsyncFunction for BamlInference {
             model: llm_provider.get_model_string(),
             default_role: "user".to_string(),
         };
+        eprintln!("client_config: {:?}", client_config);
 
         // Note(nico): we need to pass the env vars from the job here if we are using an LLM behind an API
         let env_vars = HashMap::new();

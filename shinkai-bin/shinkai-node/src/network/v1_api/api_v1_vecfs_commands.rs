@@ -4,7 +4,7 @@ use crate::{
     llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
     network::{
-        network_manager::external_subscriber_manager::ExternalSubscriberManager, node_api_router::APIError, node_error::NodeError, Node
+        network_manager::external_subscriber_manager::ExternalSubscriberManager, node_error::NodeError, Node
     },
 };
 use async_channel::Sender;
@@ -12,6 +12,7 @@ use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{identity::Identity, shinkai_name::ShinkaiName},
     shinkai_message::{

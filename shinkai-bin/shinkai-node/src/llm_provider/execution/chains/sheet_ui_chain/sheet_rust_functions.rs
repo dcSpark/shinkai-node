@@ -1,11 +1,9 @@
 use std::{any::Any, collections::HashMap, pin::Pin, sync::Arc};
 
-use crate::{
-    managers::sheet_manager::SheetManager,
-    tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
-};
+use crate::managers::sheet_manager::SheetManager;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
+use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 

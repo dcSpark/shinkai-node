@@ -5,7 +5,7 @@ use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::tools::tool_router::ToolRouter;
+use crate::managers::tool_router::ToolRouter;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_db::db::ShinkaiDB;

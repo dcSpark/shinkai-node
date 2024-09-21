@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use crate::{
-    lance_db,
-    network::{node_commands::NodeCommand, Node},
-};
+use shinkai_http_api::node_commands::NodeCommand;
+
+use crate::network::Node;
 
 impl Node {
     pub async fn handle_command(&self, command: NodeCommand) {
@@ -2952,11 +2951,7 @@ impl Node {
                     let _ = Node::v2_api_update_job_scope(db_clone, bearer, job_id, job_scope, res).await;
                 });
             }
-            NodeCommand::V2ApiGetJobScope {
-                bearer,
-                job_id,
-                res,
-            } => {
+            NodeCommand::V2ApiGetJobScope { bearer, job_id, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;

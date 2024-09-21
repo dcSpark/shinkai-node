@@ -13,6 +13,8 @@ members = [
   "shinkai-libs/shinkai-subscription-manager",
   "shinkai-libs/shinkai-job-queue-manager",
   "shinkai-libs/shinkai-baml",
+  "shinkai-libs/shinkai-http-api",
+  "shinkai-libs/shinkai-tools-primitives",
   "shinkai-bin/*",
 ]
 resolver = "2"
@@ -34,3 +36,6 @@ shinkai_db = { path = "./shinkai-libs/shinkai-db" }
 shinkai_subscription_manager = { path = "./shinkai-libs/shinkai-subscription-manager" }
 shinkai_job_queue_manager = { path = "./shinkai-libs/shinkai-job-queue-manager" }
 shinkai_baml = { path = "./shinkai-libs/shinkai-baml" }
+shinkai_http_api = { path = "./shinkai-libs/shinkai-http-api" }
+shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
+

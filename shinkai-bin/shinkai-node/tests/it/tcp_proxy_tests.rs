@@ -7,24 +7,27 @@ use std::{
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
+use shinkai_http_api::{node_api_router::APIError, node_commands::NodeCommand};
 use shinkai_message_primitives::shinkai_utils::{
     encryption::{
         encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
     },
-    shinkai_logging::init_default_tracing,
     shinkai_message_builder::ShinkaiMessageBuilder,
     signatures::{
         clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
         unsafe_deterministic_signature_keypair,
     },
 };
-use shinkai_node::network::{node_commands::NodeCommand, node_api_router::APIError, Node};
+use shinkai_node::network::Node;
 use shinkai_tcp_relayer::TCPProxy;
 use shinkai_vector_resources::utils::hash_string;
 use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
 
 use crate::it::utils::{
-    node_test_local::local_registration_profile_node, shinkai_testing_framework::ShinkaiTestingFramework, test_boilerplate::{default_embedding_model, supported_embedding_models}, vecfs_test_utils::remove_timestamps_from_shared_folder_cache_response
+    node_test_local::local_registration_profile_node,
+    shinkai_testing_framework::ShinkaiTestingFramework,
+    test_boilerplate::{default_embedding_model, supported_embedding_models},
+    vecfs_test_utils::remove_timestamps_from_shared_folder_cache_response,
 };
 
 use super::utils::db_handlers::setup;
@@ -33,7 +36,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 #[test]
 fn tcp_proxy_test_identity() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    
+
     setup();
     let rt = Runtime::new().unwrap();
 
@@ -438,7 +441,7 @@ fn tcp_proxy_test_identity() {
 #[test]
 fn tcp_proxy_test_localhost() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    
+
     setup();
     let rt = Runtime::new().unwrap();
 

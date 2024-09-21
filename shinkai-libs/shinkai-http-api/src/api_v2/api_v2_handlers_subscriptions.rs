@@ -1,225 +1,140 @@
-use std::collections::HashMap;
-
 use async_channel::Sender;
+use futures::StreamExt;
 use reqwest::StatusCode;
-
-use serde_json::Value;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{APISetWorkflow, APIWorkflowKeyname};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
+    APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
+    APIUpdateShareableFolder,
+};
 use utoipa::OpenApi;
 use warp::Filter;
 
 use crate::{
-    network::{node_api_router::APIError, node_commands::NodeCommand},
-    tools::shinkai_tool::ShinkaiTool,
+    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
+    node_commands::NodeCommand,
 };
 
 use super::api_v2_router::{create_success_response, with_sender};
 
-pub fn workflows_routes(
+pub fn subscriptions_routes(
     node_commands_sender: Sender<NodeCommand>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let search_workflows_route = warp::path("search_workflows")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<HashMap<String, String>>())
-        .and_then(search_workflows_handler);
-
-    let set_workflow_route = warp::path("set_workflow")
+    let available_shared_items_route = warp::path("available_shared_items")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
-        .and_then(set_workflow_handler);
+        .and_then(available_shared_items_handler);
 
-    let remove_workflow_route = warp::path("remove_workflow")
+    let available_shared_items_open_route = warp::path("available_shared_items_open")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
-        .and_then(remove_workflow_handler);
+        .and_then(available_shared_items_open_handler);
 
-    let get_workflow_info_route = warp::path("get_workflow_info")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<APIWorkflowKeyname>())
-        .and_then(get_workflow_info_handler);
-
-    let list_all_workflows_route = warp::path("list_all_workflows")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and_then(list_all_workflows_handler);
-
-    let list_all_shinkai_tools_route = warp::path("list_all_shinkai_tools")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and_then(list_all_shinkai_tools_handler);
-
-    let set_shinkai_tool_route = warp::path("set_shinkai_tool")
-        .and(warp::post())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<HashMap<String, String>>())
-        .and(warp::body::json())
-        .and_then(set_shinkai_tool_handler);
-
-    let get_shinkai_tool_route = warp::path("get_shinkai_tool")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<HashMap<String, String>>())
-        .and_then(get_shinkai_tool_handler);
-
-    let search_shinkai_tool_route = warp::path("search_shinkai_tool")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<HashMap<String, String>>())
-        .and_then(search_shinkai_tool_handler);
-
-    let add_shinkai_tool_route = warp::path("add_shinkai_tool")
+    let create_shareable_folder_route = warp::path("create_shareable_folder")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
-        .and_then(add_shinkai_tool_handler);
+        .and_then(create_shareable_folder_handler);
 
-    search_workflows_route
-        .or(set_workflow_route)
-        .or(remove_workflow_route)
-        .or(get_workflow_info_route)
-        .or(list_all_workflows_route)
-        .or(list_all_shinkai_tools_route)
-        .or(set_shinkai_tool_route)
-        .or(get_shinkai_tool_route)
-        .or(search_shinkai_tool_route)
-        .or(add_shinkai_tool_route)
-}
+    let update_shareable_folder_route = warp::path("update_shareable_folder")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_shareable_folder_handler);
 
-#[utoipa::path(
-    get,
-    path = "/v2/search_workflows",
-    params(
-        ("query" = String, Query, description = "Search query for workflows")
-    ),
-    responses(
-        (status = 200, description = "Successfully searched workflows", body = Value),
-        (status = 400, description = "Bad request", body = APIError),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn search_workflows_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    query_params: HashMap<String, String>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let query = query_params
-        .get("query")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?
-        .to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiSearchWorkflows {
-            bearer,
-            query,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    let unshare_folder_route = warp::path("unshare_folder")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(unshare_folder_handler);
 
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
-    }
-}
+    let subscribe_to_shared_folder_route = warp::path("subscribe_to_shared_folder")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(subscribe_to_shared_folder_handler);
 
-#[utoipa::path(
-    get,
-    path = "/v2/search_shinkai_tool",
-    params(
-        ("query" = String, Query, description = "Search query for Shinkai tools")
-    ),
-    responses(
-        (status = 200, description = "Successfully searched Shinkai tools", body = Value),
-        (status = 400, description = "Bad request", body = APIError),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn search_shinkai_tool_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    query_params: HashMap<String, String>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let query = query_params
-        .get("query")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?
-        .to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiSearchShinkaiTool {
-            bearer,
-            query,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    let unsubscribe_route = warp::path("unsubscribe")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(unsubscribe_handler);
 
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
-    }
+    let my_subscriptions_route = warp::path("my_subscriptions")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(my_subscriptions_handler);
+
+    let get_my_subscribers_route = warp::path("my_subscribers")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_my_subscribers_handler);
+
+    let get_http_free_subscription_links_route = warp::path("http_free_subscription_links")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_http_free_subscription_links_handler);
+
+    let get_last_notifications_route = warp::path("last_notifications")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_last_notifications_handler);
+
+    let get_notifications_before_timestamp_route = warp::path("notifications_before_timestamp")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_notifications_before_timestamp_handler);
+
+    available_shared_items_route
+        .or(available_shared_items_open_route)
+        .or(create_shareable_folder_route)
+        .or(update_shareable_folder_route)
+        .or(unshare_folder_route)
+        .or(subscribe_to_shared_folder_route)
+        .or(unsubscribe_route)
+        .or(my_subscriptions_route)
+        .or(get_my_subscribers_route)
+        .or(get_http_free_subscription_links_route)
+        .or(get_last_notifications_route)
+        .or(get_notifications_before_timestamp_route)
 }
 
 #[utoipa::path(
     post,
-    path = "/v2/set_workflow",
-    request_body = APISetWorkflow,
+    path = "/v2/available_shared_items",
+    request_body = APIAvailableSharedItems,
     responses(
-        (status = 200, description = "Successfully set workflow", body = Value),
+        (status = 200, description = "Successfully retrieved available shared items", body = Value),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn set_workflow_handler(
-    sender: Sender<NodeCommand>,
+pub async fn available_shared_items_handler(
+    node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    payload: APISetWorkflow,
+    payload: APIAvailableSharedItems,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiSetWorkflow {
+    node_commands_sender
+        .send(NodeCommand::V2ApiAvailableSharedItems {
             bearer,
             payload,
             res: res_sender,
@@ -242,23 +157,23 @@ pub async fn set_workflow_handler(
 
 #[utoipa::path(
     post,
-    path = "/v2/remove_workflow",
-    request_body = APIWorkflowKeyname,
+    path = "/v2/available_shared_items_open",
+    request_body = APIAvailableSharedItems,
     responses(
-        (status = 200, description = "Successfully removed workflow", body = Value),
+        (status = 200, description = "Successfully retrieved available shared items open", body = Value),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn remove_workflow_handler(
-    sender: Sender<NodeCommand>,
+pub async fn available_shared_items_open_handler(
+    node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    payload: APIWorkflowKeyname,
+    payload: APIAvailableSharedItems,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiRemoveWorkflow {
+    node_commands_sender
+        .send(NodeCommand::V2ApiAvailableSharedItemsOpen {
             bearer,
             payload,
             res: res_sender,
@@ -280,153 +195,25 @@ pub async fn remove_workflow_handler(
 }
 
 #[utoipa::path(
-    get,
-    path = "/v2/get_workflow_info",
-    params(
-        ("keyname" = String, Query, description = "Keyname of the workflow")
-    ),
-    responses(
-        (status = 200, description = "Successfully retrieved workflow info", body = Value),
-        (status = 400, description = "Bad request", body = APIError),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn get_workflow_info_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    keyname: APIWorkflowKeyname,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiGetWorkflowInfo {
-            bearer,
-            payload: keyname,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/v2/list_all_workflows",
-    responses(
-        (status = 200, description = "Successfully listed all workflows", body = Value),
-        (status = 400, description = "Bad request", body = APIError),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn list_all_workflows_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiListAllWorkflows {
-            bearer,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/v2/list_all_shinkai_tools",
-    responses(
-        (status = 200, description = "Successfully listed all Shinkai tools", body = Value),
-        (status = 400, description = "Bad request", body = APIError),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn list_all_shinkai_tools_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiListAllShinkaiTools {
-            bearer,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
-    }
-}
-
-#[utoipa::path(
     post,
-    path = "/v2/set_shinkai_tool",
-    request_body = Value,
-    params(
-        ("tool_name" = String, Query, description = "Key name of the Shinkai tool")
-    ),
+    path = "/v2/create_shareable_folder",
+    request_body = APICreateShareableFolder,
     responses(
-        (status = 200, description = "Successfully set Shinkai tool", body = bool),
+        (status = 200, description = "Successfully created shareable folder", body = String),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn set_shinkai_tool_handler(
-    sender: Sender<NodeCommand>,
+pub async fn create_shareable_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    query_params: HashMap<String, String>,
-    payload: Value,
+    payload: APICreateShareableFolder,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let tool_key = query_params
-        .get("tool_name")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?
-        .to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiSetShinkaiTool {
+    node_commands_sender
+        .send(NodeCommand::V2ApiCreateShareableFolder {
             bearer,
-            tool_key,
             payload,
             res: res_sender,
         })
@@ -435,7 +222,10 @@ pub async fn set_shinkai_tool_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
@@ -444,38 +234,26 @@ pub async fn set_shinkai_tool_handler(
 }
 
 #[utoipa::path(
-    get,
-    path = "/v2/get_shinkai_tool",
-    params(
-        ("tool_name" = String, Query, description = "Name of the Shinkai tool")
-    ),
+    post,
+    path = "/v2/update_shareable_folder",
+    request_body = APIUpdateShareableFolder,
     responses(
-        (status = 200, description = "Successfully retrieved Shinkai tool", body = Value),
+        (status = 200, description = "Successfully updated shareable folder", body = String),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn get_shinkai_tool_handler(
-    sender: Sender<NodeCommand>,
+pub async fn update_shareable_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    query_params: HashMap<String, String>,
+    payload: APIUpdateShareableFolder,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let tool_name = query_params
-        .get("tool_name")
-        .ok_or_else(|| {
-            warp::reject::custom(APIError {
-                code: 400,
-                error: "Invalid Query".to_string(),
-                message: "The request query string is invalid.".to_string(),
-            })
-        })?
-        .to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiGetShinkaiTool {
+    node_commands_sender
+        .send(NodeCommand::V2ApiUpdateShareableFolder {
             bearer,
-            payload: tool_name,
+            payload,
             res: res_sender,
         })
         .await
@@ -496,25 +274,295 @@ pub async fn get_shinkai_tool_handler(
 
 #[utoipa::path(
     post,
-    path = "/v2/add_shinkai_tool",
-    request_body = ShinkaiTool,
+    path = "/v2/unshare_folder",
+    request_body = APIUnshareFolder,
     responses(
-        (status = 200, description = "Successfully added Shinkai tool", body = Value),
+        (status = 200, description = "Successfully unshared folder", body = String),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn add_shinkai_tool_handler(
-    sender: Sender<NodeCommand>,
+pub async fn unshare_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    payload: ShinkaiTool,
+    payload: APIUnshareFolder,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiAddShinkaiTool {
+    node_commands_sender
+        .send(NodeCommand::V2ApiUnshareFolder {
             bearer,
-            shinkai_tool: payload,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/subscribe_to_shared_folder",
+    request_body = APISubscribeToSharedFolder,
+    responses(
+        (status = 200, description = "Successfully subscribed to shared folder", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn subscribe_to_shared_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APISubscribeToSharedFolder,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiSubscribeToSharedFolder {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/unsubscribe",
+    request_body = APIUnsubscribeToSharedFolder,
+    responses(
+        (status = 200, description = "Successfully unsubscribed from shared folder", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn unsubscribe_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APIUnsubscribeToSharedFolder,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUnsubscribe {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/my_subscriptions",
+    responses(
+        (status = 200, description = "Successfully retrieved my subscriptions", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn my_subscriptions_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiMySubscriptions {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/my_subscribers",
+    request_body = APIGetMySubscribers,
+    responses(
+        (status = 200, description = "Successfully retrieved my subscribers", body = HashMap<String, Vec<ShinkaiSubscription>>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_my_subscribers_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APIGetMySubscribers,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetMySubscribers {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/http_free_subscription_links",
+    request_body = String,
+    responses(
+        (status = 200, description = "Successfully retrieved HTTP free subscription links", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_http_free_subscription_links_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    subscription_profile_path: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetHttpFreeSubscriptionLinks {
+            bearer,
+            subscription_profile_path,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/last_notifications",
+    request_body = APIGetLastNotifications,
+    responses(
+        (status = 200, description = "Successfully retrieved last notifications", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_last_notifications_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APIGetLastNotifications,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetLastNotifications {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/notifications_before_timestamp",
+    request_body = APIGetNotificationsBeforeTimestamp,
+    responses(
+        (status = 200, description = "Successfully retrieved notifications before timestamp", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_notifications_before_timestamp_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: APIGetNotificationsBeforeTimestamp,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetNotificationsBeforeTimestamp {
+            bearer,
+            payload,
             res: res_sender,
         })
         .await
@@ -536,22 +584,24 @@ pub async fn add_shinkai_tool_handler(
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        search_workflows_handler,
-        set_workflow_handler,
-        remove_workflow_handler,
-        get_workflow_info_handler,
-        list_all_workflows_handler,
-        list_all_shinkai_tools_handler,
-        set_shinkai_tool_handler,
-        get_shinkai_tool_handler,
-        search_shinkai_tool_handler,
-        add_shinkai_tool_handler,
+        available_shared_items_handler,
+        available_shared_items_open_handler,
+        create_shareable_folder_handler,
+        update_shareable_folder_handler,
+        unshare_folder_handler,
+        subscribe_to_shared_folder_handler,
+        unsubscribe_handler,
+        my_subscriptions_handler,
+        get_my_subscribers_handler,
+        get_http_free_subscription_links_handler,
+        get_last_notifications_handler,
+        get_notifications_before_timestamp_handler
     ),
     components(
-        schemas(APIError)
+        schemas(SendResponseBody, SendResponseBodyData, APIError)
     ),
     tags(
-        (name = "workflows", description = "Workflow API endpoints")
+        (name = "subscriptions", description = "Subscription API endpoints")
     )
 )]
-pub struct WorkflowsApiDoc;
+pub struct SubscriptionsApiDoc;

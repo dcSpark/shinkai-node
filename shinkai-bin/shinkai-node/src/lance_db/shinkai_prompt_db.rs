@@ -1,5 +1,3 @@
-use crate::prompts::custom_prompt::CustomPrompt;
-
 use super::shinkai_prompt_schema::ShinkaiPromptSchema;
 use super::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
 use arrow_array::{Array, FixedSizeListArray, Float32Array};
@@ -12,6 +10,7 @@ use lancedb::index::vector::IvfHnswPqIndexBuilder;
 use lancedb::index::Index;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::{table::AddDataMode, Connection, Error as LanceDbError, Table};
+use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::collections::HashSet;
 use std::sync::Arc;

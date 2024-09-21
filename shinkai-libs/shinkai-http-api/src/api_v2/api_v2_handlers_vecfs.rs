@@ -6,7 +6,8 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems,
 };
 
-use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
+use crate::node_api_router::APIError;
+use crate::node_commands::NodeCommand;
 use warp::Filter;
 use warp::multipart::FormData;
 use futures::StreamExt;

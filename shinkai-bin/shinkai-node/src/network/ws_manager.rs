@@ -12,6 +12,7 @@ use shinkai_db::schemas::ws_types::WSMessagePayload;
 use shinkai_db::schemas::ws_types::WSMessageType;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_db::schemas::ws_types::WebSocketManagerError;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -31,7 +32,6 @@ use warp::ws::Message;
 use warp::ws::WebSocket;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::node_api_router::APIError;
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;

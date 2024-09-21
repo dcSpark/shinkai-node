@@ -19,7 +19,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
-use shinkai_node::network::node_commands::NodeCommand;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_vector_fs::vector_fs;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};

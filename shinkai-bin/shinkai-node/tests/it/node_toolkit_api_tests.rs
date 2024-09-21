@@ -16,7 +16,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node_commands::NodeCommand;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
 

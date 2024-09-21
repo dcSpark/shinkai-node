@@ -1,8 +1,5 @@
 use super::network::Node;
-use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
-use super::utils::static_server::start_static_server;
-use crate::network::node_api_router;
-use crate::network::node_commands::NodeCommand;
+use super::utils::environment::NodeEnvironment;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};
@@ -10,12 +7,12 @@ use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
+use shinkai_http_api::node_api_router;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
-    init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
-};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
@@ -81,7 +78,7 @@ pub async fn initialize_node() -> Result<
     let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
     let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
 
-    // Acquire the Node's keys. 
+    // Acquire the Node's keys.
     // TODO: Should check with on and then it's with onchain data for matching with the keys provided
     let secrets = parse_secrets_file(&secrets_file_path);
     let global_identity_name = secrets
@@ -211,17 +208,6 @@ pub async fn initialize_node() -> Result<
             &main_db_path,
             &vector_fs_db_path,
         );
-    }
-
-    // Fetch static server environment variables
-    if let Some(static_server_env) = fetch_static_server_env() {
-        // Start the static server if the environment variables are set
-        let _static_server = start_static_server(
-            static_server_env.ip,
-            static_server_env.port,
-            static_server_env.folder_path,
-        )
-        .await;
     }
 
     // Setup API Server task

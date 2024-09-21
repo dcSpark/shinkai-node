@@ -3,10 +3,11 @@ use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
 
-use crate::{llm_provider::error::LLMProviderError, tools::error::ToolError};
+use crate::llm_provider::error::LLMProviderError;
 
 #[derive(Debug)]
 pub struct NodeError {

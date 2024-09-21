@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use crate::network::{node_api_router::APIError, node_error::NodeError, Node};
+use crate::network::{node_error::NodeError, Node};
 
 use async_channel::Sender;
 use reqwest::StatusCode;
 use shinkai_db::db::ShinkaiDB;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 impl Node {

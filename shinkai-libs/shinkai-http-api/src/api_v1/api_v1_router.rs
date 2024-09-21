@@ -86,7 +86,7 @@ use super::api_v1_handlers::update_workflow_handler;
 use super::api_v1_handlers::use_registration_code_handler;
 use super::api_v1_handlers::user_sheets_handler;
 use super::api_v1_handlers::NameToExternalProfileData;
-use crate::network::node_commands::NodeCommand;
+use crate::node_commands::NodeCommand;
 
 pub fn v1_routes(
     node_commands_sender: Sender<NodeCommand>,

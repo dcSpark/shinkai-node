@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
-use crate::tools::shinkai_tool::ShinkaiTool;
 use serde_json::json;
 use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 impl JobPromptGenerator {
@@ -57,9 +57,13 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
             }
+            eprintln!("Node content:\n");
             for node in ret_nodes {
+                // Print the content of each node to the console
+                eprintln!("{:?}", node.format_for_prompt(3500));
                 prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
             }
+            eprintln!("--- end ---");
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }

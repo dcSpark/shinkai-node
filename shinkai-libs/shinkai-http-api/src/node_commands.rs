@@ -6,7 +6,7 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_mixed::NetworkIdentifier
+        coinbase_mpc_config::CoinbaseMPCWalletConfig, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
@@ -23,17 +23,18 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
-use crate::{
-    prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
-        coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
-    }
-};
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+// use crate::{
+//     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
+//         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
+//     }
+// };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
     node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
-    v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    v2_api::api_v2_handlers_general::InitialRegistrationRequest,
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
 };
 
 pub enum NodeCommand {

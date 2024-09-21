@@ -19,3 +19,6 @@ pub mod subprompts;
 pub mod llm_message;
 pub mod file_links;
 pub mod smart_inbox;
+pub mod coinbase_mpc_config;
+pub mod custom_prompt;
+pub mod wallet_complementary;
