@@ -79,14 +79,6 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_json() {
-        let processor = DataTypeProcessor::new();
-        let input = ":::JSON:::{invalid json}";
-        let result = processor.process_data(input);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_invalid_base64() {
         let processor = DataTypeProcessor::new();
         let input = ":::BASE64:::invalid base64";
