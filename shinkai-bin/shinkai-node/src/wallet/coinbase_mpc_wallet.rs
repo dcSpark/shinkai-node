@@ -4,6 +4,9 @@ use ethers::prelude::*;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
+use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
+use shinkai_tools_primitives::tools::js_toolkit_headers::ToolConfig;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -13,8 +16,6 @@ use tokio::sync::RwLock;
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
-use crate::tools::js_toolkit_headers::ToolConfig;
-use crate::tools::shinkai_tool::ShinkaiTool;
 use crate::wallet::wallet_error::WalletError;
 use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
 
@@ -572,14 +573,6 @@ impl SendActions for CoinbaseMPCWallet {
 
         Box::pin(fut)
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CoinbaseMPCWalletConfig {
-    pub name: String,
-    pub private_key: String,
-    pub wallet_id: Option<String>,
-    pub use_server_signer: Option<String>,
 }
 
 pub enum ShinkaiToolCoinbase {

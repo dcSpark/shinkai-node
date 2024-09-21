@@ -1,6 +1,3 @@
-use crate::tools::error::ToolError;
-use crate::tools::js_toolkit_headers::ToolConfig;
-use crate::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use arrow_array::{Array, BinaryArray, BooleanArray};
 use arrow_array::{FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field};
@@ -14,6 +11,9 @@ use lancedb::query::{ExecutableQuery, Select};
 use lancedb::table::AddDataMode;
 use lancedb::Error as LanceDbError;
 use lancedb::{connect, Connection, Table};
+use shinkai_tools_primitives::tools::error::ToolError;
+use shinkai_tools_primitives::tools::js_toolkit_headers::ToolConfig;
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::collections::HashSet;
@@ -649,7 +649,7 @@ impl LanceShinkaiDb {
             .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
 
         // Full-text search query
-        let mut fts_query_builder = self
+        let fts_query_builder = self
             .tool_table
             .query()
             .full_text_search(FullTextSearchQuery::new(query.to_owned()))
@@ -666,7 +666,7 @@ impl LanceShinkaiDb {
             .limit(num_results as usize);
 
         // Vector search query
-        let mut vector_query_builder = self
+        let vector_query_builder = self
             .tool_table
             .query()
             .nearest_to(embedding)
@@ -805,17 +805,16 @@ impl LanceShinkaiDb {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::js_toolkit::JSToolkit;
-    use crate::tools::js_toolkit_headers::ToolConfig;
-    use crate::tools::network_tool::NetworkTool;
-    use crate::tools::tool_router_dep::workflows_data;
+    use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
+    use shinkai_tools_primitives::tools::js_toolkit_headers::ToolConfig;
+    use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+    use shinkai_tools_primitives::tools::tool_router_dep::workflows_data;
 
     use super::*;
     use serde_json::Value;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
-    use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
     use std::fs;

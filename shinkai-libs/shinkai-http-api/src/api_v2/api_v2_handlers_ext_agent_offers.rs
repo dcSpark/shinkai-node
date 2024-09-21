@@ -6,7 +6,7 @@ use utoipa::OpenApi;
 use warp::http::StatusCode;
 use warp::Filter;
 
-use crate::network::{node_api_router::APIError, node_commands::NodeCommand};
+use crate::{node_api_router::APIError, node_commands::NodeCommand};
 
 use super::api_v2_router::{create_success_response, with_sender};
 

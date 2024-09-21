@@ -9,7 +9,7 @@ use shinkai_message_primitives::{
 use utoipa::OpenApi;
 use warp::Filter;
 
-use crate::network::{
+use crate::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,
 };

@@ -1,17 +1,12 @@
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::tool_router::ToolRouter;
 use crate::{
     lance_db::shinkai_lance_db::LanceShinkaiDb,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{
-        node::ProxyConnectionInfo,
-        node_api_router::{APIError, SendResponseBodyData},
-        node_error::NodeError,
-        node_shareable_logic::validate_message_main_logic,
-        v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-        Node,
+        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node,
     },
-    tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool, tool_router::ToolRouter, workflow_tool::WorkflowTool},
     utils::update_global_identity::update_global_identity_name,
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
@@ -28,8 +23,10 @@ use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::inbox_permission::InboxPermission;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
+use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
-    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
+    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
 };
 use shinkai_message_primitives::schemas::registration_code::RegistrationCodeSimple;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
@@ -55,6 +52,9 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
+use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_tools_primitives::tools::workflow_tool::WorkflowTool;
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;

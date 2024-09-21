@@ -1,10 +1,27 @@
 use std::any::Any;
+use std::fmt;
 
-use crate::llm_provider::error::LLMProviderError;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
+
+#[derive(Debug)]
+pub enum RustToolError {
+    InvalidFunctionArguments(String),
+    FailedJSONParsing,
+}
+
+impl fmt::Display for RustToolError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RustToolError::InvalidFunctionArguments(msg) => write!(f, "Invalid function arguments: {}", msg),
+            RustToolError::FailedJSONParsing => write!(f, "Failed to parse JSON"),
+        }
+    }
+}
+
+impl std::error::Error for RustToolError {}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustTool {
@@ -262,7 +279,7 @@ impl RustTool {
 
     pub fn convert_args_from_fn_call(
         function_args: serde_json::Value,
-    ) -> Result<Vec<Box<dyn Any + Send>>, LLMProviderError> {
+    ) -> Result<Vec<Box<dyn Any + Send>>, RustToolError> {
         match function_args {
             serde_json::Value::Array(arr) => arr
                 .into_iter()
@@ -298,7 +315,7 @@ impl RustTool {
                     _ => Ok(Box::new(value.to_string()) as Box<dyn Any + Send>),
                 })
                 .collect(),
-            _ => Err(LLMProviderError::InvalidFunctionArguments(format!(
+            _ => Err(RustToolError::InvalidFunctionArguments(format!(
                 "Invalid arguments: {:?}",
                 function_args
             ))),

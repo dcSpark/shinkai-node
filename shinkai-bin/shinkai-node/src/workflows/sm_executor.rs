@@ -285,7 +285,7 @@ impl<'a> WorkflowEngine<'a> {
                     let mut arg_values = Vec::new();
                     for arg in args {
                         let evaluated_arg = self.evaluate_param(arg, registers).await;
-                        // eprintln!("Evaluated arg: {:?}", evaluated_arg);
+                        eprintln!("Evaluated arg: {:?}", evaluated_arg);
                         match evaluated_arg {
                             Ok(value) => arg_values.push(Box::new(value) as Box<dyn Any + Send>),
                             Err(e) => {

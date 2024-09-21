@@ -1,5 +1,5 @@
-use crate::tools::error::ToolError;
 use lancedb::Error as LanceDbError;
+use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 

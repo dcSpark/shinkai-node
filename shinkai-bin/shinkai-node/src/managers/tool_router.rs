@@ -10,31 +10,31 @@ use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslC
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
-use crate::prompts::custom_prompt::CustomPrompt;
 use crate::prompts::prompts_data;
-use crate::tools::argument::ToolArgument;
-use crate::tools::error::ToolError;
-use crate::tools::shinkai_tool::ShinkaiTool;
-use crate::tools::workflow_tool::WorkflowTool;
 use crate::workflows::sm_executor::AsyncFunction;
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry};
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
+};
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
-use shinkai_tools_runner::built_in_tools;
+use shinkai_tools_primitives::tools::argument::ToolArgument;
+use shinkai_tools_primitives::tools::error::ToolError;
+use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
+use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_tools_primitives::tools::rust_tools::RustTool;
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::tool_router_dep::workflows_data;
+use shinkai_tools_primitives::tools::workflow_tool::WorkflowTool;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tokio::sync::RwLock;
 
-use super::js_toolkit::JSToolkit;
-use super::network_tool::NetworkTool;
-use super::rust_tools::RustTool;
-use super::shinkai_tool::ShinkaiToolHeader;
-use super::tool_router_dep::workflows_data;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 
 #[derive(Clone)]
@@ -702,8 +702,6 @@ mod tests {
     use serde_json::json;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-
-    use crate::tools::workflow_tool::WorkflowTool;
 
     use super::*;
     use std::env;

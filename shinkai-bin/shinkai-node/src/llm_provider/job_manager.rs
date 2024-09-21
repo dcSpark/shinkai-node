@@ -6,7 +6,7 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::IdentityManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::tools::tool_router::ToolRouter;
+use crate::managers::tool_router::ToolRouter;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};

@@ -1,6 +1,7 @@
+use crate::api_v1;
+use crate::api_v2;
+
 use super::node_commands::NodeCommand;
-use super::v1_api::api_v1_router::v1_routes;
-use super::v2_api::api_v2_router::v2_routes;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Serialize;
@@ -8,7 +9,6 @@ use serde_json::json;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
-use std::env;
 use std::net::SocketAddr;
 use utoipa::ToSchema;
 use warp::Filter;
@@ -115,7 +115,7 @@ pub async fn run_api(
         .allow_headers(vec!["Content-Type", "Authorization"]);
 
     let v1_routes = warp::path("v1").and(
-        v1_routes(node_commands_sender.clone(), node_name.clone())
+        api_v1::api_v1_router::v1_routes(node_commands_sender.clone(), node_name.clone())
             .recover(handle_rejection)
             .with(log)
             .with(cors.clone()),
@@ -123,7 +123,7 @@ pub async fn run_api(
     println!("API server running on http://{}", address);
 
     let v2_routes = warp::path("v2").and(
-        v2_routes(node_commands_sender.clone(), node_name.clone())
+        api_v2::api_v2_router::v2_routes(node_commands_sender.clone(), node_name.clone())
             .recover(handle_rejection)
             .with(log)
             .with(cors.clone()),

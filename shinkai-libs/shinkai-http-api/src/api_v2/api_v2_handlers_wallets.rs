@@ -1,93 +1,127 @@
 use async_channel::Sender;
 use serde::Deserialize;
+use serde_json::Value;
+use shinkai_message_primitives::schemas::{coinbase_mpc_config::CoinbaseMPCWalletConfig, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier};
+use utoipa::OpenApi;
 use warp::Filter;
 
-use crate::{network::node_commands::NodeCommand, prompts::custom_prompt::CustomPrompt};
+use crate::{node_api_router::APIError, node_commands::NodeCommand};
 
 use super::api_v2_router::with_sender;
 
-pub fn prompt_routes(
+pub fn wallet_routes(
     node_commands_sender: Sender<NodeCommand>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let add_custom_prompt_route = warp::path("add_custom_prompt")
+    let restore_local_wallet_route = warp::path("restore_local_wallet")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
-        .and_then(add_custom_prompt_handler);
+        .and_then(restore_local_wallet_handler);
 
-    let delete_custom_prompt_route = warp::path("delete_custom_prompt")
+    let create_local_wallet_route = warp::path("create_local_wallet")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
-        .and_then(delete_custom_prompt_handler);
+        .and_then(create_local_wallet_handler);
 
-    let get_all_custom_prompts_route = warp::path("get_all_custom_prompts")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and_then(get_all_custom_prompts_handler);
-
-    let get_custom_prompt_route = warp::path("get_custom_prompt")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<GetCustomPromptRequest>())
-        .and_then(get_custom_prompt_handler);
-
-    let search_custom_prompts_route = warp::path("search_custom_prompts")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::query::<SearchCustomPromptsRequest>())
-        .and_then(search_custom_prompts_handler);
-
-    let update_custom_prompt_route = warp::path("update_custom_prompt")
+    let pay_invoice_route = warp::path("pay_invoice")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
-        .and_then(update_custom_prompt_handler);
+        .and_then(pay_invoice_handler);
 
-    add_custom_prompt_route
-        .or(delete_custom_prompt_route)
-        .or(get_all_custom_prompts_route)
-        .or(get_custom_prompt_route)
-        .or(search_custom_prompts_route)
-        .or(update_custom_prompt_route)
+    let restore_coinbase_mpc_wallet_route = warp::path("restore_coinbase_mpc_wallet")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(restore_coinbase_mpc_wallet_handler);
+
+    let list_wallets_route = warp::path("list_wallets")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_wallets_handler);
+
+    restore_local_wallet_route
+        .or(create_local_wallet_route)
+        .or(pay_invoice_route)
+        .or(restore_coinbase_mpc_wallet_route)
+        .or(list_wallets_route)
 }
 
 #[derive(Deserialize)]
-pub struct GetCustomPromptRequest {
-    pub prompt_name: String,
+pub struct RestoreLocalWalletRequest {
+    pub network: NetworkIdentifier,
+    pub source: WalletSource,
+    pub role: WalletRole,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/restore_local_wallet",
+    request_body = RestoreLocalWalletRequest,
+    responses(
+        (status = 200, description = "Successfully restored wallet", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn restore_local_wallet_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RestoreLocalWalletRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRestoreLocalEthersWallet {
+            bearer,
+            network: payload.network,
+            source: payload.source,
+            role: payload.role,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
 }
 
 #[derive(Deserialize)]
-pub struct SearchCustomPromptsRequest {
-    pub query: String,
+pub struct CreateLocalWalletRequest {
+    pub network: NetworkIdentifier,
+    pub role: WalletRole,
 }
 
 #[utoipa::path(
     post,
-    path = "/v2/add_custom_prompt",
-    request_body = CustomPrompt,
+    path = "/v2/create_local_wallet",
+    request_body = CreateLocalWalletRequest,
     responses(
-        (status = 200, description = "Successfully added custom prompt", body = CustomPrompt),
+        (status = 200, description = "Successfully created wallet", body = LocalEthersWallet),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn add_custom_prompt_handler(
+pub async fn create_local_wallet_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: CustomPrompt,
+    payload: CreateLocalWalletRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiAddCustomPrompt {
+        .send(NodeCommand::V2ApiCreateLocalEthersWallet {
             bearer,
-            prompt: payload,
+            network: payload.network,
+            role: payload.role,
             res: res_sender,
         })
         .await
@@ -101,26 +135,77 @@ pub async fn add_custom_prompt_handler(
     }
 }
 
+#[derive(Deserialize)]
+pub struct PayInvoiceRequest {
+    pub invoice_id: String,
+    pub data_for_tool: Value,
+}
+
 #[utoipa::path(
     post,
-    path = "/v2/delete_custom_prompt",
-    request_body = GetCustomPromptRequest,
+    path = "/v2/pay_invoice",
+    request_body = PayInvoiceRequest,
     responses(
-        (status = 200, description = "Successfully deleted custom prompt", body = CustomPrompt),
+        (status = 200, description = "Successfully paid invoice", body = Value),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn delete_custom_prompt_handler(
+pub async fn pay_invoice_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: GetCustomPromptRequest,
+    payload: PayInvoiceRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiDeleteCustomPrompt {
+        .send(NodeCommand::V2ApiPayInvoice {
             bearer,
-            prompt_name: payload.prompt_name,
+            invoice_id: payload.invoice_id,
+            data_for_tool: payload.data_for_tool,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RestoreCoinbaseMPCWalletRequest {
+    pub network: NetworkIdentifier,
+    pub config: Option<CoinbaseMPCWalletConfig>,
+    pub wallet_id: String,
+    pub role: WalletRole,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/restore_coinbase_mpc_wallet",
+    request_body = RestoreCoinbaseMPCWalletRequest,
+    responses(
+        (status = 200, description = "Successfully restored Coinbase MPC wallet", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn restore_coinbase_mpc_wallet_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RestoreCoinbaseMPCWalletRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRestoreCoinbaseMPCWallet {
+            bearer,
+            network: payload.network,
+            config: payload.config,
+            wallet_id: payload.wallet_id,
+            role: payload.role,
             res: res_sender,
         })
         .await
@@ -136,20 +221,20 @@ pub async fn delete_custom_prompt_handler(
 
 #[utoipa::path(
     get,
-    path = "/v2/get_all_custom_prompts",
+    path = "/v2/list_wallets",
     responses(
-        (status = 200, description = "Successfully retrieved all custom prompts", body = Vec<CustomPrompt>),
+        (status = 200, description = "Successfully listed wallets", body = Vec<Value>),
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub async fn get_all_custom_prompts_handler(
+pub async fn list_wallets_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::V2ApiGetAllCustomPrompts {
+        .send(NodeCommand::V2ApiListWallets {
             bearer,
             res: res_sender,
         })
@@ -164,105 +249,19 @@ pub async fn get_all_custom_prompts_handler(
     }
 }
 
-#[utoipa::path(
-    get,
-    path = "/v2/get_custom_prompt",
-    params(
-        ("prompt_name" = String, Query, description = "Name of the custom prompt to retrieve")
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        restore_local_wallet_handler,
+        create_local_wallet_handler,
+        pay_invoice_handler,
+        restore_coinbase_mpc_wallet_handler,
     ),
-    responses(
-        (status = 200, description = "Successfully retrieved custom prompt", body = CustomPrompt),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn get_custom_prompt_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    query: GetCustomPromptRequest,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiGetCustomPrompt {
-            bearer,
-            prompt_name: query.prompt_name,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
-        Err(error) => Err(warp::reject::custom(error)),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/v2/search_custom_prompts",
-    params(
-        ("query" = String, Query, description = "Search query for custom prompts")
+    components(
+        schemas(APIError)
     ),
-    responses(
-        (status = 200, description = "Successfully searched custom prompts", body = Vec<CustomPrompt>),
-        (status = 500, description = "Internal server error", body = APIError)
+    tags(
+        (name = "wallet", description = "Wallet API endpoints")
     )
 )]
-pub async fn search_custom_prompts_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    query: SearchCustomPromptsRequest,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiSearchCustomPrompts {
-            bearer,
-            query: query.query,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
-        Err(error) => Err(warp::reject::custom(error)),
-    }
-}
-
-#[utoipa::path(
-    post,
-    path = "/v2/update_custom_prompt",
-    request_body = CustomPrompt,
-    responses(
-        (status = 200, description = "Successfully updated custom prompt", body = CustomPrompt),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn update_custom_prompt_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    payload: CustomPrompt,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiUpdateCustomPrompt {
-            bearer,
-            prompt: payload,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
-        Err(error) => Err(warp::reject::custom(error)),
-    }
-}
+pub struct WalletApiDoc;

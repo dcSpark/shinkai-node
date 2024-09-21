@@ -8,6 +8,7 @@ use ethers::utils::{format_units, hex, to_checksum};
 use ethers::{core::k256::SecretKey, prelude::*};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use shinkai_message_primitives::schemas::wallet_complementary::WalletSource;
 use shinkai_message_primitives::schemas::wallet_mixed::{
     Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
 };
@@ -85,12 +86,6 @@ impl<'de> Deserialize<'de> for LocalEthersWallet {
             provider,
         })
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WalletSource {
-    Mnemonic(String),
-    PrivateKey(String),
 }
 
 impl LocalEthersWallet {

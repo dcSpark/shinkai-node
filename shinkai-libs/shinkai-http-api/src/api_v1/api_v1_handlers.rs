@@ -18,12 +18,12 @@ use shinkai_message_primitives::{
 use utoipa::ToSchema;
 use warp::Buf;
 
-use crate::network::node_api_router::handle_node_command;
-use crate::network::node_api_router::APIError;
-use crate::network::node_api_router::GetPublicKeysResponse;
-use crate::network::node_api_router::SendResponseBody;
-use crate::network::node_api_router::SendResponseBodyData;
-use crate::network::node_commands::NodeCommand;
+use crate::node_api_router::handle_node_command;
+use crate::node_api_router::APIError;
+use crate::node_api_router::GetPublicKeysResponse;
+use crate::node_api_router::SendResponseBody;
+use crate::node_api_router::SendResponseBodyData;
+use crate::node_commands::NodeCommand;
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {
