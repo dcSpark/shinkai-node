@@ -5,15 +5,13 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::{
-    lance_db::shinkai_lance_db::LanceShinkaiDb,
-    network::{
-        agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node,
-    },
+use crate::network::{
+    agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node,
 };
 
 impl Node {

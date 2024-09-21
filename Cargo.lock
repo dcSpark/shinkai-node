@@ -948,9 +948,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-dynamodb"
-version = "1.46.0"
+version = "1.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d3bbc45fb64dbdf2dc320b88614fee0ce2212444d3add99c95c4e113378da06"
+checksum = "8abc61e7374a01ecebcc3fd465655a2e1b83455f15b26716bfac05c35d25fa1b"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -7221,7 +7221,7 @@ dependencies = [
  "md-5",
  "parking_lot 0.12.3",
  "percent-encoding 2.3.1",
- "quick-xml 0.36.1",
+ "quick-xml 0.36.2",
  "rand 0.8.5",
  "reqwest 0.12.7",
  "ring 0.17.8",
@@ -8354,9 +8354,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.36.1"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96a05e2e8efddfa51a84ca47cec303fac86c8541b686d37cac5efc0e094417bc"
+checksum = "f7649a7b4df05aed9ea7ec6f628c67c9953a43869b8bc50929569b2999d443fe"
 dependencies = [
  "memchr",
  "serde",
@@ -9948,6 +9948,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_lancedb"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "arrow-array",
+ "arrow-schema",
+ "base64 0.22.1",
+ "chrono",
+ "futures",
+ "lancedb",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "shinkai_message_primitives",
+ "shinkai_tools_primitives",
+ "shinkai_tools_runner",
+ "shinkai_vector_resources",
+ "tokio",
+ "uuid 1.10.0",
+]
+
+[[package]]
 name = "shinkai_message_primitives"
 version = "0.7.6"
 dependencies = [
@@ -9977,19 +10000,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_mini_libs"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "uuid 1.10.0",
+]
+
+[[package]]
 name = "shinkai_node"
 version = "0.8.5"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "arrow",
- "arrow-array",
- "arrow-schema",
  "async-channel 1.9.0",
  "async-lock 2.8.0",
  "async-std",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.22.1",
  "bigdecimal",
  "bincode",
  "bip32",
@@ -10013,7 +10045,6 @@ dependencies = [
  "hex",
  "image 0.23.14",
  "keyphrases",
- "lancedb",
  "lazy_static",
  "log 0.4.22",
  "lru 0.7.8",
@@ -10033,6 +10064,7 @@ dependencies = [
  "shinkai_fs_mirror",
  "shinkai_http_api",
  "shinkai_job_queue_manager",
+ "shinkai_lancedb",
  "shinkai_message_primitives",
  "shinkai_sheet",
  "shinkai_subscription_manager",
@@ -10209,7 +10241,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.22.1",
  "blake3",
  "byteorder",
  "chrono",

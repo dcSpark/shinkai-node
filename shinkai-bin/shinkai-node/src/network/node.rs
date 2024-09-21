@@ -8,7 +8,6 @@ use super::network_manager::network_job_manager::{
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
-use crate::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -28,6 +27,7 @@ use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};

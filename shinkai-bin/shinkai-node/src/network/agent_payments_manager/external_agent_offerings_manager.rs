@@ -816,10 +816,9 @@ impl ExtAgentOfferingsManager {
 mod tests {
     use std::{fs, path::Path};
 
-    use crate::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
-
     use super::*;
     use async_trait::async_trait;
+    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
         schemas::{
             identity::{Identity, StandardIdentity, StandardIdentityType},

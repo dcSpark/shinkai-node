@@ -5,11 +5,12 @@ use reqwest::StatusCode;
 
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use tokio::sync::RwLock;
 
-use crate::{lance_db::shinkai_lance_db::LanceShinkaiDb, network::{node_error::NodeError, Node}};
+use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_get_tool_offering(

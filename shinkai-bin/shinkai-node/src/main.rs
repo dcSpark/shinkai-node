@@ -5,10 +5,8 @@ mod cron_tasks;
 mod managers;
 mod network;
 mod runner;
-mod prompts;
 mod utils;
 mod workflows;
-mod lance_db;
 mod wallet;
 
 use runner::{initialize_node, run_node_tasks};

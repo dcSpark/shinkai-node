@@ -1,7 +1,6 @@
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::{
-    lance_db::shinkai_lance_db::LanceShinkaiDb,
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{
@@ -25,10 +24,10 @@ use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
 };
-use shinkai_message_primitives::schemas::registration_code::RegistrationCodeSimple;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::{
     schemas::{
