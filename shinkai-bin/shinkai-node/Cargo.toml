@@ -7,7 +7,7 @@ authors.workspace = true
 default-run = "shinkai_node"
 
 [build-dependencies]
-shinkai_tools_runner = { version = "0.7.14" }
+shinkai_tools_runner = { version = "0.7.14", features = ["built-in-tools"] }
 
 [features]
 default = []
@@ -76,7 +76,7 @@ num_cpus = "1.16.0"
 async-lock = "2.4.0"
 governor = "0.6.3"
 lru = "0.7.0"
-shinkai_tools_runner = { version = "0.7.14" }
+shinkai_tools_runner = { version = "0.7.14", features = ["built-in-tools"] }
 console-subscriber = { version = "0.1", optional = true }
 lancedb = "0.10.0"
 arrow = "52.2"

@@ -832,6 +832,7 @@ mod tests {
         },
     };
     use shinkai_tools_primitives::tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool};
+    use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::{
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
