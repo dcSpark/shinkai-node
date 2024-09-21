@@ -9825,6 +9825,7 @@ dependencies = [
  "env_logger 0.9.3",
  "indexmap 2.5.0",
  "log 0.4.22",
+ "regex",
 ]
 
 [[package]]

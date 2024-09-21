@@ -1,9 +1,10 @@
-use std::collections::HashMap;
 use anyhow::Result;
 use baml_runtime::BamlRuntime;
 use baml_types::BamlValue;
 use indexmap::IndexMap;
 use log::info;
+use regex::Regex;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct GeneratorConfig {
@@ -56,8 +57,10 @@ impl BamlConfig {
 
     pub fn initialize_runtime(&self, env_vars: HashMap<&str, &str>) -> Result<BamlRuntime> {
         let mut files = HashMap::new();
-        files.insert("generator.baml".to_string(), format!(
-            r##"
+        files.insert(
+            "generator.baml".to_string(),
+            format!(
+                r##"
             generator lang_ts {{
                 output_type "{}"
                 output_dir "{}"
@@ -65,14 +68,17 @@ impl BamlConfig {
                 default_client_mode "{}"
             }}
             "##,
-            self.generator.output_type,
-            self.generator.output_dir,
-            self.generator.version,
-            self.generator.default_client_mode
-        ));
+                self.generator.output_type,
+                self.generator.output_dir,
+                self.generator.version,
+                self.generator.default_client_mode
+            ),
+        );
 
-        files.insert("client.baml".to_string(), format!(
-            r##"
+        files.insert(
+            "client.baml".to_string(),
+            format!(
+                r##"
             client<llm> {} {{
                 provider {}
                 options {{
@@ -82,12 +88,13 @@ impl BamlConfig {
                 }}
             }}
             "##,
-            "ShinkaiProvider",
-            self.client.provider,
-            self.client.base_url,
-            self.client.model,
-            self.client.default_role
-        ));
+                "ShinkaiProvider",
+                self.client.provider,
+                self.client.base_url,
+                self.client.model,
+                self.client.default_role
+            ),
+        );
 
         if let Some(dsl_class_file) = &self.dsl_class_file {
             files.insert("dsl_class.baml".to_string(), dsl_class_file.clone());
@@ -101,7 +108,7 @@ impl BamlConfig {
         Ok(runtime)
     }
 
-    pub fn execute(&self, runtime: &BamlRuntime) -> Result<String> {
+    pub fn execute(&self, runtime: &BamlRuntime, extract_data: bool) -> Result<String> {
         let ctx_manager = runtime.create_ctx_manager(BamlValue::String("none".to_string()), None);
 
         let mut params = IndexMap::new();
@@ -110,30 +117,57 @@ impl BamlConfig {
         }
 
         if let Some(function_name) = &self.function_name {
-            let (result, _uuid) = runtime.call_function_sync(
-                function_name.clone(),
-                &params,
-                &ctx_manager,
-                None,
-                None,
-            );
+            let (result, _uuid) = runtime.call_function_sync(function_name.clone(), &params, &ctx_manager, None, None);
 
             match result {
-                Ok(response) => {
-                    match response.content() {
-                        Ok(content) => {
-                            let sanitized_content = content.replace("```", "");
-                            info!("Function response: {:?}", sanitized_content);
-                            return Ok(sanitized_content);
+                Ok(response) => match response.content() {
+                    Ok(content) => {
+                        if extract_data {
+                            eprintln!("Extracting data from response: {}", content);
+                            let re = Regex::new(r"```(?:json)?\s*([\s\S]*?)\s*```").unwrap();
+                            if let Some(captures) = re.captures(&content) {
+                                if let Some(matched) = captures.get(1) {
+                                    return Ok(matched.as_str().to_string());
+                                }
+                            }
+                            return Err(anyhow::anyhow!("No JSON block found in the response"));
+                        } else {
+                            return Ok(content.to_string());
                         }
-                        Err(e) => return Err(anyhow::anyhow!("Error getting content: {}", e)),
                     }
-                }
+                    Err(e) => return Err(anyhow::anyhow!("Error getting content: {}", e)),
+                },
                 Err(e) => return Err(anyhow::anyhow!("Error: {}", e)),
             }
         }
 
         Err(anyhow::anyhow!("Function name not provided"))
+    }
+
+    /// Converts the existing DSL string to the format expected by Baml.
+    pub fn convert_dsl_class_file(old_dsl: &str) -> String {
+        // Define regex patterns for different escape sequences
+        let re_triple_backslash_quote = Regex::new(r#"\\\\\\""#).unwrap(); // Matches \\\"
+        let re_newline = Regex::new(r#"\\n"#).unwrap(); // Matches \n
+        let re_quote = Regex::new(r#"\\""#).unwrap(); // Matches \"
+        let re_backslash = Regex::new(r#"\\\\"#).unwrap(); // Matches \\
+
+        // Perform replacements using regex in the correct order
+        // 1. Replace triple backslashes followed by a quote (\\\\\") with an escaped quote (\\")
+        let intermediate = re_triple_backslash_quote.replace_all(old_dsl, "\\\"");
+        // 2. Replace escaped newlines (\\n) with actual newlines (\n)
+        let intermediate = re_newline.replace_all(&intermediate, "\n");
+        // 3. Replace escaped quotes (\\") with actual quotes (")
+        let intermediate = re_quote.replace_all(&intermediate, "\"");
+        // 4. Replace escaped backslashes (\\\\) with a single backslash (\\)
+        let intermediate = re_backslash.replace_all(&intermediate, "\\");
+
+        // Optionally, adjust other parts of the DSL as needed
+        // For example, change client provider from Ollama to ShinkaiProvider
+        let re_client = Regex::new(r#"client\s+\w+"#).unwrap();
+        let adjusted = re_client.replace_all(&intermediate, "client ShinkaiProvider");
+
+        adjusted.to_string()
     }
 }
 

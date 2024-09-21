@@ -436,6 +436,7 @@ impl AsyncFunction for BamlInference {
         let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
         let dsl_class_file: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let dsl_class_file = BamlConfig::convert_dsl_class_file(&dsl_class_file.unwrap_or_default());
         let fn_name: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let param_name: Option<String> = args.get(5).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
@@ -445,9 +446,16 @@ impl AsyncFunction for BamlInference {
 
         let generator_config = GeneratorConfig::default();
 
+        let base_url = llm_provider.external_url.clone().unwrap_or_default();
+        let base_url = if base_url == "http://localhost:11434" || base_url == "http://localhost:11435" {
+            format!("{}/v1", base_url)
+        } else {
+            base_url
+        };
+
         let client_config = ClientConfig {
             provider: llm_provider.get_provider_string(),
-            base_url: llm_provider.external_url.clone().unwrap_or_default(),
+            base_url,
             model: llm_provider.get_model_string(),
             default_role: "user".to_string(),
         };
@@ -457,7 +465,7 @@ impl AsyncFunction for BamlInference {
 
         // Prepare BAML execution
         let baml_config = BamlConfig::builder(generator_config, client_config)
-            .dsl_class_file(&dsl_class_file.unwrap_or_default())
+            .dsl_class_file(&dsl_class_file)
             .input(&user_message)
             .function_name(&fn_name.unwrap_or_default())
             .param_name(&param_name.unwrap_or_default())
@@ -467,10 +475,29 @@ impl AsyncFunction for BamlInference {
             .initialize_runtime(env_vars)
             .map_err(|e| WorkflowError::ExecutionError(format!("Failed to initialize BAML runtime: {}", e)))?;
 
-        // Execute BAML
-        let result = baml_config
-            .execute(&runtime)
-            .map_err(|e| WorkflowError::ExecutionError(format!("BAML execution failed: {}", e)))?;
+        // Measure time taken for BAML execution
+        let start_time = Instant::now();
+
+        // Execute BAML using spawn_blocking
+        let result = match tokio::task::spawn_blocking(move || baml_config.execute(&runtime, true)).await {
+            Ok(res) => match res {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("BAML execution failed: {}", e);
+                    return Err(WorkflowError::ExecutionError(format!("BAML execution failed: {}", e)));
+                }
+            },
+            Err(e) => {
+                eprintln!("Failed to execute function: {}", e);
+                return Err(WorkflowError::ExecutionError(format!(
+                    "Failed to execute function: {}",
+                    e
+                )));
+            }
+        };
+
+        let elapsed_time = start_time.elapsed();
+        eprintln!("Time taken for BAML execution: {:?}", elapsed_time);
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
