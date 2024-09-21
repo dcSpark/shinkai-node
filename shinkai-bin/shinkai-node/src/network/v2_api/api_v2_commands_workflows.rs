@@ -14,7 +14,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::workflow_tool::WorkflowTool;
 use tokio::sync::RwLock;
 
-use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::network::{node_error::NodeError, Node};
 
 impl Node {

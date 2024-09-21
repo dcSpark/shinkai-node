@@ -5,3 +5,4 @@ pub mod shinkai_lancedb_error;
 pub mod shinkai_lance_version;
 pub mod shinkai_prompt_schema;
 pub mod shinkai_prompt_db;
+pub mod prompts;

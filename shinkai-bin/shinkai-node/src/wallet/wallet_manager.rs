@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::{
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 use super::{
     coinbase_mpc_wallet::CoinbaseMPCWallet,

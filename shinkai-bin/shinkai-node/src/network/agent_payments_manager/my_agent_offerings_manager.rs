@@ -630,12 +630,10 @@ impl MyAgentOfferingsManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
-        managers::identity_manager::IdentityManagerTrait,
-    };
+    use crate::managers::identity_manager::IdentityManagerTrait;
     use async_trait::async_trait;
     use chrono::Utc;
+    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
         schemas::{
             identity::{Identity, StandardIdentity, StandardIdentityType},
