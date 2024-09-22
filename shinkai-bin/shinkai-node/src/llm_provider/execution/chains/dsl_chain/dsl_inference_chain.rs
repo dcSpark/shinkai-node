@@ -431,10 +431,11 @@ impl AsyncFunction for BamlInference {
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
-        eprintln!("user_message: {:?}", user_message);
 
-        let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
-        let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
+
+        // TODO: connect them
+        // let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        // let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
         let dsl_class_file: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let dsl_class_file = BamlConfig::convert_dsl_class_file(&dsl_class_file.unwrap_or_default());
@@ -447,11 +448,12 @@ impl AsyncFunction for BamlInference {
         eprintln!("param_name: {:?}", param_name);
 
         // TODO: do we need the job for something?
-        let full_job = self.context.full_job();
+        // let full_job = self.context.full_job();
         let llm_provider = self.context.agent();
 
         let generator_config = GeneratorConfig::default();
 
+        // TODO: add support for other providers
         let base_url = llm_provider.external_url.clone().unwrap_or_default();
         let base_url = if base_url == "http://localhost:11434" || base_url == "http://localhost:11435" {
             format!("{}/v1", base_url)

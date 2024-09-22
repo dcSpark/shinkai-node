@@ -281,7 +281,7 @@ pub async fn remove_workflow_handler(
     get,
     path = "/v2/get_workflow_info",
     params(
-        ("keyname" = String, Query, description = "Keyname of the workflow")
+        ("tool_router_key" = String, Query, description = "Keyname of the workflow")
     ),
     responses(
         (status = 200, description = "Successfully retrieved workflow info", body = Value),

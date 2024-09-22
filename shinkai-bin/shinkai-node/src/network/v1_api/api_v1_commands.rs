@@ -3349,7 +3349,7 @@ impl Node {
         }
 
         // Generate the workflow key
-        let workflow_key_str = workflow_key.generate_key();
+        let workflow_key_str = workflow_key.tool_router_key;
 
         // Remove the workflow from the LanceShinkaiDb
         {
@@ -3406,7 +3406,7 @@ impl Node {
         }
 
         // Generate the workflow key
-        let workflow_key_str = workflow_key.generate_key();
+        let workflow_key_str = workflow_key.tool_router_key;
 
         // Get the workflow from the LanceShinkaiDb
         let workflow = {
