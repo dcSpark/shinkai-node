@@ -113,7 +113,15 @@ impl BamlConfig {
 
         let mut params = IndexMap::new();
         if let (Some(param_name), Some(input)) = (&self.param_name, &self.input) {
-            params.insert(param_name.clone(), BamlValue::String(input.clone()));
+            let trimmed_input = input.trim();
+            let context_value = if trimmed_input.starts_with('{') && trimmed_input.ends_with('}') {
+                eprintln!("input is a json string: {}", trimmed_input);
+                let unescaped_input = BamlConfig::unescape_json_string(trimmed_input);
+                BamlConfig::from_serde_value(serde_json::from_str(&unescaped_input).unwrap())
+            } else {
+                BamlValue::String(trimmed_input.to_string())
+            };
+            params.insert(param_name.clone(), context_value);
         }
 
         if let Some(function_name) = &self.function_name {
@@ -124,6 +132,9 @@ impl BamlConfig {
                     Ok(content) => {
                         if extract_data {
                             eprintln!("Extracting data from response: {}", content);
+                            if content.starts_with('{') && content.ends_with('}') {
+                                return Ok(content.to_string());
+                            }
                             let re = Regex::new(r"```(?:json)?\s*([\s\S]*?)\s*```").unwrap();
                             if let Some(captures) = re.captures(&content) {
                                 if let Some(matched) = captures.get(1) {
@@ -142,6 +153,39 @@ impl BamlConfig {
         }
 
         Err(anyhow::anyhow!("Function name not provided"))
+    }
+
+    pub fn from_serde_value(value: serde_json::Value) -> BamlValue {
+        match value {
+            serde_json::Value::Null => BamlValue::Null,
+            serde_json::Value::Bool(b) => BamlValue::Bool(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    BamlValue::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    BamlValue::Float(f)
+                } else {
+                    panic!("Unexpected number type")
+                }
+            }
+            serde_json::Value::String(s) => BamlValue::String(s),
+            serde_json::Value::Array(arr) => {
+                let baml_values = arr.into_iter().map(BamlConfig::from_serde_value).collect();
+                BamlValue::List(baml_values)
+            }
+            serde_json::Value::Object(obj) => {
+                let baml_map = obj
+                    .into_iter()
+                    .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
+                    .collect();
+                BamlValue::Map(baml_map)
+            }
+        }
+    }
+
+    pub fn unescape_json_string(json_str: &str) -> String {
+        let re = Regex::new(r#"\\(.)"#).unwrap();
+        re.replace_all(json_str, "$1").to_string()
     }
 
     /// Converts the existing DSL string to the format expected by Baml.

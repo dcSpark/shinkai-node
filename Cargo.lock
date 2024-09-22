@@ -9826,6 +9826,7 @@ dependencies = [
  "indexmap 2.5.0",
  "log 0.4.22",
  "regex",
+ "serde_json",
 ]
 
 [[package]]
