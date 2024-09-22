@@ -90,7 +90,7 @@ impl WorkflowTool {
                 step Summarize {
                     $RESULT = call multi_inference($PROMPT, $EMBEDDINGS)
                 }
-            } @@official.shinkai sticky
+            } @@official.shinkai
         "#;
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
@@ -114,7 +114,7 @@ impl WorkflowTool {
                     $NEW_INPUT = call concat($INPUT, $CONNECTOR, $EMBEDDINGS) 
                     $RESULT = call inference($NEW_INPUT)
                 }
-            } @@official.shinkai sticky
+            } @@official.shinkai
         "#;
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");

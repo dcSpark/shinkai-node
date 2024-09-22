@@ -707,12 +707,12 @@ pub enum NodeCommand {
     },
     V2ApiRemoveWorkflow {
         bearer: String,
-        payload: APIWorkflowKeyname, // TODO: needs to be updated
+        payload: APIWorkflowKeyname,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetWorkflowInfo {
         bearer: String,
-        payload: APIWorkflowKeyname, // TODO: needs to be updated
+        payload: APIWorkflowKeyname,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllWorkflows {

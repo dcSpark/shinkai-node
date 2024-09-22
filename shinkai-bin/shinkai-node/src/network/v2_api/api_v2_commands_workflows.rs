@@ -168,7 +168,7 @@ impl Node {
         }
 
         // Generate the workflow key
-        let workflow_key_str = payload.generate_key();
+        let workflow_key_str = payload.tool_router_key;
 
         // Remove the workflow from the LanceShinkaiDb
         match lance_db.write().await.remove_tool(&workflow_key_str).await {
@@ -202,7 +202,7 @@ impl Node {
         }
 
         // Generate the workflow key
-        let workflow_key_str = payload.generate_key();
+        let workflow_key_str = payload.tool_router_key;
 
         // Get the workflow from the database
         match lance_db.read().await.get_tool(&workflow_key_str).await {
