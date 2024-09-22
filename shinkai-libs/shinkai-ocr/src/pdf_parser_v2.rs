@@ -1,8 +1,17 @@
+use image::{Rgba, RgbaImage};
 use pdfium_render::prelude::*;
 use regex::Regex;
 use std::time::Instant;
 
 use crate::image_parser::ImageParser;
+
+/*
+TODO:
+
+- [ ] Remove page number from element metadata
+- [ ] Remove top level heading
+
+*/
 
 pub struct PDFParser {
     image_parser: ImageParser,
@@ -215,9 +224,7 @@ impl PDFParser {
         page_number: usize,
         object_id: usize,
     ) -> anyhow::Result<PDFElement> {
-        let text_object = object
-            .as_text_object()
-            .ok_or(anyhow::anyhow!("Not a text object"))?;
+        let text_object = object.as_text_object().ok_or(anyhow::anyhow!("Not a text object"))?;
         let text = text_object.text();
 
         if text.is_empty() {
@@ -350,5 +357,53 @@ impl PDFParser {
         let normalized_text = normalized_text.trim().to_string();
 
         normalized_text
+    }
+
+    //
+    pub fn mark_text_position_in_pdf(
+        &self,
+        input_path: &str,
+        output_path: &str,
+        page_number: usize,
+        position: (f32, f32),
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        eprintln!("Position: {:?}", position);
+        let document = self.pdfium.load_pdf_from_file(input_path, None)?;
+
+        let page_index: u16 = (page_number - 1).try_into().unwrap();
+        let page = document.pages().get(page_index)?;
+
+        let render_config = PdfRenderConfig::new().set_target_width(2000).set_maximum_height(2000);
+
+        let rendered_page = page.render_with_config(&render_config)?.as_image();
+
+        let mut image = rendered_page.into_rgba8();
+
+        Self::draw_translucent_rectangle(&mut image, position.0 as u32, position.1 as u32, 10, 25)?;
+
+        image.save(output_path)?;
+
+        Ok(())
+    }
+
+    // Add the helper function outside the impl block
+    fn draw_translucent_rectangle(
+        image: &mut RgbaImage,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let rect_color = Rgba([255, 0, 0, 128]); // Red color with 50% opacity
+
+        for i in x..x + width {
+            for j in y..y + height {
+                if i < image.width() && j < image.height() {
+                    image.put_pixel(i, j, rect_color);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
