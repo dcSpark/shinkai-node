@@ -1,7 +1,16 @@
-use crate::llm_provider::{error::LLMProviderError, providers::shared::{openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}}};
+use crate::llm_provider::{
+    error::LLMProviderError,
+    providers::shared::{
+        openai_api::openai_prepare_messages,
+        shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
+    },
+};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
-    llm_message::LlmMessage, llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, prompts::Prompt, shinkai_name::ShinkaiName
+    llm_message::LlmMessage,
+    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+    prompts::Prompt,
+    shinkai_name::ShinkaiName,
 };
 use std::{
     fmt,
@@ -123,11 +132,13 @@ impl ModelCapabilitiesManager {
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
                 "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "4o-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "dall-e-3" => vec![ModelCapability::ImageGeneration],
                 model_type if model_type.starts_with("gpt-") => vec![ModelCapability::TextInference],
-                _ => vec![],
+                _ => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             },
-            LLMProviderInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
+            LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => vec![ModelCapability::TextInference],
                 "yorickvp/llava-13b" => vec![ModelCapability::ImageAnalysis],
                 model_type if model_type.starts_with("togethercomputer/llama-2") => {
@@ -151,14 +162,15 @@ impl ModelCapabilitiesManager {
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
-            LLMProviderInterface::Ollama(model) => Self::get_capabilities_for_model_type(model.model_type().as_str()),
-            LLMProviderInterface::Exo(model) => Self::get_capabilities_for_model_type(model.model_type().as_str()),
-            LLMProviderInterface::Groq(model) => Self::get_capabilities_for_model_type(model.model_type().as_str()),
+            LLMProviderInterface::Ollama(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::Exo(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
+            LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
         }
     }
 
-    fn get_capabilities_for_model_type(model_type: &str) -> Vec<ModelCapability> {
+    fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
             model_type if model_type.starts_with("llava") => {
@@ -190,7 +202,7 @@ impl ModelCapabilitiesManager {
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
-            LLMProviderInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
+            LLMProviderInterface::TogetherAI(genericapi) => match genericapi.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => ModelCost::Cheap,
                 "togethercomputer/llama3" => ModelCost::Cheap,
                 "yorickvp/llava-13b" => ModelCost::Expensive,
@@ -209,6 +221,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
             LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
+            LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
         }
     }
 
@@ -216,7 +229,7 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_privacy(model: &LLMProviderInterface) -> ModelPrivacy {
         match model {
             LLMProviderInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
-            LLMProviderInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::TogetherAI(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::LocalLLM(_) => ModelPrivacy::Local,
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
@@ -228,6 +241,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
+            LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
         }
     }
 
@@ -271,7 +285,7 @@ impl ModelCapabilitiesManager {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
                 }
             }
-            LLMProviderInterface::GenericAPI(genericapi) => {
+            LLMProviderInterface::TogetherAI(genericapi) => {
                 if genericapi.model_type.starts_with("togethercomputer/llama-2")
                     || genericapi.model_type.starts_with("meta-llama/Llama-3")
                 {
@@ -292,46 +306,25 @@ impl ModelCapabilitiesManager {
                 ModelCapabilitiesManagerError::NotImplemented(shinkai_backend.model_type().clone()),
             ),
             LLMProviderInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("mistral")
-                    || ollama.model_type.starts_with("llama2")
-                    || ollama.model_type.starts_with("llama3")
-                    || ollama.model_type.starts_with("gemma2")
-                    || ollama.model_type.starts_with("wizardlm2")
-                    || ollama.model_type.starts_with("starling-lm")
-                    || ollama.model_type.starts_with("neural-chat")
-                    || ollama.model_type.starts_with("vicuna")
-                    || ollama.model_type.starts_with("mixtral")
-                    || ollama.model_type.starts_with("falcon2")
-                    || ollama.model_type.starts_with("dolphin-llama3")
-                    || ollama.model_type.starts_with("command-r-plus")
-                    || ollama.model_type.starts_with("wizardlm2")
-                    || ollama.model_type.starts_with("phi3")
-                    || ollama.model_type.starts_with("aya")
-                    || ollama.model_type.starts_with("qwen2:0.5b")
-                    || ollama.model_type.starts_with("qwen2:1.5b")
-                    || ollama.model_type.starts_with("qwen2:7b")
-                    || ollama.model_type.starts_with("qwen2:72b")
-                    || ollama.model_type.starts_with("codestral")
-                    || ollama
-                        .model_type
-                        .starts_with("adrienbrault/nous-hermes2theta-llama3-8b")
-                    || ollama.model_type.contains("minicpm-v")
-                {
+                if Self::get_shared_capabilities(ollama.model_type().as_str()).is_empty() {
+                    Err(ModelCapabilitiesManagerError::NotImplemented(ollama.model_type.clone()))
+                } else {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
-                } else if ollama.model_type.starts_with("llava")
-                    || ollama.model_type.starts_with("bakllava")
-                    || ollama.model_type.starts_with("llava-phi3")
-                    || ollama.model_type.starts_with("moondream")
-                {
+                }
+            }
+            LLMProviderInterface::OpenRouter(openrouter) => {
+                if Self::get_shared_capabilities(openrouter.model_type.as_str()).is_empty() {
+                    Err(ModelCapabilitiesManagerError::NotImplemented(
+                        openrouter.model_type.clone(),
+                    ))
+                } else {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
-                        llava_prepare_messages(model, ollama.clone().model_type.clone(), prompt, total_tokens)?;
+                        llama_prepare_messages(model, openrouter.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
-                } else {
-                    Err(ModelCapabilitiesManagerError::NotImplemented(ollama.model_type.clone()))
                 }
             }
             LLMProviderInterface::Groq(groq) => {
@@ -356,18 +349,19 @@ impl ModelCapabilitiesManager {
     pub fn get_max_tokens(model: &LLMProviderInterface) -> usize {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type == "gpt-4o"
-                    || openai.model_type == "gpt-4-1106-preview"
-                    || openai.model_type == "gpt-4o-mini"
-                    || openai.model_type == "gpt-4-1106-preview"
-                    || openai.model_type == "gpt-4-vision-preview"
+                if openai.model_type.starts_with("gpt-4o")
+                    || openai.model_type.starts_with("gpt-4-1106-preview")
+                    || openai.model_type.starts_with("gpt-4o-mini")
+                    || openai.model_type.starts_with("gpt-4-vision-preview")
+                    || openai.model_type.starts_with("o1-mini")
+                    || openai.model_type.starts_with("o1-preview")
                 {
                     128_000
                 } else {
                     32_000
                 }
             }
-            LLMProviderInterface::GenericAPI(genericapi) => {
+            LLMProviderInterface::TogetherAI(genericapi) => {
                 // Fill in the appropriate logic for GenericAPI
                 if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
@@ -399,6 +393,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
             LLMProviderInterface::Groq(groq) => Self::get_max_tokens_for_model_type(&groq.model_type),
+            LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
         }
     }
 
@@ -454,11 +449,16 @@ impl ModelCapabilitiesManager {
 
     pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
-            LLMProviderInterface::OpenAI(_) => {
-                // Fill in the appropriate logic for OpenAI
-                4096
+            LLMProviderInterface::OpenAI(openai) => {
+                if openai.model_type.starts_with("o1-preview")
+                    || openai.model_type.starts_with("o1-mini")
+                {
+                    32768
+                } else {
+                    16384
+                }   
             }
-            LLMProviderInterface::GenericAPI(_) => {
+            LLMProviderInterface::TogetherAI(_) => {
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
                 } else {
@@ -490,6 +490,14 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for Ollama
                 4096
             }
+            LLMProviderInterface::OpenRouter(_) => {
+                // Fill in the appropriate logic for OpenRouter
+                if Self::get_max_tokens(model) <= 8000 {
+                    2800
+                } else {
+                    4096
+                }
+            }
         }
     }
 
@@ -502,52 +510,6 @@ impl ModelCapabilitiesManager {
             ModelCapabilitiesManager::get_max_output_tokens(&model.clone()),
         );
         remaining_output_tokens
-    }
-
-    // Note(Nico): this may be necessary bc some libraries are not caught up with the latest models e.g. tiktoken-rs
-    pub fn normalize_model(model: &LLMProviderInterface) -> String {
-        match model {
-            LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.starts_with("gpt-4") {
-                    "gpt-4-32k".to_string()
-                } else if openai.model_type.starts_with("gpt-3.5") {
-                    "gpt-3.5-turbo-16k".to_string()
-                } else {
-                    "gpt-4".to_string()
-                }
-            }
-            LLMProviderInterface::GenericAPI(_genericapi) => {
-                // Fill in the appropriate logic for GenericAPI
-                "".to_string()
-            }
-            LLMProviderInterface::LocalLLM(_) => {
-                // Fill in the appropriate logic for LocalLLM
-                "".to_string()
-            }
-            LLMProviderInterface::Groq(_) => {
-                // Fill in the appropriate logic for LocalLLM
-                "".to_string()
-            }
-            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type().starts_with("gpt") {
-                    "gpt-4-32k".to_string()
-                } else {
-                    "gpt-4".to_string()
-                }
-            }
-            LLMProviderInterface::Ollama(_) => {
-                // Fill in the appropriate logic for Ollama
-                "".to_string()
-            }
-            LLMProviderInterface::Exo(_) => {
-                // Fill in the appropriate logic for Ollama
-                "".to_string()
-            }
-            LLMProviderInterface::Gemini(_) => {
-                // Fill in the appropriate logic for Ollama
-                "".to_string()
-            }
-        }
     }
 
     /// Counts the number of tokens from the list of messages

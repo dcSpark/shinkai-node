@@ -5,7 +5,7 @@ use crate::{
         execution::{
             chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
         },
-        providers::shared::openai::FunctionCall,
+        providers::shared::openai_api::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},

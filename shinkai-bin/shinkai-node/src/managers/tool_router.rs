@@ -8,7 +8,7 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
-use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
+use crate::llm_provider::providers::shared::openai_api::{FunctionCall, FunctionCallResponse};
 use crate::workflows::sm_executor::AsyncFunction;
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};

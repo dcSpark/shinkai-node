@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
-use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
+use crate::llm_provider::providers::shared::openai_api::FunctionCallResponse;
 use serde_json::json;
 use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
@@ -27,7 +27,10 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
 
         // Add system prompt
-        let system_prompt = custom_system_prompt.unwrap_or_else(|| "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string());
+        let system_prompt = custom_system_prompt
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or_else(|| "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string());
+
         prompt.add_content(system_prompt, SubPromptType::System, 98);
 
         let has_ret_nodes = !ret_nodes.is_empty();

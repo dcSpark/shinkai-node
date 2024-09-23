@@ -22,13 +22,14 @@ impl SerializedLLMProvider {
     pub fn get_provider_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(_) => "openai",
-            LLMProviderInterface::GenericAPI(_) => "genericapi",
+            LLMProviderInterface::TogetherAI(_) => "genericapi",
             LLMProviderInterface::Ollama(_) => "ollama",
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend",
             LLMProviderInterface::LocalLLM(_) => "local-llm",
             LLMProviderInterface::Groq(_) => "groq",
             LLMProviderInterface::Gemini(_) => "gemini",
             LLMProviderInterface::Exo(_) => "exo",
+            LLMProviderInterface::OpenRouter(_) => "openrouter",
         }
         .to_string()
     }
@@ -36,13 +37,14 @@ impl SerializedLLMProvider {
     pub fn get_model_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(openai) => openai.model_type.clone(),
-            LLMProviderInterface::GenericAPI(genericapi) => genericapi.model_type.clone(),
+            LLMProviderInterface::TogetherAI(togetherai) => togetherai.model_type.clone(),
             LLMProviderInterface::Ollama(ollama) => ollama.model_type.clone(),
             LLMProviderInterface::ShinkaiBackend(shinkaibackend) => shinkaibackend.model_type.clone(),
             LLMProviderInterface::LocalLLM(_) => "local-llm".to_string(),
             LLMProviderInterface::Groq(groq) => groq.model_type.clone(),
             LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
+            LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
         }
     }
 }
@@ -50,13 +52,14 @@ impl SerializedLLMProvider {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LLMProviderInterface {
     OpenAI(OpenAI),
-    GenericAPI(GenericAPI),
+    TogetherAI(TogetherAI),
     Ollama(Ollama),
     ShinkaiBackend(ShinkaiBackend),
     LocalLLM(LocalLLM),
     Groq(Groq),
     Gemini(Gemini),
     Exo(Exo),
+    OpenRouter(OpenRouter),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -133,7 +136,18 @@ pub struct OpenAI {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct GenericAPI {
+pub struct OpenRouter {
+    pub model_type: String,
+}
+
+impl OpenRouter {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct TogetherAI {
     pub model_type: String,
 }
 
@@ -147,7 +161,7 @@ impl FromStr for LLMProviderInterface {
             Ok(LLMProviderInterface::OpenAI(OpenAI { model_type }))
         } else if s.starts_with("genericapi:") {
             let model_type = s.strip_prefix("genericapi:").unwrap_or("").to_string();
-            Ok(LLMProviderInterface::GenericAPI(GenericAPI { model_type }))
+            Ok(LLMProviderInterface::TogetherAI(TogetherAI { model_type }))
         } else if s.starts_with("ollama:") {
             let model_type = s.strip_prefix("ollama:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Ollama(Ollama { model_type }))
@@ -163,6 +177,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("exo:") {
             let model_type = s.strip_prefix("exo:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Exo(Exo { model_type }))
+        } else if s.starts_with("openrouter:") {
+            let model_type = s.strip_prefix("openrouter:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::OpenRouter(OpenRouter { model_type }))
         } else {
             Err(())
         }
@@ -179,7 +196,7 @@ impl Serialize for LLMProviderInterface {
                 let model_type = format!("openai:{}", openai.model_type);
                 serializer.serialize_str(&model_type)
             }
-            LLMProviderInterface::GenericAPI(genericapi) => {
+            LLMProviderInterface::TogetherAI(genericapi) => {
                 let model_type = format!("genericapi:{}", genericapi.model_type);
                 serializer.serialize_str(&model_type)
             }
@@ -201,6 +218,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::Exo(exo) => {
                 let model_type = format!("exo:{}", exo.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::OpenRouter(openrouter) => {
+                let model_type = format!("openrouter:{}", openrouter.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -226,7 +247,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openai" => Ok(LLMProviderInterface::OpenAI(OpenAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
-            "genericapi" => Ok(LLMProviderInterface::GenericAPI(GenericAPI {
+            "genericapi" => Ok(LLMProviderInterface::TogetherAI(TogetherAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "ollama" => Ok(LLMProviderInterface::Ollama(Ollama {
@@ -244,10 +265,13 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "exo" => Ok(LLMProviderInterface::Exo(Exo {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "openrouter" => Ok(LLMProviderInterface::OpenRouter(OpenRouter {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini"],
+                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini", "openrouter"],
             )),
         }
     }

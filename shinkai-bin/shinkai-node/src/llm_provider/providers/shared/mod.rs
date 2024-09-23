@@ -1,4 +1,4 @@
-pub mod openai;
+pub mod openai_api;
 pub mod togetherai;
-pub mod ollama;
+pub mod ollama_api;
 pub mod shared_model_logic;

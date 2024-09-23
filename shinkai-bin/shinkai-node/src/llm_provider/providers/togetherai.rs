@@ -16,12 +16,12 @@ use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{GenericAPI, LLMProviderInterface};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{TogetherAI, LLMProviderInterface};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
 
 #[async_trait]
-impl LLMService for GenericAPI {
+impl LLMService for TogetherAI {
     async fn call_api(
         &self,
         client: &Client,
