@@ -348,6 +348,7 @@ impl SheetRustFunctions {
             let mut column_definitions: Vec<ColumnDefinition> = Vec::new();
 
             let row_cells = worksheet.get_collection_by_row(&1);
+            let num_columns = row_cells.len();
 
             for cell in row_cells {
                 let column_name = cell.get_cell_value().get_value();
@@ -394,17 +395,21 @@ impl SheetRustFunctions {
             };
 
             for row_index in 1..=num_rows {
-                let row_cells = worksheet.get_collection_by_row(&(row_index + 1));
+                for col_index in 1..=num_columns {
+                    if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index + 1)) {
+                        let cell_value = cell.get_value();
+                        let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
 
-                for (col_index, cell) in row_cells.iter().enumerate() {
-                    let column_definition = &column_definitions[col_index];
-                    let cell_value = cell.get_cell_value().get_value();
-                    let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
-
-                    let mut sheet_manager = sheet_manager.lock().await;
-                    sheet_manager
-                        .set_cell_value(&sheet_id, row_id, column_definition.id.clone(), cell_value.to_string())
-                        .await?;
+                        let mut sheet_manager = sheet_manager.lock().await;
+                        sheet_manager
+                            .set_cell_value(
+                                &sheet_id,
+                                row_id,
+                                column_definitions[col_index as usize - 1].id.clone(),
+                                cell_value.to_string(),
+                            )
+                            .await?;
+                    }
                 }
             }
         }

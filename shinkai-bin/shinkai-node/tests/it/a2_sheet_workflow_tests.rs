@@ -436,7 +436,7 @@ fn import_export_sheet_tests() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("resp: {:?}", resp);
 
-                // sheet_id = resp["sheet_id"].as_str().unwrap().to_string();
+                sheet_id = resp["sheet_id"].as_str().unwrap().to_string();
             }
             {
                 // Export to XLSX
@@ -465,7 +465,7 @@ fn import_export_sheet_tests() {
                     .send(NodeCommand::APIExportSheet { msg, res: res_sender })
                     .await
                     .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                let _resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 // eprintln!("resp: {:?}", resp);
             }
             node1_abort_handler.abort();
