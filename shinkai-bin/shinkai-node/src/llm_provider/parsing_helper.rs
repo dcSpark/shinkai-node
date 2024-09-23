@@ -1,9 +1,7 @@
 use super::error::LLMProviderError;
 use super::execution::prompts::general_prompts::JobPromptGenerator;
-use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
-use regex::Regex;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -170,66 +168,5 @@ impl ParsingHelper {
         }
 
         Ok(processed_vrkais)
-    }
-
-    /// Cleans the value string from a parsed markdown response from common LLM issues.
-    fn clean_markdown_result_string(string: &str) -> String {
-        let clean_llm_references = ParsingHelper::clean_llm_content_references(string);
-        let link_image_cleaned = ParsingHelper::clean_markdown_urls_images(&clean_llm_references);
-        let extra_cleaned = link_image_cleaned.replace("\\\\n", "\n");
-        let parsed_message = ParsedUserMessage::new(extra_cleaned.to_string());
-
-        // If there is a codeblock and it has no/disallowed content, then remove it
-        if parsed_message.num_of_code_blocks() > 0 {
-            let mut elements = vec![];
-            for element in parsed_message.elements {
-                if let JobTaskElement::CodeBlock(code_block) = &element {
-                    if code_block.content_len() < 10 || code_block.content.contains("SYS") {
-                        continue;
-                    } else {
-                        elements.push(element);
-                    }
-                } else {
-                    elements.push(element);
-                }
-            }
-            ParsedUserMessage::new_from_elements(elements).get_output_string()
-        }
-        // If there's no code blocks, then we can attempt to trim the string
-        else {
-            let sys_tags_regex = Regex::new(r"<</?SYS>>").unwrap();
-            let mut cleaned_string = sys_tags_regex.replace_all(string, "").to_string();
-            let mut done = false;
-            while !done {
-                done = true; // Assume no more trimming is needed, prove otherwise below.
-                let trim_cases = ["```", "``` ", "```\n", "``` \n", "```md", "```md ", "```md\n", "md"];
-                for case in trim_cases.iter() {
-                    if cleaned_string.ends_with(case) {
-                        cleaned_string = cleaned_string.strip_suffix(case).unwrap_or(&cleaned_string).to_string();
-                        done = false; // Found a case, so continue trimming.
-                    }
-                }
-            }
-            cleaned_string.replace("< >", "").replace("<>", "")
-        }
-    }
-
-    /// Cleans URLs and images from markdown strings.
-    /// Removes markdown images entirely. Removes link syntax leaving only the link text.
-    fn clean_markdown_urls_images(string: &str) -> String {
-        let re_image = Regex::new(r"!\[[^\]]*\]\([^\)]*\)").unwrap(); // Matches markdown image syntax
-        let cleaned_string = re_image.replace_all(string, ""); // Remove all images
-
-        // Updated regex to handle nested parentheses in URLs
-        let re_link = Regex::new(r"\[([^\]]+)\]\((?:[^()]|\([^)]*\))+\)").unwrap(); // Matches markdown link syntax
-        let cleaned_string = re_link.replace_all(&cleaned_string, "$1"); // Replace link with link text
-
-        cleaned_string.to_string()
-    }
-
-    /// Cleans content references from the LLM response.
-    fn clean_llm_content_references(string: &str) -> String {
-        let re_references = Regex::new(r"\[\^[0-9]+\]: http.+\n").unwrap();
-        re_references.replace_all(string, "").to_string()
     }
 }
