@@ -1,9 +1,6 @@
 use std::{any::Any, collections::HashMap, io::Cursor, pin::Pin, sync::Arc};
 
-use crate::{
-    managers::sheet_manager::SheetManager,
-    tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool},
-};
+use crate::managers::sheet_manager::SheetManager;
 use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
@@ -339,6 +336,91 @@ impl SheetRustFunctions {
         Ok("Columns created successfully".to_string())
     }
 
+    pub async fn import_sheet_from_xlsx(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        xlsx_data: Vec<u8>,
+    ) -> Result<String, String> {
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let spreadsheet =
+            umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(xlsx_data), true).map_err(|e| e.to_string())?;
+
+        if let Some(worksheet) = spreadsheet.get_sheet(&0) {
+            let mut column_definitions: Vec<ColumnDefinition> = Vec::new();
+
+            let row_cells = worksheet.get_collection_by_row(&0);
+            let num_columns = row_cells
+                .iter()
+                .position(|&cell| cell.get_cell_value().is_empty())
+                .unwrap_or(0);
+
+            let row_cells = row_cells.into_iter().take(num_columns);
+
+            for cell in row_cells {
+                let column_name = cell.get_cell_value().get_value();
+                let column_definition = ColumnDefinition {
+                    id: Uuid::new_v4().to_string(),
+                    name: column_name.to_string(),
+                    behavior: ColumnBehavior::Text,
+                };
+                column_definitions.push(column_definition);
+            }
+
+            {
+                let mut sheet_manager = sheet_manager.lock().await;
+                for column_definition in &column_definitions {
+                    sheet_manager.set_column(&sheet_id, column_definition.clone()).await?;
+                }
+            }
+
+            let mut num_rows: u32 = 0;
+            for row_index in 1..u32::MAX {
+                let mut row_cells = worksheet
+                    .get_collection_by_row(&row_index)
+                    .into_iter()
+                    .take(num_columns);
+                let is_empty_row = row_cells.all(|cell| cell.get_cell_value().is_empty());
+
+                if is_empty_row {
+                    break;
+                }
+
+                num_rows += 1;
+            }
+
+            {
+                let mut sheet_manager = sheet_manager.lock().await;
+
+                for _ in 0..num_rows {
+                    sheet_manager.add_row(&sheet_id, None).await?;
+                }
+            }
+
+            let row_ids: Vec<String> = {
+                let sheet_manager = sheet_manager.lock().await;
+                let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
+                sheet.display_rows.clone()
+            };
+
+            for row_index in 1..=num_rows {
+                let row_cells = worksheet.get_collection_by_row(&row_index);
+                let row_cells = row_cells.into_iter().take(num_columns);
+
+                for (col_index, cell) in row_cells.enumerate() {
+                    let column_definition = &column_definitions[col_index];
+                    let cell_value = cell.get_cell_value().get_value();
+                    let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
+
+                    let mut sheet_manager = sheet_manager.lock().await;
+                    sheet_manager
+                        .set_cell_value(&sheet_id, row_id, column_definition.id.clone(), cell_value.to_string())
+                        .await?;
+                }
+            }
+        }
+
+        Ok("Sheet created successfully".to_string())
+    }
+
     pub async fn export_sheet_to_csv(
         sheet_manager: Arc<Mutex<SheetManager>>,
         sheet_id: String,
@@ -406,7 +488,7 @@ impl SheetRustFunctions {
                 .set_value(header);
         }
 
-        for row_id in &sheet.display_rows {
+        for (row_idx, row_id) in sheet.display_rows.iter().enumerate() {
             let row_values: Vec<String> = sheet
                 .display_columns
                 .iter()
@@ -421,7 +503,10 @@ impl SheetRustFunctions {
                 spreadsheet
                     .get_sheet_mut(&0)
                     .unwrap()
-                    .get_cell_mut((1, index.to_u32().unwrap_or_default() + 1))
+                    .get_cell_mut((
+                        row_idx.to_u32().unwrap_or_default() + 1,
+                        index.to_u32().unwrap_or_default() + 1,
+                    ))
                     .set_value(cell_value);
             }
         }

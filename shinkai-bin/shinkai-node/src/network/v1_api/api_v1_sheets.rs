@@ -649,7 +649,24 @@ impl Node {
                 }
             }
             SpreadSheetPayload::XLSX(xlsx_data) => {
-                unimplemented!();
+                let sheet_result = SheetRustFunctions::import_sheet_from_xlsx(sheet_manager.clone(), xlsx_data).await;
+
+                match sheet_result {
+                    Ok(sheet_id) => {
+                        let response = json!({ "sheet_id": sheet_id });
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to import sheet: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
             }
         }
     }
