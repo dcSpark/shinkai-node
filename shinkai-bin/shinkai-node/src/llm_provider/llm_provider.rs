@@ -104,8 +104,8 @@ impl LLMProvider {
                     )
                     .await
             }
-            LLMProviderInterface::GenericAPI(genericapi) => {
-                genericapi
+            LLMProviderInterface::TogetherAI(togetherai) => {
+                togetherai
                     .call_api(
                         &self.client,
                         self.external_url.as_ref(),
@@ -179,6 +179,21 @@ impl LLMProvider {
             }
             LLMProviderInterface::Gemini(gemini) => {
                 gemini
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                        config,
+                        llm_stopper,
+                    )
+                    .await
+            }
+            LLMProviderInterface::OpenRouter(openrouter) => {
+                openrouter
                     .call_api(
                         &self.client,
                         self.external_url.as_ref(),

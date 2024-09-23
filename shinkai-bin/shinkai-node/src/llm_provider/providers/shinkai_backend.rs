@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use async_trait::async_trait;
 use reqwest::Client;

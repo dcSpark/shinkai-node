@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Error as SerdeError, Value};
 use thiserror::Error;
@@ -35,7 +37,7 @@ pub struct DetailedFunctionCall {
 }
 
 /// The message structure for LLM communication.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmMessage {
     /// The role of the message's author. One of `system`, `user`, `assistant`, or `function`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -58,6 +60,27 @@ pub struct LlmMessage {
     /// The images associated with the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+}
+
+impl fmt::Debug for LlmMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LlmMessage")
+            .field("role", &self.role)
+            .field("content", &self.content)
+            .field("name", &self.name)
+            .field("function_call", &self.function_call)
+            .field("functions", &self.functions)
+            .field("images", &self.images.as_ref().map(|images| {
+                images.iter().map(|img| {
+                    if img.len() > 20 {
+                        format!("{}...", &img[..20])
+                    } else {
+                        img.clone()
+                    }
+                }).collect::<Vec<String>>()
+            }))
+            .finish()
+    }
 }
 
 #[derive(Debug, Error)]

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai::openai_prepare_messages;
+use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;

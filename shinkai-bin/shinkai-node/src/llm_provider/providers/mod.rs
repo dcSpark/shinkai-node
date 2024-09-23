@@ -14,12 +14,13 @@ use tokio::sync::Mutex;
 
 pub mod exo;
 pub mod gemini;
-pub mod genericapi;
+pub mod togetherai;
 pub mod groq;
 pub mod ollama;
 pub mod openai;
 pub mod shared;
 pub mod shinkai_backend;
+pub mod openrouter;
 
 #[async_trait]
 pub trait LLMService {

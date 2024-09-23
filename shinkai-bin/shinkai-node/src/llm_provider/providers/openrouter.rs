@@ -16,7 +16,7 @@ use serde_json::{self};
 use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenRouter};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -47,7 +47,7 @@ fn truncate_image_url_in_payload(payload: &mut JsonValue) {
 }
 
 #[async_trait]
-impl LLMService for OpenAI {
+impl LLMService for OpenRouter {
     async fn call_api(
         &self,
         client: &Client,
@@ -63,7 +63,7 @@ impl LLMService for OpenAI {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}{}", base_url, "/v1/chat/completions");
+                let url = format!("{}{}", base_url, "/api/v1/chat/completions");
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
@@ -80,12 +80,6 @@ impl LLMService for OpenAI {
 
                 // Extract tools_json from the result
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
-
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
 
                 match serde_json::to_string_pretty(&tools_json) {
                     Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
@@ -158,6 +152,7 @@ async fn handle_streaming_response(
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header("X-Title", "Shinkai")
         .json(&payload)
         .send()
         .await?;
@@ -185,6 +180,7 @@ async fn handle_streaming_response(
         match item {
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                eprintln!("Chunk: {}", chunk_str);
                 previous_json_chunk += chunk_str.as_str();
                 let trimmed_chunk_str = previous_json_chunk.trim().to_string();
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&trimmed_chunk_str);
@@ -277,6 +273,7 @@ async fn handle_non_streaming_response(
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header("X-Title", "Shinkai")
         .json(&payload)
         .send();
     let mut response_fut = Box::pin(response_fut);
