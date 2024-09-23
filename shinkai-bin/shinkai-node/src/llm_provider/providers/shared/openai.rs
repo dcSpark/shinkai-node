@@ -124,6 +124,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .into_iter()
             .flat_map(|tool| {
                 if let serde_json::Value::Object(mut map) = tool {
+                    // TODO: functions is deprecated in favor of tools. Update it
                     map.remove("functions")
                         .and_then(|functions| {
                             if let serde_json::Value::Array(funcs) = functions {
