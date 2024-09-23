@@ -347,13 +347,7 @@ impl SheetRustFunctions {
         if let Some(worksheet) = spreadsheet.get_sheet(&0) {
             let mut column_definitions: Vec<ColumnDefinition> = Vec::new();
 
-            let row_cells = worksheet.get_collection_by_row(&0);
-            let num_columns = row_cells
-                .iter()
-                .position(|&cell| cell.get_cell_value().is_empty())
-                .unwrap_or(0);
-
-            let row_cells = row_cells.into_iter().take(num_columns);
+            let row_cells = worksheet.get_collection_by_row(&1);
 
             for cell in row_cells {
                 let column_name = cell.get_cell_value().get_value();
@@ -373,12 +367,10 @@ impl SheetRustFunctions {
             }
 
             let mut num_rows: u32 = 0;
-            for row_index in 1..u32::MAX {
-                let mut row_cells = worksheet
-                    .get_collection_by_row(&row_index)
-                    .into_iter()
-                    .take(num_columns);
-                let is_empty_row = row_cells.all(|cell| cell.get_cell_value().is_empty());
+            for row_index in 2..u32::MAX {
+                let row_cells = worksheet.get_collection_by_row(&row_index);
+                let is_empty_row =
+                    row_cells.is_empty() || row_cells.into_iter().all(|cell| cell.get_cell_value().is_empty());
 
                 if is_empty_row {
                     break;
@@ -402,10 +394,9 @@ impl SheetRustFunctions {
             };
 
             for row_index in 1..=num_rows {
-                let row_cells = worksheet.get_collection_by_row(&row_index);
-                let row_cells = row_cells.into_iter().take(num_columns);
+                let row_cells = worksheet.get_collection_by_row(&(row_index + 1));
 
-                for (col_index, cell) in row_cells.enumerate() {
+                for (col_index, cell) in row_cells.iter().enumerate() {
                     let column_definition = &column_definitions[col_index];
                     let cell_value = cell.get_cell_value().get_value();
                     let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
@@ -418,7 +409,7 @@ impl SheetRustFunctions {
             }
         }
 
-        Ok("Sheet created successfully".to_string())
+        Ok(sheet_id)
     }
 
     pub async fn export_sheet_to_csv(

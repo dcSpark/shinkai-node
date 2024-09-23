@@ -652,7 +652,6 @@ pub struct APIAddRowsPayload {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct APIImportSheetPayload {
     pub sheet_data: SpreadSheetPayload,
-    pub file_format: SheetFileFormat,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

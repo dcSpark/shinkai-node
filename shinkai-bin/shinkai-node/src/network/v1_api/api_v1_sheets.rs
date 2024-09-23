@@ -684,7 +684,7 @@ impl Node {
             identity_manager.clone(),
             encryption_secret_key,
             potentially_encrypted_msg,
-            MessageSchemaType::GetSheet,
+            MessageSchemaType::ExportSheet,
         )
         .await
         {
@@ -713,7 +713,7 @@ impl Node {
 
                 match csv_result {
                     Ok(csv_data) => {
-                        let response = json!({ "csv_data": csv_data });
+                        let response = json!(SpreadSheetPayload::CSV(csv_data));
                         let _ = res.send(Ok(response)).await;
                         Ok(())
                     }
@@ -734,7 +734,7 @@ impl Node {
 
                 match xlsx_result {
                     Ok(xlsx_data) => {
-                        let response = json!({ "xlsx_data": xlsx_data });
+                        let response = json!(SpreadSheetPayload::XLSX(xlsx_data));
                         let _ = res.send(Ok(response)).await;
                         Ok(())
                     }
