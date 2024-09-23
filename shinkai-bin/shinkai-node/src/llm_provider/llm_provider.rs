@@ -104,8 +104,8 @@ impl LLMProvider {
                     )
                     .await
             }
-            LLMProviderInterface::TogetherAI(genericapi) => {
-                genericapi
+            LLMProviderInterface::TogetherAI(togetherai) => {
+                togetherai
                     .call_api(
                         &self.client,
                         self.external_url.as_ref(),

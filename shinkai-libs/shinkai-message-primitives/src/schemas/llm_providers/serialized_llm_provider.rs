@@ -22,7 +22,7 @@ impl SerializedLLMProvider {
     pub fn get_provider_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(_) => "openai",
-            LLMProviderInterface::TogetherAI(_) => "genericapi",
+            LLMProviderInterface::TogetherAI(_) => "togetherai",
             LLMProviderInterface::Ollama(_) => "ollama",
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend",
             LLMProviderInterface::LocalLLM(_) => "local-llm",
@@ -159,8 +159,8 @@ impl FromStr for LLMProviderInterface {
         if s.starts_with("openai:") {
             let model_type = s.strip_prefix("openai:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::OpenAI(OpenAI { model_type }))
-        } else if s.starts_with("genericapi:") {
-            let model_type = s.strip_prefix("genericapi:").unwrap_or("").to_string();
+        } else if s.starts_with("togetherai:") {
+            let model_type = s.strip_prefix("togetherai:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::TogetherAI(TogetherAI { model_type }))
         } else if s.starts_with("ollama:") {
             let model_type = s.strip_prefix("ollama:").unwrap_or("").to_string();
@@ -196,8 +196,8 @@ impl Serialize for LLMProviderInterface {
                 let model_type = format!("openai:{}", openai.model_type);
                 serializer.serialize_str(&model_type)
             }
-            LLMProviderInterface::TogetherAI(genericapi) => {
-                let model_type = format!("genericapi:{}", genericapi.model_type);
+            LLMProviderInterface::TogetherAI(togetherai) => {
+                let model_type = format!("togetherai:{}", togetherai.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::Ollama(ollama) => {
@@ -247,7 +247,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openai" => Ok(LLMProviderInterface::OpenAI(OpenAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
-            "genericapi" => Ok(LLMProviderInterface::TogetherAI(TogetherAI {
+            "togetherai" => Ok(LLMProviderInterface::TogetherAI(TogetherAI {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "ollama" => Ok(LLMProviderInterface::Ollama(Ollama {
@@ -271,7 +271,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini", "openrouter"],
+                &["openai", "togetherai", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini", "openrouter"],
             )),
         }
     }

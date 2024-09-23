@@ -1,9 +1,6 @@
 use crate::llm_provider::{
     error::LLMProviderError,
-    providers::shared::{
-        openai_api::openai_prepare_messages,
-        shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
-    },
+    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
@@ -202,7 +199,7 @@ impl ModelCapabilitiesManager {
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
-            LLMProviderInterface::TogetherAI(genericapi) => match genericapi.model_type.as_str() {
+            LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => ModelCost::Cheap,
                 "togethercomputer/llama3" => ModelCost::Cheap,
                 "yorickvp/llava-13b" => ModelCost::Expensive,
@@ -285,17 +282,17 @@ impl ModelCapabilitiesManager {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
                 }
             }
-            LLMProviderInterface::TogetherAI(genericapi) => {
-                if genericapi.model_type.starts_with("togethercomputer/llama-2")
-                    || genericapi.model_type.starts_with("meta-llama/Llama-3")
+            LLMProviderInterface::TogetherAI(togetherai) => {
+                if togetherai.model_type.starts_with("togethercomputer/llama-2")
+                    || togetherai.model_type.starts_with("meta-llama/Llama-3")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
-                        llama_prepare_messages(model, genericapi.clone().model_type, prompt, total_tokens)?;
+                        llama_prepare_messages(model, togetherai.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
                 } else {
                     Err(ModelCapabilitiesManagerError::NotImplemented(
-                        genericapi.model_type.clone(),
+                        togetherai.model_type.clone(),
                     ))
                 }
             }
@@ -361,16 +358,16 @@ impl ModelCapabilitiesManager {
                     32_000
                 }
             }
-            LLMProviderInterface::TogetherAI(genericapi) => {
+            LLMProviderInterface::TogetherAI(togetherai) => {
                 // Fill in the appropriate logic for GenericAPI
-                if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
+                if togetherai.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
-                } else if genericapi.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
+                } else if togetherai.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
                     16_000
                     //  32_000
-                } else if genericapi.model_type.starts_with("meta-llama/Llama-3") {
+                } else if togetherai.model_type.starts_with("meta-llama/Llama-3") {
                     8_000
-                } else if genericapi.model_type.starts_with("mistralai/Mixtral-8x22B") {
+                } else if togetherai.model_type.starts_with("mistralai/Mixtral-8x22B") {
                     65_000
                 } else {
                     4096
@@ -450,13 +447,11 @@ impl ModelCapabilitiesManager {
     pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.starts_with("o1-preview")
-                    || openai.model_type.starts_with("o1-mini")
-                {
+                if openai.model_type.starts_with("o1-preview") || openai.model_type.starts_with("o1-mini") {
                     32768
                 } else {
                     16384
-                }   
+                }
             }
             LLMProviderInterface::TogetherAI(_) => {
                 if Self::get_max_tokens(model) <= 8000 {

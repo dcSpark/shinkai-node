@@ -3406,7 +3406,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.22.1",
  "blake3",
  "byteorder",
  "chrono",
