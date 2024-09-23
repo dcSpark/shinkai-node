@@ -255,29 +255,26 @@ impl JobManager {
         let llm_stopper = Arc::clone(&llm_stopper);
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
-
-        return tokio::spawn(async move {
+    
+        tokio::spawn(async move {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Info,
                 "Starting job queue processing loop",
             );
-
-            let mut handles = Vec::new();
+    
             loop {
-                let mut continue_immediately = false;
-
-                // Scope for acquiring and releasing the lock quickly
+                // Fetch jobs to process
                 let job_ids_to_process: Vec<String> = {
                     let mut processing_jobs_lock = processing_jobs.lock().await;
                     let job_queue_manager_lock = job_queue_manager.lock().await;
-                    let all_jobs = job_queue_manager_lock
-                        .get_all_elements_interleave()
-                        .await
-                        .unwrap_or(Vec::new());
+                    let all_jobs = match job_queue_manager_lock.get_all_elements_interleave().await {
+                        Ok(jobs) => jobs,
+                        Err(_) => Vec::new(),
+                    };
                     std::mem::drop(job_queue_manager_lock);
-
-                    let filtered_jobs = all_jobs
+    
+                    all_jobs
                         .into_iter()
                         .filter_map(|job| {
                             let job_id = job.job_message.job_id.clone().to_string();
@@ -289,109 +286,125 @@ impl JobManager {
                             }
                         })
                         .take(max_parallel_jobs)
-                        .collect::<Vec<_>>();
-
-                    // Check if the number of jobs to process is equal to max_parallel_jobs
-                    continue_immediately = filtered_jobs.len() == max_parallel_jobs;
-
-                    std::mem::drop(processing_jobs_lock);
-                    filtered_jobs
+                        .collect::<Vec<_>>()
                 };
-
-                // Spawn tasks based on filtered job IDs
-                for job_id in job_ids_to_process {
-                    let job_queue_manager = Arc::clone(&job_queue_manager);
-                    let processing_jobs = Arc::clone(&processing_jobs);
-                    let semaphore = Arc::clone(&semaphore);
-                    let db_clone_2 = db_clone.clone();
-                    let vector_fs_clone_2 = vector_fs_clone.clone();
-                    let identity_sk_clone = clone_signature_secret_key(&identity_sk);
-                    let job_processing_fn = Arc::clone(&job_processing_fn);
-                    let cloned_generator = generator.clone();
-                    let cloned_unstructured_api = unstructured_api.clone();
-                    let node_profile_name = node_profile_name.clone();
-                    let ws_manager = ws_manager.clone();
-                    let tool_router = tool_router.clone();
-                    let sheet_manager = sheet_manager.clone();
-                    let callback_manager = callback_manager.clone();
-                    let my_agent_payments_manager = my_agent_payments_manager.clone();
-                    let ext_agent_payments_manager = ext_agent_payments_manager.clone();
-                    let llm_stopper = Arc::clone(&llm_stopper);
-
-                    let handle = tokio::spawn(async move {
-                        let _permit = semaphore.acquire().await.unwrap();
-
-                        // Acquire the lock, dequeue the job, and immediately release the lock
-                        let job = {
-                            let job_queue_manager = job_queue_manager.lock().await;
-
-                            job_queue_manager.peek(&job_id).await
-                        };
-
-                        match job {
-                            Ok(Some(job)) => {
-                                // Acquire the lock, process the job, and immediately release the lock
-                                let result = {
-                                    let result = job_processing_fn(
-                                        job,
-                                        db_clone_2,
-                                        vector_fs_clone_2,
-                                        node_profile_name,
-                                        identity_sk_clone,
-                                        cloned_generator,
-                                        cloned_unstructured_api,
-                                        ws_manager,
-                                        tool_router,
-                                        sheet_manager,
-                                        callback_manager,
-                                        job_queue_manager.clone(),
-                                        my_agent_payments_manager,
-                                        ext_agent_payments_manager,
-                                        llm_stopper,
-                                    )
-                                    .await;
-                                    if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
-                                        result
+    
+                if job_ids_to_process.is_empty() {
+                    // No jobs to process, wait for new jobs
+                    if let Some(new_job) = receiver.recv().await {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Info,
+                            &format!("Received new job {:?}", new_job.job_message.job_id),
+                        );
+                    } else {
+                        // Receiver closed, exit the loop
+                        eprintln!("Receiver closed, exiting job queue processing loop");
+                        break;
+                    }
+                } else {
+                    // Spawn tasks for the jobs
+                    for job_id in job_ids_to_process {
+                        let job_queue_manager = Arc::clone(&job_queue_manager);
+                        let processing_jobs = Arc::clone(&processing_jobs);
+                        let semaphore = Arc::clone(&semaphore);
+                        let db_clone_2 = db_clone.clone();
+                        let vector_fs_clone_2 = vector_fs_clone.clone();
+                        let identity_sk_clone = clone_signature_secret_key(&identity_sk);
+                        let job_processing_fn = Arc::clone(&job_processing_fn);
+                        let cloned_generator = generator.clone();
+                        let cloned_unstructured_api = unstructured_api.clone();
+                        let node_profile_name = node_profile_name.clone();
+                        let ws_manager = ws_manager.clone();
+                        let tool_router = tool_router.clone();
+                        let sheet_manager = sheet_manager.clone();
+                        let callback_manager = callback_manager.clone();
+                        let my_agent_payments_manager = my_agent_payments_manager.clone();
+                        let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                        let llm_stopper = Arc::clone(&llm_stopper);
+    
+                        tokio::spawn(async move {
+                            let _permit = semaphore.acquire().await.unwrap();
+    
+                            // Acquire the lock, dequeue the job, and immediately release the lock
+                            let job = {
+                                let job_queue_manager = job_queue_manager.lock().await;
+                                job_queue_manager.peek(&job_id).await
+                            };
+    
+                            match job {
+                                Ok(Some(job)) => {
+                                    // Acquire the lock, process the job, and immediately release the lock
+                                    let result = {
+                                        let result = (job_processing_fn)(
+                                            job,
+                                            db_clone_2,
+                                            vector_fs_clone_2,
+                                            node_profile_name,
+                                            identity_sk_clone,
+                                            cloned_generator,
+                                            cloned_unstructured_api,
+                                            ws_manager,
+                                            tool_router,
+                                            sheet_manager,
+                                            callback_manager,
+                                            job_queue_manager.clone(),
+                                            my_agent_payments_manager,
+                                            ext_agent_payments_manager,
+                                            llm_stopper,
+                                        )
+                                        .await;
+                                        if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id).await {
+                                            result
+                                        } else {
+                                            Err(LLMProviderError::JobDequeueFailed(job_id.clone()))
+                                        }
+                                    };
+    
+                                    if result.is_ok() {
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Debug,
+                                            "Job processed successfully",
+                                        );
                                     } else {
-                                        Err(LLMProviderError::JobDequeueFailed(job_id.clone()))
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Error,
+                                            "Job processing failed",
+                                        );
                                     }
-                                };
-
-                                if result.is_ok() {
+                                }
+                                Ok(None) => {
+                                    // Job not found, possibly already processed
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
                                         ShinkaiLogLevel::Debug,
-                                        "Job processed successfully",
+                                        &format!("Job {} not found", job_id),
+                                    );
+                                }
+                                Err(e) => {
+                                    // Log the error
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Error peeking job {}: {:?}", job_id, e),
                                     );
                                 }
                             }
-                            Ok(None) => {}
-                            Err(_) => {
-                                // Log the error
-                            }
-                        }
-                        drop(_permit);
-                        processing_jobs.lock().await.remove(&job_id);
-                    });
-                    handles.push(handle);
-                }
-
-                // Check if we can process more jobs
-                let available_permits = semaphore.available_permits();
-                if available_permits > 0 {
-                    continue;
-                }
-
-                // Receive new jobs
-                if let Some(new_job) = receiver.recv().await {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Info,
-                        format!("Received new job {:?}", new_job.job_message.job_id).as_str(),
-                    );
+                            drop(_permit);
+                            processing_jobs.lock().await.remove(&job_id);
+                        });
+                    }
                 }
             }
-        });
+    
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Info,
+                "Job queue processing loop has been terminated",
+            );
+        })
     }
 
     pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, LLMProviderError> {
