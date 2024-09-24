@@ -90,7 +90,7 @@ pub enum MessageSchemaType {
     InvoiceRequest,
     Invoice,
     PaidInvoice,
-    InvoiceResult
+    InvoiceResult,
 }
 
 impl MessageSchemaType {
@@ -526,6 +526,12 @@ pub struct APIVecFsMoveItem {
 pub struct APIVecFsCopyItem {
     pub origin_path: String,
     pub destination_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsDownloadFile {
+    pub filename: String,
+    pub path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

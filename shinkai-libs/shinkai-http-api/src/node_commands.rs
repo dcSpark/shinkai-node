@@ -6,7 +6,17 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+        coinbase_mpc_config::CoinbaseMPCWalletConfig,
+        custom_prompt::CustomPrompt,
+        identity::{Identity, StandardIdentity},
+        job_config::JobConfig,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        shinkai_name::ShinkaiName,
+        shinkai_subscription::ShinkaiSubscription,
+        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        smart_inbox::{SmartInbox, V2SmartInbox},
+        wallet_complementary::{WalletRole, WalletSource},
+        wallet_mixed::NetworkIdentifier,
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
@@ -15,9 +25,9 @@ use shinkai_message_primitives::{
             APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp,
             APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
             APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
-            APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-            APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
-            RegistrationCodeType, V2ChatMessage,
+            APIVecFsDeleteItem, APIVecFsDownloadFile, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions,
+            JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -32,9 +42,9 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use super::{
-    node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
+    node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
 };
 
 pub enum NodeCommand {
@@ -630,6 +640,11 @@ pub enum NodeCommand {
         path: String,
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiDownloadFileFromFolder {
+        bearer: String,
+        payload: APIVecFsDownloadFile,
+        res: Sender<Result<Vec<u8>, APIError>>,
     },
     V2ApiAvailableSharedItems {
         bearer: String,

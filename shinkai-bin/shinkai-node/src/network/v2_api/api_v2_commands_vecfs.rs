@@ -10,14 +10,15 @@ use shinkai_message_primitives::{
     schemas::identity::Identity,
     shinkai_message::shinkai_message_schemas::{
         APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
-        APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+        APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsDownloadFile, APIVecFsMoveFolder, APIVecFsMoveItem,
         APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems,
     },
 };
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
-    embedding_generator::EmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI, vector_resource::VRPath,
+    embedding_generator::EmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI, source::SourceFile,
+    vector_resource::VRPath,
 };
 use tokio::sync::Mutex;
 
@@ -1032,6 +1033,99 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
             }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_download_file_from_folder(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        input_payload: APIVecFsDownloadFile,
+        bearer: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let file_path_str = input_payload.path.as_deref().unwrap_or("/");
+        let file_path = match VRPath::from_string(file_path_str) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let file_path = file_path.push_cloned(input_payload.filename);
+
+        let reader = match vector_fs
+            .new_reader(requester_name.clone(), file_path, requester_name.clone())
+            .await
+        {
+            Ok(reader) => reader,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create reader: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let source_file_map = match vector_fs.retrieve_source_file_map(&reader).await {
+            Ok(source_file_map) => source_file_map,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve source file map: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let source_file = match source_file_map.get_source_file(VRPath::root()) {
+            Some(source_file) => source_file,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Failed to retrieve source file".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match source_file {
+            SourceFile::Standard(file) => {
+                let _ = res.send(Ok(file.file_content.clone())).await;
+            }
+            _ => {}
         }
 
         Ok(())
