@@ -141,7 +141,7 @@ impl BamlConfig {
                                     return Ok(matched.as_str().to_string());
                                 }
                             }
-                            return Err(anyhow::anyhow!("No JSON block found in the response"));
+                            return Ok(content.to_string());
                         } else {
                             return Ok(content.to_string());
                         }

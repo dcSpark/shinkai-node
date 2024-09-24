@@ -293,6 +293,7 @@ impl fmt::Debug for InferenceChainContext {
 }
 
 /// Struct that represents the result of an inference chain.
+#[derive(Debug, Clone)]
 pub struct InferenceChainResult {
     pub response: String,
     pub new_job_execution_context: HashMap<String, String>,

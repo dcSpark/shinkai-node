@@ -39,7 +39,7 @@ impl Workflow {
 
     /// Extracts all function names used in the raw workflow string.
     pub fn extract_function_names(&self) -> Vec<String> {
-        let re = Regex::new(r"call\s+(\w+)\s*\(").unwrap();
+        let re = Regex::new(r"call\s+([\w-]+)\s*\(").unwrap();
         re.captures_iter(&self.raw).map(|cap| cap[1].to_string()).collect()
     }
 }

@@ -299,4 +299,64 @@ impl SubPrompt {
 
         temp_prompt.remove_all_subprompts()
     }
+
+    pub fn convert_resource_into_submprompts_for_citation_rag(
+        resource: &BaseVectorResource,
+    ) -> Vec<serde_json::Value> {
+        let resource_trait = resource.as_trait_object();
+        let nodes = resource_trait.get_all_nodes_flattened();
+        let mut last_content = String::new();
+        let mut last_reference = String::new();
+        let mut buffer_content = String::new();
+        let mut embeddings = Vec::new();
+    
+        for (i, node) in nodes.iter().enumerate() {
+            let mut current_content = String::new();
+    
+            if let Ok(content) = node.get_text_content() {
+                current_content = content.to_string();
+            } else if let Ok(resource) = node.get_vector_resource_content() {
+                current_content = resource.as_trait_object().name().to_string();
+            }
+    
+            // Some text is repeated between nodes, so we skip it
+            if current_content.is_empty() || current_content == last_content {
+                continue;
+            }
+    
+            let mut extra_info = String::new();
+            if let Some(metadata) = &node.metadata {
+                if let Some(pg_nums) = metadata.get("pg_nums") {
+                    extra_info = format!("Page: {}", pg_nums);
+                }
+            }
+    
+            if extra_info != last_reference {
+                if !buffer_content.is_empty() {
+                    embeddings.push(serde_json::json!({
+                        "text": buffer_content,
+                        "reference": last_reference,
+                        "file": resource_trait.source().format_source_string()
+                    }));
+                }
+                buffer_content.clone_from(&current_content);
+                last_reference.clone_from(&extra_info);
+            } else {
+                buffer_content.push_str(&format!(" {}", current_content));
+            }
+    
+            if i == nodes.len() - 1 || extra_info != last_reference {
+                embeddings.push(serde_json::json!({
+                    "text": buffer_content,
+                    "reference": extra_info,
+                    "file": resource_trait.source().format_source_string()
+                }));
+                buffer_content.clear();
+            }
+    
+            last_content = current_content;
+        }
+    
+        embeddings
+    }
 }

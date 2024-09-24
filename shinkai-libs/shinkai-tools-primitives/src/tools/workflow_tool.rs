@@ -62,20 +62,22 @@ impl WorkflowTool {
 }
 
 impl WorkflowTool {
-    pub fn static_tools() -> Vec<Self> {
+    pub fn static_tools() -> Vec<(Self, bool)> {
         let is_testing = env::var("IS_TESTING")
             .map(|v| v.to_lowercase() == "true" || v == "1")
             .unwrap_or(false);
 
         if is_testing {
             vec![
-                Self::get_extensive_summary_workflow(),
-                Self::get_hyde_inference_workflow(),
+                (Self::get_extensive_summary_workflow(), true),
+                (Self::get_hyde_inference_workflow(), true),
+                (Self::baml_script_rag_with_citations(), false),
             ]
         } else {
             vec![
-                Self::get_extensive_summary_workflow(),
-                Self::get_hyde_inference_workflow(),
+                (Self::get_extensive_summary_workflow(), true),
+                (Self::get_hyde_inference_workflow(), true),
+                (Self::baml_script_rag_with_citations(), false),
             ]
         }
     }
@@ -120,6 +122,65 @@ impl WorkflowTool {
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
         workflow.description =
             Some("Generates a passage to answer a question and uses embeddings to refine the answer.".to_string());
+
+        WorkflowTool::new(workflow)
+    }
+
+    fn baml_script_rag_with_citations() -> Self {
+        let raw_workflow = r##"
+            workflow RAG_with_citations v0.1 {
+                step Initialize {
+                    $DSL = "class Citation {
+                        citation_id int
+                        relevantTextFromDocument string @alias(\"relevantSentenceFromDocument\") @description(#\"
+                          The relevant text from the document that supports the answer. This is a citation. You must quote it EXACTLY as it appears in the document with any special characters it contains. The text should be contiguous and not broken up. You may NOT summarize or skip sentences. If you need to skip a sentence, start a new citation instead.
+                        \"#)
+                      }
+
+                      class Answer {
+                        answersInText Citation[] @alias(\"relevantSentencesFromText\")
+                        answer Essay @description(#\"
+                          An answer to the user's question that MUST cite sources from the relevantSentencesFromText. Like [0]. If multiple citations are needed, write them like [0][1][2].
+                        \"#)
+                      }
+
+                      class Essay {
+                        introduction Paragraph @description(#\"3-4\"#)
+                        body Paragraph[] @description(#\"3-6\"#)
+                        conclusion Paragraph[] @description(#\"1-3\"#)
+                      }
+
+                      class Paragraph {
+                        sentences string[]
+                      } 
+
+                      function AnswerQuestion(content: string) -> Answer {
+                        // see clients.baml
+                        client Ollama
+
+                        prompt #\"
+                          Given content, do your best to answer the question.
+
+
+                          <CONTENT>
+                          {{ content }}
+                          </CONTENT>
+
+                          {{ _.role(\"user\") }}
+                         What is their primary achievements?
+
+                          {{ ctx.output_format }}
+                        \"#
+                      }"
+                    $PARAM = "content"
+                    $FUNCTION = "AnswerQuestion"
+                    $RESULT = call baml_inference($INPUT, "", "", $DSL, $FUNCTION, $PARAM)
+                }
+            } @@localhost.arb-sep-shinkai
+        "##;
+
+        let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
+        workflow.description = Some("Generates an answer to a question with citations from the provided content using BAML. The answer includes quotes from the content as citations.".to_string());
 
         WorkflowTool::new(workflow)
     }
