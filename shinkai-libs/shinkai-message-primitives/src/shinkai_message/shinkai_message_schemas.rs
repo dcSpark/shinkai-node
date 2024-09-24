@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
+use utoipa::ToSchema;
 
 use super::shinkai_message::{NodeApiData, ShinkaiMessage};
 
@@ -649,12 +650,12 @@ pub struct APIAddRowsPayload {
     pub starting_row: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct APIImportSheetPayload {
     pub sheet_data: SpreadSheetPayload,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct APIExportSheetPayload {
     pub sheet_id: String,
     pub file_format: SheetFileFormat,

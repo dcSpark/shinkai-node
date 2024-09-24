@@ -2993,6 +2993,20 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiImportSheet { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let sheet_manager_clone = self.sheet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_sheet(db_clone, sheet_manager_clone, payload, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiExportSheet { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let sheet_manager_clone = self.sheet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_export_sheet(db_clone, sheet_manager_clone, payload, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }

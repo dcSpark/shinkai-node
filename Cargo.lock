@@ -10063,6 +10063,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "utoipa",
  "x25519-dalek",
 ]
 
