@@ -1,8 +1,11 @@
 use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
 
 use crate::{
-    llm_provider::execution::{
-        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
+    llm_provider::{
+        execution::{
+            chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator, user_message_parser::ParsedUserMessage,
+        },
+        providers::shared::openai_api::FunctionCall,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
@@ -667,10 +670,17 @@ impl AsyncFunction for ShinkaiToolFunction {
                 ));
             }
             ShinkaiTool::Workflow(workflow, _is_enabled) => {
+                let arg = args[0].downcast_ref::<String>().ok_or_else(|| {
+                    WorkflowError::InvalidArgument("Expected a single argument of type String".to_string())
+                })?;
+
+                let mut new_context = self.context.clone();
+                new_context.update_message(ParsedUserMessage::new(arg.clone()));
+
                 // Create a new DslChain for the nested workflow
                 let functions = HashMap::new();
                 let mut nested_dsl_inference =
-                    DslChain::new(self.context.clone_box(), workflow.workflow.clone(), functions);
+                    DslChain::new(new_context, workflow.workflow.clone(), functions);
 
                 // TODO: read the fns from the workflow code and the missing ones from the tool router
 
@@ -710,9 +720,9 @@ fn parse_params(args: Vec<Box<dyn Any + Send>>) -> Result<serde_json::Map<String
 
     if args.len() == 1 {
         // Check if the single argument is a JSON string
-        let arg = args[0].downcast_ref::<String>().ok_or_else(|| {
-            WorkflowError::InvalidArgument("Expected a single argument of type String".to_string())
-        })?;
+        let arg = args[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Expected a single argument of type String".to_string()))?;
 
         // Try to parse the argument as a JSON value
         if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(arg) {
@@ -726,7 +736,9 @@ fn parse_params(args: Vec<Box<dyn Any + Send>>) -> Result<serde_json::Map<String
                     params.insert("arg".to_string(), serde_json::Value::Array(json_array));
                 }
                 _ => {
-                    return Err(WorkflowError::InvalidArgument("Expected a JSON object or array".to_string()));
+                    return Err(WorkflowError::InvalidArgument(
+                        "Expected a JSON object or array".to_string(),
+                    ));
                 }
             }
         } else {
