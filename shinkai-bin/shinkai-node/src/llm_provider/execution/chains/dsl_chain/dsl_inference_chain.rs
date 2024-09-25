@@ -633,11 +633,6 @@ impl AsyncFunction for ShinkaiToolFunction {
                     }
                 }
 
-                let function_call = FunctionCall {
-                    name: self.tool.name(),
-                    arguments: serde_json::Value::Object(params),
-                };
-
                 let function_config = self.tool.get_config_from_env();
                 let result = js_tool
                     .run(params, function_config)
