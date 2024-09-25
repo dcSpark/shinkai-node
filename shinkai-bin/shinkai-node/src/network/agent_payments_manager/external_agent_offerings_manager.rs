@@ -706,7 +706,10 @@ impl ExtAgentOfferingsManager {
         // TODO: ^
 
         // Step 3: we extract the data_payload and then we call the tool with it
-        let data_payload = invoice.tool_data.unwrap_or_default();
+        let data_payload = invoice
+            .tool_data
+            .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+            .unwrap_or_else(|| serde_json::Map::new());
         {
             let tool_router = self.tool_router.upgrade().ok_or_else(|| {
                 AgentOfferingManagerError::OperationFailed("Failed to upgrade tool_router reference".to_string())

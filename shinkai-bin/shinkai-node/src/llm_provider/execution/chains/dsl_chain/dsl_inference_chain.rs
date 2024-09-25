@@ -640,7 +640,7 @@ impl AsyncFunction for ShinkaiToolFunction {
 
         let function_call = FunctionCall {
             name: self.tool.name(),
-            arguments: serde_json::Value::Object(params),
+            arguments: params,
         };
 
         let result = match &self.tool {

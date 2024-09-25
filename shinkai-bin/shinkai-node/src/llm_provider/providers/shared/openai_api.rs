@@ -5,7 +5,6 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 use base64::decode;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
@@ -34,7 +33,7 @@ pub struct FunctionCallResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionCall {
     pub name: String,
-    pub arguments: JsonValue,
+    pub arguments: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -115,30 +114,33 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
     let messages_vec = match messages_json {
-        serde_json::Value::Array(arr) => arr.into_iter().map(|mut message| {
-            let images = message.get("images").cloned();
-            let text = message.get("content").cloned();
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .map(|mut message| {
+                let images = message.get("images").cloned();
+                let text = message.get("content").cloned();
 
-            if let Some(serde_json::Value::Array(images_array)) = images {
-                let mut content = vec![];
-                if let Some(text) = text {
-                    content.push(serde_json::json!({"type": "text", "text": text}));
-                }
-                for image in images_array {
-                    if let serde_json::Value::String(image_str) = image {
-                        if let Some(image_type) = get_image_type(&image_str) {
-                            content.push(serde_json::json!({
-                                "type": "image_url",
-                                "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
-                            }));
+                if let Some(serde_json::Value::Array(images_array)) = images {
+                    let mut content = vec![];
+                    if let Some(text) = text {
+                        content.push(serde_json::json!({"type": "text", "text": text}));
+                    }
+                    for image in images_array {
+                        if let serde_json::Value::String(image_str) = image {
+                            if let Some(image_type) = get_image_type(&image_str) {
+                                content.push(serde_json::json!({
+                                    "type": "image_url",
+                                    "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
+                                }));
+                            }
                         }
                     }
+                    message["content"] = serde_json::json!(content);
+                    message.as_object_mut().unwrap().remove("images");
                 }
-                message["content"] = serde_json::json!(content);
-                message.as_object_mut().unwrap().remove("images");
-            }
-            message
-        }).collect(),
+                message
+            })
+            .collect(),
         _ => vec![],
     };
 
@@ -207,6 +209,9 @@ mod tests {
             assert_eq!(
                 function_call.arguments,
                 json!({"first_string": "hola", "second_string": " chao"})
+                    .as_object()
+                    .unwrap()
+                    .to_owned()
             );
         }
 
@@ -227,6 +232,9 @@ mod tests {
             assert_eq!(
                 function_call.arguments,
                 json!({"first_string": "hola", "second_string": " chao"})
+                    .as_object()
+                    .unwrap()
+                    .to_owned()
             );
         }
     }

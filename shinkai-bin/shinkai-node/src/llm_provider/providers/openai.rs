@@ -198,10 +198,18 @@ async fn handle_streaming_response(
                                         response_text.push_str(content.as_str().unwrap_or(""));
                                     }
                                     if let Some(fc) = message.get("function_call") {
-                                        if let (Some(name), Some(arguments)) = (fc.get("name"), fc.get("arguments")) {
+                                        if let Some(name) = fc.get("name") {
+                                            let fc_arguments = fc
+                                                .get("arguments")
+                                                .and_then(|args| args.as_str())
+                                                .and_then(|args_str| serde_json::from_str(args_str).ok())
+                                                .and_then(|args_value: serde_json::Value| {
+                                                    args_value.as_object().cloned()
+                                                })
+                                                .unwrap_or_else(|| serde_json::Map::new());
                                             function_call = Some(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
-                                                arguments: arguments.clone(),
+                                                arguments: fc_arguments.clone(),
                                             });
                                         }
                                     }
@@ -340,10 +348,7 @@ async fn handle_non_streaming_response(
                             .join(" ");
 
                         let function_call = data.choices.iter().find_map(|choice| {
-                            if let Some(mut fc) = choice.message.function_call.clone() {
-                                if let Some(args_str) = fc.arguments.as_str() {
-                                    fc.arguments = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
-                                }
+                            if let Some(fc) = choice.message.function_call.clone() {
                                 Some(fc)
                             } else {
                                 None

@@ -341,7 +341,11 @@ async fn handle_non_streaming_response(
                                         calls.iter().find_map(|call| {
                                             call.get("function").map(|function| {
                                                 let name = function.get("name")?.as_str()?.to_string();
-                                                let arguments = function.get("arguments")?.clone();
+                                                let arguments = function.get("arguments")
+                                                    .and_then(|args| args.as_str())
+                                                    .and_then(|args_str| serde_json::from_str(args_str).ok())
+                                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                                    .unwrap_or_else(|| serde_json::Map::new());
                                                 Some(FunctionCall { name, arguments })
                                             })
                                         })

@@ -262,18 +262,12 @@ impl SheetUIInferenceChain {
                     let sheet_manager_clone = sheet_manager.clone().unwrap();
                     let sheet_id_clone = sheet_id.clone();
                     let mut args = HashMap::new();
-                    if let Some(arguments) = function_call.arguments.as_object() {
-                        for (key, value) in arguments {
-                            let mut val = value.to_string();
-                            if val.starts_with('"') && val.ends_with('"') {
-                                val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
-                            }
-                            args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
+                    for (key, value) in function_call.clone().arguments {
+                        let mut val = value.to_string();
+                        if val.starts_with('"') && val.ends_with('"') {
+                            val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
                         }
-                    } else {
-                        return Err(LLMProviderError::InvalidFunctionArguments(
-                            "Function arguments should be a JSON object".to_string(),
-                        ));
+                        args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                     }
 
                     let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });

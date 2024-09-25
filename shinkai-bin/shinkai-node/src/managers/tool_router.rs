@@ -657,7 +657,7 @@ impl ToolRouter {
 
     /// This function is used to call a JS function directly
     /// It's very handy for agent-to-agent communication
-    pub async fn call_js_function(&self, function_args: Value, js_tool_name: &str) -> Result<String, LLMProviderError> {
+    pub async fn call_js_function(&self, function_args: serde_json::Map<String, Value>, js_tool_name: &str) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
 
         if shinkai_tool.is_none() {
