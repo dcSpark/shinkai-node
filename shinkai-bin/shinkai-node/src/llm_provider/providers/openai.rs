@@ -81,17 +81,6 @@ impl LLMService for OpenAI {
                 // Extract tools_json from the result
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
-
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
-
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
@@ -100,7 +89,7 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json);
+                    payload["tools"] = serde_json::Value::Array(tools_json);
                 }
 
                 // Add options to payload
@@ -187,7 +176,9 @@ async fn handle_streaming_response(
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
                 previous_json_chunk += chunk_str.as_str();
                 let trimmed_chunk_str = previous_json_chunk.trim().to_string();
+                eprintln!("\n\n\n trimmed_chunk_str: {:?}\n\n\n", trimmed_chunk_str);
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&trimmed_chunk_str);
+                eprintln!("\n\n\n data_resp: {:?}\n\n\n", data_resp);
                 match data_resp {
                     Ok(data) => {
                         previous_json_chunk = "".to_string();
@@ -197,12 +188,20 @@ async fn handle_streaming_response(
                                     if let Some(content) = message.get("content") {
                                         response_text.push_str(content.as_str().unwrap_or(""));
                                     }
-                                    if let Some(fc) = message.get("function_call") {
-                                        if let (Some(name), Some(arguments)) = (fc.get("name"), fc.get("arguments")) {
-                                            function_call = Some(FunctionCall {
-                                                name: name.as_str().unwrap_or("").to_string(),
-                                                arguments: arguments.clone(),
-                                            });
+                                    if let Some(fc_array) = message.get("tool_calls").and_then(|v| v.as_array()) {
+                                        for fc in fc_array {
+                                            if let Some(function) = fc.get("function") {
+                                                if let (Some(name), Some(arguments)) = (function.get("name"), function.get("arguments")) {
+                                                    let parsed_arguments = serde_json::from_str(arguments.as_str().unwrap_or("{}")).unwrap_or_else(|_| json!({}));
+                                                    let tool_call_id = fc.get("id").and_then(|id| id.as_str()).map(|s| s.to_string());
+                                                    eprintln!("\n\n\n parsed_arguments: {:?}\n\n\n", parsed_arguments);
+                                                    function_call = Some(FunctionCall {
+                                                        name: name.as_str().unwrap_or("").to_string(),
+                                                        arguments: parsed_arguments,
+                                                        tool_call_id,
+                                                    });
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -340,14 +339,15 @@ async fn handle_non_streaming_response(
                             .join(" ");
 
                         let function_call = data.choices.iter().find_map(|choice| {
-                            if let Some(mut fc) = choice.message.function_call.clone() {
-                                if let Some(args_str) = fc.arguments.as_str() {
-                                    fc.arguments = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                            if let Some(tool_calls) = &choice.message.tool_calls {
+                                if let Some(mut fc) = tool_calls.first().cloned() {
+                                    if let Some(args_str) = fc.arguments.as_str() {
+                                        fc.arguments = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                                    }
+                                    return Some(fc);
                                 }
-                                Some(fc)
-                            } else {
-                                None
                             }
+                            None
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);

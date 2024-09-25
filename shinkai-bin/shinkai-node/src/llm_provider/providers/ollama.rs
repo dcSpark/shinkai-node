@@ -342,7 +342,7 @@ async fn handle_non_streaming_response(
                                             call.get("function").map(|function| {
                                                 let name = function.get("name")?.as_str()?.to_string();
                                                 let arguments = function.get("arguments")?.clone();
-                                                Some(FunctionCall { name, arguments })
+                                                Some(FunctionCall { name, arguments, tool_call_id: None })
                                             })
                                         })
                                     })

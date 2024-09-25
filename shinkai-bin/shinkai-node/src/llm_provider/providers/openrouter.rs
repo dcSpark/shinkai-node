@@ -198,6 +198,7 @@ async fn handle_streaming_response(
                                             function_call = Some(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
                                                 arguments: arguments.clone(),
+                                                tool_call_id: None,
                                             });
                                         }
                                     }

@@ -636,6 +636,7 @@ impl AsyncFunction for ShinkaiToolFunction {
                 let function_call = FunctionCall {
                     name: self.tool.name(),
                     arguments: serde_json::Value::Object(params),
+                    tool_call_id: None, // TODO: fix this for openai
                 };
 
                 let function_config = self.tool.get_config_from_env();

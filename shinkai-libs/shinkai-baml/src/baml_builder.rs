@@ -127,6 +127,7 @@ impl BamlConfig {
         }
 
         if let Some(function_name) = &self.function_name {
+            eprintln!("\n\n\n params: {:?}\n\n\n", params);
             let (result, _uuid) = runtime.call_function_sync(function_name.clone(), &params, &ctx_manager, None, None);
 
             match result {

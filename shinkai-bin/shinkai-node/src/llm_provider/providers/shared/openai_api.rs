@@ -34,6 +34,7 @@ pub struct FunctionCallResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionCall {
     pub name: String,
+    pub tool_call_id: Option<String>,
     pub arguments: JsonValue,
 }
 
@@ -50,6 +51,7 @@ pub struct OpenAIApiMessage {
     pub role: String,
     pub content: Option<MessageContent>,
     pub function_call: Option<FunctionCall>,
+    pub tool_calls: Option<Vec<FunctionCall>>,
 }
 
 impl Serialize for OpenAIApiMessage {
@@ -148,11 +150,27 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .into_iter()
             .flat_map(|tool| {
                 if let serde_json::Value::Object(mut map) = tool {
+                    eprintln!("\n\n\n tools_vec map: {:?}\n\n\n", map);
                     // TODO: functions is deprecated in favor of tools. Update it
                     map.remove("functions")
                         .and_then(|functions| {
                             if let serde_json::Value::Array(funcs) = functions {
-                                Some(funcs)
+                                Some(funcs.into_iter().map(|mut func| {
+                                    if let serde_json::Value::Object(ref mut func_map) = func {
+                                        func_map.insert("type".to_string(), serde_json::json!("function"));
+                                        if let Some(parameters) = func_map.get_mut("parameters") {
+                                            if let serde_json::Value::Object(ref mut params_map) = parameters {
+                                                params_map.insert("additionalProperties".to_string(), serde_json::json!(false));
+                                            }
+                                        }
+                                        serde_json::json!({
+                                            "type": "function",
+                                            "function": func_map.clone()
+                                        })
+                                    } else {
+                                        func
+                                    }
+                                }).collect())
                             } else {
                                 None
                             }
