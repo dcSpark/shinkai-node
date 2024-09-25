@@ -25,9 +25,9 @@ use shinkai_message_primitives::{
             APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp,
             APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
             APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
-            APIVecFsDeleteItem, APIVecFsDownloadFile, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions,
-            JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage,
+            APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+            APIVecFsRetrieveSourceFile, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo,
+            JobMessage, RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -641,10 +641,10 @@ pub enum NodeCommand {
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiDownloadFileFromFolder {
+    V2ApiRetrieveSourceFile {
         bearer: String,
-        payload: APIVecFsDownloadFile,
-        res: Sender<Result<Vec<u8>, APIError>>,
+        payload: APIVecFsRetrieveSourceFile,
+        res: Sender<Result<String, APIError>>,
     },
     V2ApiAvailableSharedItems {
         bearer: String,

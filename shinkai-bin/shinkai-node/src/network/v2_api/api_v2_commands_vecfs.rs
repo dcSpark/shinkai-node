@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_channel::Sender;
+use base64::Engine;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -10,8 +11,8 @@ use shinkai_message_primitives::{
     schemas::identity::Identity,
     shinkai_message::shinkai_message_schemas::{
         APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
-        APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsDownloadFile, APIVecFsMoveFolder, APIVecFsMoveItem,
-        APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems,
+        APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+        APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
     },
 };
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
@@ -1038,13 +1039,13 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_download_file_from_folder(
+    pub async fn v2_retrieve_source_file(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        input_payload: APIVecFsDownloadFile,
+        input_payload: APIVecFsRetrieveSourceFile,
         bearer: String,
-        res: Sender<Result<Vec<u8>, APIError>>,
+        res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
@@ -1063,8 +1064,7 @@ impl Node {
             }
         };
 
-        let file_path_str = input_payload.path.as_deref().unwrap_or("/");
-        let file_path = match VRPath::from_string(file_path_str) {
+        let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -1077,10 +1077,8 @@ impl Node {
             }
         };
 
-        let file_path = file_path.push_cloned(input_payload.filename);
-
         let reader = match vector_fs
-            .new_reader(requester_name.clone(), file_path, requester_name.clone())
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
             .await
         {
             Ok(reader) => reader,
@@ -1112,22 +1110,23 @@ impl Node {
             Some(source_file) => source_file,
             None => {
                 let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "Failed to retrieve source file".to_string(),
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Source file not found in the source file map".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
 
-        match source_file {
-            SourceFile::Standard(file) => {
-                let _ = res.send(Ok(file.file_content.clone())).await;
-            }
-            _ => {}
-        }
+        let file_content = match source_file {
+            SourceFile::Standard(file) => &file.file_content,
+            SourceFile::TLSNotarized(file) => &file.file_content,
+        };
 
+        let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
+
+        let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
         Ok(())
     }
 }

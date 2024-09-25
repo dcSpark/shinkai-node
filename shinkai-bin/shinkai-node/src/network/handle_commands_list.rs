@@ -2192,12 +2192,12 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiDownloadFileFromFolder { bearer, payload, res } => {
+            NodeCommand::V2ApiRetrieveSourceFile { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_download_file_from_folder(
+                    let _ = Node::v2_retrieve_source_file(
                         db_clone,
                         vector_fs_clone,
                         identity_manager_clone,

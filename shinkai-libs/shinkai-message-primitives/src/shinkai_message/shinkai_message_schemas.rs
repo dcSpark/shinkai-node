@@ -529,9 +529,8 @@ pub struct APIVecFsCopyItem {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct APIVecFsDownloadFile {
-    pub filename: String,
-    pub path: Option<String>,
+pub struct APIVecFsRetrieveSourceFile {
+    pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
