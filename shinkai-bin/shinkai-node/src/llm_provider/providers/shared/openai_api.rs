@@ -94,7 +94,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     // Generate the messages and filter out images
     let chat_completion_messages = prompt.generate_openai_messages(
         Some(max_input_tokens),
-        Some("tool".to_string()),
+        Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
 
@@ -145,6 +145,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     };
 
     // Flatten the tools array to extract functions directly
+    // TODO: this is to support the old functions format. We need to update it to tools
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
