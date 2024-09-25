@@ -117,7 +117,9 @@ impl BamlConfig {
             let context_value = if trimmed_input.starts_with('{') && trimmed_input.ends_with('}') {
                 eprintln!("input is a json string: {}", trimmed_input);
                 let unescaped_input = BamlConfig::unescape_json_string(trimmed_input);
-                BamlConfig::from_serde_value(serde_json::from_str(&unescaped_input).unwrap())
+                let parsed_json = serde_json::from_str(&unescaped_input).unwrap();
+                eprintln!("\n\n\n parsed_json: {:?}\n\n\n", parsed_json);
+                BamlConfig::from_serde_value(parsed_json)
             } else {
                 BamlValue::String(trimmed_input.to_string())
             };

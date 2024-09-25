@@ -94,7 +94,9 @@ pub fn generate_json_map(
     args: Vec<Box<dyn Any + Send>>,
 ) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() % 2 != 0 {
-        return Err(WorkflowError::InvalidArgument("Expected an even number of arguments".to_string()));
+        return Err(WorkflowError::InvalidArgument(
+            "Expected an even number of arguments".to_string(),
+        ));
     }
 
     let mut map = serde_json::Map::new();
@@ -106,7 +108,15 @@ pub fn generate_json_map(
         let value = pair[1]
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for value".to_string()))?;
-        map.insert(key.clone(), json!(value));
+
+        let json_value =
+            if (value.starts_with('{') && value.ends_with('}')) || (value.starts_with("[{") && value.ends_with("}]")) {
+                serde_json::from_str(value).unwrap_or_else(|_| json!(value))
+            } else {
+                json!(value)
+            };
+
+        map.insert(key.clone(), json_value);
     }
 
     Ok(Box::new(serde_json::to_string(&map).unwrap()))
@@ -404,7 +414,7 @@ mod tests {
     };
 
     use crate::llm_provider::execution::chains::dsl_chain::generic_functions::{
-        generate_json_map, process_embeddings_in_job_scope, process_embeddings_in_job_scope_with_metadata
+        generate_json_map, process_embeddings_in_job_scope, process_embeddings_in_job_scope_with_metadata,
     };
     use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContext;
     use crate::llm_provider::execution::{
@@ -942,23 +952,20 @@ mod tests {
         ];
 
         for (i, (name, content)) in topics.iter().enumerate() {
-            let mut doc = DocumentVectorResource::new_empty(
-                name,
-                Some(content),
-                VRSourceReference::new_uri_ref(name),
-                true,
-            );
+            let mut doc =
+                DocumentVectorResource::new_empty(name, Some(content), VRSourceReference::new_uri_ref(name), true);
             doc.set_embedding_model_used(generator.model_type());
             doc.keywords_mut().set_keywords(vec![name.to_string()]);
             doc.update_resource_embedding(&generator, None).await.unwrap();
             let content_embedding = generator.generate_embedding_default(content).await.unwrap();
-    
+
             // Creating fake metadata to test with
             let mut metadata = HashMap::new();
             metadata.insert("pg_nums".to_string(), format!("{}", i + 1));
-    
-            doc.append_text_node(content, Some(metadata), content_embedding, &vec![]).unwrap();
-    
+
+            doc.append_text_node(content, Some(metadata), content_embedding, &vec![])
+                .unwrap();
+
             let writer = vector_fs
                 .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
                 .await
@@ -1034,7 +1041,7 @@ mod tests {
             "An airplane is a powered, fixed-wing aircraft",
             "Plants are mainly multicellular organisms",
             "A car is a wheeled motor vehicle",
-            "Dinosaurs are a diverse group of reptiles"
+            "Dinosaurs are a diverse group of reptiles",
         ];
 
         for (i, expected_text) in expected_texts.iter().enumerate() {

@@ -63,6 +63,8 @@ impl JSTool {
         // Convert the config hashmap to a JSON value
         let config_json = serde_json::to_value(&config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
+        let input_json = serde_json::from_str(&input).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+
         // Create a new thread with its own Tokio runtime
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         js_tool_thread
@@ -84,7 +86,7 @@ impl JSTool {
                                 .unwrap_or(9650),
                         }),
                     );
-                    tool.run(serde_json::from_str(&input).unwrap(), None)
+                    tool.run(input_json, None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
