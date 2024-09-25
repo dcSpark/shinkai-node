@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
-use crate::llm_provider::providers::shared::openai_api::FunctionCallResponse;
+use crate::managers::tool_router::FunctionCallResponse;
 use serde_json::json;
 use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;

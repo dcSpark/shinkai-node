@@ -1,9 +1,8 @@
-use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::{
     ollama_conversation_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
-use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::error::LLMProviderError;
@@ -342,9 +341,7 @@ async fn handle_non_streaming_response(
                                             call.get("function").map(|function| {
                                                 let name = function.get("name")?.as_str()?.to_string();
                                                 let arguments = function.get("arguments")
-                                                    .and_then(|args| args.as_str())
-                                                    .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                                    .and_then(|args_value| args_value.as_object().cloned())
                                                     .unwrap_or_else(|| serde_json::Map::new());
                                                 Some(FunctionCall { name, arguments })
                                             })

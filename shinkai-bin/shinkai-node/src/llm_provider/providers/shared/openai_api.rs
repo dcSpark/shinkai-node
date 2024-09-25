@@ -33,7 +33,7 @@ pub struct FunctionCallResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionCall {
     pub name: String,
-    pub arguments: serde_json::Map<String, serde_json::Value>,
+    pub arguments: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -209,9 +209,6 @@ mod tests {
             assert_eq!(
                 function_call.arguments,
                 json!({"first_string": "hola", "second_string": " chao"})
-                    .as_object()
-                    .unwrap()
-                    .to_owned()
             );
         }
 
@@ -232,9 +229,6 @@ mod tests {
             assert_eq!(
                 function_call.arguments,
                 json!({"first_string": "hola", "second_string": " chao"})
-                    .as_object()
-                    .unwrap()
-                    .to_owned()
             );
         }
     }

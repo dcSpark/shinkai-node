@@ -1,12 +1,12 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::sheet_manager::SheetManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::managers::tool_router::ToolRouter;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
@@ -330,6 +330,13 @@ impl ScoreResult {
         Self::new(0.0, false)
     }
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: serde_json::Map<String, serde_json::Value>,
+}
+
 /// A struct that holds the response from inference an LLM.
 #[derive(Debug, Clone)]
 pub struct LLMInferenceResponse {

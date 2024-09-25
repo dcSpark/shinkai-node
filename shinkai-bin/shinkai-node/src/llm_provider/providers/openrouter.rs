@@ -2,9 +2,9 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, FunctionCall, MessageContent, OpenAIResponse};
+use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::execution::chains::inference_chain_trait::{LLMInferenceResponse, FunctionCall};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
@@ -344,12 +344,17 @@ async fn handle_non_streaming_response(
                             .collect::<Vec<String>>()
                             .join(" ");
 
-                        let function_call = data.choices.iter().find_map(|choice| {
-                            if let Some(mut fc) = choice.message.function_call.clone() {
-                                Some(fc)
-                            } else {
-                                None
-                            }
+                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
+                            choice.message.function_call.clone().map(|fc| {
+                                let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
+                                    .ok()
+                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                    .unwrap_or_else(|| serde_json::Map::new());
+                                FunctionCall {
+                                    name: fc.name,
+                                    arguments,
+                                }
+                            })
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);

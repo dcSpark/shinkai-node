@@ -7,9 +7,9 @@ use std::time::Instant;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
-use crate::llm_provider::providers::shared::openai_api::{FunctionCall, FunctionCallResponse};
+use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContextTrait, FunctionCall};
 use crate::workflows::sm_executor::AsyncFunction;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_dsl::dsl_schemas::Workflow;
@@ -41,6 +41,12 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 #[derive(Clone)]
 pub struct ToolRouter {
     pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FunctionCallResponse {
+    pub response: String,
+    pub function_call: FunctionCall,
 }
 
 impl ToolRouter {
