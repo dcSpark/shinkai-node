@@ -4,8 +4,12 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
-    schemas::{file_links::FolderSubscriptionWithPath, identity::Identity, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
+    schemas::{
+        file_links::FolderSubscriptionWithPath, identity::Identity, shinkai_name::ShinkaiName,
+        shinkai_subscription::ShinkaiSubscription,
+    },
     shinkai_message::shinkai_message_schemas::{
         APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
         APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
@@ -18,7 +22,11 @@ use tokio::sync::Mutex;
 use crate::{
     managers::IdentityManager,
     network::{
-        network_manager::{external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager}, node_api_router::APIError, node_error::NodeError, Node
+        network_manager::{
+            external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
+        },
+        node_error::NodeError,
+        Node,
     },
 };
 

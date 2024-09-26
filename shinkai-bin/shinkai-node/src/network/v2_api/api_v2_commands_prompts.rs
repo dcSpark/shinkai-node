@@ -3,13 +3,12 @@ use std::{sync::Arc, time::Instant};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use shinkai_db::db::ShinkaiDB;
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use tokio::sync::RwLock;
 
-use crate::{
-    lance_db::shinkai_lance_db::LanceShinkaiDb,
-    network::{node_api_router::APIError, node_error::NodeError, Node},
-    prompts::custom_prompt::CustomPrompt,
-};
+use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_add_custom_prompt(

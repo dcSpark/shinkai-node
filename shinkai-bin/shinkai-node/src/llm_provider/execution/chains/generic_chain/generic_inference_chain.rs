@@ -7,9 +7,9 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
+use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::tools::tool_router::ToolRouter;
 use async_trait::async_trait;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
@@ -165,7 +165,7 @@ impl GenericInferenceChain {
             LLMProviderInterface::OpenAI(_) => true,
             LLMProviderInterface::Ollama(model_type) => {
                 let is_supported_model =
-                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo");
+                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo") || model_type.model_type.starts_with("mistral-small");
                 is_supported_model
                     && job_config
                         .as_ref()

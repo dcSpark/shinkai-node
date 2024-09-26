@@ -1,7 +1,8 @@
 use async_channel::Sender;
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
-use shinkai_node::network::node_commands::NodeCommand;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
@@ -14,7 +15,6 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::network::node_api_router::APIError;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 

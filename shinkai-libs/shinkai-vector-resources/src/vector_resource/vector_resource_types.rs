@@ -161,21 +161,16 @@ impl RetrievedNode {
         result
     }
 
-    /// Fetches the node's datetime by first checking node metadata, then if none available, from the resource_header
-    pub fn get_datetime_default(&self) -> DateTime<Utc> {
-        if let Some(datetime) = self.node.get_metadata_datetime() {
-            return datetime;
-        }
-        return self.resource_header.get_resource_datetime_default();
+    /// Fetches the node's datetime by first checking node metadata, then if none available, returns None.
+    pub fn get_datetime_default(&self) -> Option<DateTime<Utc>> {
+        self.node.get_metadata_datetime()
     }
 
-    /// Fetches the node's datetime by first checking node metadata, then if none available, from the resource_header
-    ///  Returns a string in RFC3339 format without the fractional seconds.
-    pub fn get_datetime_default_string(&self) -> String {
-        match self.get_datetime_default().to_rfc3339().split('.').next() {
-            Some(datetime_string) => datetime_string.to_string(),
-            None => self.get_datetime_default().to_rfc3339(),
-        }
+    /// Fetches the node's datetime by first checking node metadata, then if none available, returns None.
+    /// Returns a string in RFC3339 format without the fractional seconds if datetime is available.
+    pub fn get_datetime_default_string(&self) -> Option<String> {
+        self.get_datetime_default()
+            .map(|dt| dt.to_rfc3339().split('.').next().unwrap_or("").to_string())
     }
 
     /// Formats the data, source, and metadata together into a single string that is ready
@@ -190,18 +185,29 @@ impl RetrievedNode {
         let mut data_string = self.node.get_text_content().ok()?.to_string();
         if data_string.len() > max_characters {
             let amount_over = data_string.len() - max_characters;
-            let amount_to_add = source_string.len() + position_string.len() + datetime_string.len() + amount_over;
+            let amount_to_add = source_string.len() + position_string.len() + datetime_string.as_ref().map_or(0, |s| s.len()) + amount_over;
             let amount_to_cut = amount_over + amount_to_add + 25;
             data_string = data_string.chars().take(amount_to_cut).collect::<String>();
         }
 
         let formatted_string = if position_string.len() > 0 {
-            format!(
-                "- {} (Source: {}, {}) {}",
-                data_string, source_string, position_string, datetime_string
-            )
+            if let Some(datetime_string) = datetime_string {
+                format!(
+                    "- {} (Source: {}, {}) {}",
+                    data_string, source_string, position_string, datetime_string
+                )
+            } else {
+                format!(
+                    "- {} (Source: {}, {})",
+                    data_string, source_string, position_string
+                )
+            }
         } else {
-            format!("- {} (Source: {}) {}", data_string, source_string, datetime_string)
+            if let Some(datetime_string) = datetime_string {
+                format!("- {} (Source: {}) {}", data_string, source_string, datetime_string)
+            } else {
+                format!("- {} (Source: {})", data_string, source_string)
+            }
         };
 
         Some(formatted_string)
@@ -212,7 +218,8 @@ impl RetrievedNode {
         if let Some(metadata) = &self.node.metadata {
             if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
                 if !page_numbers.is_empty() {
-                    return format!("Pages: {}", page_numbers);
+                    let page_label = if page_numbers.contains(',') { "Pages" } else { "Page" };
+                    return format!("{}: {}", page_label, page_numbers);
                 }
             }
         }

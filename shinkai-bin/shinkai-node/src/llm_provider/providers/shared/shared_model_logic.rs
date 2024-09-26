@@ -1,5 +1,4 @@
 use serde_json;
-use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt, subprompts::SubPrompt},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -24,45 +23,4 @@ pub fn llama_prepare_messages(
         functions: None,
         remaining_tokens: total_tokens - used_tokens,
     })
-}
-
-pub fn llava_prepare_messages(
-    _model: &LLMProviderInterface,
-    _model_type: String,
-    prompt: Prompt,
-    total_tokens: usize,
-) -> Result<PromptResult, LLMProviderError> {
-    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens), &ModelCapabilitiesManager::num_tokens_from_llama3)?;
-
-    if let Some((_, _, asset_content, _, _)) = prompt.sub_prompts.iter().rev().find_map(|sub_prompt| {
-        if let SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, priority) = sub_prompt {
-            Some((prompt_type, asset_type, asset_content, asset_detail, priority))
-        } else {
-            None
-        }
-    }) {
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Info,
-            format!("Messages JSON (image analysis): {:?}", messages_string).as_str(),
-        );
-
-        Ok(PromptResult {
-            messages: PromptResultEnum::ImageAnalysis(
-                messages_string.clone(),
-                Base64ImageString(asset_content.clone()),
-            ),
-            functions: None,
-            remaining_tokens: total_tokens - messages_string.len(),
-        })
-    } else {
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Error,
-            format!("Image content not found: {:?}", messages_string).as_str(),
-        );
-        Err(LLMProviderError::ImageContentNotFound(
-            "Image content not found".to_string(),
-        ))
-    }
 }

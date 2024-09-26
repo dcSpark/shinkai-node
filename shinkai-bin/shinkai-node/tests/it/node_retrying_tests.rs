@@ -1,15 +1,14 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node_commands::NodeCommand;
-use shinkai_node::network::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
@@ -24,7 +23,6 @@ use super::utils::node_test_api::api_registration_device_node_profile_main;
 
 // #[test]
 fn node_retrying_test() {
-    
     utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
 

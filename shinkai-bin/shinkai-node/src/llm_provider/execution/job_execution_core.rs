@@ -10,10 +10,10 @@ use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::managers::sheet_manager::SheetManager;
+use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use crate::tools::tool_router::ToolRouter;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
@@ -552,6 +552,7 @@ impl JobManager {
 
         dsl_inference.add_inference_function();
         dsl_inference.add_inference_no_ws_function();
+        dsl_inference.add_baml_inference_function();
         dsl_inference.add_opinionated_inference_function();
         dsl_inference.add_opinionated_inference_no_ws_function();
         dsl_inference.add_multi_inference_function();

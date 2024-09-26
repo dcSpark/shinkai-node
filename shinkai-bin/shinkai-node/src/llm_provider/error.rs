@@ -1,5 +1,5 @@
 use crate::{
-    managers::model_capabilities_manager::ModelCapabilitiesManagerError, tools::error::ToolError,
+    managers::model_capabilities_manager::ModelCapabilitiesManagerError,
     workflows::sm_executor::WorkflowError,
 };
 use anyhow::Error as AnyhowError;
@@ -8,6 +8,7 @@ use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, prompts::PromptError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_tools_primitives::tools::{error::ToolError, rust_tools::RustToolError};
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
@@ -356,7 +357,16 @@ impl From<ToolError> for LLMProviderError {
 }
 
 impl From<PromptError> for LLMProviderError {
-    fn from(err: PromptError) -> LLMProviderError {
+    fn from(_err: PromptError) -> LLMProviderError {
         LLMProviderError::ContentParseFailed
+    }
+}
+
+impl From<RustToolError> for LLMProviderError {
+    fn from(err: RustToolError) -> LLMProviderError {
+        match err {
+            RustToolError::InvalidFunctionArguments(msg) => LLMProviderError::InvalidFunctionArguments(msg),
+            RustToolError::FailedJSONParsing => LLMProviderError::ContentParseFailed,
+        }
     }
 }

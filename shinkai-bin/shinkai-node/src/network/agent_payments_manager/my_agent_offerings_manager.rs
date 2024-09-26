@@ -17,17 +17,17 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_tools_primitives::tools::{network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
-    managers::identity_manager::IdentityManagerTrait,
+    managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter},
     network::{
         network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer},
         node::ProxyConnectionInfo,
     },
-    tools::{network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader, tool_router::ToolRouter},
     wallet::wallet_manager::WalletManager,
 };
 
@@ -630,17 +630,20 @@ impl MyAgentOfferingsManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
-        managers::identity_manager::IdentityManagerTrait,
-        tools::tool_router::ToolRouter,
-    };
+    use crate::managers::identity_manager::IdentityManagerTrait;
     use async_trait::async_trait;
     use chrono::Utc;
+    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
-        schemas::{identity::{Identity, StandardIdentity, StandardIdentityType}, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}, wallet_mixed::{NetworkIdentifier, PublicAddress}}, shinkai_message::shinkai_message_schemas::IdentityPermissions, shinkai_utils::{
+        schemas::{
+            identity::{Identity, StandardIdentity, StandardIdentityType},
+            shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
+            wallet_mixed::{NetworkIdentifier, PublicAddress},
+        },
+        shinkai_message::shinkai_message_schemas::IdentityPermissions,
+        shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
-        }
+        },
     };
     use shinkai_vector_resources::{
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},

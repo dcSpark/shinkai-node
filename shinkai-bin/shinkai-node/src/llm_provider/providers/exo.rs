@@ -1,7 +1,7 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::ollama::ollama_conversation_prepare_messages;
+use crate::llm_provider::providers::shared::ollama_api::ollama_conversation_prepare_messages;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::ollama::truncate_image_content_in_payload;

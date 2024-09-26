@@ -1,0 +1,17 @@
+[package]
+name = "shinkai_baml"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+baml-runtime = { git = "https://github.com/dcSpark/baml.git", branch = "nico/maybe_fix_cycle", package = "baml-runtime", features = [
+    "internal",
+] }
+baml-types = { git = "https://github.com/dcSpark/baml.git", branch = "nico/maybe_fix_cycle", package = "baml-types" }
+env_logger = "0.9"
+log = "0.4"
+anyhow = "1.0"
+indexmap = { version = "2.1.0", features = ["serde"] }
+regex = "1"
+serde_json = "1.0.117"
+

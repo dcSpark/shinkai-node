@@ -649,15 +649,7 @@ pub struct APIAddRowsPayload {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct APIWorkflowKeyname {
-    pub name: String,
-    pub version: String,
-}
-
-impl APIWorkflowKeyname {
-    /// Generates a key for the Workflow using its name and version.
-    pub fn generate_key(&self) -> String {
-        format!("{}:::{}", self.name, self.version)
-    }
+    pub tool_router_key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

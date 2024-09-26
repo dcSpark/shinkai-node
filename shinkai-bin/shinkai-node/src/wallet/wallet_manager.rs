@@ -3,30 +3,23 @@ use std::sync::Weak;
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::{
+    coinbase_mpc_config::CoinbaseMPCWalletConfig,
     invoices::{Invoice, Payment, PaymentStatusEnum},
     shinkai_tool_offering::ToolPrice,
+    wallet_complementary::WalletSource,
     wallet_mixed::{Asset, Balance, Network, PublicAddress},
 };
 use tokio::sync::{Mutex, RwLock};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 use super::{
-    coinbase_mpc_wallet::{CoinbaseMPCWallet, CoinbaseMPCWalletConfig},
-    local_ether_wallet::{LocalEthersWallet, WalletSource},
+    coinbase_mpc_wallet::CoinbaseMPCWallet,
+    local_ether_wallet::LocalEthersWallet,
     wallet_error::WalletError,
     wallet_traits::{PaymentWallet, ReceivingWallet},
 };
-
-/// Enum to represent different wallet roles. Useful for the API.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
-pub enum WalletRole {
-    Payment,
-    Receiving,
-    Both,
-}
 
 /// Enum to represent different wallet types.
 #[derive(Serialize, Deserialize)]

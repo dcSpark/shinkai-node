@@ -5,6 +5,7 @@ use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
+use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
         identity::Identity, inbox_name::InboxName, job::JobLike, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
@@ -23,7 +24,6 @@ use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{
-        node_api_router::{APIError, SendResponseBodyData},
         node_error::NodeError,
         Node,
     },

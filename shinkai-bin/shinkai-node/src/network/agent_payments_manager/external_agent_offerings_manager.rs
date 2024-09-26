@@ -1,8 +1,8 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::tool_router::ToolRouter;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
 use crate::network::node::ProxyConnectionInfo;
-use crate::tools::tool_router::ToolRouter;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
@@ -816,13 +816,9 @@ impl ExtAgentOfferingsManager {
 mod tests {
     use std::{fs, path::Path};
 
-    use crate::{
-        lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError},
-        tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool},
-    };
-
     use super::*;
     use async_trait::async_trait;
+    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
         schemas::{
             identity::{Identity, StandardIdentity, StandardIdentityType},
@@ -834,6 +830,7 @@ mod tests {
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
+    use shinkai_tools_primitives::tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool};
     use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::{
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
@@ -955,7 +952,7 @@ mod tests {
 
         let generator = RemoteEmbeddingGenerator::new_default();
         let embedding_model = generator.model_type().clone();
-        
+
         // Initialize ShinkaiDB
         let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
             Ok(db) => Arc::new(db),

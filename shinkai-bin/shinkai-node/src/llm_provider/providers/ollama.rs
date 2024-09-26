@@ -1,9 +1,9 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::ollama::{
+use crate::llm_provider::providers::shared::ollama_api::{
     ollama_conversation_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
-use crate::llm_provider::providers::shared::openai::FunctionCall;
+use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::error::LLMProviderError;
@@ -429,7 +429,7 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
             for (key, value) in obj {
                 match key.as_str() {
                     "num_ctx" => options.insert("num_ctx".to_string(), value.clone()),
-                    "num_predict" => options.insert("num_predict".to_string(), value.clone()),
+                    "num_predict" | "max_tokens" => options.insert("num_predict".to_string(), value.clone()),
                     "num_keep" => options.insert("num_keep".to_string(), value.clone()),
                     "repeat_last_n" => options.insert("repeat_last_n".to_string(), value.clone()),
                     "repeat_penalty" => options.insert("repeat_penalty".to_string(), value.clone()),

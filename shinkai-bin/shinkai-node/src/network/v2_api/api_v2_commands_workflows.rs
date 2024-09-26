@@ -6,16 +6,16 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APISetWorkflow;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIWorkflowKeyname;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_tools_primitives::tools::workflow_tool::WorkflowTool;
 use tokio::sync::RwLock;
 
-use crate::lance_db::shinkai_lance_db::LanceShinkaiDb;
-use crate::{
-    network::{node_api_router::APIError, node_error::NodeError, Node},
-    tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool},
-};
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_search_workflows(
@@ -168,7 +168,7 @@ impl Node {
         }
 
         // Generate the workflow key
-        let workflow_key_str = payload.generate_key();
+        let workflow_key_str = payload.tool_router_key;
 
         // Remove the workflow from the LanceShinkaiDb
         match lance_db.write().await.remove_tool(&workflow_key_str).await {
@@ -202,7 +202,7 @@ impl Node {
         }
 
         // Generate the workflow key
-        let workflow_key_str = payload.generate_key();
+        let workflow_key_str = payload.tool_router_key;
 
         // Get the workflow from the database
         match lance_db.read().await.get_tool(&workflow_key_str).await {

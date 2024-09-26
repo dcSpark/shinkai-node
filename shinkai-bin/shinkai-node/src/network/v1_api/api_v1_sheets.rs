@@ -1,18 +1,20 @@
+use crate::managers::sheet_manager::SheetManager;
+use crate::managers::IdentityManager;
 use crate::network::node_error::NodeError;
 use crate::network::Node;
-use crate::{managers::sheet_manager::SheetManager, network::node_api_router::APIError};
-use crate::managers::IdentityManager;
 
 use async_channel::Sender;
 
 use reqwest::StatusCode;
 use serde_json::{json, Value as JsonValue};
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddRowsPayload, APIRemoveColumnPayload, APIRemoveRowsPayload, APISetCellValuePayload, APISetColumnPayload, MessageSchemaType
+            APIAddRowsPayload, APIRemoveColumnPayload, APIRemoveRowsPayload, APISetCellValuePayload,
+            APISetColumnPayload, MessageSchemaType,
         },
     },
 };
@@ -555,7 +557,10 @@ impl Node {
         // Perform the logic to add rows using SheetManager
         let mut row_ids = Vec::new();
         for _ in 0..payload.number_of_rows {
-            match sheet_manager_guard.add_row(&payload.sheet_id, payload.starting_row).await {
+            match sheet_manager_guard
+                .add_row(&payload.sheet_id, payload.starting_row)
+                .await
+            {
                 Ok(row_id) => row_ids.push(row_id),
                 Err(err) => {
                     let api_error = APIError {

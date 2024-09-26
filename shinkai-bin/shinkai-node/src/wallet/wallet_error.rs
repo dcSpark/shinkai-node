@@ -1,7 +1,6 @@
 use ethers::{core::k256::elliptic_curve, utils::hex::FromHexError};
+use shinkai_lancedb::lance_db::shinkai_lancedb_error::ShinkaiLanceDBError;
 use std::{error::Error, fmt};
-
-use crate::lance_db::shinkai_lancedb_error::ShinkaiLanceDBError;
 
 #[derive(Debug)]
 pub enum WalletError {

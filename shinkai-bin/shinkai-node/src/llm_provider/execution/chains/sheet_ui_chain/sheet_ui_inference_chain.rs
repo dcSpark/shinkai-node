@@ -10,12 +10,12 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::openai::FunctionCallResponse;
+use crate::llm_provider::providers::shared::openai_api::FunctionCallResponse;
 use crate::managers::sheet_manager::SheetManager;
+use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use crate::tools::tool_router::ToolRouter;
 use async_trait::async_trait;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{

@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::file_links::{FileLink, FileStatus};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
@@ -9,9 +10,13 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 };
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::Node;
-use shinkai_subscription_manager::subscription_manager::http_manager::http_download_manager::{HttpDownloadJob, HttpDownloadManager};
+use shinkai_subscription_manager::subscription_manager::http_manager::http_download_manager::{
+    HttpDownloadJob, HttpDownloadManager,
+};
 use shinkai_subscription_manager::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
-use shinkai_subscription_manager::subscription_manager::http_manager::subscription_file_uploader::{delete_all_in_folder, FileDestination};
+use shinkai_subscription_manager::subscription_manager::http_manager::subscription_file_uploader::{
+    delete_all_in_folder, FileDestination,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, Semaphore};
@@ -319,8 +324,8 @@ fn subscription_http_upload() {
                         // Create a channel for sending results
                         #[allow(clippy::complexity)]
                         let (sender, receiver): (
-                            Sender<Result<serde_json::Value, shinkai_node::network::node_api_router::APIError>>,
-                            Receiver<Result<serde_json::Value, shinkai_node::network::node_api_router::APIError>>,
+                            Sender<Result<serde_json::Value, APIError>>,
+                            Receiver<Result<serde_json::Value, APIError>>,
                         ) = bounded(1);
 
                         let _ = Node::api_get_http_free_subscription_links(

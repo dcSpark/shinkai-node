@@ -1,8 +1,8 @@
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentityType};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::node_api_router::APIError;
 use crate::managers::identity_manager::IdentityManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use log::error;

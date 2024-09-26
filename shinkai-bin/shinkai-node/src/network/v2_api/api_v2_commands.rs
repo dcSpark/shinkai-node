@@ -4,6 +4,7 @@ use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
+use shinkai_http_api::{api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}};
 use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},
@@ -34,9 +35,7 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
     network::{
-        node_api_router::{APIError, GetPublicKeysResponse},
         node_error::NodeError,
-        v1_api::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
         Node,
     },
     utils::update_global_identity::update_global_identity_name,
@@ -44,7 +43,6 @@ use crate::{
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::api_v2_handlers_general::InitialRegistrationRequest;
 
 impl Node {
     pub async fn validate_bearer_token<T>(
