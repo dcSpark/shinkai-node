@@ -1,8 +1,8 @@
+use crate::llm_provider::job_manager::JobManagerTrait;
+use async_channel::{Receiver, Sender};
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::{WSMessageType, WSUpdateHandler};
-use crate::llm_provider::job_manager::JobManagerTrait;
-use async_channel::{Receiver, Sender};
 use shinkai_message_primitives::schemas::sheet::{
     APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, WorkflowSheetJobData,
 };
@@ -406,6 +406,25 @@ impl SheetManager {
         } else {
             Err("Sheet ID not found".to_string())
         }
+    }
+
+    pub fn set_uploaded_files(
+        &mut self,
+        sheet_id: &str,
+        row: RowUuid,
+        col: ColumnUuid,
+        files: Vec<String>,
+    ) -> Result<(), String> {
+        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+        sheet.set_uploaded_files(row, col, files)?;
+
+        // Update the sheet in the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .save_sheet(sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
     }
 
     async fn handle_updates(

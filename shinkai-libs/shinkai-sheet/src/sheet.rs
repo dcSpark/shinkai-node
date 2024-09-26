@@ -58,6 +58,8 @@ pub struct Sheet {
     pub last_updated: DateTime<Utc>,
     #[serde(skip_serializing, skip_deserializing)]
     pub update_sender: Option<Sender<SheetUpdate>>,
+    // (row, col) -> [VR_file_path]
+    pub uploaded_files: HashMap<(UuidString, UuidString), Vec<String>>,
     // TODO: add history? (only if a cell changed value)
 }
 
@@ -89,6 +91,7 @@ impl Clone for Sheet {
             display_rows: self.display_rows.clone(),
             update_sender: self.update_sender.clone(),
             last_updated: Utc::now(),
+            uploaded_files: self.uploaded_files.clone(),
         }
     }
 }
@@ -111,6 +114,7 @@ impl Sheet {
             display_rows: Vec::new(),
             update_sender: None,
             last_updated: Utc::now(),
+            uploaded_files: HashMap::new(),
         }
     }
 
@@ -453,6 +457,19 @@ impl Sheet {
             }
         }
         None
+    }
+
+    pub fn set_uploaded_files(&mut self, row: UuidString, col: UuidString, files: Vec<String>) -> Result<(), String> {
+        if !self.columns.contains_key(&col) {
+            return Err("Column index out of bounds".to_string());
+        }
+
+        if !self.rows.contains_key(&row) {
+            return Err("Row does not exist".to_string());
+        }
+
+        self.uploaded_files.insert((row, col), files);
+        Ok(())
     }
 
     fn compute_input_hash(

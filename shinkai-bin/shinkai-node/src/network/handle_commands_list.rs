@@ -2957,6 +2957,25 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiSetSheetUploadedFiles { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let sheet_manager_clone = self.sheet_manager.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_set_sheet_uploaded_files(
+                        db_clone,
+                        vector_fs_clone,
+                        identity_manager_clone,
+                        sheet_manager_clone,
+                        payload,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

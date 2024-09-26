@@ -83,6 +83,7 @@ pub enum MessageSchemaType {
     GetSheet,
     RemoveRows,
     AddRows,
+    SetSheetUploadedFiles,
     SetShinkaiTool,
     ListAllShinkaiTools,
     GetShinkaiTool,
@@ -90,7 +91,7 @@ pub enum MessageSchemaType {
     InvoiceRequest,
     Invoice,
     PaidInvoice,
-    InvoiceResult
+    InvoiceResult,
 }
 
 impl MessageSchemaType {
@@ -168,6 +169,7 @@ impl MessageSchemaType {
             "GetSheet" => Some(Self::GetSheet),
             "RemoveRows" => Some(Self::RemoveRows),
             "AddRows" => Some(Self::AddRows),
+            "SetSheetUploadedFiles" => Some(Self::SetSheetUploadedFiles),
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
@@ -253,6 +255,7 @@ impl MessageSchemaType {
             Self::GetSheet => "GetSheet",
             Self::RemoveRows => "RemoveRows",
             Self::AddRows => "AddRows",
+            Self::SetSheetUploadedFiles => "SetSheetUploadedFiles",
             Self::SetShinkaiTool => "SetShinkaiTool",
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
@@ -641,6 +644,12 @@ pub struct APIAddRowsPayload {
     pub sheet_id: String,
     pub number_of_rows: usize,
     pub starting_row: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct APISetSheetUploadedFilesPayload {
+    pub sheet_id: String,
+    pub files: HashMap<(UuidString, UuidString), Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
