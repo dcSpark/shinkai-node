@@ -1,6 +1,3 @@
-use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::job::{Job, JobLike};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
@@ -15,17 +12,21 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use async_trait::async_trait;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
 use std::any::Any;
+use std::collections::HashSet;
 use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -144,14 +145,57 @@ impl SheetUIInferenceChain {
         */
 
         // 1) Vector search for knowledge if the scope isn't empty
-        let scope_is_empty = full_job.scope().is_empty();
+        // Check if the sheet has uploaded files and add them to the job scope
+        let job_scope = if let Some(sheet_manager) = &sheet_manager {
+            let mut job_scope = full_job.scope().clone();
+
+            let sheet = {
+                let sheet_manager_guard = sheet_manager.lock().await;
+                sheet_manager_guard.get_sheet(&sheet_id)?
+            };
+
+            if !sheet.uploaded_files.is_empty() {
+                let mut vr_files = HashSet::new();
+                for (_cell, files) in sheet.uploaded_files.iter() {
+                    for file in files {
+                        vr_files.insert(file.clone());
+                    }
+                }
+
+                // Filter out existing items
+                vr_files = vr_files
+                    .into_iter()
+                    .filter(|path| {
+                        job_scope
+                            .vector_fs_items
+                            .iter()
+                            .any(|fs_item| fs_item.path.format_to_string() == *path)
+                    })
+                    .collect();
+
+                // Add new FS items to the job scope
+                for file in vr_files {
+                    let vr_path = VRPath::from_string(&file)?;
+                    let reader = vector_fs
+                        .new_reader(user_profile.clone(), vr_path, user_profile.clone())
+                        .await?;
+                    let fs_item = vector_fs.retrieve_fs_entry(&reader).await?.as_item()?.as_scope_entry();
+                    job_scope.vector_fs_items.push(fs_item);
+                }
+            }
+            job_scope
+        } else {
+            full_job.scope().clone()
+        };
+
+        let scope_is_empty = job_scope.is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
         let mut summary_node_text = None;
         if !scope_is_empty {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
-                full_job.scope(),
+                &job_scope,
                 user_message.clone(),
                 &user_profile,
                 generator.clone(),

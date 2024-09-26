@@ -59,22 +59,6 @@ impl Node {
                     }
                 };
 
-                let reader = match vector_fs
-                    .new_reader(requester_name.clone(), vr_path.clone(), requester_name.clone())
-                    .await
-                {
-                    Ok(reader) => reader,
-                    Err(e) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to create reader: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
-
                 match vector_fs.validate_path_points_to_entry(vr_path, &requester_name).await {
                     Ok(_) => {}
                     Err(e) => {
