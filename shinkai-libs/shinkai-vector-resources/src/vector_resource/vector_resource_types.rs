@@ -20,6 +20,7 @@ use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use utoipa::ToSchema;
 
 /// A node that was retrieved from inside of a Vector Resource. Includes extra data like the retrieval path
 /// and the similarity score from the vector search. The resource_header is the VRHeader from the root
@@ -347,12 +348,13 @@ impl RetrievedNode {
 
 /// Represents a Vector Resource Node which holds a unique id, one of the types of NodeContent,
 /// metadata, and other internal relevant data.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct Node {
     pub id: String,
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
+    #[schema(value_type = String, format = Date)]
     pub last_written_datetime: DateTime<Utc>,
     pub merkle_hash: Option<String>,
 }
@@ -701,7 +703,7 @@ impl Node {
 }
 
 /// Contents of a Node
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub enum NodeContent {
     Text(String),
     Resource(BaseVectorResource),
@@ -722,7 +724,7 @@ impl NodeContent {
 }
 
 /// Struct which holds descriptive information about a given Vector Resource.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct VRHeader {
     pub resource_name: String,
     pub resource_id: String,
@@ -730,9 +732,12 @@ pub struct VRHeader {
     pub resource_source: VRSourceReference,
     pub resource_embedding: Option<Embedding>,
     /// ISO RFC3339 when then Vector Resource was created
+    #[schema(value_type = String, format = Date)]
     pub resource_created_datetime: DateTime<Utc>,
     /// ISO RFC3339 when then Vector Resource was last written into (a node was modified)
+    #[schema(value_type = String, format = Date)]
     pub resource_last_written_datetime: DateTime<Utc>,
+    #[schema(value_type = String)]
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
     pub resource_keywords: VRKeywords,
@@ -854,7 +859,7 @@ impl VRHeader {
 
 /// A struct which holds a Vector Resource's keywords/optional
 /// keywords embedding
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct VRKeywords {
     pub keyword_list: Vec<String>,
     pub keywords_embedding: Option<KeywordEmbedding>,
@@ -937,9 +942,10 @@ impl VRKeywords {
 }
 
 /// Struct which holds the embedding for a Vector Resource's keywords
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct KeywordEmbedding {
     pub embedding: Embedding,
+    #[schema(value_type = String)]
     pub model_used: EmbeddingModelType,
 }
 
@@ -958,7 +964,7 @@ impl KeywordEmbedding {
 
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
 /// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
 }

@@ -1,8 +1,9 @@
 use ordered_float::NotNan;
+use utoipa::ToSchema;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 /// A struct that represents a Vector Embedding with an added string id.
 pub struct Embedding {
     pub id: String,

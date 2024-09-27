@@ -3430,6 +3430,7 @@ dependencies = [
  "serde_json",
  "textcode",
  "urlencoding",
+ "utoipa",
 ]
 
 [[package]]

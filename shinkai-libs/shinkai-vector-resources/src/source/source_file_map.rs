@@ -2,10 +2,11 @@ use super::SourceFile;
 use crate::{resource_errors::VRError, vector_resource::VRPath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 /// A map which stores SourceFiles based on VRPaths within a VectorResource.
 /// A SourceFile at root represents the single source file for the whole VR.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct SourceFileMap {
     pub map: HashMap<VRPath, SourceFile>,
     pub source_files_count: u64,

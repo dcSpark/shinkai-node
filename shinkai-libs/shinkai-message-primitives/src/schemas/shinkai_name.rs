@@ -6,8 +6,9 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::hash::Hash;
 use std::{fmt, hash::Hasher};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, ToSchema)]
 pub struct ShinkaiName {
     pub full_name: String,
     pub node_name: String,
@@ -16,7 +17,7 @@ pub struct ShinkaiName {
     pub subidentity_name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, ToSchema)]
 pub enum ShinkaiSubidentityType {
     Agent,
     Device,

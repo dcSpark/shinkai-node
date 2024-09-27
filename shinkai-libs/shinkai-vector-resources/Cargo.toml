@@ -27,6 +27,7 @@ futures = "0.3.30"
 urlencoding = "1.1.1"
 docx-rust = "0.1.8"
 shinkai_ocr = { path = "../shinkai-ocr", optional = true }
+utoipa = "4.2.3"
 
 [build-dependencies]
 reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "multipart"] }

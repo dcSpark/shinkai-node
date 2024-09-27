@@ -7,8 +7,8 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
 };
 
-use crate::node_api_router::APIError;
 use crate::node_commands::NodeCommand;
+use crate::{api_v2::api_v2_handlers_jobs::AddFileToInboxRequest, node_api_router::APIError};
 use bytes::Buf;
 use futures::StreamExt;
 use utoipa::OpenApi;
@@ -759,7 +759,8 @@ pub async fn retrieve_source_file_handler(
         retrieve_source_file_handler,
     ),
     components(
-        schemas(APIError)
+        schemas(APIError, APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, AddFileToInboxRequest)
     ),
     tags(
         (name = "vecfs", description = "VecFS API endpoints")

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use super::wallet_mixed::Asset;
 
@@ -19,7 +20,7 @@ impl fmt::Display for UsageTypeInquiry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, ToSchema)]
 pub struct ShinkaiToolOffering {
     pub tool_key: String,
     pub usage_type: UsageType,
@@ -52,7 +53,7 @@ impl ShinkaiToolOffering {
 }
 
 // Updated enum to include aliases for prices
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum UsageType {
     PerUse(ToolPrice),
     Downloadable(ToolPrice),
@@ -92,9 +93,10 @@ impl ToolPrice {
 
 type KAIAmount = String;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum ToolPrice {
     Free,
+    #[schema(value_type = String)]
     DirectDelegation(KAIAmount),
     Payment(Vec<AssetPayment>),
 }
@@ -108,7 +110,7 @@ pub enum AssetType {
 }
 
 /// Represents a payment with an asset and amount.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct AssetPayment {
     /// The asset to be paid.
     pub asset: Asset,

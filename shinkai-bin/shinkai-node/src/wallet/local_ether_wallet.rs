@@ -301,9 +301,7 @@ impl LocalEthersWallet {
         }
     }
 
-    pub fn convert_to_typed_transaction(
-        tx: Transaction,
-    ) -> Result<TypedTransaction, WalletError> {
+    pub fn convert_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
         unimplemented!("after refactor");
 
         // Code from LLM. It doesn't seem correct

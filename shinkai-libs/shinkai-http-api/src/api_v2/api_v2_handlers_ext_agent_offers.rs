@@ -1,10 +1,14 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::json;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
-use utoipa::OpenApi;
+use utoipa::{OpenApi, ToSchema};
 use warp::http::StatusCode;
 use warp::Filter;
+
+use shinkai_message_primitives::schemas::{
+    shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType},
+    wallet_mixed::{Asset, NetworkIdentifier},
+};
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
 
@@ -46,17 +50,17 @@ pub fn ext_agent_offers_routes(
         .or(get_all_tool_offerings_route)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct SetToolOfferingRequest {
     pub tool_offering: ShinkaiToolOffering,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct GetToolOfferingRequest {
     pub tool_key_name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RemoveToolOfferingRequest {
     pub tool_key_name: String,
 }
@@ -228,7 +232,8 @@ pub async fn get_all_tool_offerings_handler(
         get_all_tool_offerings_handler
     ),
     components(
-        schemas(APIError)
+        schemas(ShinkaiToolOffering, APIError, GetToolOfferingRequest, UsageType, ToolPrice, AssetPayment, Asset, NetworkIdentifier,
+            RemoveToolOfferingRequest, SetToolOfferingRequest)
     ),
     tags(
         (name = "tool_offerings", description = "Tool Offering API endpoints")

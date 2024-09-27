@@ -3,9 +3,10 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct SerializedLLMProvider {
     pub id: String,
     pub full_identity_name: ShinkaiName,
@@ -49,7 +50,7 @@ impl SerializedLLMProvider {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, ToSchema)]
 pub enum LLMProviderInterface {
     OpenAI(OpenAI),
     TogetherAI(TogetherAI),
@@ -62,10 +63,10 @@ pub enum LLMProviderInterface {
     OpenRouter(OpenRouter),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct LocalLLM {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Ollama {
     pub model_type: String,
 }
@@ -76,7 +77,7 @@ impl Ollama {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Groq {
     pub model_type: String,
 }
@@ -87,7 +88,7 @@ impl Groq {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Exo {
     pub model_type: String,
 }
@@ -98,7 +99,7 @@ impl Exo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Gemini {
     pub model_type: String,
 }
@@ -109,7 +110,7 @@ impl Gemini {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct ShinkaiBackend {
     pub model_type: String,
 }
@@ -130,7 +131,7 @@ impl ShinkaiBackend {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct OpenAI {
     pub model_type: String,
 }

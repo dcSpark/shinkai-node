@@ -4,9 +4,10 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Represents an address in a wallet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Address {
     /// The ID of the wallet that owns the address.
     pub wallet_id: String,
@@ -64,7 +65,7 @@ pub struct AddressList {
 }
 
 /// Represents an asset onchain scoped to a particular network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Asset {
     /// The ID of the blockchain network.
     pub network_id: NetworkIdentifier,
@@ -177,7 +178,7 @@ pub struct ModelError {
 }
 
 /// Represents a blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Network {
     /// The ID of the blockchain network.
     pub id: NetworkIdentifier,
@@ -308,13 +309,13 @@ impl Network {
 }
 
 /// Enum representing the protocol family of the blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub enum NetworkProtocolFamilyEnum {
     Evm,
 }
 
 /// Enum representing the ID of the blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub enum NetworkIdentifier {
     BaseSepolia,
     BaseMainnet,

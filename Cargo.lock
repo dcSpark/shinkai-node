@@ -10335,6 +10335,7 @@ dependencies = [
  "textcode",
  "tokio",
  "urlencoding 1.3.3",
+ "utoipa",
 ]
 
 [[package]]
