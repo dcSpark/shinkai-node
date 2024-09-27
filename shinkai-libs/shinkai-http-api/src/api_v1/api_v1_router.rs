@@ -39,6 +39,7 @@ use super::api_v1_handlers::create_job_handler;
 use super::api_v1_handlers::create_registration_code_handler;
 use super::api_v1_handlers::create_sheet_handler;
 use super::api_v1_handlers::delete_workflow_handler;
+use super::api_v1_handlers::export_sheet_handler;
 use super::api_v1_handlers::get_all_inboxes_for_profile_handler;
 use super::api_v1_handlers::get_all_smart_inboxes_for_profile_handler;
 use super::api_v1_handlers::get_all_subidentities_handler;
@@ -57,6 +58,7 @@ use super::api_v1_handlers::get_subscription_links_handler;
 use super::api_v1_handlers::get_workflow_info_handler;
 use super::api_v1_handlers::handle_file_upload;
 use super::api_v1_handlers::identity_name_to_external_profile_data_handler;
+use super::api_v1_handlers::import_sheet_handler;
 use super::api_v1_handlers::job_message_handler;
 use super::api_v1_handlers::list_all_shinkai_tools_handler;
 use super::api_v1_handlers::list_all_workflows_handler;
@@ -761,6 +763,22 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| get_sheet_handler(node_commands_sender.clone(), message))
     };
 
+    let import_sheet = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("import_sheet")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| import_sheet_handler(node_commands_sender.clone(), message))
+    };
+
+    let export_sheet = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("export_sheet")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| export_sheet_handler(node_commands_sender.clone(), message))
+    };
+
     let set_cell_value = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("set_cell_value")
@@ -892,6 +910,8 @@ pub fn v1_routes(
         .or(create_sheet)
         .or(remove_sheet)
         .or(set_cell_value)
+        .or(import_sheet)
+        .or(export_sheet)
         .or(api_update_default_embedding_model)
         .or(api_update_supported_embedding_models)
         .or(api_list_all_shinkai_tools)

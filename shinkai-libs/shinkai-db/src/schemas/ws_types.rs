@@ -42,7 +42,7 @@ pub struct PaymentMetadata {
     pub usage_type: UsageType,
     pub invoice_id: String,
     pub invoice: Value,
-    pub function_args: Value,
+    pub function_args: serde_json::Map<String, serde_json::Value>,
     pub wallet_balances: Value,
 }
 
