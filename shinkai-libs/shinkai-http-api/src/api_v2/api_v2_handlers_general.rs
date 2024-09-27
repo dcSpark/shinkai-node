@@ -17,6 +17,7 @@ use shinkai_message_primitives::{
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
+use std::collections::HashMap;
 
 use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use crate::{
@@ -566,7 +567,7 @@ pub async fn add_llm_provider_handler(
 #[utoipa::path(
     post,
     path = "/v2/remove_llm_provider",
-    request_body = String,
+    request_body = HashMap<String, String>,
     responses(
         (status = 200, description = "Successfully removed LLM provider", body = String),
         (status = 500, description = "Internal server error", body = APIError)
@@ -575,9 +576,10 @@ pub async fn add_llm_provider_handler(
 pub async fn remove_llm_provider_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    llm_provider_id: String,
+    payload: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let llm_provider_id = payload.get("llm_provider_id").cloned().unwrap_or_default();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiRemoveLlmProvider {

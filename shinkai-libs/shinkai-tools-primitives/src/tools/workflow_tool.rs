@@ -194,7 +194,6 @@ impl WorkflowTool {
 
         let re = Regex::new(r#"""#).unwrap();
         let escaped_dsl_content = re.replace_all(dsl_content.trim(), r#"\""#);
-        eprintln!("escaped_dsl_content: {}", escaped_dsl_content);
 
         let raw_workflow = format!(r##"
             workflow baml_answer_with_citations v0.1 {{
@@ -215,15 +214,12 @@ impl WorkflowTool {
 
     fn answer_with_citations_workflow() -> Self {
         let raw_workflow = r##"
-            workflow RAG v0.1 {
+            workflow answer_with_citations_workflow v0.1 {
                 step Initialize {
                     $FILE_PIECES = call process_embeddings_in_job_scope_with_metadata()
-                    
                     $LLM_INPUT = call generate_json_map("question", $INPUT, "documents", $FILE_PIECES)
-                    
                     $LLM_RESPONSE = call baml_answer_with_citations($LLM_INPUT)
-                    
-                    $JINJA = "# Introduction\n{%- for sentence in answer.brief_introduction.sentences %}\n{{ sentence }}\n{%- endfor %}\n\n# Body\n{%- for section in answer.extensive_body %}\n## Section {{ loop.index }}\n{%- for sentence in section.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n\n# Conclusion\n{%- for section in answer.conclusion %}\n{{ section.sentences[0] }}\n{%- endfor %}\n\n# Citations\n{%- for citation in relevantSentencesFromText %}\n[{{ citation.citation_id }}]: {{ citation.relevantSentenceFromDocument }}\n{%- endfor %}"
+                    $JINJA = "# Introduction\n{%- for sentence in answer.brief_introduction.sentences %}\n{{ sentence }}\n{%- endfor %}\n\n# Main Content\n{%- if answer.extensive_body | length > 1 %}\n{%- for part in answer.extensive_body %}\n### Part {{ loop.index }}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- else %}\n{%- for part in answer.extensive_body %}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- endif %}\n\n# Conclusion\n{%- for section in answer.conclusion %}\n{%- for sentence in section.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n\n# Citations\n{%- for citation in relevantSentencesFromText %}\n[{{ citation.citation_id }}]: {{ citation.relevantTextFromDocument }} ({{ citation.document_reference }})\n{%- endfor %}"
                     
                     $RESULT = call shinkai__json-to-md("message",$LLM_RESPONSE,"template",$JINJA)
                 }
