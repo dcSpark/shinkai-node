@@ -1028,7 +1028,8 @@ mod tests {
             .unwrap();
 
         // Validate the processed embeddings with metadata
-        let mut processed_embeddings = result.downcast_ref::<Vec<serde_json::Value>>().unwrap().clone();
+        let result_str = result.downcast_ref::<String>().unwrap();
+        let mut processed_embeddings: Vec<serde_json::Value> = serde_json::from_str(result_str).unwrap();
         eprintln!("Processed embeddings with metadata: {:?}", processed_embeddings);
         assert!(!processed_embeddings.is_empty());
 
