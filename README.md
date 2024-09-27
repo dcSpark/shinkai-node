@@ -27,6 +27,43 @@ export CC=gcc
 export CXX=g++
 ```
 
+
+### Protobuf Compiler
+
+The Shinkai Node requires the `protobuf-compiler` library. Here are the installation instructions for different operating systems:
+
+#### Windows
+
+1. Download the latest release from the [official protobuf releases page](https://github.com/protocolbuffers/protobuf/releases).
+2. Extract the downloaded zip file.
+3. Add the `bin` directory to your system's PATH environment variable.
+
+#### Linux
+
+For Debian-based distributions (e.g., Ubuntu):
+
+```
+sudo apt-get install -y protobuf-compiler
+```
+
+For Fedora:
+
+```
+sudo dnf install -y protobuf-compiler
+```
+
+For Arch Linux:
+
+```
+sudo pacman -S protobuf
+```
+
+#### MacOS
+
+```
+brew install protobuf
+```
+
 ## Build
 
 ### Easy Build
@@ -43,12 +80,6 @@ if you want to restart the node, you can delete the folder `storage` and run the
 cargo build
 ```
 Note: You must run this command from the root directory of this repo and make sure that you have set the required ENV variables.
-
-### Add Telemetry support
-
-```
-cargo build --features telemetry
-```
 
 ## OpenAPI
 
@@ -132,3 +163,7 @@ npm run test.unit
 ### Further CI Development
 
 Use `act -j test-wasm -P self-hosted=nektos/act-environments-ubuntu:18.04 --container-architecture linux/amd64` to run the tests locally in a docker container. This is useful for debugging CI issues.
+
+## Releasing a New Version
+
+When releasing a new version, ensure that you update the `Cargo.toml` of the shinkai-node as well as the `Cargo.toml` of the shinkai-libs/shinkai-http-api library.
