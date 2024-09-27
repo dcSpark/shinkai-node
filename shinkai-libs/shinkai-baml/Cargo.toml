@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-baml-runtime = { git = "https://github.com/dcSpark/baml.git", branch = "nico/maybe_fix_cycle", package = "baml-runtime", features = [
+baml-runtime = { git = "https://github.com/BoundaryML/baml.git", tag = "0.56.1", package = "baml-runtime", features = [
     "internal",
 ] }
-baml-types = { git = "https://github.com/dcSpark/baml.git", branch = "nico/maybe_fix_cycle", package = "baml-types" }
+baml-types = { git = "https://github.com/BoundaryML/baml.git", tag = "0.56.1", package = "baml-types" }
 env_logger = "0.9"
 log = "0.4"
 anyhow = "1.0"

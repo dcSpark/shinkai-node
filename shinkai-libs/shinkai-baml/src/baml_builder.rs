@@ -1,5 +1,5 @@
 use anyhow::Result;
-use baml_runtime::BamlRuntime;
+use baml_runtime::{runtime_interface::ExperimentalTracingInterface, BamlRuntime, InternalRuntimeInterface, RenderCurlSettings};
 use baml_types::BamlValue;
 use indexmap::IndexMap;
 use log::info;
@@ -100,10 +100,14 @@ impl BamlConfig {
             files.insert("dsl_class.baml".to_string(), dsl_class_file.clone());
         }
 
-        info!("Files: {:?}", files);
-
         let runtime = BamlRuntime::from_file_content("baml_src", &files, env_vars)?;
-        info!("BAML runtime initialized");
+        let diagnostics = runtime.internal().diagnostics();
+        eprintln!("BAML diagnostics: {:?}", diagnostics);
+
+        if diagnostics.has_errors() {
+            let error_message = diagnostics.to_pretty_string();
+            return Err(anyhow::anyhow!("BAML diagnostics errors: {}", error_message));
+        }
 
         Ok(runtime)
     }
@@ -116,9 +120,9 @@ impl BamlConfig {
             let trimmed_input = input.trim();
             let context_value = if trimmed_input.starts_with('{') && trimmed_input.ends_with('}') {
                 eprintln!("input is a json string: {}", trimmed_input);
-                let unescaped_input = BamlConfig::unescape_json_string(trimmed_input);
-                let parsed_json = serde_json::from_str(&unescaped_input).unwrap();
-                eprintln!("\n\n\n parsed_json: {:?}\n\n\n", parsed_json);
+                // let unescaped_input = BamlConfig::unescape_json_string(trimmed_input);
+                // eprintln!("\n\n\n unescaped_input: {:?}\n\n\n", unescaped_input);
+                let parsed_json = serde_json::from_str(&trimmed_input).unwrap();
                 BamlConfig::from_serde_value(parsed_json)
             } else {
                 BamlValue::String(trimmed_input.to_string())
@@ -127,6 +131,8 @@ impl BamlConfig {
         }
 
         if let Some(function_name) = &self.function_name {
+            eprintln!("\n\n Params string keys {:?}\n\n", params.keys());
+            eprintln!("\n\n Params string values {:?}\n\n", params.values());
             let (result, _uuid) = runtime.call_function_sync(function_name.clone(), &params, &ctx_manager, None, None);
 
             match result {
@@ -176,18 +182,25 @@ impl BamlConfig {
                 BamlValue::List(baml_values)
             }
             serde_json::Value::Object(obj) => {
-                let baml_map = obj
-                    .into_iter()
-                    .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
-                    .collect();
-                BamlValue::Map(baml_map)
+                if let Some(class_name) = obj.clone().get("class_name").and_then(|v| v.as_str()) {
+                    let class_fields = obj.into_iter()
+                        .filter(|(k, _)| k != "class_name")
+                        .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
+                        .collect();
+                    BamlValue::Class(class_name.to_string(), class_fields)
+                } else {
+                    let baml_map = obj.into_iter()
+                        .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
+                        .collect();
+                    BamlValue::Map(baml_map)
+                }
             }
         }
     }
 
     pub fn unescape_json_string(json_str: &str) -> String {
-        let re = Regex::new(r#"\\(.)"#).unwrap();
-        re.replace_all(json_str, "$1").to_string()
+        let re = Regex::new(r#"\\"#).unwrap();
+        re.replace_all(json_str, "\"").to_string()
     }
 
     /// Converts the existing DSL string to the format expected by Baml.

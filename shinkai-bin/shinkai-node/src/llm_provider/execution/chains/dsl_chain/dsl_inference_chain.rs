@@ -444,13 +444,13 @@ impl AsyncFunction for BamlInference {
 
         let dsl_class_file: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let dsl_class_file = BamlConfig::convert_dsl_class_file(&dsl_class_file.unwrap_or_default());
-        eprintln!("dsl_class_file: {:?}", dsl_class_file);
+        eprintln!("BamlInference> dsl_class_file: {:?}", dsl_class_file);
 
         let fn_name: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
-        eprintln!("fn_name: {:?}", fn_name);
+        eprintln!("BamlInference> fn_name: {:?}", fn_name);
 
         let param_name: Option<String> = args.get(5).and_then(|arg| arg.downcast_ref::<String>().cloned());
-        eprintln!("param_name: {:?}", param_name);
+        eprintln!("BamlInference> param_name: {:?}", param_name);
 
         // TODO: do we need the job for something?
         // let full_job = self.context.full_job();
@@ -472,7 +472,7 @@ impl AsyncFunction for BamlInference {
             model: llm_provider.get_model_string(),
             default_role: "user".to_string(),
         };
-        eprintln!("client_config: {:?}", client_config);
+        eprintln!("BamlInference> client_config: {:?}", client_config);
 
         // Note(nico): we need to pass the env vars from the job here if we are using an LLM behind an API
         let env_vars = HashMap::new();
@@ -756,8 +756,23 @@ fn parse_params(args: Vec<Box<dyn Any + Send>>) -> Result<serde_json::Map<String
             let value = pair[1]
                 .downcast_ref::<String>()
                 .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for value".to_string()))?;
-            // Insert each key-value pair into the params map
-            params.insert(key.clone(), serde_json::Value::String(value.clone()));
+
+            // Check if the value is a JSON string and parse it
+            if value.starts_with('{') && value.ends_with('}') {
+                if let Ok(parsed_value) = serde_json::from_str::<serde_json::Value>(value) {
+                    // Serialize the parsed JSON value back to a string
+                    let serialized_value = serde_json::to_string(&parsed_value)
+                        .map_err(|e| WorkflowError::InvalidArgument(format!("Failed to serialize JSON value: {}", e)))?;
+                    params.insert(key.clone(), serde_json::Value::String(serialized_value));
+                } else {
+                    return Err(WorkflowError::InvalidArgument(
+                        "Failed to parse JSON value".to_string(),
+                    ));
+                }
+            } else {
+                // Insert each key-value pair into the params map
+                params.insert(key.clone(), serde_json::Value::String(value.clone()));
+            }
         }
     }
 
