@@ -538,6 +538,11 @@ pub struct APIVecFsCopyItem {
     pub destination_path: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsRetrieveSourceFile {
+    pub path: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAvailableSharedItems {
     pub path: String,

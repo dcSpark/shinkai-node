@@ -2,7 +2,7 @@ use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::I
 
 use crate::{
     llm_provider::execution::{
-        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
+        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator, user_message_parser::ParsedUserMessage,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
@@ -226,6 +226,9 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("concat", |context, args| {
             generic_functions::concat_strings(&*context, args)
         });
+        self.add_generic_function("generate_json_map", |context, args| {
+            generic_functions::generate_json_map(&*context, args)
+        });
         self.add_generic_function("search_and_replace", |context, args| {
             generic_functions::search_and_replace(&*context, args)
         });
@@ -237,6 +240,9 @@ impl<'a> DslChain<'a> {
         });
         self.add_generic_function("process_embeddings_in_job_scope", |context, args| {
             generic_functions::process_embeddings_in_job_scope(&*context, args)
+        });
+        self.add_generic_function("process_embeddings_in_job_scope_with_metadata", |context, args| {
+            generic_functions::process_embeddings_in_job_scope_with_metadata(&*context, args)
         });
         self.add_generic_function("search_embeddings_in_job_scope", |context, args| {
             generic_functions::search_embeddings_in_job_scope(&*context, args)
@@ -435,13 +441,13 @@ impl AsyncFunction for BamlInference {
 
         let dsl_class_file: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let dsl_class_file = BamlConfig::convert_dsl_class_file(&dsl_class_file.unwrap_or_default());
-        eprintln!("dsl_class_file: {:?}", dsl_class_file);
+        eprintln!("BamlInference> dsl_class_file: {:?}", dsl_class_file);
 
         let fn_name: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
-        eprintln!("fn_name: {:?}", fn_name);
+        eprintln!("BamlInference> fn_name: {:?}", fn_name);
 
         let param_name: Option<String> = args.get(5).and_then(|arg| arg.downcast_ref::<String>().cloned());
-        eprintln!("param_name: {:?}", param_name);
+        eprintln!("BamlInference> param_name: {:?}", param_name);
 
         // TODO: do we need the job for something?
         // let full_job = self.context.full_job();
@@ -463,7 +469,7 @@ impl AsyncFunction for BamlInference {
             model: llm_provider.get_model_string(),
             default_role: "user".to_string(),
         };
-        eprintln!("client_config: {:?}", client_config);
+        eprintln!("BamlInference> client_config: {:?}", client_config);
 
         // Note(nico): we need to pass the env vars from the job here if we are using an LLM behind an API
         let env_vars = HashMap::new();
@@ -607,35 +613,23 @@ struct ShinkaiToolFunction {
 #[async_trait]
 impl AsyncFunction for ShinkaiToolFunction {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
-        if args.len() != 1 {
-            return Err(WorkflowError::InvalidArgument(
-                "Expected 1 argument: function_args".to_string(),
-            ));
-        }
-
-        let mut params = serde_json::Map::new();
-
-        // Iterate through the tool's input_args and the provided args
-        for (i, arg) in self.tool.input_args().iter().enumerate() {
-            if i >= args.len() {
-                if arg.is_required {
-                    return Err(WorkflowError::InvalidArgument(format!(
-                        "Missing required argument: {}",
-                        arg.name
-                    )));
-                }
-                continue;
-            }
-
-            let value = args[i]
-                .downcast_ref::<String>()
-                .ok_or_else(|| WorkflowError::InvalidArgument(format!("Invalid argument for {}", arg.name)))?;
-
-            params.insert(arg.name.clone(), serde_json::Value::String(value.clone()));
-        }
-
         let result = match &self.tool {
             ShinkaiTool::JS(js_tool, _) => {
+                let params = parse_params(args)?;
+                eprintln!("params: {:?}", params);
+
+                for arg in self.tool.input_args().iter() {
+                    if !params.contains_key(&arg.name) {
+                        if arg.is_required {
+                            return Err(WorkflowError::InvalidArgument(format!(
+                                "Missing required argument: {}",
+                                arg.name
+                            )));
+                        }
+                        continue;
+                    }
+                }
+
                 let function_config = self.tool.get_config_from_env();
                 let result = js_tool
                     .run(params, function_config)
@@ -662,15 +656,44 @@ impl AsyncFunction for ShinkaiToolFunction {
                 }
             }
             ShinkaiTool::Rust(_, _) => {
+                // Note: shouldn't rust tools be supported?
                 return Err(WorkflowError::ExecutionError(
                     "Rust tools are not supported in this context".to_string(),
                 ));
             }
-            ShinkaiTool::Workflow(_, _) => {
-                // TODO: we should allow for a workflow to call another workflow
-                return Err(WorkflowError::ExecutionError(
-                    "Workflows are not supported in this context".to_string(),
-                ));
+            ShinkaiTool::Workflow(workflow, _is_enabled) => {
+                let arg = args[0].downcast_ref::<String>().ok_or_else(|| {
+                    WorkflowError::InvalidArgument("Expected a single argument of type String".to_string())
+                })?;
+
+                let mut new_context = self.context.clone();
+                new_context.update_message(ParsedUserMessage::new(arg.clone()));
+
+                // Create a new DslChain for the nested workflow
+                let functions = HashMap::new();
+                let mut nested_dsl_inference =
+                    DslChain::new(new_context, workflow.workflow.clone(), functions);
+
+                // TODO: read the fns from the workflow code and the missing ones from the tool router
+
+                // Add necessary functions to the nested DslChain
+                nested_dsl_inference.add_inference_function();
+                nested_dsl_inference.add_inference_no_ws_function();
+                nested_dsl_inference.add_baml_inference_function();
+                nested_dsl_inference.add_opinionated_inference_function();
+                nested_dsl_inference.add_opinionated_inference_no_ws_function();
+                nested_dsl_inference.add_multi_inference_function();
+                nested_dsl_inference.add_all_generic_functions();
+
+                // Run the nested workflow
+                let result = nested_dsl_inference
+                    .run_chain()
+                    .await
+                    .map_err(|e| WorkflowError::ExecutionError(format!("Nested workflow execution failed: {}", e)))?;
+
+                eprintln!("result nested workflow: {:?}", result.response);
+
+                result.response
             }
             ShinkaiTool::Network(_, _) => {
                 // TODO: we should allow for a workflow to call another workflow
@@ -682,6 +705,75 @@ impl AsyncFunction for ShinkaiToolFunction {
 
         Ok(Box::new(result))
     }
+}
+
+fn parse_params(args: Vec<Box<dyn Any + Send>>) -> Result<serde_json::Map<String, serde_json::Value>, WorkflowError> {
+    let mut params = serde_json::Map::new();
+
+    if args.len() == 1 {
+        // Check if the single argument is a JSON string
+        let arg = args[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Expected a single argument of type String".to_string()))?;
+
+        // Try to parse the argument as a JSON value
+        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(arg) {
+            match json_value {
+                serde_json::Value::Object(json_map) => {
+                    // If it's a JSON object, use it as the params map
+                    params = json_map;
+                }
+                serde_json::Value::Array(json_array) => {
+                    // If it's a JSON array, convert it to a single parameter
+                    params.insert("arg".to_string(), serde_json::Value::Array(json_array));
+                }
+                _ => {
+                    return Err(WorkflowError::InvalidArgument(
+                        "Expected a JSON object or array".to_string(),
+                    ));
+                }
+            }
+        } else {
+            // If not a JSON string, treat it as a single parameter
+            params.insert("arg".to_string(), serde_json::Value::String(arg.clone()));
+        }
+    } else {
+        // Handle multiple arguments
+        if args.len() % 2 != 0 {
+            return Err(WorkflowError::InvalidArgument(
+                "Expected an even number of arguments".to_string(),
+            ));
+        }
+
+        // Iterate through the arguments in pairs
+        for pair in args.chunks(2) {
+            let key = pair[0]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for key".to_string()))?;
+            let value = pair[1]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for value".to_string()))?;
+
+            // Check if the value is a JSON string and parse it
+            if value.starts_with('{') && value.ends_with('}') {
+                if let Ok(parsed_value) = serde_json::from_str::<serde_json::Value>(value) {
+                    // Serialize the parsed JSON value back to a string
+                    let serialized_value = serde_json::to_string(&parsed_value)
+                        .map_err(|e| WorkflowError::InvalidArgument(format!("Failed to serialize JSON value: {}", e)))?;
+                    params.insert(key.clone(), serde_json::Value::String(serialized_value));
+                } else {
+                    return Err(WorkflowError::InvalidArgument(
+                        "Failed to parse JSON value".to_string(),
+                    ));
+                }
+            } else {
+                // Insert each key-value pair into the params map
+                params.insert(key.clone(), serde_json::Value::String(value.clone()));
+            }
+        }
+    }
+
+    Ok(params)
 }
 
 #[allow(dead_code)]

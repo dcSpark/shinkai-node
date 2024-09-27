@@ -253,8 +253,6 @@ impl<'a> WorkflowEngine<'a> {
         param: &Param,
         registers: &DashMap<String, String>,
     ) -> Result<String, WorkflowError> {
-        eprintln!("\n\nEvaluating param: {:?}", param);
-        eprintln!("Registers: {:?}", registers);
         let value = match param {
             Param::String(s) => s.clone(),
             Param::Number(n) => n.to_string(),
@@ -271,7 +269,6 @@ impl<'a> WorkflowEngine<'a> {
         value: &WorkflowValue,
         registers: &DashMap<String, String>,
     ) -> Result<String, WorkflowError> {
-        eprintln!("Evaluating workflow value: {:?}", value);
         match value {
             WorkflowValue::String(s) => Ok(s.clone()),
             WorkflowValue::Number(n) => Ok(n.to_string()),

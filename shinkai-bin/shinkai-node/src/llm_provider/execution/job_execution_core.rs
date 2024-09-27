@@ -1,7 +1,3 @@
-use shinkai_db::db::ShinkaiDB;
-use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
-use shinkai_message_primitives::schemas::job::{Job, JobLike};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
@@ -13,13 +9,16 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use ed25519_dalek::SigningKey;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
+use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
+use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, WSTopic};
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -29,6 +28,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::FileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
@@ -439,10 +439,15 @@ impl JobManager {
             ext_agent_payments_manager.clone(),
             llm_stopper.clone(),
         )
-        .await?;
+        .await;
 
-        let response = inference_result.response;
-        let new_execution_context = inference_result.new_job_execution_context;
+        let (response, new_execution_context) = match inference_result {
+            Ok(result) => (result.response, result.new_job_execution_context),
+            Err(e) => {
+                let error_response = format!("Error: {}", e);
+                (error_response, full_job.execution_context.clone())
+            }
+        };
 
         // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
@@ -474,9 +479,34 @@ impl JobManager {
             None,
             None,
         )?;
-        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager.clone())
             .await?;
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+
+        // // Send WS done message
+        // if let Some(ws_manager) = ws_manager {
+        //     let ws_manager = ws_manager.lock().await;
+
+        //     let metadata = WSMetadata {
+        //         id: Some(job_message.job_id.clone()),
+        //         is_done: true,
+        //         done_reason: Some("Job completed".to_string()),
+        //         total_duration: None,
+        //         eval_count: None,
+        //     };
+
+        //     let ws_message_type = WSMessageType::Metadata(metadata);
+
+        //     let _ = ws_manager
+        //         .queue_message(
+        //             WSTopic::Inbox,
+        //             job_message.job_id.clone(),
+        //             response.to_string(),
+        //             ws_message_type,
+        //             true,
+        //         )
+        //         .await;
+        // }
 
         Ok(true)
     }
@@ -535,18 +565,25 @@ impl JobManager {
         let functions = HashMap::new();
         let mut dsl_inference = DslChain::new(Box::new(chain_context), workflow.clone(), functions);
 
-        let js_functions_used = workflow
-            .extract_function_names()
-            .into_iter()
-            .filter(|name| name.starts_with("shinkai__"))
-            .collect::<Vec<_>>();
+        let js_functions_used = workflow.extract_function_names().into_iter().collect::<Vec<_>>();
+        eprintln!("js_functions_used: {:?}", js_functions_used);
 
         let tools = {
             // get tool_router and then call get_tools_by_names
             if let Some(tool_router) = tool_router.clone() {
-                tool_router.get_tools_by_names(js_functions_used).await?
+                match tool_router.get_tools_by_names_with_smart_retry(js_functions_used).await {
+                    Ok(tools) => tools,
+                    Err(_) => {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Debug,
+                            "Failed to get tools by names with smart retry, continuing without tools",
+                        );
+                        vec![]
+                    }
+                }
             } else {
-                return Err(LLMProviderError::ToolRouterNotFound);
+                vec![]
             }
         };
 

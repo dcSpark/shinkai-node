@@ -1299,19 +1299,19 @@ dependencies = [
  "rustversion",
  "serde",
  "sync_wrapper 0.1.2",
- "tower",
+ "tower 0.4.13",
  "tower-layer",
  "tower-service",
 ]
 
 [[package]]
 name = "axum"
-version = "0.7.5"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a6c9af12842a67734c9a2e355436e5d03b22383ed60cf13cd0c18fbfe3dcbcf"
+checksum = "8f43644eed690f5374f1af436ecd6aea01cd201f6fbdf0178adaf6907afb2cec"
 dependencies = [
  "async-trait",
- "axum-core 0.4.3",
+ "axum-core 0.4.4",
  "bytes",
  "futures-util",
  "http 1.1.0",
@@ -1332,7 +1332,7 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper 1.0.1",
  "tokio",
- "tower",
+ "tower 0.5.1",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1357,9 +1357,9 @@ dependencies = [
 
 [[package]]
 name = "axum-core"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a15c63fd72d41492dc4f497196f5da1fb04fb7529e631d73630d1b491e47a2e3"
+checksum = "5e6b8ba012a258d63c9adfa28b9ddcf66149da6f986c5b5452e629d5ee64bf00"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1370,7 +1370,7 @@ dependencies = [
  "mime 0.3.17",
  "pin-project-lite",
  "rustversion",
- "sync_wrapper 0.1.2",
+ "sync_wrapper 1.0.1",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1378,12 +1378,12 @@ dependencies = [
 
 [[package]]
 name = "axum-extra"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0be6ea09c9b96cb5076af0de2e383bd2bc0c18f827cf1967bdd353e0b910d733"
+checksum = "73c3220b188aea709cf1b6c5f9b01c3bd936bb08bd2b5184a12b35ac8131b1f9"
 dependencies = [
- "axum 0.7.5",
- "axum-core 0.4.3",
+ "axum 0.7.6",
+ "axum-core 0.4.4",
  "bytes",
  "futures-util",
  "headers 0.4.0",
@@ -1394,7 +1394,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "serde_json",
- "tower",
+ "tower 0.5.1",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1417,8 +1417,8 @@ dependencies = [
 
 [[package]]
 name = "baml-runtime"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "ambassador",
  "anyhow",
@@ -1432,7 +1432,7 @@ dependencies = [
  "aws-smithy-runtime",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
- "axum 0.7.5",
+ "axum 0.7.6",
  "axum-extra",
  "baml-types",
  "base64 0.22.1",
@@ -1501,8 +1501,8 @@ dependencies = [
 
 [[package]]
 name = "baml-types"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "clap 4.5.17",
@@ -5189,7 +5189,7 @@ dependencies = [
  "pin-project-lite",
  "socket2 0.5.7",
  "tokio",
- "tower",
+ "tower 0.4.13",
  "tower-service",
  "tracing",
 ]
@@ -5455,8 +5455,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-codegen"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "askama",
@@ -5480,8 +5480,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-core"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "baml-types",
@@ -5510,8 +5510,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-diagnostics"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "colored",
@@ -5524,8 +5524,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-jinja"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "askama",
@@ -5542,8 +5542,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-parser-database"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "baml-types",
@@ -5565,8 +5565,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-prompt-parser"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "internal-baml-diagnostics",
  "internal-baml-schema-ast",
@@ -5578,8 +5578,8 @@ dependencies = [
 
 [[package]]
 name = "internal-baml-schema-ast"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "baml-types",
  "either",
@@ -5731,8 +5731,8 @@ checksum = "9dbbfed4e59ba9750e15ba154fdfd9329cee16ff3df539c2666b70f58cc32105"
 
 [[package]]
 name = "jsonish"
-version = "0.55.3"
-source = "git+https://github.com/dcSpark/baml.git?branch=nico/maybe_fix_cycle#03ab5c6c89185626f8aaca1d48f233203069cc49"
+version = "0.56.1"
+source = "git+https://github.com/BoundaryML/baml.git?tag=0.56.1#c779c05fb59ab3a84bae3ada1db6375a19b058c1"
 dependencies = [
  "anyhow",
  "assert-json-diff",
@@ -10264,9 +10264,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.7.14"
+version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "267dfc71f911f918a4ce361f531e1fa4e8ecf1bf50b815d3490099c3d25c2964"
+checksum = "7faf29e2b8599896888f807ec8a55f4b0571c1f935698b33179f98d3c7afa583"
 dependencies = [
  "base64-simd",
  "copy_to_output",
@@ -11487,7 +11487,7 @@ dependencies = [
  "prost 0.11.9",
  "tokio",
  "tokio-stream",
- "tower",
+ "tower 0.4.13",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -11508,6 +11508,22 @@ dependencies = [
  "slab",
  "tokio",
  "tokio-util 0.7.12",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "tower"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2873938d487c3cfb9aed7546dc9f2711d867c9f90c46b889989a2cb84eba6b4f"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project-lite",
+ "sync_wrapper 0.1.2",
+ "tokio",
  "tower-layer",
  "tower-service",
  "tracing",
