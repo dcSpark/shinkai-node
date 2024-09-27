@@ -179,8 +179,12 @@ impl ToolRouter {
 
             for item in json_array {
                 let shinkai_tool: Result<ShinkaiTool, _> = serde_json::from_value(item.clone());
+                
                 let shinkai_tool = match shinkai_tool {
-                    Ok(tool) => tool,
+                    Ok(tool) => {
+                        eprintln!("adding shinkai_tool (workflow): {:?}", tool.name());
+                        tool
+                    },
                     Err(e) => {
                         eprintln!("Failed to parse shinkai_tool: {}. JSON: {:?}", e, item);
                         continue; // Skip this item and continue with the next one
@@ -194,8 +198,8 @@ impl ToolRouter {
             let workflows = WorkflowTool::static_tools();
             println!("Number of static workflows: {}", workflows.len());
 
-            for workflow_tool in workflows {
-                let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
+            for (workflow_tool, is_enabled) in workflows {
+                let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
                 let lance_db = self.lance_db.write().await;
                 lance_db.set_tool(&shinkai_tool).await?;
             }
@@ -348,15 +352,42 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    pub async fn get_tools_by_names(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
+    pub async fn get_tools_by_names_with_smart_retry(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
         let lance_db = self.lance_db.read().await;
         let mut tools = Vec::new();
 
         for name in names {
             match lance_db.get_tool(&name).await {
                 Ok(Some(tool)) => tools.push(tool),
-                Ok(None) => return Err(ToolError::ToolNotFound(name)),
-                Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
+                Ok(None) => {
+                    // Perform a vector search if the tool is not found
+                    let search_results = lance_db
+                        .vector_search_all_tools(&name, 10, true)
+                        .await
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                    
+                    // Search for the result that has the same name
+                    if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
+                        match lance_db.get_tool(&matching_result.tool_router_key).await {
+                            Ok(Some(tool)) => tools.push(tool),
+                            Ok(None) => {
+                                eprintln!("Tool not found: {}", name);
+                                continue; // Skip this tool and continue with the next one
+                            },
+                            Err(e) => {
+                                eprintln!("Database error: {}", e);
+                                continue; // Skip this tool and continue with the next one
+                            },
+                        }
+                    } else {
+                        eprintln!("Tool not found: {}", name);
+                        continue; // Skip this tool and continue with the next one
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Database error: {}", e);
+                    continue; // Skip this tool and continue with the next one
+                },
             }
         }
 
@@ -471,7 +502,7 @@ impl ToolRouter {
                     .into_iter()
                     .filter(|name| name.starts_with("shinkai__"))
                     .collect::<Vec<_>>();
-                let tools = self.get_tools_by_names(functions_used).await?;
+                let tools = self.get_tools_by_names_with_smart_retry(functions_used).await?;
 
                 dsl_inference.add_inference_function();
                 dsl_inference.add_inference_no_ws_function();
@@ -715,9 +746,9 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
 
-    // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     /// It's just easier to have it here because it already has access to all the necessary dependencies
+    // #[tokio::test]
     #[allow(dead_code)]
     async fn test_generate_static_workflows() {
         let generator = RemoteEmbeddingGenerator::new_default_local();
@@ -730,7 +761,7 @@ mod tests {
         let workflows_testing = WorkflowTool::static_tools();
         println!("Number of testing workflows: {}", workflows_testing.len());
 
-        for workflow_tool in workflows_testing {
+        for (workflow_tool, _is_enabled) in workflows_testing {
             let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
@@ -751,7 +782,7 @@ mod tests {
         let workflows = WorkflowTool::static_tools();
         println!("Number of production workflows: {}", workflows.len());
 
-        for workflow_tool in workflows {
+        for (workflow_tool, _is_enabled) in workflows {
             let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
@@ -778,10 +809,10 @@ mod tests {
         let mut file = File::create("../../tmp/workflows_data.rs").expect("Failed to create file");
         writeln!(
             file,
-            "pub static WORKFLOWS_JSON_TESTING: &str = r#\"{}\"#;",
+            "pub static WORKFLOWS_JSON_TESTING: &str = r###\"{}\"###;",
             json_data_testing
         )
         .expect("Failed to write to file");
-        writeln!(file, "pub static WORKFLOWS_JSON: &str = r#\"{}\"#;", json_data).expect("Failed to write to file");
+        writeln!(file, "pub static WORKFLOWS_JSON: &str = r###\"{}\"###;", json_data).expect("Failed to write to file");
     }
 }

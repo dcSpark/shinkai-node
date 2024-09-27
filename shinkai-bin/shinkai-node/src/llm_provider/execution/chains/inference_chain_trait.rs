@@ -53,6 +53,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn update_max_iterations(&mut self, new_max_iterations: u64);
     fn update_raw_files(&mut self, new_raw_files: RawFiles);
     fn update_iteration_count(&mut self, new_iteration_count: u64);
+    fn update_message(&mut self, new_message: ParsedUserMessage);
 
     fn db(&self) -> Arc<ShinkaiDB>;
     fn vector_fs(&self) -> Arc<VectorFS>;
@@ -95,6 +96,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn update_iteration_count(&mut self, new_iteration_count: u64) {
         self.iteration_count = new_iteration_count;
+    }
+
+    fn update_message(&mut self, new_message: ParsedUserMessage) {
+        self.user_message = new_message;
     }
 
     fn db(&self) -> Arc<ShinkaiDB> {
@@ -293,6 +298,7 @@ impl fmt::Debug for InferenceChainContext {
 }
 
 /// Struct that represents the result of an inference chain.
+#[derive(Debug, Clone)]
 pub struct InferenceChainResult {
     pub response: String,
     pub new_job_execution_context: HashMap<String, String>,
@@ -373,6 +379,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 
     fn update_iteration_count(&mut self, new_iteration_count: u64) {
         (**self).update_iteration_count(new_iteration_count)
+    }
+
+    fn update_message(&mut self, new_message: ParsedUserMessage) {
+        (**self).update_message(new_message)
     }
 
     fn db(&self) -> Arc<ShinkaiDB> {
@@ -552,6 +562,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn update_iteration_count(&mut self, new_iteration_count: u64) {
         self.iteration_count = new_iteration_count;
+    }
+
+    fn update_message(&mut self, new_message: ParsedUserMessage) {
+        self.user_message = new_message;
     }
 
     fn db(&self) -> Arc<ShinkaiDB> {

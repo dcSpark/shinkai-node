@@ -1,5 +1,9 @@
 use futures::{future::join_all, StreamExt};
-use shinkai_message_primitives::{schemas::subprompts::SubPrompt, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}};
+use serde_json::json;
+use shinkai_message_primitives::{
+    schemas::subprompts::SubPrompt,
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+};
 use std::{any::Any, collections::HashMap};
 
 use crate::{
@@ -27,6 +31,7 @@ impl RustToolFunctions {
 
         tool_map.insert("process_embeddings_in_job_scope", process_embeddings_in_job_scope);
         tool_map.insert("split_text_for_llm", split_text_for_llm);
+        tool_map.insert("generate_json_map", generate_json_map);
 
         tool_map
     }
@@ -82,6 +87,39 @@ pub fn search_and_replace(
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for replace".to_string()))?;
 
     Ok(Box::new(text.replace(search, replace)))
+}
+
+pub fn generate_json_map(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() % 2 != 0 {
+        return Err(WorkflowError::InvalidArgument(
+            "Expected an even number of arguments".to_string(),
+        ));
+    }
+
+    let mut map = serde_json::Map::new();
+
+    for pair in args.chunks(2) {
+        let key = pair[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for key".to_string()))?;
+        let value = pair[1]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for value".to_string()))?;
+
+        let json_value =
+            if (value.starts_with('{') && value.ends_with('}')) || (value.starts_with("[{") && value.ends_with("}]")) {
+                serde_json::from_str(value).unwrap_or_else(|_| json!(value))
+            } else {
+                json!(value)
+            };
+
+        map.insert(key.clone(), json_value);
+    }
+
+    Ok(Box::new(serde_json::to_string(&map).unwrap()))
 }
 
 #[allow(dead_code)]
@@ -223,6 +261,65 @@ pub fn process_embeddings_in_job_scope(
     Ok(Box::new(result))
 }
 
+pub fn process_embeddings_in_job_scope_with_metadata(
+    context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() > 1 {
+        return Err(WorkflowError::InvalidArgument("Expected 0 or 1 argument".to_string()));
+    }
+
+    let map_fn: &(dyn Fn(&str) -> String + Send + Sync) = if args.is_empty() {
+        &|s: &str| s.to_string() // Default map function
+    } else {
+        args[0]
+            .downcast_ref::<Box<dyn Fn(&str) -> String + Send + Sync>>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?
+            .as_ref()
+    };
+
+    let result = tokio::task::block_in_place(|| {
+        tokio::runtime::Runtime::new()
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?
+            .block_on(async {
+                let vector_fs = context.vector_fs();
+                let user_profile = context.user_profile();
+                let scope = context.full_job().scope.clone();
+
+                let resource_stream =
+                    JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile)
+                        .await;
+                let mut chunks = resource_stream.chunks(5);
+
+                let mut processed_embeddings = Vec::new();
+                while let Some(resources) = chunks.next().await {
+                    let futures = resources.into_iter().map(|resource| async move {
+                        let embeddings = SubPrompt::convert_resource_into_submprompts_for_citation_rag(&resource);
+                        Ok::<_, WorkflowError>(embeddings)
+                    });
+                    let results = join_all(futures).await;
+
+                    for result in results {
+                        match result {
+                            Ok(processed) => processed_embeddings.extend(processed),
+                            Err(e) => shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                &format!("Error processing embedding: {}", e),
+                            ),
+                        }
+                    }
+                }
+
+                let serialized_results = serde_json::to_string(&processed_embeddings)
+                    .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+                Ok::<_, WorkflowError>(serialized_results)
+            })
+    })?;
+
+    Ok(Box::new(result))
+}
+
 pub fn search_embeddings_in_job_scope(
     context: &dyn InferenceChainContextTrait,
     args: Vec<Box<dyn Any + Send>>,
@@ -316,7 +413,9 @@ mod tests {
         vector_resource::{BaseVectorResource, VRPath},
     };
 
-    use crate::llm_provider::execution::chains::dsl_chain::generic_functions::process_embeddings_in_job_scope;
+    use crate::llm_provider::execution::chains::dsl_chain::generic_functions::{
+        generate_json_map, process_embeddings_in_job_scope, process_embeddings_in_job_scope_with_metadata,
+    };
     use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContext;
     use crate::llm_provider::execution::{
         chains::{
@@ -486,6 +585,38 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    #[test]
+    fn test_generate_json_map() {
+        let context = MockInferenceChainContext::new(
+            ParsedUserMessage {
+                original_user_message_string: "".to_string(),
+                elements: vec![],
+            },
+            HashMap::new(),
+            ShinkaiName::default_testnet_localhost(),
+            10,
+            0,
+            1000,
+            HashMap::new(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Arc::new(LLMStopper::new()),
+        );
+
+        let args: Vec<Box<dyn Any + Send>> = vec![
+            Box::new("fruit".to_string()),
+            Box::new("apple".to_string()),
+            Box::new("animal".to_string()),
+            Box::new("dog".to_string()),
+        ];
+        let result = generate_json_map(&context, args).unwrap();
+        let json_map = result.downcast_ref::<String>().unwrap();
+        assert_eq!(json_map, r#"{"fruit":"apple","animal":"dog"}"#);
     }
 
     #[tokio::test]
@@ -769,5 +900,156 @@ mod tests {
             results[2],
             "Dinosaurs are a diverse group of reptiles of the clade Dinosauria."
         );
+    }
+
+    #[tokio::test]
+    async fn test_process_embeddings_in_job_scope_with_metadata() {
+        setup();
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let vector_fs = setup_default_vector_fs().await;
+
+        // Initialize ShinkaiDB
+        let db_path = format!("db_tests/{}", "test_process_embeddings_in_job_scope_with_metadata");
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+        let shinkai_db_arc = Arc::new(shinkai_db);
+
+        // Create a new job
+        let job_id = "test_job_id".to_string();
+        let agent_id = "test_agent_id".to_string();
+        let job_scope = JobScope {
+            local_vrkai: Vec::new(),
+            local_vrpack: Vec::new(),
+            vector_fs_items: Vec::new(),
+            vector_fs_folders: vec![VectorFSFolderScopeEntry {
+                path: VRPath::root(),
+                name: "/".to_string(),
+            }],
+            network_folders: Vec::new(),
+        };
+        shinkai_db_arc
+            .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
+            .unwrap();
+
+        // Retrieve the created job
+        let job = shinkai_db_arc.get_job(&job_id).unwrap();
+
+        // Create a new folder and add a document to it
+        let folder_name = "test_folder";
+        let folder_path = VRPath::root().push_cloned(folder_name.to_string());
+        let writer = vector_fs
+            .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+            .await
+            .unwrap();
+        vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
+
+        // Manually create documents for different topics
+        let topics = vec![
+            ("animals", "Animals are multicellular, eukaryotic organisms in the biological kingdom Animalia."),
+            ("airplanes", "An airplane is a powered, fixed-wing aircraft that is propelled forward by thrust from a jet engine or propeller."),
+            ("plants", "Plants are mainly multicellular organisms, predominantly photosynthetic eukaryotes of the kingdom Plantae."),
+            ("cars", "A car is a wheeled motor vehicle used for transportation."),
+            ("dinosaurs", "Dinosaurs are a diverse group of reptiles of the clade Dinosauria.")
+        ];
+
+        for (i, (name, content)) in topics.iter().enumerate() {
+            let mut doc =
+                DocumentVectorResource::new_empty(name, Some(content), VRSourceReference::new_uri_ref(name), true);
+            doc.set_embedding_model_used(generator.model_type());
+            doc.keywords_mut().set_keywords(vec![name.to_string()]);
+            doc.update_resource_embedding(&generator, None).await.unwrap();
+            let content_embedding = generator.generate_embedding_default(content).await.unwrap();
+
+            // Creating fake metadata to test with
+            let mut metadata = HashMap::new();
+            metadata.insert("pg_nums".to_string(), format!("{}", i + 1));
+
+            doc.append_text_node(content, Some(metadata), content_embedding, &vec![])
+                .unwrap();
+
+            let writer = vector_fs
+                .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
+                .await
+                .unwrap();
+            vector_fs
+                .save_vector_resource_in_folder(&writer, BaseVectorResource::Document(doc), None)
+                .await
+                .unwrap();
+        }
+
+        // Create a SerializedLLMProvider instance
+        let open_ai = OpenAI {
+            model_type: "gpt-4-1106-preview".to_string(),
+        };
+
+        let agent_name = ShinkaiName::new("@@localhost.arb-sep-shinkai/main/agent/testAgent".to_string()).unwrap();
+        let agent = SerializedLLMProvider {
+            id: "test_agent_id".to_string(),
+            full_identity_name: agent_name,
+            perform_locally: false,
+            external_url: Some("https://api.openai.com".to_string()),
+            api_key: Some("mockapikey".to_string()),
+            model: LLMProviderInterface::OpenAI(open_ai),
+            toolkit_permissions: vec![],
+            storage_bucket_permissions: vec![],
+            allowed_message_senders: vec![],
+        };
+        let image_files = HashMap::new();
+
+        // Create a full InferenceChainContext with the generated embeddings
+        let context = InferenceChainContext::new(
+            shinkai_db_arc,
+            Arc::new(vector_fs),
+            job,
+            ParsedUserMessage {
+                original_user_message_string: "".to_string(),
+                elements: vec![],
+            },
+            image_files,
+            agent,
+            HashMap::new(),
+            generator,
+            ShinkaiName::default_testnet_localhost(),
+            10,
+            1000,
+            HashMap::new(),
+            None, // Replace with actual WSUpdateHandler if needed
+            None, // Replace with actual ToolRouter if needed
+            None, // Replace with actual SheetManager if needed
+            None, // Replace with actual if needed
+            None, // Replace with actual if needed
+            Arc::new(LLMStopper::new()),
+        );
+
+        // Call the function to process embeddings in job scope with metadata
+        let args: Vec<Box<dyn Any + Send>> = vec![];
+        let result = tokio::task::spawn_blocking(move || process_embeddings_in_job_scope_with_metadata(&context, args))
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Validate the processed embeddings with metadata
+        let result_str = result.downcast_ref::<String>().unwrap();
+        let mut processed_embeddings: Vec<serde_json::Value> = serde_json::from_str(result_str).unwrap();
+        eprintln!("Processed embeddings with metadata: {:?}", processed_embeddings);
+        assert!(!processed_embeddings.is_empty());
+
+        // Sort the processed embeddings by the reference (page number)
+        processed_embeddings.sort_by_key(|embedding| embedding["reference"].as_str().unwrap().to_string());
+
+        // Check that the processed embeddings contain the expected content and metadata
+        let expected_texts = vec![
+            "Animals are multicellular, eukaryotic organisms",
+            "An airplane is a powered, fixed-wing aircraft",
+            "Plants are mainly multicellular organisms",
+            "A car is a wheeled motor vehicle",
+            "Dinosaurs are a diverse group of reptiles",
+        ];
+
+        for (i, expected_text) in expected_texts.iter().enumerate() {
+            let embedding = &processed_embeddings[i];
+            assert!(embedding["text"].as_str().unwrap().contains(expected_text));
+            assert!(embedding["file"].as_str().unwrap().contains(topics[i].0));
+            assert_eq!(embedding["reference"].as_str().unwrap(), format!("Page: {}", i + 1));
+        }
     }
 }
