@@ -214,7 +214,7 @@ impl WorkflowTool {
 
     fn answer_with_citations_workflow() -> Self {
         let raw_workflow = r##"
-            workflow RAG v0.1 {
+            workflow answer_with_citations_workflow v0.1 {
                 step Initialize {
                     $FILE_PIECES = call process_embeddings_in_job_scope_with_metadata()
                     $LLM_INPUT = call generate_json_map("question", $INPUT, "documents", $FILE_PIECES)
