@@ -194,7 +194,6 @@ impl WorkflowTool {
 
         let re = Regex::new(r#"""#).unwrap();
         let escaped_dsl_content = re.replace_all(dsl_content.trim(), r#"\""#);
-        eprintln!("escaped_dsl_content: {}", escaped_dsl_content);
 
         let raw_workflow = format!(r##"
             workflow baml_answer_with_citations v0.1 {{
