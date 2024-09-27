@@ -2,7 +2,7 @@ use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::I
 
 use crate::{
     llm_provider::execution::{
-        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
+        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator, user_message_parser::ParsedUserMessage,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
