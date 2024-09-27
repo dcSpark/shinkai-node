@@ -678,7 +678,7 @@ pub enum SheetFileFormat {
     XLSX,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct APIWorkflowKeyname {
     pub tool_router_key: String,
 }
