@@ -653,7 +653,7 @@ pub struct APIAddRowsPayload {
     pub starting_row: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct APIImportSheetPayload {
     pub sheet_data: SpreadSheetPayload,
 }
