@@ -183,22 +183,20 @@ mod tests {
 
     #[test]
     fn test_openai_api_message_with_function_call() {
-        let json_str = r#"
-        {
+        let json_str = json!({
             "role": "assistant",
             "content": null,
-            "function_call": {
+            "function_call":{
                 "name": "concat_strings",
-                "arguments": {
+                "arguments":  json!({
                     "first_string": "hola",
                     "second_string": " chao"
-                }
+                }).to_string()
             }
-        }
-        "#;
+        }).to_string();
 
         // Deserialize the JSON string to OpenAIApiMessage
-        let message: OpenAIApiMessage = serde_json::from_str(json_str).expect("Failed to deserialize");
+        let message: OpenAIApiMessage = serde_json::from_str(&json_str).expect("Failed to deserialize");
 
         // Check the deserialized values
         assert_eq!(message.role, "assistant");
@@ -209,7 +207,7 @@ mod tests {
             assert_eq!(function_call.name, "concat_strings");
             assert_eq!(
                 function_call.arguments,
-                json!({"first_string": "hola", "second_string": " chao"})
+                json!({"first_string": "hola", "second_string": " chao"}).to_string()
             );
         }
 
@@ -229,7 +227,7 @@ mod tests {
             assert_eq!(function_call.name, "concat_strings");
             assert_eq!(
                 function_call.arguments,
-                json!({"first_string": "hola", "second_string": " chao"})
+                json!({"first_string": "hola", "second_string": " chao"}).to_string()
             );
         }
     }

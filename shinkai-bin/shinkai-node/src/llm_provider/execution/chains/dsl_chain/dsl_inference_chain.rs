@@ -1,11 +1,8 @@
 use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
 
 use crate::{
-    llm_provider::{
-        execution::{
-            chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator, user_message_parser::ParsedUserMessage,
-        },
-        providers::shared::openai_api::FunctionCall,
+    llm_provider::execution::{
+        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},

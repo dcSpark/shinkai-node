@@ -44,7 +44,7 @@ pub struct ToolRouter {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FunctionCallResponse {
+pub struct ToolCallFunctionResponse {
     pub response: String,
     pub function_call: FunctionCall,
 }
@@ -456,7 +456,7 @@ impl ToolRouter {
         function_call: FunctionCall,
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
-    ) -> Result<FunctionCallResponse, LLMProviderError> {
+    ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
         let function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
@@ -472,7 +472,7 @@ impl ToolRouter {
                             LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
                         })?
                         .clone();
-                    return Ok(FunctionCallResponse {
+                    return Ok(ToolCallFunctionResponse {
                         response: result_str,
                         function_call,
                     });
@@ -485,7 +485,7 @@ impl ToolRouter {
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response: result_str,
                     function_call,
                 });
@@ -515,7 +515,7 @@ impl ToolRouter {
 
                 let inference_result = dsl_inference.run_chain().await?;
 
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response: inference_result.response,
                     function_call,
                 });
@@ -682,7 +682,7 @@ impl ToolRouter {
 
                 eprintln!("parsed response: {:?}", response);
 
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response,
                     function_call,
                 });

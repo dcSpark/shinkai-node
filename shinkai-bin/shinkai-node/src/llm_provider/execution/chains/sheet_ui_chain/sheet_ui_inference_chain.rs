@@ -11,7 +11,7 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
-use crate::managers::tool_router::{FunctionCallResponse, ToolRouter};
+use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
@@ -283,7 +283,7 @@ impl SheetUIInferenceChain {
                         }
                     };
 
-                    FunctionCallResponse {
+                    ToolCallFunctionResponse {
                         response,
                         function_call: function_call.clone(),
                     }
