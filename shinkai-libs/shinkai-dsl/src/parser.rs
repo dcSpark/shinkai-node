@@ -291,7 +291,7 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
     let trimmed_input = dsl_input
         .trim_start() // Remove leading spaces and newlines
         .lines()
-        .filter(|line| !line.trim_start().starts_with('#')) // Filter out comment lines
+        .filter(|line| !line.trim_start().starts_with("// ")) // Filter out comment lines
         .collect::<Vec<&str>>()
         .join("\n") // Rejoin the filtered lines
         .trim() // Trim the result again if necessary

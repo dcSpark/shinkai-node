@@ -515,15 +515,15 @@ mod tests {
     #[test]
     fn test_parse_workflow_with_comments() {
         let input = r##"
-            # This is a comment
-            # Another comment line
+            // This is a comment
+            // Another comment line
             workflow commentWorkflow v1.0 {
                 step Initialize {
                     $PROMPT = "Summarize this: "
                     $EMBEDDINGS = call process_embeddings_in_job_scope()
-                    # Inline comment
+                    // Inline comment
                     $LLM_INPUT = call generate_json_map("question", $INPUT, "documents", $FILE_PIECES)
-# Inline comment                    
+// Inline comment
                     $LLM_RESPONSE = call baml_answer_with_citations($LLM_INPUT)
                     $JINJA = "# Introduction\n{%- for sentence in answer.brief_introduction.sentences %}\n{{ sentence }}\n{%- endfor %}\n\n# Main Content\n{%- if answer.extensive_body | length > 1 %}\n{%- for part in answer.extensive_body %}\n### Part {{ loop.index }}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- else %}\n{%- for part in answer.extensive_body %}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- endif %}\n\n# Conclusion\n{%- for section in answer.conclusion %}\n{%- for sentence in section.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n\n# Citations\n{%- for citation in relevantSentencesFromText %}\n[{{ citation.citation_id }}]: {{ citation.relevantTextFromDocument }} ({{ citation.document_reference }})\n{%- endfor %}"
                     $RESULT = call shinkai__json-to-md("message", $LLM_RESPONSE, "template", $JINJA)
