@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_channel::Sender;
+use base64::Engine;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -11,13 +12,14 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::{
         APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
         APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-        APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems,
+        APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
     },
 };
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
-    embedding_generator::EmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI, vector_resource::VRPath,
+    embedding_generator::EmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI, source::SourceFile,
+    vector_resource::VRPath,
 };
 use tokio::sync::Mutex;
 
@@ -1034,6 +1036,97 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_retrieve_source_file(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        input_payload: APIVecFsRetrieveSourceFile,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let vr_path = match VRPath::from_string(&input_payload.path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let reader = match vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await
+        {
+            Ok(reader) => reader,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create reader: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let source_file_map = match vector_fs.retrieve_source_file_map(&reader).await {
+            Ok(source_file_map) => source_file_map,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve source file map: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let source_file = match source_file_map.get_source_file(VRPath::root()) {
+            Some(source_file) => source_file,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Source file not found in the source file map".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let file_content = match source_file {
+            SourceFile::Standard(file) => &file.file_content,
+            SourceFile::TLSNotarized(file) => &file.file_content,
+        };
+
+        let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
+
+        let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
         Ok(())
     }
 }
