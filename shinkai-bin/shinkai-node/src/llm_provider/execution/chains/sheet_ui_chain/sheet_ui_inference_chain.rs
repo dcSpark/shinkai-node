@@ -3,16 +3,15 @@ use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::openai_api::FunctionCallResponse;
 use crate::managers::sheet_manager::SheetManager;
-use crate::managers::tool_router::ToolRouter;
+use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
@@ -262,18 +261,12 @@ impl SheetUIInferenceChain {
                     let sheet_manager_clone = sheet_manager.clone().unwrap();
                     let sheet_id_clone = sheet_id.clone();
                     let mut args = HashMap::new();
-                    if let Some(arguments) = function_call.arguments.as_object() {
-                        for (key, value) in arguments {
-                            let mut val = value.to_string();
-                            if val.starts_with('"') && val.ends_with('"') {
-                                val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
-                            }
-                            args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
+                    for (key, value) in function_call.clone().arguments {
+                        let mut val = value.to_string();
+                        if val.starts_with('"') && val.ends_with('"') {
+                            val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
                         }
-                    } else {
-                        return Err(LLMProviderError::InvalidFunctionArguments(
-                            "Function arguments should be a JSON object".to_string(),
-                        ));
+                        args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                     }
 
                     let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
@@ -290,7 +283,7 @@ impl SheetUIInferenceChain {
                         }
                     };
 
-                    FunctionCallResponse {
+                    ToolCallFunctionResponse {
                         response,
                         function_call: function_call.clone(),
                     }

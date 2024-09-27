@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
-use crate::llm_provider::providers::shared::openai_api::FunctionCallResponse;
+use crate::managers::tool_router::ToolCallFunctionResponse;
 use serde_json::json;
 use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
@@ -22,7 +22,7 @@ impl JobPromptGenerator {
         _summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
         tools: Vec<ShinkaiTool>,
-        function_call: Option<FunctionCallResponse>,
+        function_call: Option<ToolCallFunctionResponse>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 

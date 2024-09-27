@@ -5,7 +5,6 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 use base64::decode;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
@@ -34,7 +33,7 @@ pub struct FunctionCallResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionCall {
     pub name: String,
-    pub arguments: JsonValue,
+    pub arguments: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -95,7 +94,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     // Generate the messages and filter out images
     let chat_completion_messages = prompt.generate_openai_messages(
         Some(max_input_tokens),
-        Some("tool".to_string()),
+        Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
 
@@ -115,34 +114,38 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
     let messages_vec = match messages_json {
-        serde_json::Value::Array(arr) => arr.into_iter().map(|mut message| {
-            let images = message.get("images").cloned();
-            let text = message.get("content").cloned();
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .map(|mut message| {
+                let images = message.get("images").cloned();
+                let text = message.get("content").cloned();
 
-            if let Some(serde_json::Value::Array(images_array)) = images {
-                let mut content = vec![];
-                if let Some(text) = text {
-                    content.push(serde_json::json!({"type": "text", "text": text}));
-                }
-                for image in images_array {
-                    if let serde_json::Value::String(image_str) = image {
-                        if let Some(image_type) = get_image_type(&image_str) {
-                            content.push(serde_json::json!({
-                                "type": "image_url",
-                                "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
-                            }));
+                if let Some(serde_json::Value::Array(images_array)) = images {
+                    let mut content = vec![];
+                    if let Some(text) = text {
+                        content.push(serde_json::json!({"type": "text", "text": text}));
+                    }
+                    for image in images_array {
+                        if let serde_json::Value::String(image_str) = image {
+                            if let Some(image_type) = get_image_type(&image_str) {
+                                content.push(serde_json::json!({
+                                    "type": "image_url",
+                                    "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
+                                }));
+                            }
                         }
                     }
+                    message["content"] = serde_json::json!(content);
+                    message.as_object_mut().unwrap().remove("images");
                 }
-                message["content"] = serde_json::json!(content);
-                message.as_object_mut().unwrap().remove("images");
-            }
-            message
-        }).collect(),
+                message
+            })
+            .collect(),
         _ => vec![],
     };
 
     // Flatten the tools array to extract functions directly
+    // TODO: this is to support the old functions format. We need to update it to tools
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
@@ -180,22 +183,20 @@ mod tests {
 
     #[test]
     fn test_openai_api_message_with_function_call() {
-        let json_str = r#"
-        {
+        let json_str = json!({
             "role": "assistant",
             "content": null,
-            "function_call": {
+            "function_call":{
                 "name": "concat_strings",
-                "arguments": {
+                "arguments":  json!({
                     "first_string": "hola",
                     "second_string": " chao"
-                }
+                }).to_string()
             }
-        }
-        "#;
+        }).to_string();
 
         // Deserialize the JSON string to OpenAIApiMessage
-        let message: OpenAIApiMessage = serde_json::from_str(json_str).expect("Failed to deserialize");
+        let message: OpenAIApiMessage = serde_json::from_str(&json_str).expect("Failed to deserialize");
 
         // Check the deserialized values
         assert_eq!(message.role, "assistant");
@@ -206,7 +207,7 @@ mod tests {
             assert_eq!(function_call.name, "concat_strings");
             assert_eq!(
                 function_call.arguments,
-                json!({"first_string": "hola", "second_string": " chao"})
+                json!({"first_string": "hola", "second_string": " chao"}).to_string()
             );
         }
 
@@ -226,7 +227,7 @@ mod tests {
             assert_eq!(function_call.name, "concat_strings");
             assert_eq!(
                 function_call.arguments,
-                json!({"first_string": "hola", "second_string": " chao"})
+                json!({"first_string": "hola", "second_string": " chao"}).to_string()
             );
         }
     }

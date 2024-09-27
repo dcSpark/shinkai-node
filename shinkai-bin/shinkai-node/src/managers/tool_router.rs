@@ -7,9 +7,9 @@ use std::time::Instant;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
-use crate::llm_provider::providers::shared::openai_api::{FunctionCall, FunctionCallResponse};
+use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContextTrait, FunctionCall};
 use crate::workflows::sm_executor::AsyncFunction;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_dsl::dsl_schemas::Workflow;
@@ -41,6 +41,12 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 #[derive(Clone)]
 pub struct ToolRouter {
     pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ToolCallFunctionResponse {
+    pub response: String,
+    pub function_call: FunctionCall,
 }
 
 impl ToolRouter {
@@ -419,7 +425,7 @@ impl ToolRouter {
         function_call: FunctionCall,
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
-    ) -> Result<FunctionCallResponse, LLMProviderError> {
+    ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
         let function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
@@ -435,7 +441,7 @@ impl ToolRouter {
                             LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
                         })?
                         .clone();
-                    return Ok(FunctionCallResponse {
+                    return Ok(ToolCallFunctionResponse {
                         response: result_str,
                         function_call,
                     });
@@ -448,7 +454,7 @@ impl ToolRouter {
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response: result_str,
                     function_call,
                 });
@@ -478,7 +484,7 @@ impl ToolRouter {
 
                 let inference_result = dsl_inference.run_chain().await?;
 
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response: inference_result.response,
                     function_call,
                 });
@@ -645,7 +651,7 @@ impl ToolRouter {
 
                 eprintln!("parsed response: {:?}", response);
 
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response,
                     function_call,
                 });
@@ -657,7 +663,7 @@ impl ToolRouter {
 
     /// This function is used to call a JS function directly
     /// It's very handy for agent-to-agent communication
-    pub async fn call_js_function(&self, function_args: Value, js_tool_name: &str) -> Result<String, LLMProviderError> {
+    pub async fn call_js_function(&self, function_args: serde_json::Map<String, Value>, js_tool_name: &str) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
 
         if shinkai_tool.is_none() {

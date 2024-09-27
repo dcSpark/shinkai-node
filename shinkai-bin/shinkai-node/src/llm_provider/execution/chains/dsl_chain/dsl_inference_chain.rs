@@ -1,11 +1,8 @@
 use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
 
 use crate::{
-    llm_provider::{
-        execution::{
-            chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
-        },
-        providers::shared::openai_api::FunctionCall,
+    llm_provider::execution::{
+        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
@@ -432,7 +429,6 @@ impl AsyncFunction for BamlInference {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
 
-
         // TODO: connect them
         // let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
         // let custom_user_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
@@ -638,16 +634,11 @@ impl AsyncFunction for ShinkaiToolFunction {
             params.insert(arg.name.clone(), serde_json::Value::String(value.clone()));
         }
 
-        let function_call = FunctionCall {
-            name: self.tool.name(),
-            arguments: serde_json::Value::Object(params),
-        };
-
         let result = match &self.tool {
             ShinkaiTool::JS(js_tool, _) => {
                 let function_config = self.tool.get_config_from_env();
                 let result = js_tool
-                    .run(function_call.arguments, function_config)
+                    .run(params, function_config)
                     .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
                 let data = &result.data;
 
