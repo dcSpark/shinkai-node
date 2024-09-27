@@ -26,9 +26,7 @@ pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
 
 pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
     match pair.as_rule() {
-        Rule::action => {
-            StepBody::Action(parse_action(pair))
-        }
+        Rule::action => StepBody::Action(parse_action(pair)),
         Rule::condition => {
             let mut inner_pairs = pair.into_inner();
             let expression = parse_expression(inner_pairs.next().expect("Expected expression in condition"));
@@ -49,10 +47,12 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
                 Rule::split_expression => {
                     let mut split_inner_pairs = in_expr_pair.into_inner();
                     let source = parse_param(split_inner_pairs.next().expect("Expected source in split expression"));
-                    
-                    let delimiter_pair = split_inner_pairs.next().expect("Expected delimiter in split expression");
+
+                    let delimiter_pair = split_inner_pairs
+                        .next()
+                        .expect("Expected delimiter in split expression");
                     let delimiter = delimiter_pair.as_str().trim_matches('"').to_string();
-                    
+
                     ForLoopExpression::Split { source, delimiter }
                 }
                 Rule::range_expression => ForLoopExpression::Range {
@@ -288,8 +288,15 @@ pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue 
 }
 
 pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
-    let trimmed_input = dsl_input.trim_start(); // Remove leading spaces and newlines
-    let pairs = WorkflowParser::parse(Rule::workflow, trimmed_input).map_err(|e| e.to_string())?;
+    let trimmed_input = dsl_input
+        .trim_start() // Remove leading spaces and newlines
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#')) // Filter out comment lines
+        .collect::<Vec<&str>>()
+        .join("\n") // Rejoin the filtered lines
+        .trim() // Trim the result again if necessary
+        .to_string();
+    let pairs = WorkflowParser::parse(Rule::workflow, trimmed_input.as_str()).map_err(|e| e.to_string())?;
 
     let mut workflow_name = String::new();
     let mut version = String::new();

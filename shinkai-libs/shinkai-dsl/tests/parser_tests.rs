@@ -506,6 +506,48 @@ mod tests {
         let workflow = result.unwrap();
 
         let function_names = workflow.extract_function_names();
-        assert_eq!(function_names, vec!["process_embeddings_in_job_scope", "shinkai__weather_by_city"]);
+        assert_eq!(
+            function_names,
+            vec!["process_embeddings_in_job_scope", "shinkai__weather_by_city"]
+        );
+    }
+
+    #[test]
+    fn test_parse_workflow_with_comments() {
+        let input = r##"
+            # This is a comment
+            # Another comment line
+            workflow commentWorkflow v1.0 {
+                step Initialize {
+                    $PROMPT = "Summarize this: "
+                    $EMBEDDINGS = call process_embeddings_in_job_scope()
+                    # Inline comment
+                    $LLM_INPUT = call generate_json_map("question", $INPUT, "documents", $FILE_PIECES)
+# Inline comment                    
+                    $LLM_RESPONSE = call baml_answer_with_citations($LLM_INPUT)
+                    $JINJA = "# Introduction\n{%- for sentence in answer.brief_introduction.sentences %}\n{{ sentence }}\n{%- endfor %}\n\n# Main Content\n{%- if answer.extensive_body | length > 1 %}\n{%- for part in answer.extensive_body %}\n### Part {{ loop.index }}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- else %}\n{%- for part in answer.extensive_body %}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- endif %}\n\n# Conclusion\n{%- for section in answer.conclusion %}\n{%- for sentence in section.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n\n# Citations\n{%- for citation in relevantSentencesFromText %}\n[{{ citation.citation_id }}]: {{ citation.relevantTextFromDocument }} ({{ citation.document_reference }})\n{%- endfor %}"
+                    $RESULT = call shinkai__json-to-md("message", $LLM_RESPONSE, "template", $JINJA)
+                }
+            } @@official.shinkai
+        "##;
+        let result = parse_workflow(input);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+        assert_eq!(workflow.name, "commentWorkflow");
+        assert_eq!(workflow.version, "v1.0");
+        assert_eq!(workflow.steps.len(), 1);
+
+        let step = &workflow.steps[0];
+        assert_eq!(step.name, "Initialize");
+        let function_names = workflow.extract_function_names();
+        assert_eq!(
+            function_names,
+            vec![
+                "process_embeddings_in_job_scope",
+                "generate_json_map",
+                "baml_answer_with_citations",
+                "shinkai__json-to-md"
+            ]
+        );
     }
 }
