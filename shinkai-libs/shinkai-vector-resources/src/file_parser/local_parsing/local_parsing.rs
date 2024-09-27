@@ -42,7 +42,6 @@ impl LocalFileParser {
                         #[cfg(feature = "desktop-only")]
                         DocumentFileType::Md => LocalFileParser::process_md_file(file_buffer, max_node_text_size),
 
-                        #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
                         DocumentFileType::Pdf => LocalFileParser::process_pdf_file(file_buffer, max_node_text_size),
 
                         _ => Err(VRError::UnsupportedFileType(file_name.to_string())),

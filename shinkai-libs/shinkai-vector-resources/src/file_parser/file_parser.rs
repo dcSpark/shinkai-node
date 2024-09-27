@@ -23,7 +23,6 @@ pub enum FileParser {
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
-    #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
     pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
         use shinkai_ocr::image_parser::ImageParser;
 

@@ -229,7 +229,6 @@ pub async fn initialize_node() -> Result<
         }
     });
 
-    #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
     tokio::spawn(async {
         use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 
