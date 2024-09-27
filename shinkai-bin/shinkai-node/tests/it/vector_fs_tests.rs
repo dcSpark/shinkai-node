@@ -3,6 +3,7 @@ use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit};
 use chrono::{TimeZone, Utc};
 use mockito::Server;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider,
 };
@@ -19,14 +20,12 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_vector_fs::vector_fs;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, SourceFileType};
@@ -88,8 +87,6 @@ pub async fn get_shinkai_intro_doc_async(
     let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("../../files/{}", source_file_name)).map_err(|_| VRError::FailedPDFParsing)?;
 
-    let unstructured = UnstructuredAPI::new_default();
-
     let desc = "An initial introduction to the Shinkai Network.";
     let resource = ShinkaiFileParser::process_file_into_resource(
         buffer.clone(),
@@ -99,7 +96,6 @@ pub async fn get_shinkai_intro_doc_async(
         data_tags,
         500,
         DistributionInfo::new_empty(),
-        FileParser::Unstructured(unstructured),
     )
     .await
     .unwrap();
@@ -1479,9 +1475,6 @@ fn vector_search_multiple_embedding_models_test() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
             }
             {
-                let db_strong = node1_db_weak.upgrade().unwrap();
-                db_strong.update_local_processing_preference(true).unwrap();
-
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
                     path: "/".to_string(),

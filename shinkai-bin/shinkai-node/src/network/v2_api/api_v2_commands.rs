@@ -4,7 +4,11 @@ use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
-use shinkai_http_api::{api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}};
+use shinkai_http_api::{
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
+    node_api_router::{APIError, GetPublicKeysResponse},
+};
 use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},
@@ -34,15 +38,11 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{
-        node_error::NodeError,
-        Node,
-    },
+    network::{node_error::NodeError, Node},
     utils::update_global_identity::update_global_identity_name,
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-
 
 impl Node {
     pub async fn validate_bearer_token<T>(
@@ -257,65 +257,6 @@ impl Node {
                 let _ = res.send(Err(error)).await;
             }
         }
-    }
-
-    pub async fn v2_api_get_local_processing_preference(
-        db: Arc<ShinkaiDB>,
-        bearer: String,
-        res: Sender<Result<bool, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Get the local processing preference
-        match db.get_local_processing_preference() {
-            Ok(preference) => {
-                let _ = res.send(Ok(preference)).await;
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to get local processing preference: {}", err),
-                    }))
-                    .await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn v2_api_update_local_processing_preference(
-        db: Arc<ShinkaiDB>,
-        bearer: String,
-        preference: bool,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Update the local processing preference
-        match db.update_local_processing_preference(preference) {
-            Ok(_) => {
-                let _ = res.send(Ok("Preference updated successfully".to_string())).await;
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to update local processing preference: {}", err),
-                    }))
-                    .await;
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn v2_api_get_default_embedding_model(

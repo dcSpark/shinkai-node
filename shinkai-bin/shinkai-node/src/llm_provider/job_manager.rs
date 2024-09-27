@@ -3,10 +3,10 @@ use super::job_callback_manager::JobCallbackManager;
 use super::llm_stopper::LLMStopper;
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
+use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::managers::tool_router::ToolRouter;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
@@ -26,7 +26,6 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;
 use std::env;
 use std::pin::Pin;
@@ -64,8 +63,6 @@ pub struct JobManager {
     pub vector_fs: Weak<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
-    /// Unstructured server connection
-    pub unstructured_api: UnstructuredAPI,
     // Websocket manager for sending updates to the frontend
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     // Tool router for managing installed tools
@@ -89,7 +86,6 @@ impl JobManager {
         node_profile_name: ShinkaiName,
         vector_fs: Weak<VectorFS>,
         embedding_generator: RemoteEmbeddingGenerator,
-        unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
@@ -143,7 +139,6 @@ impl JobManager {
             thread_number,
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
-            unstructured_api.clone(),
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),
@@ -157,7 +152,6 @@ impl JobManager {
              node_profile_name,
              identity_sk,
              generator,
-             unstructured_api,
              ws_manager,
              tool_router,
              sheet_manager,
@@ -173,7 +167,6 @@ impl JobManager {
                     node_profile_name,
                     identity_sk,
                     generator,
-                    unstructured_api,
                     ws_manager,
                     tool_router,
                     sheet_manager,
@@ -198,7 +191,6 @@ impl JobManager {
             job_processing_task: Some(job_queue_handler),
             vector_fs,
             embedding_generator,
-            unstructured_api,
             ws_manager,
             tool_router,
             sheet_manager,
@@ -217,7 +209,6 @@ impl JobManager {
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
-        unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
@@ -232,7 +223,6 @@ impl JobManager {
                 ShinkaiName,
                 SigningKey,
                 RemoteEmbeddingGenerator,
-                UnstructuredAPI,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
                 Option<Arc<ToolRouter>>,
                 Arc<Mutex<SheetManager>>,
@@ -255,14 +245,14 @@ impl JobManager {
         let llm_stopper = Arc::clone(&llm_stopper);
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
-    
+
         tokio::spawn(async move {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Info,
                 "Starting job queue processing loop",
             );
-    
+
             loop {
                 // Fetch jobs to process
                 let job_ids_to_process: Vec<String> = {
@@ -273,7 +263,7 @@ impl JobManager {
                         Err(_) => Vec::new(),
                     };
                     std::mem::drop(job_queue_manager_lock);
-    
+
                     all_jobs
                         .into_iter()
                         .filter_map(|job| {
@@ -288,7 +278,7 @@ impl JobManager {
                         .take(max_parallel_jobs)
                         .collect::<Vec<_>>()
                 };
-    
+
                 if job_ids_to_process.is_empty() {
                     // No jobs to process, wait for new jobs
                     if let Some(new_job) = receiver.recv().await {
@@ -313,7 +303,6 @@ impl JobManager {
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_processing_fn = Arc::clone(&job_processing_fn);
                         let cloned_generator = generator.clone();
-                        let cloned_unstructured_api = unstructured_api.clone();
                         let node_profile_name = node_profile_name.clone();
                         let ws_manager = ws_manager.clone();
                         let tool_router = tool_router.clone();
@@ -322,16 +311,16 @@ impl JobManager {
                         let my_agent_payments_manager = my_agent_payments_manager.clone();
                         let ext_agent_payments_manager = ext_agent_payments_manager.clone();
                         let llm_stopper = Arc::clone(&llm_stopper);
-    
+
                         tokio::spawn(async move {
                             let _permit = semaphore.acquire().await.unwrap();
-    
+
                             // Acquire the lock, dequeue the job, and immediately release the lock
                             let job = {
                                 let job_queue_manager = job_queue_manager.lock().await;
                                 job_queue_manager.peek(&job_id).await
                             };
-    
+
                             match job {
                                 Ok(Some(job)) => {
                                     // Acquire the lock, process the job, and immediately release the lock
@@ -343,7 +332,6 @@ impl JobManager {
                                             node_profile_name,
                                             identity_sk_clone,
                                             cloned_generator,
-                                            cloned_unstructured_api,
                                             ws_manager,
                                             tool_router,
                                             sheet_manager,
@@ -360,7 +348,7 @@ impl JobManager {
                                             Err(LLMProviderError::JobDequeueFailed(job_id.clone()))
                                         }
                                     };
-    
+
                                     if result.is_ok() {
                                         shinkai_log(
                                             ShinkaiLogOption::JobExecution,
@@ -398,7 +386,7 @@ impl JobManager {
                     }
                 }
             }
-    
+
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Info,

@@ -17,10 +17,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{
-    embedding_generator::EmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI, source::SourceFile,
-    vector_resource::VRPath,
-};
+use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, source::SourceFile, vector_resource::VRPath};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -151,7 +148,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        unstructured_api: Arc<UnstructuredAPI>,
         external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         res: Sender<Result<Vec<Value>, APIError>>,
@@ -180,7 +176,6 @@ impl Node {
             input_payload,
             requester_name,
             embedding_generator,
-            unstructured_api,
             external_subscriber_manager,
             res,
         )
@@ -911,7 +906,6 @@ impl Node {
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        unstructured_api: Arc<UnstructuredAPI>,
         external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         filename: String,
@@ -990,7 +984,6 @@ impl Node {
             identity_manager,
             input_payload,
             embedding_generator,
-            unstructured_api,
             external_subscriber_manager,
             bearer,
             convert_res_sender,

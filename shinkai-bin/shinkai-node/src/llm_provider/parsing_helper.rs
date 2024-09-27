@@ -5,7 +5,7 @@ use super::llm_stopper::LLMStopper;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
@@ -28,13 +28,21 @@ impl ParsingHelper {
         let mut extracted_answer: Option<String> = None;
         let llm_stopper = Arc::new(LLMStopper::new());
         for _ in 0..5 {
-            let response_json =
-                match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), None, None, None, llm_stopper.clone()).await {
-                    Ok(json) => json,
-                    Err(_e) => {
-                        continue; // Continue to the next iteration on error
-                    }
-                };
+            let response_json = match JobManager::inference_with_llm_provider(
+                agent.clone(),
+                prompt.clone(),
+                None,
+                None,
+                None,
+                llm_stopper.clone(),
+            )
+            .await
+            {
+                Ok(json) => json,
+                Err(_e) => {
+                    continue; // Continue to the next iteration on error
+                }
+            };
             extracted_answer = Some(response_json.response_string);
             break; // Exit the loop if successful
         }
@@ -56,7 +64,7 @@ impl ParsingHelper {
         }
     }
 
-    ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
+    ///  Processes the file buffer through our hierarchical structuring algo,
     ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
     ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
     /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
@@ -68,7 +76,6 @@ impl ParsingHelper {
         parsing_tags: &Vec<DataTag>,
         agent: Option<SerializedLLMProvider>,
         max_node_text_size: u64,
-        file_parser: FileParser,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, LLMProviderError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
@@ -78,7 +85,6 @@ impl ParsingHelper {
             file_name,
             max_node_text_size,
             source.clone(),
-            file_parser,
         )
         .await?;
 
@@ -115,7 +121,6 @@ impl ParsingHelper {
         files: Vec<(String, Vec<u8>, DistributionInfo)>,
         generator: &dyn EmbeddingGenerator,
         agent: Option<SerializedLLMProvider>,
-        file_parser: FileParser,
     ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
         #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (
@@ -154,7 +159,6 @@ impl ParsingHelper {
                 &vec![],
                 agent.clone(),
                 (generator.model_type().max_input_token_count() - 20) as u64,
-                file_parser.clone(),
                 file.2.clone(),
             )
             .await?;

@@ -91,10 +91,6 @@ fn subscription_http_upload() {
                 .await;
             }
             {
-                // Use Unstructrued for PDF parsing until the local one is integrated
-                let db_strong = node1_db_weak.upgrade().unwrap();
-                db_strong.update_local_processing_preference(false).unwrap();
-
                 // Create folder /shared_test_folder
                 testing_framework.create_folder("/", "shinkai_sharing").await;
                 testing_framework

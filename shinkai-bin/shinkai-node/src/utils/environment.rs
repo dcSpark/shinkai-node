@@ -20,8 +20,6 @@ pub struct NodeEnvironment {
     pub first_device_needs_registration_code: bool,
     pub no_secrets_file: bool,
     pub node_storage_path: Option<String>,
-    pub unstructured_server_url: Option<String>,
-    pub unstructured_server_api_key: Option<String>,
     pub embeddings_server_url: Option<String>,
     pub embeddings_server_api_key: Option<String>,
     pub auto_detect_local_llms: bool,
@@ -159,8 +157,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .expect("Failed to parse AUTO_DETECT_LOCAL_LLMS");
 
     // External server env vars
-    let unstructured_server_url: Option<String> = env::var("UNSTRUCTURED_SERVER_URL").ok();
-    let unstructured_server_api_key: Option<String> = env::var("UNSTRUCTURED_SERVER_API_KEY").ok();
     let embeddings_server_url: Option<String> = env::var("EMBEDDINGS_SERVER_URL").ok();
     let embeddings_server_api_key: Option<String> = env::var("EMBEDDINGS_SERVER_API_KEY").ok();
 
@@ -209,14 +205,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         first_device_needs_registration_code,
         no_secrets_file,
         node_storage_path,
-        unstructured_server_url,
-        unstructured_server_api_key,
         embeddings_server_url,
         embeddings_server_api_key,
         auto_detect_local_llms,
         proxy_identity,
         default_embedding_model,
         supported_embedding_models,
-        api_v2_key
+        api_v2_key,
     }
 }

@@ -37,19 +37,6 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(initial_registration_handler);
 
-    let get_local_processing_preference_route = warp::path("local_processing_preference")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and_then(get_local_processing_preference_handler);
-
-    let update_local_processing_preference_route = warp::path("local_processing_preference")
-        .and(warp::post())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::body::json())
-        .and_then(update_local_processing_preference_handler);
-
     let get_default_embedding_model_route = warp::path("default_embedding_model")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -148,8 +135,6 @@ pub fn general_routes(
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
-        .or(get_local_processing_preference_route)
-        .or(update_local_processing_preference_route)
         .or(get_default_embedding_model_route)
         .or(get_supported_embedding_models_route)
         .or(update_default_embedding_model_route)
@@ -328,69 +313,6 @@ pub async fn initial_registration_handler(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/v2/local_processing_preference",
-    responses(
-        (status = 200, description = "Successfully retrieved local processing preference", body = bool),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn get_local_processing_preference_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiGetLocalProcessingPreference {
-            bearer,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
-        Err(error) => Err(warp::reject::custom(error)),
-    }
-}
-
-#[utoipa::path(
-    post,
-    path = "/v2/local_processing_preference",
-    request_body = bool,
-    responses(
-        (status = 200, description = "Successfully updated local processing preference", body = String),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn update_local_processing_preference_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    preference: bool,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiUpdateLocalProcessingPreference {
-            bearer,
-            preference,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
-        Err(error) => Err(warp::reject::custom(error)),
     }
 }
 
@@ -791,8 +713,6 @@ pub async fn stop_llm_handler(
         get_public_keys,
         health_check,
         initial_registration_handler,
-        get_local_processing_preference_handler,
-        update_local_processing_preference_handler,
         get_default_embedding_model_handler,
         get_supported_embedding_models_handler,
         update_default_embedding_model_handler,

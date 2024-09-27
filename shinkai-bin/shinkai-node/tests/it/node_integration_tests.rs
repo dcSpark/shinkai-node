@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use core::panic;
+use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -102,7 +102,6 @@ fn subidentity_registration() {
             node1_fs_db_path,
             None,
             None,
-            None,
             default_embedding_model(),
             supported_embedding_models(),
             None,
@@ -123,7 +122,6 @@ fn subidentity_registration() {
             true,
             vec![],
             node2_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),

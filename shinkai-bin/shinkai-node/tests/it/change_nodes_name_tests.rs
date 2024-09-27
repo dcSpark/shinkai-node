@@ -24,7 +24,6 @@ fn setup() {
 
 #[test]
 fn change_nodes_name_test() {
-    
     setup();
 
     let rt = Runtime::new().unwrap();
@@ -64,7 +63,6 @@ fn change_nodes_name_test() {
             true,
             vec![],
             node1_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),
@@ -127,7 +125,6 @@ fn change_nodes_name_test() {
         });
 
         let _result = tokio::try_join!(node1_handler, interactions_handler);
-        
     });
     rt.shutdown_background();
 
@@ -161,7 +158,6 @@ fn change_nodes_name_test() {
             node1_fs_db_path,
             None,
             None,
-            None,
             default_embedding_model(),
             supported_embedding_models(),
             None,
@@ -187,7 +183,7 @@ fn change_nodes_name_test() {
                 assert!(!resp);
             }
             {
-                let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);                
+                let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::GetNodeName {
                         res: res_message_job_sender,

@@ -1,7 +1,6 @@
 use super::file_parser_types::TextGroup;
 use super::local_parsing::LocalFileParser;
 #[cfg(feature = "desktop-only")]
-use super::unstructured_api::UnstructuredAPI;
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
@@ -12,13 +11,6 @@ use crate::source::VRSourceReference;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResourceCore};
 #[cfg(feature = "desktop-only")]
 use std::{future::Future, pin::Pin};
-
-#[cfg(feature = "desktop-only")]
-#[derive(Clone)]
-pub enum FileParser {
-    Local,
-    Unstructured(UnstructuredAPI),
-}
 
 pub struct ShinkaiFileParser;
 
@@ -39,18 +31,11 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
-        file_parser: FileParser,
     ) -> Result<BaseVectorResource, VRError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-        let text_groups = Self::process_file_into_text_groups(
-            file_buffer,
-            file_name,
-            max_node_text_size,
-            source.clone(),
-            file_parser,
-        )
-        .await?;
+        let text_groups =
+            Self::process_file_into_text_groups(file_buffer, file_name, max_node_text_size, source.clone()).await?;
 
         ShinkaiFileParser::process_groups_into_resource(
             text_groups,
@@ -75,7 +60,6 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
-        file_parser: FileParser,
     ) -> Result<BaseVectorResource, VRError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -84,7 +68,6 @@ impl ShinkaiFileParser {
             file_name,
             max_node_text_size,
             source.clone(),
-            file_parser,
         )?;
 
         // Here, we switch to the blocking variant of `process_groups_into_resource`.
@@ -107,18 +90,8 @@ impl ShinkaiFileParser {
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
-        file_parser: FileParser,
     ) -> Result<Vec<TextGroup>, VRError> {
-        match file_parser {
-            FileParser::Local => {
-                LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
-            }
-            FileParser::Unstructured(unstructured_api) => {
-                unstructured_api
-                    .process_file_into_grouped_text(file_buffer, file_name, max_node_text_size)
-                    .await
-            }
-        }
+        LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
     }
 
     #[cfg(feature = "desktop-only")]
@@ -128,16 +101,8 @@ impl ShinkaiFileParser {
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
-        file_parser: FileParser,
     ) -> Result<Vec<TextGroup>, VRError> {
-        match file_parser {
-            FileParser::Local => {
-                LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
-            }
-            FileParser::Unstructured(unstructured_api) => {
-                unstructured_api.process_file_into_grouped_text_blocking(file_buffer, file_name, max_node_text_size)
-            }
-        }
+        LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
     }
 
     #[cfg(feature = "desktop-only")]

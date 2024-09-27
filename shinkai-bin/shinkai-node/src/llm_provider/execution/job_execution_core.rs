@@ -11,14 +11,14 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, WSTopic};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -30,8 +30,6 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::file_parser::file_parser::FileParser;
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::result::Result::Ok;
@@ -54,7 +52,6 @@ impl JobManager {
         node_profile_name: ShinkaiName,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
-        unstructured_api: UnstructuredAPI,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
@@ -119,7 +116,6 @@ impl JobManager {
             user_profile.clone(),
             None,
             generator.clone(),
-            unstructured_api.clone(),
         )
         .await;
         if let Err(e) = process_files_result {
@@ -754,7 +750,6 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
-        unstructured_api: UnstructuredAPI,
     ) -> Result<(), LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -793,7 +788,6 @@ impl JobManager {
                 profile,
                 save_to_vector_fs_folder,
                 generator,
-                unstructured_api,
             )
             .await;
 
@@ -928,7 +922,6 @@ impl JobManager {
         _profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
-        unstructured_api: UnstructuredAPI,
     ) -> Result<HashMap<String, ScopeEntry>, LLMProviderError> {
         // Create the RemoteEmbeddingGenerator instance
         let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
@@ -969,13 +962,7 @@ impl JobManager {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
-        let file_parser = match db.get_local_processing_preference()? {
-            true => FileParser::Local,
-            false => FileParser::Unstructured(unstructured_api),
-        };
-
-        let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), file_parser).await?;
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone()).await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

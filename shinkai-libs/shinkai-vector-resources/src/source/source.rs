@@ -15,7 +15,7 @@ use std::str::FromStr;
 /// TODO: Think about how to make this more explicit/specific and future support
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TextChunkingStrategy {
-    /// The default text chunking strategy implemented in VR lib using Unstructured.
+    /// The default text chunking strategy implemented in VR lib using local parsing.
     V1,
 }
 

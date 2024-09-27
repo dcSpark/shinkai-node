@@ -15,7 +15,6 @@ export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="http://localhost:9081/"
-export UNSTRUCTURED_SERVER_URL="http://localhost:8000/"
 export PROXY_IDENTITY="@@relayer_pub_01.arb-sep-shinkai"
 
 export INITIAL_AGENT_NAMES="o_mixtral"

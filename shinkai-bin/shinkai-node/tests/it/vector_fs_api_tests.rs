@@ -190,10 +190,6 @@ fn vector_fs_api_tests() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
-                // Use Unstructrued for PDF parsing until the local one is integrated
-                let db_strong = node1_db_weak.upgrade().unwrap();
-                db_strong.update_local_processing_preference(false).unwrap();
-
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
                     path: "/".to_string(),

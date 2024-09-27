@@ -3,9 +3,7 @@ use std::{env, fs, path::Path, sync::Arc};
 use crate::{
     llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
-    network::{
-        network_manager::external_subscriber_manager::ExternalSubscriberManager, node_error::NodeError, Node
-    },
+    network::{network_manager::external_subscriber_manager::ExternalSubscriberManager, node_error::NodeError, Node},
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -29,7 +27,6 @@ use shinkai_subscription_manager::subscription_manager::shared_folder_info::Shar
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
-    file_parser::{file_parser::FileParser, unstructured_api::UnstructuredAPI},
     source::DistributionInfo,
     vector_resource::{VRPack, VRPath},
 };
@@ -1086,7 +1083,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        unstructured_api: Arc<UnstructuredAPI>,
         external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<Value>, APIError>>,
@@ -1113,7 +1109,6 @@ impl Node {
             input_payload,
             requester_name,
             embedding_generator,
-            unstructured_api,
             external_subscriber_manager,
             res,
         )
@@ -1127,7 +1122,6 @@ impl Node {
         input_payload: APIConvertFilesAndSaveToFolder,
         requester_name: ShinkaiName,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        unstructured_api: Arc<UnstructuredAPI>,
         external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1173,14 +1167,8 @@ impl Node {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
-        let file_parser = match db.get_local_processing_preference()? {
-            true => FileParser::Local,
-            false => FileParser::Unstructured((*unstructured_api).clone()),
-        };
-
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None, file_parser).await?;
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None).await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();

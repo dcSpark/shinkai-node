@@ -8,7 +8,7 @@ A Vector Resource is made up of a hierarchy of nodes, where each node can either
 
 By default the library includes both async & blocking interfaces for parsing files into Vector Resources automatically (with hierarchy/embeddings auto-generated + batched). This ingestion is non-wasm compatible, and is included as a default feature called `desktop-only`.
 
-Past ingestion & generation of the Vector Resources themselves (which requires sending requests to Unstructured + Embedding Generation Server), all other parts of the library are pure Rust and are wasm compatible. As such, you can generate Vector Resources in non-wasm code and simply serialize/send them into the wasm side, to then use them freely with no issues.
+Past ingestion & generation of the Vector Resources themselves (which requires sending requests to Embedding Generation Server), all other parts of the library are pure Rust and are wasm compatible. As such, you can generate Vector Resources in non-wasm code and simply serialize/send them into the wasm side, to then use them freely with no issues.
 
 To disable `desktop-only` & support wasm, simply import as such:
 
@@ -24,7 +24,7 @@ shinkai_vector_resources = { path = "../shinkai-vector-resources" }
 
 ## How To Use Vector Resources
 
-Reference `unstructured_tests.rs` to see the examples of the basic flow of:
+Reference `vector_resource_tests.rs` to see the examples of the basic flow of:
 
 1. Ingesting a source document (pdf/txt/epub/...) into a Vector Resource
 2. Generating a query
@@ -43,7 +43,7 @@ Reference `vector_resource_tests.rs` to see examples of how to use advanced capa
 
 ### Running Tests
 
-Of note, the unstructured tests read files which are held outside of this crate in the actual repo. In other words, they will fail if testing the crate alone.
+Of note, the tests read files which are held outside of this crate in the actual repo. In other words, they will fail if testing the crate alone.
 
 As such, if outside of the repo run:
 
