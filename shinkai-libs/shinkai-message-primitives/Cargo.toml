@@ -27,6 +27,7 @@ aes-gcm = "0.10.3"
 blake3 = "1.2.0"
 rust_decimal = "1.17.0"
 base64 = "0.22.0"
+utoipa = "4.2.3"
 
 [dependencies.tracing]
 version = "0.1.40"

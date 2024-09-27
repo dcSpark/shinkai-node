@@ -625,6 +625,32 @@ pub async fn get_sheet_handler(
     .await
 }
 
+pub async fn import_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIImportSheet {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+pub async fn export_sheet_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIExportSheet {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
 pub async fn get_workflow_info_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

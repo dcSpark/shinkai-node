@@ -84,6 +84,7 @@ downcast-rs = "1.2.1"
 bip32 = "0.5.2"
 bigdecimal = "0.2.2"
 rust_decimal = "1.17.0"
+umya-spreadsheet = "2.0.2"
 
 [dependencies.serde]
 version = "1.0.188"

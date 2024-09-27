@@ -2,9 +2,11 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, FunctionCall, MessageContent, OpenAIResponse};
+use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::execution::chains::inference_chain_trait::{
+    LLMInferenceResponse, FunctionCall,
+};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
@@ -198,10 +200,18 @@ async fn handle_streaming_response(
                                         response_text.push_str(content.as_str().unwrap_or(""));
                                     }
                                     if let Some(fc) = message.get("function_call") {
-                                        if let (Some(name), Some(arguments)) = (fc.get("name"), fc.get("arguments")) {
+                                        if let Some(name) = fc.get("name") {
+                                            let fc_arguments = fc
+                                                .get("arguments")
+                                                .and_then(|args| args.as_str())
+                                                .and_then(|args_str| serde_json::from_str(args_str).ok())
+                                                .and_then(|args_value: serde_json::Value| {
+                                                    args_value.as_object().cloned()
+                                                })
+                                                .unwrap_or_else(|| serde_json::Map::new());
                                             function_call = Some(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
-                                                arguments: arguments.clone(),
+                                                arguments: fc_arguments.clone(),
                                             });
                                         }
                                     }
@@ -339,15 +349,17 @@ async fn handle_non_streaming_response(
                             .collect::<Vec<String>>()
                             .join(" ");
 
-                        let function_call = data.choices.iter().find_map(|choice| {
-                            if let Some(mut fc) = choice.message.function_call.clone() {
-                                if let Some(args_str) = fc.arguments.as_str() {
-                                    fc.arguments = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
+                            choice.message.function_call.clone().map(|fc| {
+                                let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
+                                    .ok()
+                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                    .unwrap_or_else(|| serde_json::Map::new());
+                                FunctionCall {
+                                    name: fc.name,
+                                    arguments,
                                 }
-                                Some(fc)
-                            } else {
-                                None
-                            }
+                            })
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);

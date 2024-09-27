@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
@@ -168,10 +168,18 @@ impl LLMService for ShinkaiBackend {
                                 .collect::<Vec<String>>()
                                 .join(" ");
 
-                            let function_call = data
-                                .choices
-                                .iter()
-                                .find_map(|choice| choice.message.function_call.clone());
+                            let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
+                                choice.message.function_call.clone().map(|fc| {
+                                    let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
+                                        .ok()
+                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                        .unwrap_or_else(|| serde_json::Map::new());
+                                    FunctionCall {
+                                        name: fc.name,
+                                        arguments,
+                                    }
+                                })
+                            });
                             Ok(LLMInferenceResponse::new(
                                 response_string,
                                 json!({}),
@@ -190,10 +198,18 @@ impl LLMService for ShinkaiBackend {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            let function_call = data
-                                .choices
-                                .iter()
-                                .find_map(|choice| choice.message.function_call.clone());
+                            let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
+                                choice.message.function_call.clone().map(|fc| {
+                                    let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
+                                        .ok()
+                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                        .unwrap_or_else(|| serde_json::Map::new());
+                                    FunctionCall {
+                                        name: fc.name,
+                                        arguments,
+                                    }
+                                })
+                            });
                             Ok(LLMInferenceResponse::new(
                                 response_string,
                                 json!({}),
