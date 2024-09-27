@@ -483,30 +483,30 @@ impl JobManager {
             .await?;
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
-        // // Send WS done message
-        // if let Some(ws_manager) = ws_manager {
-        //     let ws_manager = ws_manager.lock().await;
+        // Send WS done message
+        if let Some(ws_manager) = ws_manager {
+            let ws_manager = ws_manager.lock().await;
 
-        //     let metadata = WSMetadata {
-        //         id: Some(job_message.job_id.clone()),
-        //         is_done: true,
-        //         done_reason: Some("Job completed".to_string()),
-        //         total_duration: None,
-        //         eval_count: None,
-        //     };
+            let metadata = WSMetadata {
+                id: Some(job_message.job_id.clone()),
+                is_done: true,
+                done_reason: Some("finished".to_string()),
+                total_duration: None,
+                eval_count: None,
+            };
 
-        //     let ws_message_type = WSMessageType::Metadata(metadata);
+            let ws_message_type = WSMessageType::Metadata(metadata);
 
-        //     let _ = ws_manager
-        //         .queue_message(
-        //             WSTopic::Inbox,
-        //             job_message.job_id.clone(),
-        //             response.to_string(),
-        //             ws_message_type,
-        //             true,
-        //         )
-        //         .await;
-        // }
+            let _ = ws_manager
+                .queue_message(
+                    WSTopic::Inbox,
+                    job_message.job_id.clone(),
+                    response.to_string(),
+                    ws_message_type,
+                    true,
+                )
+                .await;
+        }
 
         Ok(true)
     }
