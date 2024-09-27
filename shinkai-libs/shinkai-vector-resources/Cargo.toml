@@ -26,14 +26,14 @@ base64 = "0.22.0"
 futures = "0.3.30"
 urlencoding = "1.1.1"
 docx-rust = "0.1.8"
-shinkai_ocr = { path = "../shinkai-ocr" }
+shinkai_ocr = { path = "../shinkai-ocr", optional = true }
 
 [build-dependencies]
 reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
 
 [features]
 default = ["desktop-only"]
-desktop-only = ["reqwest/blocking", "comrak"]
+desktop-only = ["reqwest/blocking", "comrak", "shinkai_ocr"]
 static-pdf-parser = ["shinkai_ocr/static"]
 
 wasm-http = []
