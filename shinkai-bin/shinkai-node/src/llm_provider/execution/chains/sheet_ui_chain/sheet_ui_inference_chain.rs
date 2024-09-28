@@ -163,9 +163,21 @@ impl SheetUIInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        // Only for OpenAI right now
+        let job_config = full_job.config();
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
+        let use_tools = match &llm_provider.model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model_type) => {
+                let is_supported_model =
+                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo") || model_type.model_type.starts_with("mistral-small");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            _ => false,
+        };
+        if use_tools {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
             if let Some(tool_router) = &tool_router {
@@ -301,7 +313,6 @@ impl SheetUIInferenceChain {
                         user_profile.clone(),
                         max_iterations,
                         max_tokens_in_prompt,
-                        HashMap::new(),
                         ws_manager_trait.clone(),
                         tool_router.clone(),
                         sheet_manager.clone(),

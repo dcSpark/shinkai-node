@@ -67,7 +67,6 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn max_iterations(&self) -> u64;
     fn iteration_count(&self) -> u64;
     fn max_tokens_in_prompt(&self) -> usize;
-    fn score_results(&self) -> &HashMap<String, ScoreResult>;
     fn raw_files(&self) -> &RawFiles;
     fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>;
     fn tool_router(&self) -> Option<Arc<ToolRouter>>;
@@ -150,10 +149,6 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.max_tokens_in_prompt
     }
 
-    fn score_results(&self) -> &HashMap<String, ScoreResult> {
-        &self.score_results
-    }
-
     fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
         &self.raw_files
     }
@@ -204,7 +199,6 @@ pub struct InferenceChainContext {
     pub max_iterations: u64,
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
-    pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     pub tool_router: Option<Arc<ToolRouter>>,
@@ -228,7 +222,6 @@ impl InferenceChainContext {
         user_profile: ShinkaiName,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
-        score_results: HashMap<String, ScoreResult>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
@@ -249,7 +242,6 @@ impl InferenceChainContext {
             max_iterations,
             iteration_count: 1,
             max_tokens_in_prompt,
-            score_results,
             raw_files: None,
             ws_manager_trait,
             tool_router,
@@ -286,7 +278,6 @@ impl fmt::Debug for InferenceChainContext {
             .field("max_iterations", &self.max_iterations)
             .field("iteration_count", &self.iteration_count)
             .field("max_tokens_in_prompt", &self.max_tokens_in_prompt)
-            .field("score_results", &self.score_results)
             .field("raw_files", &self.raw_files)
             .field("ws_manager_trait", &self.ws_manager_trait.is_some())
             .field("tool_router", &self.tool_router.is_some())
@@ -301,6 +292,8 @@ impl fmt::Debug for InferenceChainContext {
 #[derive(Debug, Clone)]
 pub struct InferenceChainResult {
     pub response: String,
+    pub tps: Option<String>,
+    pub answer_duration: Option<String>,
     pub new_job_execution_context: HashMap<String, String>,
 }
 
@@ -309,6 +302,8 @@ impl InferenceChainResult {
         Self {
             response,
             new_job_execution_context,
+            tps: None,
+            answer_duration: None,
         }
     }
 
@@ -318,22 +313,6 @@ impl InferenceChainResult {
 
     pub fn new_empty() -> Self {
         Self::new_empty_execution_context(String::new())
-    }
-}
-
-// The result from scoring an inference chain (checking if its the right chain to route to)
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ScoreResult {
-    pub score: f32,
-    pub passed_scoring: bool,
-}
-impl ScoreResult {
-    pub fn new(score: f32, passed_scoring: bool) -> Self {
-        Self { score, passed_scoring }
-    }
-
-    pub fn new_empty() -> Self {
-        Self::new(0.0, false)
     }
 }
 
@@ -433,10 +412,6 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).max_tokens_in_prompt()
     }
 
-    fn score_results(&self) -> &HashMap<String, ScoreResult> {
-        (**self).score_results()
-    }
-
     fn raw_files(&self) -> &RawFiles {
         (**self).raw_files()
     }
@@ -479,7 +454,6 @@ pub struct MockInferenceChainContext {
     pub max_iterations: u64,
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
-    pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
     pub db: Option<Arc<ShinkaiDB>>,
     pub vector_fs: Option<Arc<VectorFS>>,
@@ -498,7 +472,6 @@ impl MockInferenceChainContext {
         max_iterations: u64,
         iteration_count: u64,
         max_tokens_in_prompt: usize,
-        score_results: HashMap<String, ScoreResult>,
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
         db: Option<Arc<ShinkaiDB>>,
         vector_fs: Option<Arc<VectorFS>>,
@@ -514,7 +487,6 @@ impl MockInferenceChainContext {
             max_iterations,
             iteration_count,
             max_tokens_in_prompt,
-            score_results,
             raw_files,
             db,
             vector_fs,
@@ -540,7 +512,6 @@ impl Default for MockInferenceChainContext {
             max_iterations: 10,
             iteration_count: 0,
             max_tokens_in_prompt: 1000,
-            score_results: HashMap::new(),
             raw_files: None,
             db: None,
             vector_fs: None,
@@ -616,10 +587,6 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.max_tokens_in_prompt
     }
 
-    fn score_results(&self) -> &HashMap<String, ScoreResult> {
-        &self.score_results
-    }
-
     fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
         &self.raw_files
     }
@@ -663,7 +630,6 @@ impl Clone for MockInferenceChainContext {
             max_iterations: self.max_iterations,
             iteration_count: self.iteration_count,
             max_tokens_in_prompt: self.max_tokens_in_prompt,
-            score_results: self.score_results.clone(),
             raw_files: self.raw_files.clone(),
             db: self.db.clone(),
             vector_fs: self.vector_fs.clone(),

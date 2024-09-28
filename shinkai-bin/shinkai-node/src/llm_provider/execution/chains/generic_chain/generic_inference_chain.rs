@@ -158,7 +158,6 @@ impl GenericInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        // Only for OpenAI right now
         let job_config = full_job.config();
         let mut tools = vec![];
         let use_tools = match &llm_provider.model {
@@ -260,7 +259,6 @@ impl GenericInferenceChain {
                     user_profile.clone(),
                     max_iterations,
                     max_tokens_in_prompt,
-                    HashMap::new(),
                     ws_manager_trait.clone(),
                     tool_router.clone(),
                     sheet_manager.clone(),
