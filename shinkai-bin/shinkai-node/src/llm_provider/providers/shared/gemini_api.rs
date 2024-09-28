@@ -56,8 +56,10 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                         if let serde_json::Value::String(image_str) = image {
                             if let Some(image_type) = get_image_type(&image_str) {
                                 content.push(serde_json::json!({
-                                    "type": "image_url",
-                                    "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
+                                    "inline_data": {
+                                        "mime_type": format!("image/{}", image_type),
+                                        "data": image_str
+                                    }
                                 }));
                             }
                         }
@@ -108,21 +110,25 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         "contents": contents.into_iter().map(|msg| {
             let role = msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()));
             let content = msg.get("content").cloned().unwrap_or(serde_json::Value::String("".to_string()));
-            let text_content = if let serde_json::Value::Array(content_array) = content {
-                content_array.into_iter().find_map(|item| {
+            let content = if let serde_json::Value::Array(content_array) = content {
+                let mut parts = vec![];
+                for item in content_array {
                     if let serde_json::Value::Object(mut obj) = item {
                         if let Some(serde_json::Value::String(text)) = obj.remove("text") {
-                            return Some(text);
+                            parts.push(serde_json::json!({"text": text}));
+                        }
+                        if let Some(serde_json::Value::Object(inline_data)) = obj.remove("inline_data") {
+                            parts.push(serde_json::json!({"inline_data": inline_data}));
                         }
                     }
-                    None
-                }).unwrap_or_default()
+                }
+                parts
             } else {
-                "".to_string()
+                vec![]
             };
             serde_json::json!({
                 "role": role,
-                "parts": [{ "text": text_content }]
+                "parts": content
             })
         }).collect::<Vec<_>>()
     });
@@ -139,7 +145,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
 
     #[test]
     fn test_gemini_from_llm_messages() {
@@ -160,7 +166,11 @@ mod tests {
             SubPrompt::Omni(
                 SubPromptType::User,
                 "I have two dogs in my house. How many paws are in my house?".to_string(),
-                vec![],
+                vec![(
+                    SubPromptAssetType::Image,
+                    "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAMAAABrrFhUAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAD5UExURQAAAACl7QCl7ACm7ACl7ACl7ACm7QCm7QCm7QCm7ACm7ACm7QCl7QCl6wCl7ACl7ACl7ACl7QCl6wCl7QCl7ACm7ACm7ACl7QCm7ACl7QCl6wCm7QCm7QCl7ACl7QCm7QCl7QCl7QCm7ACm7QCl6wCl7ACl7QCl7ACm7ACm7ACl7QCl7ACl7QCm7QCm7ACm7ACl7ACl7QCl6wCm7QCm6wCm7QCm7QCm7QCl7QCl7ACm7QCl7ACm7QCl7QCl7ACk6wCl7QCl7ACm7ACl7QCm7ACl7QCl7ACm7QCl7ACm7ACm7ACm7QCl7ACl7ACm7QCl7QCk7ACm7ACm7ahktTwAAABSdFJOUwDoJJubI+v7+vaN9fswD50JzFrLCCbo+esOCcvUWZvM6S9Z+YzP0cyc0VrriQ6MCCX0JIoK7J5Z9p6ZDi8PiCPr6NMl1CTRJSbn+p2cWiSgD4gNsVXUAAACIElEQVR42u3X11KVMRiG0Wx2+femN+kgiL1Ls4MKKhZQc/8X4xmnye+BM3yznjt4VyaTSUqSJEmSJElX/Z7/ObfS5Gtes3Kz+/D9P8y/MTPKYXr167zl/LXxYQ7V8OlBm/1jGzlcZ3v1+98t5YB1pqrPv5NDtj1Wef83ctC+LFYBjOewPa56/4ZxAXYvKwBe58BtlfdPjyIDTKwWAeZz6DaLAPdjA/SKAPdiAywUAQ5jAwyKAE1sgMkiQA4eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8Amtj7J4sAg9gAj4oAc7EB1osAvdgA3SLARWyAW0WA6VHk/ROrRYA0ExngR3l/ej6Mu3/5tAIg3Y4L8Kdmf5r9FHX/g2dVAKn/Meb+pX6qbOdbxP2dqVRd/068/XdPUosWj5djzf++P5va9fnNizjzR0dfU/uevOyuf7j2v+NmsNDbfJskSZIkSZKu+gtLvn0aIyUzCwAAAABJRU5ErkJggg==".to_string(),
+                    "image.png".to_string(),
+                )],
                 100,
             ),
         ];
@@ -173,7 +183,6 @@ mod tests {
 
         // Call the gemini_prepare_messages function
         let result = gemini_prepare_messages(&model, prompt).expect("Failed to prepare messages");
-        eprintln!("result: {:?}", result);
 
         // Define the expected messages and functions
         let expected_messages = json!({
@@ -191,7 +200,13 @@ mod tests {
                 },
                 {
                     "role": "user",
-                    "parts": [{ "text": "I have two dogs in my house. How many paws are in my house?" }]
+                    "parts": [{ "text": "I have two dogs in my house. How many paws are in my house?" },
+                    {
+                        "inline_data": {
+                            "mime_type": "image/png",
+                            "data": "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAMAAABrrFhUAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAD5UExURQAAAACl7QCl7ACm7ACl7ACl7ACm7QCm7QCm7QCm7ACm7ACm7QCl7QCl6wCl7ACl7ACl7ACl7QCl6wCl7QCl7ACm7ACm7ACl7QCm7ACl7QCl6wCm7QCm7QCl7ACl7QCm7QCl7QCl7QCm7ACm7QCl6wCl7ACl7QCl7ACm7ACm7ACl7QCl7ACl7QCm7QCm7ACm7ACl7ACl7QCl6wCm7QCm6wCm7QCm7QCm7QCl7QCl7ACm7QCl7ACm7QCl7QCl7ACk6wCl7QCl7ACm7ACl7QCm7ACl7QCl7ACm7QCl7ACm7ACm7ACm7QCl7ACl7ACm7QCl7QCk7ACm7ACm7ahktTwAAABSdFJOUwDoJJubI+v7+vaN9fswD50JzFrLCCbo+esOCcvUWZvM6S9Z+YzP0cyc0VrriQ6MCCX0JIoK7J5Z9p6ZDi8PiCPr6NMl1CTRJSbn+p2cWiSgD4gNsVXUAAACIElEQVR42u3X11KVMRiG0Wx2+femN+kgiL1Ls4MKKhZQc/8X4xmnye+BM3yznjt4VyaTSUqSJEmSJElX/Z7/ObfS5Gtes3Kz+/D9P8y/MTPKYXr167zl/LXxYQ7V8OlBm/1jGzlcZ3v1+98t5YB1pqrPv5NDtj1Wef83ctC+LFYBjOewPa56/4ZxAXYvKwBe58BtlfdPjyIDTKwWAeZz6DaLAPdjA/SKAPdiAywUAQ5jAwyKAE1sgMkiQA4eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8Amtj7J4sAg9gAj4oAc7EB1osAvdgA3SLARWyAW0WA6VHk/ROrRYA0ExngR3l/ej6Mu3/5tAIg3Y4L8Kdmf5r9FHX/g2dVAKn/Meb+pX6qbOdbxP2dqVRd/068/XdPUosWj5djzf++P5va9fnNizjzR0dfU/uevOyuf7j2v+NmsNDbfJskSZIkSZKu+gtLvn0aIyUzCwAAAABJRU5ErkJggg=="
+                        }
+                    }]
                 }
             ]
         });
