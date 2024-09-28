@@ -53,7 +53,7 @@ pub fn ollama_conversation_prepare_messages(
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(
+    let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         Some("tool".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
@@ -119,7 +119,7 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(
+    let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         Some("tool".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,

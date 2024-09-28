@@ -2,12 +2,13 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use base64::decode;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+
+use super::shared_model_logic;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -75,24 +76,11 @@ pub struct Usage {
     total_tokens: i32,
 }
 
-fn get_image_type(base64_str: &str) -> Option<&'static str> {
-    let decoded = decode(base64_str).ok()?;
-    if decoded.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        Some("jpeg")
-    } else if decoded.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', b'\x1A', b'\n']) {
-        Some("png")
-    } else if decoded.starts_with(&[b'G', b'I', b'F', b'8']) {
-        Some("gif")
-    } else {
-        None
-    }
-}
-
 pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(
+    let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
@@ -127,7 +115,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                     }
                     for image in images_array {
                         if let serde_json::Value::String(image_str) = image {
-                            if let Some(image_type) = get_image_type(&image_str) {
+                            if let Some(image_type) = shared_model_logic::get_image_type(&image_str) {
                                 content.push(serde_json::json!({
                                     "type": "image_url",
                                     "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
