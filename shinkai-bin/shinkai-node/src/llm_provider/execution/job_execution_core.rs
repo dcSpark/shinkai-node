@@ -547,7 +547,6 @@ impl JobManager {
             user_profile.clone(),
             3,
             max_tokens_in_prompt,
-            HashMap::new(),
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),

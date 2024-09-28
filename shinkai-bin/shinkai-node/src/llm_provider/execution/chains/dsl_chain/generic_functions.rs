@@ -447,7 +447,6 @@ mod tests {
             10,
             0,
             1000,
-            HashMap::new(),
             Some(raw_files),
             None,
             None,
@@ -479,7 +478,6 @@ mod tests {
             10,
             0,
             1000,
-            HashMap::new(),
             Some(raw_files),
             None,
             None,
@@ -510,7 +508,6 @@ mod tests {
             10,
             0,
             1000,
-            HashMap::new(),
             Some(raw_files),
             None,
             None,
@@ -541,7 +538,6 @@ mod tests {
             10,
             0,
             1000,
-            HashMap::new(),
             Some(raw_files),
             None,
             None,
@@ -599,7 +595,6 @@ mod tests {
             10,
             0,
             1000,
-            HashMap::new(),
             None,
             None,
             None,
@@ -726,7 +721,6 @@ mod tests {
             ShinkaiName::default_testnet_localhost(),
             10,
             1000,
-            HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
@@ -861,7 +855,6 @@ mod tests {
             ShinkaiName::default_testnet_localhost(),
             10,
             1000,
-            HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
@@ -1011,7 +1004,6 @@ mod tests {
             ShinkaiName::default_testnet_localhost(),
             10,
             1000,
-            HashMap::new(),
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed

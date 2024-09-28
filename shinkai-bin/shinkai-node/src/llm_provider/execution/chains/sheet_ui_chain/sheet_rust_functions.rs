@@ -336,6 +336,17 @@ impl SheetRustFunctions {
         Ok("Columns created successfully".to_string())
     }
 
+    pub async fn get_table(
+        sheet_manager: Arc<Mutex<SheetManager>>,
+        sheet_id: String,
+        _args: HashMap<String, Box<dyn Any + Send>>,
+    ) -> Result<String, String> {
+        // Call the existing export_sheet_to_csv function
+        let sheet_manager = sheet_manager.lock().await;
+        let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
+        Ok(sheet.to_ascii_table())
+    }
+
     pub async fn import_sheet_from_xlsx(
         sheet_manager: Arc<Mutex<SheetManager>>,
         xlsx_data: Vec<u8>,
@@ -543,6 +554,13 @@ impl SheetRustFunctions {
                 args,
             ))
         });
+        tool_map.insert("get_table", |sheet_manager, sheet_id, args| {
+            Box::pin(SheetRustFunctions::get_table(
+                sheet_manager,
+                sheet_id,
+                args,
+            ))
+        });
         tool_map
     }
 
@@ -628,7 +646,16 @@ impl SheetRustFunctions {
             None,
         );
 
+        // Add the tool definition for get_table
+        let get_table_tool = RustTool::new(
+            "get_table".to_string(),
+            "Retrieves the entire table in ASCII format.".to_string(),
+            vec![],
+            None,
+        );
+
         vec![
+            ShinkaiTool::Rust(get_table_tool, true),
             ShinkaiTool::Rust(create_new_column_tool, true),
             ShinkaiTool::Rust(update_column_tool, true),
             ShinkaiTool::Rust(replace_value_tool, true),
