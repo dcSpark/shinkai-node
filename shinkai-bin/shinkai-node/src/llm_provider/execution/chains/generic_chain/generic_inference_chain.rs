@@ -163,8 +163,11 @@ impl GenericInferenceChain {
         let use_tools = match &llm_provider.model {
             LLMProviderInterface::OpenAI(_) => true,
             LLMProviderInterface::Ollama(model_type) => {
-                let is_supported_model =
-                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo") || model_type.model_type.starts_with("mistral-small");
+                let is_supported_model = model_type.model_type.starts_with("llama3.1")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("mistral-nemo")
+                    || model_type.model_type.starts_with("mistral-small")
+                    || model_type.model_type.starts_with("mistral-large");
                 is_supported_model
                     && job_config
                         .as_ref()
