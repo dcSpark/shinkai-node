@@ -73,8 +73,6 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
-    eprintln!("messages_vec: {:?}", messages_vec);
-
     // Separate system instruction from other messages
     let system_instruction = messages_vec
         .clone()
