@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::openai_api::{MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use crate::llm_provider::providers::shared::groq_api::groq_prepare_messages;
+use crate::llm_provider::providers::shared::openai_api::openai_prepare_messages;
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -27,49 +29,20 @@ impl LLMService for Groq {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
-        _model: LLMProviderInterface,
-        inbox_name: Option<InboxName>,
+        model: LLMProviderInterface,
+        _inbox_name: Option<InboxName>,
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
-        llm_stopper: Arc<LLMStopper>,
+        _llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/chat/completions");
-                let groq = Groq {
-                    model_type: self.model_type.clone(),
-                };
-                let model = LLMProviderInterface::Groq(groq);
-                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                // Note(Nico): we can use prepare_messages directly or we could had called ModelCapabilitiesManager
-                let result = openai_prepare_messages(&model, prompt)?;
+                let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
+
+                let result = groq_prepare_messages(&model, prompt)?;
                 let messages_json = match result.messages {
-                    PromptResultEnum::Value(mut v) => {
-                        // Assuming `v` is a serde_json::Value representing an array of messages
-                        if let JsonValue::Array(ref mut messages) = v {
-                            for message in messages.iter_mut() {
-                                if let JsonValue::Object(ref mut obj) = message {
-                                    if let Some(JsonValue::Array(contents)) = obj.get_mut("content") {
-                                        // Concatenate all text fields in the content array into a single string
-                                        let concatenated_content = contents
-                                            .iter()
-                                            .filter_map(|content| {
-                                                if let JsonValue::Object(content_obj) = content {
-                                                    content_obj.get("text").and_then(|t| t.as_str()).map(String::from)
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                            .collect::<Vec<String>>()
-                                            .join(" ");
-                                        // Replace the content array with a single string
-                                        obj.insert("content".to_string(), JsonValue::String(concatenated_content));
-                                    }
-                                }
-                            }
-                        }
-                        v
-                    }
+                    PromptResultEnum::Value(v) => v,
                     _ => {
                         return Err(LLMProviderError::UnexpectedPromptResultVariant(
                             "Expected Value variant in PromptResultEnum".to_string(),
@@ -83,6 +56,8 @@ impl LLMService for Groq {
                     "temperature": 0.7,
                     "max_tokens": result.remaining_tokens,
                 });
+
+                eprintln!("payload: {:?}", payload);
 
                 let payload_log = payload.clone();
                 shinkai_log(
