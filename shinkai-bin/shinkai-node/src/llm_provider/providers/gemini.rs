@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
+use super::shared::gemini_api::gemini_prepare_messages;
 use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
@@ -118,8 +119,8 @@ impl LLMService for Gemini {
                 let session_id = Uuid::new_v4().to_string();
                 let url = format!("{}{}:streamGenerateContent?key={}", base_url, self.model_type, key);
 
-                let result = openai_prepare_messages(&model, prompt)?;
-                let messages = match result.messages {
+                let result = gemini_prepare_messages(&model, prompt)?;
+                let contents = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
                         return Err(LLMProviderError::UnexpectedPromptResultVariant(
@@ -128,31 +129,7 @@ impl LLMService for Gemini {
                     }
                 };
 
-                // Convert OpenAI-style messages to Gemini format
-                let contents: Vec<serde_json::Value> = messages
-                    .as_array()
-                    .ok_or_else(|| {
-                        LLMProviderError::UnexpectedPromptResultVariant("Expected array of messages".to_string())
-                    })?
-                    .iter()
-                    .map(|msg| {
-                        let role = match msg["role"].as_str() {
-                            Some("system") => "user", // Gemini doesn't have a system role, so we'll use user
-                            Some("assistant") => "model",
-                            Some("user") => "user",
-                            _ => "user",
-                        };
-                        json!({
-                            "role": role,
-                            "parts": [{
-                                "text": msg["content"]
-                            }]
-                        })
-                    })
-                    .collect();
-
-                let payload = json!({
-                    "contents": contents,
+                let mut payload = json!({
                     "generationConfig": {
                         "temperature": 0.9,
                         "topK": 1,
@@ -179,8 +156,18 @@ impl LLMService for Gemini {
                     ]
                 });
 
+                if let Some(payload_obj) = payload.as_object_mut() {
+                    if let Some(contents_obj) = contents.as_object() {
+                        for (key, value) in contents_obj {
+                            payload_obj.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+
                 // Print payload as a pretty JSON string only if IS_TESTING is true
-                if std::env::var("IS_TESTING").unwrap_or_default() == "true" {
+                if std::env::var("LOG_ALL").unwrap_or_default() == "true"
+                    || std::env::var("LOG_ALL").unwrap_or_default() == "1"
+                {
                     match serde_json::to_string_pretty(&payload) {
                         Ok(pretty_json) => eprintln!("Payload: {}", pretty_json),
                         Err(e) => eprintln!("Failed to serialize payload: {:?}", e),

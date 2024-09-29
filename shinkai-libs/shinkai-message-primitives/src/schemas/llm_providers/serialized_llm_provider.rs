@@ -48,6 +48,22 @@ impl SerializedLLMProvider {
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
         }
     }
+
+    pub fn mock_provider() -> Self {
+        SerializedLLMProvider {
+            id: "mock_agent".to_string(),
+            full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent".to_string()).unwrap(),
+            perform_locally: false,
+            external_url: Some("https://api.example.com".to_string()),
+            api_key: Some("mockapikey".to_string()),
+            model: LLMProviderInterface::OpenAI(OpenAI {
+                model_type: "gpt-4o-mini".to_string(),
+            }),
+            toolkit_permissions: vec![],
+            storage_bucket_permissions: vec![],
+            allowed_message_senders: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, ToSchema)]
@@ -272,7 +288,17 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "togetherai", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini", "openrouter"],
+                &[
+                    "openai",
+                    "togetherai",
+                    "ollama",
+                    "shinkai-backend",
+                    "local-llm",
+                    "groq",
+                    "exo",
+                    "gemini",
+                    "openrouter",
+                ],
             )),
         }
     }

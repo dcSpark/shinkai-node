@@ -2,12 +2,13 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use base64::decode;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+
+use super::shared_model_logic;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -75,24 +76,11 @@ pub struct Usage {
     total_tokens: i32,
 }
 
-fn get_image_type(base64_str: &str) -> Option<&'static str> {
-    let decoded = decode(base64_str).ok()?;
-    if decoded.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        Some("jpeg")
-    } else if decoded.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', b'\x1A', b'\n']) {
-        Some("png")
-    } else if decoded.starts_with(&[b'G', b'I', b'F', b'8']) {
-        Some("gif")
-    } else {
-        None
-    }
-}
-
 pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let chat_completion_messages = prompt.generate_openai_messages(
+    let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
@@ -127,7 +115,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                     }
                     for image in images_array {
                         if let serde_json::Value::String(image_str) = image {
-                            if let Some(image_type) = get_image_type(&image_str) {
+                            if let Some(image_type) = shared_model_logic::get_image_type(&image_str) {
                                 content.push(serde_json::json!({
                                     "type": "image_url",
                                     "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
@@ -180,6 +168,82 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 mod tests {
     use super::*;
     use serde_json::json;
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
+
+    #[test]
+    fn test_openai_from_llm_messages() {
+        let sub_prompts = vec![
+            SubPrompt::Omni(
+                SubPromptType::System,
+                "You are Neko the cat respond like one".to_string(),
+                vec![],
+                98,
+            ),
+            SubPrompt::Omni(SubPromptType::User, "Hello".to_string(), vec![], 97),
+            SubPrompt::Omni(
+                SubPromptType::Assistant,
+                "Great to meet you. What would you like to know?".to_string(),
+                vec![],
+                97,
+            ),
+            SubPrompt::Omni(
+                SubPromptType::User,
+                "I have two dogs in my house. How many paws are in my house?".to_string(),
+                vec![(
+                    SubPromptAssetType::Image,
+                    "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAMAAABrrFhUAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAD5UExURQAAAACl7QCl7ACm7ACl7ACl7ACm7QCm7QCm7QCm7ACm7ACm7QCl7QCl6wCl7ACl7ACl7ACl7QCl6wCl7QCl7ACm7ACm7ACl7QCm7ACl7QCl6wCm7QCm7QCl7ACl7QCm7QCl7QCl7QCm7ACm7QCl6wCl7ACl7QCl7ACm7ACm7ACl7QCl7ACl7QCm7QCm7ACm7ACl7ACl7QCl6wCm7QCm6wCm7QCm7QCm7QCl7QCl7ACm7QCl7ACm7QCl7QCl7ACk6wCl7QCl7ACm7ACl7QCm7ACl7QCl7ACm7QCl7ACm7ACm7ACm7QCl7ACl7ACm7QCl7QCk7ACm7ACm7ahktTwAAABSdFJOUwDoJJubI+v7+vaN9fswD50JzFrLCCbo+esOCcvUWZvM6S9Z+YzP0cyc0VrriQ6MCCX0JIoK7J5Z9p6ZDi8PiCPr6NMl1CTRJSbn+p2cWiSgD4gNsVXUAAACIElEQVR42u3X11KVMRiG0Wx2+femN+kgiL1Ls4MKKhZQc/8X4xmnye+BM3yznjt4VyaTSUqSJEmSJElX/Z7/ObfS5Gtes3Kz+/D9P8y/MTPKYXr167zl/LXxYQ7V8OlBm/1jGzlcZ3v1+98t5YB1pqrPv5NDtj1Wef83ctC+LFYBjOewPa56/4ZxAXYvKwBe58BtlfdPjyIDTKwWAeZz6DaLAPdjA/SKAPdiAywUAQ5jAwyKAE1sgMkiQA4eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8Amtj7J4sAg9gAj4oAc7EB1osAvdgA3SLARWyAW0WA6VHk/ROrRYA0ExngR3l/ej6Mu3/5tAIg3Y4L8Kdmf5r9FHX/g2dVAKn/Meb+pX6qbOdbxP2dqVRd/068/XdPUosWj5djzf++P5va9fnNizjzR0dfU/uevOyuf7j2v+NmsNDbfJskSZIkSZKu+gtLvn0aIyUzCwAAAABJRU5ErkJggg==".to_string(),
+                    "image.png".to_string(),
+                )],
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        // Use the mock provider
+        let model = SerializedLLMProvider::mock_provider().model;
+
+        // Call the openai_prepare_messages function
+        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+
+        // Define the expected messages and functions
+        let expected_messages = json!([
+            {
+                "role": "system",
+                "content": [
+                    { "type": "text", "text": "You are Neko the cat respond like one" }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": "Hello" }
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    { "type": "text", "text": "Great to meet you. What would you like to know?" }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": "I have two dogs in my house. How many paws are in my house?" },
+                    {
+                        "type": "image_url",
+                        "image_url": { "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAMAAABrrFhUAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAD5UExURQAAAACl7QCl7ACm7ACl7ACl7ACm7QCm7QCm7QCm7ACm7ACm7QCl7QCl6wCl7ACl7ACl7ACl7QCl6wCl7QCl7ACm7ACm7ACl7QCm7ACl7QCl6wCm7QCm7QCl7ACl7QCm7QCl7QCl7QCm7ACm7QCl6wCl7ACl7QCl7ACm7ACm7ACl7QCl7ACl7QCm7QCm7ACm7ACl7ACl7QCl6wCm7QCm6wCm7QCm7QCm7QCl7QCl7ACm7QCl7ACm7QCl7QCl7ACk6wCl7QCl7ACm7ACl7QCm7ACl7QCl7ACm7QCl7ACm7ACm7ACm7QCl7ACl7ACm7QCl7QCk7ACm7ACm7ahktTwAAABSdFJOUwDoJJubI+v7+vaN9fswD50JzFrLCCbo+esOCcvUWZvM6S9Z+YzP0cyc0VrriQ6MCCX0JIoK7J5Z9p6ZDi8PiCPr6NMl1CTRJSbn+p2cWiSgD4gNsVXUAAACIElEQVR42u3X11KVMRiG0Wx2+femN+kgiL1Ls4MKKhZQc/8X4xmnye+BM3yznjt4VyaTSUqSJEmSJElX/Z7/ObfS5Gtes3Kz+/D9P8y/MTPKYXr167zl/LXxYQ7V8OlBm/1jGzlcZ3v1+98t5YB1pqrPv5NDtj1Wef83ctC+LFYBjOewPa56/4ZxAXYvKwBe58BtlfdPjyIDTKwWAeZz6DaLAPdjA/SKAPdiAywUAQ5jAwyKAE1sgMkiQA4eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8Amtj7J4sAg9gAj4oAc7EB1osAvdgA3SLARWyAW0WA6VHk/ROrRYA0ExngR3l/ej6Mu3/5tAIg3Y4L8Kdmf5r9FHX/g2dVAKn/Meb+pX6qbOdbxP2dqVRd/068/XdPUosWj5djzf++P5va9fnNizjzR0dfU/uevOyuf7j2v+NmsNDbfJskSZIkSZKu+gtLvn0aIyUzCwAAAABJRU5ErkJggg==" }
+                    }
+                ]
+            }
+        ]);
+
+        // Assert the results
+        assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
+        assert!(result.remaining_tokens > 0);
+    }
 
     #[test]
     fn test_openai_api_message_with_function_call() {
@@ -193,7 +257,8 @@ mod tests {
                     "second_string": " chao"
                 }).to_string()
             }
-        }).to_string();
+        })
+        .to_string();
 
         // Deserialize the JSON string to OpenAIApiMessage
         let message: OpenAIApiMessage = serde_json::from_str(&json_str).expect("Failed to deserialize");
