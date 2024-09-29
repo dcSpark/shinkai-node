@@ -42,7 +42,9 @@ impl LLMService for Groq {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/chat/completions");
-                let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
+                // let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
+                // Note: it seems to be too fast and it breaks the UI
+                let is_stream = false;
 
                 let result = groq_prepare_messages(&model, prompt)?;
                 let messages_json = match result.messages {
