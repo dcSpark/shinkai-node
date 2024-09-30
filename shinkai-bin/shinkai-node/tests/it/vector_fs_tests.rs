@@ -43,6 +43,7 @@ use tokio::runtime::Runtime;
 use crate::it::utils::node_test_api::{
     api_initial_registration_with_no_code_for_device, api_llm_provider_registration,
 };
+use crate::it::utils::shinkai_testing_framework::ShinkaiTestingFramework;
 use crate::it::vector_fs_api_tests::generate_message_with_payload;
 
 use super::utils::test_boilerplate::run_test_one_node_network;
@@ -1475,6 +1476,9 @@ fn vector_search_multiple_embedding_models_test() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
             }
             {
+                // Initialize local PDF parser
+                ShinkaiTestingFramework::initialize_pdfium().await;
+
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
                     path: "/".to_string(),

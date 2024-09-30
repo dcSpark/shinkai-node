@@ -91,6 +91,9 @@ fn subscription_http_upload() {
                 .await;
             }
             {
+                // Initialize local PDF parser
+                ShinkaiTestingFramework::initialize_pdfium().await;
+
                 // Create folder /shared_test_folder
                 testing_framework.create_folder("/", "shinkai_sharing").await;
                 testing_framework
