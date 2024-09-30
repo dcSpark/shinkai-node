@@ -7,9 +7,8 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::openai_api::FunctionCallResponse;
 use crate::managers::sheet_manager::SheetManager;
-use crate::managers::tool_router::ToolRouter;
+use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use async_trait::async_trait;
@@ -208,9 +207,24 @@ impl SheetUIInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        // Only for OpenAI right now
+        let job_config = full_job.config();
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
+        let use_tools = match &llm_provider.model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model_type) => {
+                let is_supported_model = model_type.model_type.starts_with("llama3.1")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("mistral-nemo")
+                    || model_type.model_type.starts_with("mistral-small")
+                    || model_type.model_type.starts_with("mistral-large");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            _ => false,
+        };
+        if use_tools {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
             if let Some(tool_router) = &tool_router {
@@ -235,12 +249,37 @@ impl SheetUIInferenceChain {
 
         // 3) Generate Prompt
         let job_config = full_job.config();
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+        
+        let csv_result = {
+            let sheet_manager_clone = sheet_manager.clone().unwrap();
+            let sheet_id_clone = sheet_id.clone();
+            
+            // Export the current CSV data
+            let csv_result = SheetRustFunctions::get_table(sheet_manager_clone, sheet_id_clone, HashMap::new()).await;
+
+            let csv_data = match csv_result {
+                Ok(data) => data,
+                Err(_) => String::new(),
+            };
+
+            csv_data
+        };        
+
+        // Extend the user message to include the CSV data if available
+        let extended_user_message = if csv_result.is_empty() {
+            user_message.clone()
+        } else {
+            format!(
+                "{}\n\nThis is the current table that we are working on:\n\n{}",
+                user_message, csv_result
+            )
+        };
+        eprintln!("Extended user message: {}", extended_user_message);
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            custom_prompt,
+            None, // No custom prompt
             None, // TODO: connect later on
-            user_message.clone(),
+            extended_user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
             summary_node_text.clone(),
@@ -306,18 +345,12 @@ impl SheetUIInferenceChain {
                     let sheet_manager_clone = sheet_manager.clone().unwrap();
                     let sheet_id_clone = sheet_id.clone();
                     let mut args = HashMap::new();
-                    if let Some(arguments) = function_call.arguments.as_object() {
-                        for (key, value) in arguments {
-                            let mut val = value.to_string();
-                            if val.starts_with('"') && val.ends_with('"') {
-                                val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
-                            }
-                            args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
+                    for (key, value) in function_call.clone().arguments {
+                        let mut val = value.to_string();
+                        if val.starts_with('"') && val.ends_with('"') {
+                            val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
                         }
-                    } else {
-                        return Err(LLMProviderError::InvalidFunctionArguments(
-                            "Function arguments should be a JSON object".to_string(),
-                        ));
+                        args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                     }
 
                     let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
@@ -334,7 +367,7 @@ impl SheetUIInferenceChain {
                         }
                     };
 
-                    FunctionCallResponse {
+                    ToolCallFunctionResponse {
                         response,
                         function_call: function_call.clone(),
                     }
@@ -352,7 +385,6 @@ impl SheetUIInferenceChain {
                         user_profile.clone(),
                         max_iterations,
                         max_tokens_in_prompt,
-                        HashMap::new(),
                         ws_manager_trait.clone(),
                         tool_router.clone(),
                         sheet_manager.clone(),

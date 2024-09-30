@@ -6,10 +6,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
+use utoipa::ToSchema;
 
 use super::shinkai_message::{NodeApiData, ShinkaiMessage};
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
@@ -83,6 +84,8 @@ pub enum MessageSchemaType {
     GetSheet,
     RemoveRows,
     AddRows,
+    ImportSheet,
+    ExportSheet,
     SetSheetUploadedFiles,
     SetShinkaiTool,
     ListAllShinkaiTools,
@@ -169,6 +172,8 @@ impl MessageSchemaType {
             "GetSheet" => Some(Self::GetSheet),
             "RemoveRows" => Some(Self::RemoveRows),
             "AddRows" => Some(Self::AddRows),
+            "ImportSheet" => Some(Self::ImportSheet),
+            "ExportSheet" => Some(Self::ExportSheet),
             "SetSheetUploadedFiles" => Some(Self::SetSheetUploadedFiles),
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
@@ -255,6 +260,8 @@ impl MessageSchemaType {
             Self::GetSheet => "GetSheet",
             Self::RemoveRows => "RemoveRows",
             Self::AddRows => "AddRows",
+            Self::ImportSheet => "ImportSheet",
+            Self::ExportSheet => "ExportSheet",
             Self::SetSheetUploadedFiles => "SetSheetUploadedFiles",
             Self::SetShinkaiTool => "SetShinkaiTool",
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
@@ -279,27 +286,27 @@ pub struct SymmetricKeyExchange {
     pub shared_secret_key: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum AssociatedUI {
     Sheet(String),
     // Add more variants as needed
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
     pub is_hidden: Option<bool>,
     pub associated_ui: Option<AssociatedUI>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum CallbackAction {
     Job(JobMessage),
     Sheet(SheetManagerAction),
     // Cron(CronManagerAction),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
@@ -326,7 +333,7 @@ where
     Ok(s)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct V2ChatMessage {
     pub job_message: JobMessage,
     pub sender: String,
@@ -337,27 +344,29 @@ pub struct V2ChatMessage {
     pub inbox: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct SheetManagerAction {
     pub job_message_next: Option<JobMessage>,
     // TODO: should this be m0re complex and have the actual desired action?
     pub sheet_action: SheetJobAction,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct SheetJobAction {
     pub sheet_id: String,
+    #[schema(value_type = String)]
     pub row: RowUuid,
+    #[schema(value_type = String)]
     pub col: ColumnUuid,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub enum FileDestinationSourceType {
     S3,
     R2,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct FileDestinationCredentials {
     pub source: FileDestinationSourceType,
     pub access_key_id: String,
@@ -446,15 +455,16 @@ pub struct APIAddAgentRequest {
     pub agent: SerializedLLMProvider,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsRetrievePathSimplifiedJson {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIConvertFilesAndSaveToFolder {
     pub path: String,
     pub file_inbox: String,
+    #[schema(value_type = String, format = Date)]
     pub file_datetime: Option<DateTime<Utc>>,
 }
 
@@ -468,7 +478,7 @@ pub struct APIVecFSRetrieveVRObject {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
     pub search: String,
     pub path: Option<String>,
@@ -476,7 +486,7 @@ pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
     pub max_files_to_scan: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsSearchItems {
     pub path: Option<String>,
     pub search: String,
@@ -484,61 +494,66 @@ pub struct APIVecFsSearchItems {
     pub max_files_to_scan: Option<usize>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCreateFolder {
     pub path: String,
     pub folder_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsDeleteFolder {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsDeleteItem {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsMoveFolder {
     pub origin_path: String,
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCopyFolder {
     pub origin_path: String,
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCreateItem {
     pub path: String,
     pub item_name: String,
     pub item_content: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsMoveItem {
     pub origin_path: String,
     pub destination_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsCopyItem {
     pub origin_path: String,
     pub destination_path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsRetrieveSourceFile {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAvailableSharedItems {
     pub path: String,
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APISubscribeToSharedFolder {
     pub path: String,
     pub streamer_node_name: String,
@@ -548,54 +563,54 @@ pub struct APISubscribeToSharedFolder {
     pub http_preferred: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIUnsubscribeToSharedFolder {
     pub path: String,
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APICreateShareableFolder {
     pub path: String,
     pub subscription_req: FolderSubscription,
     pub credentials: Option<FileDestinationCredentials>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIUpdateShareableFolder {
     pub path: String,
     pub subscription: FolderSubscription,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIUnshareFolder {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAddOllamaModels {
     pub models: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIGetMySubscribers {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct APIGetLastNotifications {
     pub count: usize,
     pub timestamp: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct APIGetNotificationsBeforeTimestamp {
     pub timestamp: String,
     pub count: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIChangeJobAgentRequest {
     pub job_id: String,
     pub new_agent_id: String,
@@ -607,7 +622,7 @@ pub struct TopicSubscription {
     pub subtopic: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct APISetWorkflow {
     pub workflow_raw: String,
     pub description: String,
@@ -646,13 +661,38 @@ pub struct APIAddRowsPayload {
     pub starting_row: Option<usize>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct APIImportSheetPayload {
+    pub sheet_data: SpreadSheetPayload,
+}
+
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
+pub struct APIExportSheetPayload {
+    pub sheet_id: String,
+    pub file_format: SheetFileFormat,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", content = "content")]
+pub enum SpreadSheetPayload {
+    CSV(String),
+    XLSX(Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SheetFileFormat {
+    CSV,
+    XLSX,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct APISetSheetUploadedFilesPayload {
     pub sheet_id: String,
     pub files: HashMap<(UuidString, UuidString), Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct APIWorkflowKeyname {
     pub tool_router_key: String,
 }

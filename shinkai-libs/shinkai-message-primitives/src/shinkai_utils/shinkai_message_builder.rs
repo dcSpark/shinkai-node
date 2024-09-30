@@ -378,8 +378,6 @@ impl ShinkaiMessageBuilder {
 
             // if self.internal_metadata.encryption is not None
             let new_message_data = if internal_metadata.encryption != encryption_method_none {
-                
-
                 MessageData::encrypt_message_data(
                     &data,
                     &new_self.my_encryption_secret_key,
@@ -421,14 +419,8 @@ impl ShinkaiMessageBuilder {
                     .as_ref()
                     .unwrap_or(&new_self.receiver_public_key);
 
-                
-
-                MessageBody::encrypt_message_body(
-                    &signed_body,
-                    &new_self.my_encryption_secret_key,
-                    second_public_key,
-                )
-                .expect("Failed to encrypt body")
+                MessageBody::encrypt_message_body(&signed_body, &new_self.my_encryption_secret_key, second_public_key)
+                    .expect("Failed to encrypt body")
             } else {
                 // println!("No encryption");
                 // If encryption method is None, just return body

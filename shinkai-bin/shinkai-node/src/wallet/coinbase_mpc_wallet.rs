@@ -1,6 +1,5 @@
 use bigdecimal::num_bigint::BigInt;
 use bigdecimal::BigDecimal;
-use ethers::prelude::*;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
@@ -17,7 +16,9 @@ use tokio::sync::RwLock;
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 use crate::wallet::wallet_error::WalletError;
-use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress};
+use shinkai_message_primitives::schemas::wallet_mixed::{
+    Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
+};
 
 #[derive(Debug, Clone)]
 pub struct CoinbaseMPCWallet {
@@ -134,7 +135,10 @@ impl CoinbaseMPCWallet {
             "name": config.name,
             "privateKey": config.private_key,
             "useServerSigner": config.use_server_signer,
-        });
+        })
+        .as_object()
+        .unwrap()
+        .to_owned();
 
         let response = Self::call_function(
             config.clone(),
@@ -231,7 +235,7 @@ impl CoinbaseMPCWallet {
             }
         };
 
-        let params = serde_json::json!({});
+        let params = serde_json::json!({}).as_object().unwrap().to_owned();
 
         let response = match Self::call_function(
             config.clone(),
@@ -277,7 +281,7 @@ impl CoinbaseMPCWallet {
         config: CoinbaseMPCWalletConfig,
         lance_db: Weak<RwLock<LanceShinkaiDb>>, // Changed to Weak
         function_name: ShinkaiToolCoinbase,
-        params: Value,
+        params: serde_json::Map<String, Value>,
     ) -> Result<Value, WalletError> {
         let lance_db_strong = lance_db
             .upgrade()
@@ -357,7 +361,10 @@ impl CommonActions for CoinbaseMPCWallet {
         Box::pin(async move {
             let params = serde_json::json!({
                 "walletId": config.wallet_id,
-            });
+            })
+            .as_object()
+            .unwrap()
+            .to_owned();
 
             let response =
                 CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
@@ -385,7 +392,10 @@ impl CommonActions for CoinbaseMPCWallet {
         Box::pin(async move {
             let params = serde_json::json!({
                 "walletId": config.wallet_id.clone(),
-            });
+            })
+            .as_object()
+            .unwrap()
+            .to_owned();
 
             let response =
                 CoinbaseMPCWallet::call_function(config.clone(), lance_db, ShinkaiToolCoinbase::GetBalance, params)
@@ -466,7 +476,10 @@ impl CommonActions for CoinbaseMPCWallet {
                 "walletId": config.wallet_id,
                 "publicAddress": public_address.address_id,
                 "asset": asset.asset_id,
-            });
+            })
+            .as_object()
+            .unwrap()
+            .to_owned();
 
             let response =
                 CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
@@ -544,7 +557,10 @@ impl SendActions for CoinbaseMPCWallet {
                 "recipient_address": to_wallet.address_id,
                 "assetId": token.map_or("".to_string(), |t| t.asset_id),
                 "amount": normalized_amount.to_string(),
-            });
+            })
+            .as_object()
+            .unwrap()
+            .to_owned();
 
             let response =
                 CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::SendTx, params).await?;

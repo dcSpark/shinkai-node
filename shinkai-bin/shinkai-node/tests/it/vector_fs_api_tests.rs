@@ -1,9 +1,11 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
+use base64::Engine;
 use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider,
 };
@@ -11,7 +13,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-    APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+    APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
     APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
@@ -19,10 +21,8 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
 use std::sync::Arc;
@@ -67,7 +67,7 @@ fn vector_fs_api_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
 
     let mut server = Server::new();
-    
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -461,6 +461,38 @@ fn vector_fs_api_tests() {
                 // Assert that after updating the fs item with a new VR generated from the PDF (overwriting the one from the .vrkai),
                 // the filesystem json is different (because different timestamps/id on the item).
                 assert_ne!(resp_json, retrieved_fs_json);
+            }
+            {
+                // Retrieve source file
+                let payload = APIVecFsRetrieveSourceFile {
+                    path: "/test_folder/shinkai_intro".to_string(),
+                };
+
+                let api_v2_key = std::env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiRetrieveSourceFile {
+                        bearer: api_v2_key,
+                        payload,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp_base64 = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+
+                // Compare the response with the original file
+                let filename = "../../files/shinkai_intro.pdf";
+                let file_path = Path::new(filename);
+                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
+
+                let decoded_content = base64::engine::general_purpose::STANDARD
+                    .decode(resp_base64.as_bytes())
+                    .expect("Failed to decode base64");
+                assert_eq!(file_data, decoded_content);
             }
 
             {

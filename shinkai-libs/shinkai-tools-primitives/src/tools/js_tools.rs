@@ -29,13 +29,12 @@ pub struct JSTool {
 }
 
 impl JSTool {
-    pub fn run(&self, input_json: JsonValue, extra_config: Option<String>) -> Result<RunResult, ToolError> {
-        eprintln!("Running JSTool named: {}", self.name);
-        eprintln!("Running JSTool with input: {}", input_json);
-        eprintln!("Running JSTool with extra_config: {:?}", extra_config);
+    pub fn run(&self, parameters: serde_json::Map<String, serde_json::Value>, extra_config: Option<String>) -> Result<RunResult, ToolError> {
+        println!("Running JSTool named: {}", self.name);
+        println!("Running JSTool with input: {:?}", parameters);
+        println!("Running JSTool with extra_config: {:?}", extra_config);
 
         let code = self.js_code.clone();
-        let input = serde_json::to_string(&input_json).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
         // Create a hashmap with key_name and key_value
         let mut config: HashMap<String, String> = self
@@ -55,8 +54,8 @@ impl JSTool {
 
         // Merge extra_config into the config hashmap
         if let Some(extra_config_str) = extra_config {
-            let extra_config_map: HashMap<String, String> = serde_json::from_str(&extra_config_str)
-                .map_err(|e| ToolError::SerializationError(e.to_string()))?;
+            let extra_config_map: HashMap<String, String> =
+                serde_json::from_str(&extra_config_str).map_err(|e| ToolError::SerializationError(e.to_string()))?;
             config.extend(extra_config_map);
         }
 
@@ -69,8 +68,8 @@ impl JSTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    eprintln!("Running JSTool with config: {:?}", config);
-                    eprintln!("Running JSTool with input: {}", input);
+                    println!("Running JSTool with config: {:?}", config);
+                    println!("Running JSTool with input: {:?}", parameters);
                     let tool = Tool::new(
                         code,
                         config_json,
@@ -84,7 +83,8 @@ impl JSTool {
                                 .unwrap_or(9650),
                         }),
                     );
-                    tool.run(serde_json::from_str(&input).unwrap(), None)
+                    // TODO: Fix this object wrap after update tools library to have th right typification
+                    tool.run(serde_json::Value::Object(parameters), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })

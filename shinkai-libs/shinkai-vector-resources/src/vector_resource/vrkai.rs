@@ -3,11 +3,12 @@ use crate::{embeddings::Embedding, resource_errors::VRError, source::SourceFileM
 use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use std::collections::HashMap;
 
 // Versions of VRKai that are supported
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, ToSchema)]
 pub enum VRKaiVersion {
     #[serde(rename = "V1")]
     V1,
@@ -21,7 +22,7 @@ impl VRKaiVersion {
 
 /// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap.
 /// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,

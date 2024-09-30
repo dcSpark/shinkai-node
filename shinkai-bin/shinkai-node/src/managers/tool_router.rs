@@ -7,9 +7,9 @@ use std::time::Instant;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainContextTrait;
-use crate::llm_provider::providers::shared::openai_api::{FunctionCall, FunctionCallResponse};
+use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContextTrait, FunctionCall};
 use crate::workflows::sm_executor::AsyncFunction;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_dsl::dsl_schemas::Workflow;
@@ -41,6 +41,12 @@ use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChai
 #[derive(Clone)]
 pub struct ToolRouter {
     pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ToolCallFunctionResponse {
+    pub response: String,
+    pub function_call: FunctionCall,
 }
 
 impl ToolRouter {
@@ -173,8 +179,12 @@ impl ToolRouter {
 
             for item in json_array {
                 let shinkai_tool: Result<ShinkaiTool, _> = serde_json::from_value(item.clone());
+                
                 let shinkai_tool = match shinkai_tool {
-                    Ok(tool) => tool,
+                    Ok(tool) => {
+                        eprintln!("adding shinkai_tool (workflow): {:?}", tool.name());
+                        tool
+                    },
                     Err(e) => {
                         eprintln!("Failed to parse shinkai_tool: {}. JSON: {:?}", e, item);
                         continue; // Skip this item and continue with the next one
@@ -188,8 +198,8 @@ impl ToolRouter {
             let workflows = WorkflowTool::static_tools();
             println!("Number of static workflows: {}", workflows.len());
 
-            for workflow_tool in workflows {
-                let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
+            for (workflow_tool, is_enabled) in workflows {
+                let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
                 let lance_db = self.lance_db.write().await;
                 lance_db.set_tool(&shinkai_tool).await?;
             }
@@ -342,15 +352,42 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    pub async fn get_tools_by_names(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
+    pub async fn get_tools_by_names_with_smart_retry(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
         let lance_db = self.lance_db.read().await;
         let mut tools = Vec::new();
 
         for name in names {
             match lance_db.get_tool(&name).await {
                 Ok(Some(tool)) => tools.push(tool),
-                Ok(None) => return Err(ToolError::ToolNotFound(name)),
-                Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
+                Ok(None) => {
+                    // Perform a vector search if the tool is not found
+                    let search_results = lance_db
+                        .vector_search_all_tools(&name, 10, true)
+                        .await
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                    
+                    // Search for the result that has the same name
+                    if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
+                        match lance_db.get_tool(&matching_result.tool_router_key).await {
+                            Ok(Some(tool)) => tools.push(tool),
+                            Ok(None) => {
+                                eprintln!("Tool not found: {}", name);
+                                continue; // Skip this tool and continue with the next one
+                            },
+                            Err(e) => {
+                                eprintln!("Database error: {}", e);
+                                continue; // Skip this tool and continue with the next one
+                            },
+                        }
+                    } else {
+                        eprintln!("Tool not found: {}", name);
+                        continue; // Skip this tool and continue with the next one
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Database error: {}", e);
+                    continue; // Skip this tool and continue with the next one
+                },
             }
         }
 
@@ -419,7 +456,7 @@ impl ToolRouter {
         function_call: FunctionCall,
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
-    ) -> Result<FunctionCallResponse, LLMProviderError> {
+    ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
         let function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
@@ -435,7 +472,7 @@ impl ToolRouter {
                             LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
                         })?
                         .clone();
-                    return Ok(FunctionCallResponse {
+                    return Ok(ToolCallFunctionResponse {
                         response: result_str,
                         function_call,
                     });
@@ -448,7 +485,7 @@ impl ToolRouter {
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response: result_str,
                     function_call,
                 });
@@ -465,7 +502,7 @@ impl ToolRouter {
                     .into_iter()
                     .filter(|name| name.starts_with("shinkai__"))
                     .collect::<Vec<_>>();
-                let tools = self.get_tools_by_names(functions_used).await?;
+                let tools = self.get_tools_by_names_with_smart_retry(functions_used).await?;
 
                 dsl_inference.add_inference_function();
                 dsl_inference.add_inference_no_ws_function();
@@ -478,7 +515,7 @@ impl ToolRouter {
 
                 let inference_result = dsl_inference.run_chain().await?;
 
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response: inference_result.response,
                     function_call,
                 });
@@ -645,7 +682,7 @@ impl ToolRouter {
 
                 eprintln!("parsed response: {:?}", response);
 
-                return Ok(FunctionCallResponse {
+                return Ok(ToolCallFunctionResponse {
                     response,
                     function_call,
                 });
@@ -657,7 +694,7 @@ impl ToolRouter {
 
     /// This function is used to call a JS function directly
     /// It's very handy for agent-to-agent communication
-    pub async fn call_js_function(&self, function_args: Value, js_tool_name: &str) -> Result<String, LLMProviderError> {
+    pub async fn call_js_function(&self, function_args: serde_json::Map<String, Value>, js_tool_name: &str) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
 
         if shinkai_tool.is_none() {
@@ -709,9 +746,9 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
 
-    // #[tokio::test]
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     /// It's just easier to have it here because it already has access to all the necessary dependencies
+    // #[tokio::test]
     #[allow(dead_code)]
     async fn test_generate_static_workflows() {
         let generator = RemoteEmbeddingGenerator::new_default_local();
@@ -724,8 +761,8 @@ mod tests {
         let workflows_testing = WorkflowTool::static_tools();
         println!("Number of testing workflows: {}", workflows_testing.len());
 
-        for workflow_tool in workflows_testing {
-            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
+        for (workflow_tool, is_enabled) in workflows_testing {
+            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
@@ -745,8 +782,8 @@ mod tests {
         let workflows = WorkflowTool::static_tools();
         println!("Number of production workflows: {}", workflows.len());
 
-        for workflow_tool in workflows {
-            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), true);
+        for (workflow_tool, is_enabled) in workflows {
+            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
 
             let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
                 embedding
@@ -772,10 +809,10 @@ mod tests {
         let mut file = File::create("../../tmp/workflows_data.rs").expect("Failed to create file");
         writeln!(
             file,
-            "pub static WORKFLOWS_JSON_TESTING: &str = r#\"{}\"#;",
+            "pub static WORKFLOWS_JSON_TESTING: &str = r###\"{}\"###;",
             json_data_testing
         )
         .expect("Failed to write to file");
-        writeln!(file, "pub static WORKFLOWS_JSON: &str = r#\"{}\"#;", json_data).expect("Failed to write to file");
+        writeln!(file, "pub static WORKFLOWS_JSON: &str = r###\"{}\"###;", json_data).expect("Failed to write to file");
     }
 }

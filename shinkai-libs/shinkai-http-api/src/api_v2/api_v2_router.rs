@@ -3,6 +3,7 @@ use crate::node_commands::NodeCommand;
 use super::api_v2_handlers_ext_agent_offers::ext_agent_offers_routes;
 use super::api_v2_handlers_jobs::job_routes;
 use super::api_v2_handlers_prompts::prompt_routes;
+use super::api_v2_handlers_sheets::sheets_routes;
 use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_wallets::wallet_routes;
@@ -27,6 +28,7 @@ pub fn v2_routes(
     let wallet_routes = wallet_routes(node_commands_sender.clone());
     let custom_prompt = prompt_routes(node_commands_sender.clone());
     let swagger_ui_routes = swagger_ui_routes();
+    let sheets_routes = sheets_routes(node_commands_sender.clone());
 
     general_routes
         .or(vecfs_routes)
@@ -37,6 +39,7 @@ pub fn v2_routes(
         .or(wallet_routes)
         .or(custom_prompt)
         .or(swagger_ui_routes)
+        .or(sheets_routes)
 }
 
 pub fn with_sender(

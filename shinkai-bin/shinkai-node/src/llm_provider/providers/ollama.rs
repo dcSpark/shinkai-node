@@ -1,9 +1,8 @@
-use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_conversation_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
+    ollama_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
-use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::error::LLMProviderError;
@@ -66,7 +65,7 @@ impl LLMService for Ollama {
 
             let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
             let messages_result = if is_stream {
-                ollama_conversation_prepare_messages(&model, prompt)?
+                ollama_prepare_messages(&model, prompt)?
             } else {
                 ollama_conversation_prepare_messages_with_tooling(&model, prompt)?
             };
@@ -341,7 +340,9 @@ async fn handle_non_streaming_response(
                                         calls.iter().find_map(|call| {
                                             call.get("function").map(|function| {
                                                 let name = function.get("name")?.as_str()?.to_string();
-                                                let arguments = function.get("arguments")?.clone();
+                                                let arguments = function.get("arguments")
+                                                    .and_then(|args_value| args_value.as_object().cloned())
+                                                    .unwrap_or_else(|| serde_json::Map::new());
                                                 Some(FunctionCall { name, arguments })
                                             })
                                         })

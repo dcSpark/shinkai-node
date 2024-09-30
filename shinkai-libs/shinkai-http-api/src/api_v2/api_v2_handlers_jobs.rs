@@ -5,9 +5,27 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
-    schemas::job_config::JobConfig, shinkai_message::shinkai_message_schemas::{APIChangeJobAgentRequest, JobCreationInfo, JobMessage}, shinkai_utils::job_scope::JobScope
+    schemas::{
+        job_config::JobConfig,
+        llm_providers::serialized_llm_provider::{
+            Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
+        },
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        smart_inbox::{LLMProviderSubset, V2SmartInbox},
+    },
+    shinkai_message::{
+        shinkai_message::NodeApiData,
+        shinkai_message_schemas::{
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetJobAction,
+            SheetManagerAction, V2ChatMessage,
+        },
+    },
+    shinkai_utils::job_scope::{
+        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, NetworkFolderScopeEntry, VectorFSFolderScopeEntry,
+        VectorFSItemScopeEntry,
+    },
 };
-use utoipa::OpenApi;
+use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
 use warp::Filter;
 
@@ -141,38 +159,38 @@ pub fn job_routes(
         .or(get_job_scope_route)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateJobRequest {
     pub job_creation_info: JobCreationInfo,
     pub llm_provider: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct JobMessageRequest {
     pub job_message: JobMessage,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct GetLastMessagesRequest {
     pub inbox_name: String,
     pub limit: usize,
     pub offset_key: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateSmartInboxNameRequest {
     pub inbox_name: String,
     pub custom_name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AddFileToInboxRequest {
     pub file_inbox_name: String,
     pub filename: String,
     pub file: Vec<u8>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct GetLastMessagesWithBranchesRequest {
     pub inbox_name: String,
     pub limit: usize,
@@ -181,7 +199,7 @@ pub struct GetLastMessagesWithBranchesRequest {
 
 // Code
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RetryMessageRequest {
     pub message_id: String,
     pub inbox_name: String,
@@ -719,7 +737,7 @@ pub async fn get_last_messages_with_branches_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateJobConfigRequest {
     pub job_id: String,
     pub config: JobConfig,
@@ -811,7 +829,7 @@ pub async fn get_job_config_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateJobScopeRequest {
     pub job_id: String,
     pub job_scope: JobScope,
@@ -923,7 +941,14 @@ pub async fn get_job_scope_handler(
         get_job_scope_handler
     ),
     components(
-        schemas(SendResponseBody, SendResponseBodyData, APIError)
+        schemas(AddFileToInboxRequest, V2SmartInbox, APIChangeJobAgentRequest, CreateJobRequest, JobConfig,
+            JobMessageRequest, GetLastMessagesRequest, V2ChatMessage, GetLastMessagesWithBranchesRequest,
+            UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
+            JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
+            VectorFSItemScopeEntry, VectorFSFolderScopeEntry, NetworkFolderScopeEntry, CallbackAction, ShinkaiName,
+            LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest,
+            ShinkaiSubidentityType, OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
+            SheetJobAction, SendResponseBody, SendResponseBodyData, APIError)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")

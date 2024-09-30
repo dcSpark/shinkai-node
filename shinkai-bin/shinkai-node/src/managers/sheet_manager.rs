@@ -368,6 +368,11 @@ impl SheetManager {
             .map_err(|e| e.to_string())
     }
 
+    pub fn get_ascii_table(&self, sheet_id: &str) -> Result<String, String> {
+        let sheet = self.sheets.get(sheet_id).ok_or("Sheet ID not found")?.0.clone();
+        Ok(sheet.to_ascii_table())
+    }
+
     pub async fn set_cell_value(
         &mut self,
         sheet_id: &str,

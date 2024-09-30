@@ -1,0 +1,503 @@
+openapi: 3.0.3
+info:
+  title: shinkai_node
+  description: ''
+  contact:
+    name: Nico Arqueros
+    email: nico@shinkai.com
+  license:
+    name: ''
+  version: 0.8.4
+paths:
+  /v2/convert_files_and_save:
+    post:
+      tags:
+      - crate
+      operationId: convert_files_and_save_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIConvertFilesAndSaveToFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully converted files and saved to folder
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/copy_folder:
+    post:
+      tags:
+      - crate
+      operationId: copy_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsCopyFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully copied folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/copy_item:
+    post:
+      tags:
+      - crate
+      operationId: copy_item_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsCopyItem'
+        required: true
+      responses:
+        '200':
+          description: Successfully copied item
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/create_folder:
+    post:
+      tags:
+      - crate
+      operationId: create_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsCreateFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully created folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/delete_folder:
+    post:
+      tags:
+      - crate
+      operationId: delete_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsDeleteFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully deleted folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/delete_item:
+    post:
+      tags:
+      - crate
+      operationId: delete_item_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsDeleteItem'
+        required: true
+      responses:
+        '200':
+          description: Successfully deleted item
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/move_folder:
+    post:
+      tags:
+      - crate
+      operationId: move_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsMoveFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully moved folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/move_item:
+    post:
+      tags:
+      - crate
+      operationId: move_item_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsMoveItem'
+        required: true
+      responses:
+        '200':
+          description: Successfully moved item
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/retrieve_path_simplified:
+    post:
+      tags:
+      - crate
+      operationId: retrieve_path_simplified_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsRetrievePathSimplifiedJson'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved path
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/retrieve_vector_resource:
+    get:
+      tags:
+      - crate
+      operationId: retrieve_vector_resource_handler
+      responses:
+        '200':
+          description: Successfully retrieved vector resource
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/search_items:
+    post:
+      tags:
+      - crate
+      operationId: search_items_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIVecFsSearchItems'
+        required: true
+      responses:
+        '200':
+          description: Successfully searched items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/upload_file_to_folder:
+    post:
+      tags:
+      - crate
+      operationId: upload_file_to_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddFileToInboxRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully uploaded file to folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+components:
+  schemas:
+    APIConvertFilesAndSaveToFolder:
+      type: object
+      required:
+      - path
+      - file_inbox
+      - file_datetime
+      properties:
+        file_datetime:
+          type: string
+          format: date
+        file_inbox:
+          type: string
+        path:
+          type: string
+    APIError:
+      type: object
+      required:
+      - code
+      - error
+      - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          minimum: 0
+        error:
+          type: string
+        message:
+          type: string
+    APIVecFsCopyFolder:
+      type: object
+      required:
+      - origin_path
+      - destination_path
+      properties:
+        destination_path:
+          type: string
+        origin_path:
+          type: string
+    APIVecFsCopyItem:
+      type: object
+      required:
+      - origin_path
+      - destination_path
+      properties:
+        destination_path:
+          type: string
+        origin_path:
+          type: string
+    APIVecFsCreateFolder:
+      type: object
+      required:
+      - path
+      - folder_name
+      properties:
+        folder_name:
+          type: string
+        path:
+          type: string
+    APIVecFsDeleteFolder:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+    APIVecFsDeleteItem:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+    APIVecFsMoveFolder:
+      type: object
+      required:
+      - origin_path
+      - destination_path
+      properties:
+        destination_path:
+          type: string
+        origin_path:
+          type: string
+    APIVecFsMoveItem:
+      type: object
+      required:
+      - origin_path
+      - destination_path
+      properties:
+        destination_path:
+          type: string
+        origin_path:
+          type: string
+    APIVecFsRetrievePathSimplifiedJson:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+    APIVecFsSearchItems:
+      type: object
+      required:
+      - search
+      properties:
+        max_files_to_scan:
+          type: integer
+          nullable: true
+          minimum: 0
+        max_results:
+          type: integer
+          nullable: true
+          minimum: 0
+        path:
+          type: string
+          nullable: true
+        search:
+          type: string
+    AddFileToInboxRequest:
+      type: object
+      required:
+      - file_inbox_name
+      - filename
+      - file
+      properties:
+        file:
+          type: string
+          format: binary
+        file_inbox_name:
+          type: string
+        filename:
+          type: string
+tags:
+- name: vecfs
+  description: VecFS API endpoints

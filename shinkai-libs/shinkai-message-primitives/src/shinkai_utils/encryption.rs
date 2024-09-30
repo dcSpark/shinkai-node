@@ -4,9 +4,10 @@ use std::error::Error;
 use blake3::Hasher;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, ToSchema)]
 pub enum EncryptionMethod {
     DiffieHellmanChaChaPoly1305,
     None,

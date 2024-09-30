@@ -22,12 +22,13 @@ use shinkai_message_primitives::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
             APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
-            APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers, APIGetNotificationsBeforeTimestamp,
-            APISetSheetUploadedFilesPayload, APISetWorkflow, APISubscribeToSharedFolder, APIUnshareFolder,
-            APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, APIVecFsCopyFolder, APIVecFsCopyItem,
-            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions,
-            JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage,
+            APICreateShareableFolder, APIExportSheetPayload, APIGetLastNotifications, APIGetMySubscribers,
+            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APISetWorkflow,
+            APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
+            APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
+            APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -501,6 +502,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APIImportSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIExportSheet {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIUpdateDefaultEmbeddingModel {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -640,6 +649,11 @@ pub enum NodeCommand {
         path: String,
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRetrieveSourceFile {
+        bearer: String,
+        payload: APIVecFsRetrieveSourceFile,
+        res: Sender<Result<String, APIError>>,
     },
     V2ApiAvailableSharedItems {
         bearer: String,
@@ -941,6 +955,16 @@ pub enum NodeCommand {
     V2ApiGetJobScope {
         bearer: String,
         job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiImportSheet {
+        bearer: String,
+        payload: APIImportSheetPayload,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExportSheet {
+        bearer: String,
+        payload: APIExportSheetPayload,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiSetSheetUploadedFiles {

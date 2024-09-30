@@ -1,0 +1,277 @@
+openapi: 3.0.3
+info:
+  title: shinkai_node
+  description: ''
+  contact:
+    name: Nico Arqueros
+    email: nico@shinkai.com
+  license:
+    name: ''
+  version: 0.8.4
+paths:
+  /v2/get_all_tool_offerings:
+    get:
+      tags:
+      - crate
+      operationId: get_all_tool_offerings_handler
+      responses:
+        '200':
+          description: Successfully retrieved all tool offerings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShinkaiToolOffering'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/get_tool_offering:
+    post:
+      tags:
+      - crate
+      operationId: get_tool_offering_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetToolOfferingRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved tool offering
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShinkaiToolOffering'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: Tool offering not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/remove_tool_offering:
+    post:
+      tags:
+      - crate
+      operationId: remove_tool_offering_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveToolOfferingRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully removed tool offering
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: Tool offering not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/set_tool_offering:
+    post:
+      tags:
+      - crate
+      operationId: set_tool_offering_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetToolOfferingRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully set tool offering
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+components:
+  schemas:
+    APIError:
+      type: object
+      required:
+      - code
+      - error
+      - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          minimum: 0
+        error:
+          type: string
+        message:
+          type: string
+    Asset:
+      type: object
+      description: Represents an asset onchain scoped to a particular network.
+      required:
+      - network_id
+      - asset_id
+      properties:
+        asset_id:
+          type: string
+          description: The ID for the asset on the network.
+        contract_address:
+          type: string
+          description: The optional contract address for the asset. This will be specified for smart contract-based assets, for example ERC20s.
+          nullable: true
+        decimals:
+          type: integer
+          format: int32
+          description: The number of decimals the asset supports. This is used to convert from atomic units to base units.
+          nullable: true
+          minimum: 0
+        network_id:
+          $ref: '#/components/schemas/NetworkIdentifier'
+    AssetPayment:
+      type: object
+      description: Represents a payment with an asset and amount.
+      required:
+      - asset
+      - amount
+      properties:
+        amount:
+          type: string
+          description: The amount to be paid in atomic units of the asset.
+        asset:
+          $ref: '#/components/schemas/Asset'
+    GetToolOfferingRequest:
+      type: object
+      required:
+      - tool_key_name
+      properties:
+        tool_key_name:
+          type: string
+    NetworkIdentifier:
+      type: string
+      description: Enum representing the ID of the blockchain network.
+      enum:
+      - BaseSepolia
+      - BaseMainnet
+      - EthereumSepolia
+      - EthereumMainnet
+      - ArbitrumSepolia
+      - ArbitrumMainnet
+      - Anvil
+    RemoveToolOfferingRequest:
+      type: object
+      required:
+      - tool_key_name
+      properties:
+        tool_key_name:
+          type: string
+    SetToolOfferingRequest:
+      type: object
+      required:
+      - tool_offering
+      properties:
+        tool_offering:
+          $ref: '#/components/schemas/ShinkaiToolOffering'
+    ShinkaiToolOffering:
+      type: object
+      required:
+      - tool_key
+      - usage_type
+      properties:
+        meta_description:
+          type: string
+          nullable: true
+        tool_key:
+          type: string
+        usage_type:
+          $ref: '#/components/schemas/UsageType'
+    ToolPrice:
+      oneOf:
+      - type: string
+        enum:
+        - Free
+      - type: object
+        required:
+        - DirectDelegation
+        properties:
+          DirectDelegation:
+            type: string
+      - type: object
+        required:
+        - Payment
+        properties:
+          Payment:
+            type: array
+            items:
+              $ref: '#/components/schemas/AssetPayment'
+    UsageType:
+      oneOf:
+      - type: object
+        required:
+        - PerUse
+        properties:
+          PerUse:
+            $ref: '#/components/schemas/ToolPrice'
+      - type: object
+        required:
+        - Downloadable
+        properties:
+          Downloadable:
+            $ref: '#/components/schemas/ToolPrice'
+      - type: object
+        required:
+        - Both
+        properties:
+          Both:
+            type: object
+            required:
+            - per_use_price
+            - download_price
+            properties:
+              download_price:
+                $ref: '#/components/schemas/ToolPrice'
+              per_use_price:
+                $ref: '#/components/schemas/ToolPrice'
+tags:
+- name: tool_offerings
+  description: Tool Offering API endpoints

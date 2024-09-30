@@ -1,5 +1,5 @@
 use anyhow::Result;
-use baml_runtime::BamlRuntime;
+use baml_runtime::{runtime_interface::ExperimentalTracingInterface, BamlRuntime, InternalRuntimeInterface, RenderCurlSettings};
 use baml_types::BamlValue;
 use indexmap::IndexMap;
 use log::info;
@@ -100,10 +100,14 @@ impl BamlConfig {
             files.insert("dsl_class.baml".to_string(), dsl_class_file.clone());
         }
 
-        info!("Files: {:?}", files);
-
         let runtime = BamlRuntime::from_file_content("baml_src", &files, env_vars)?;
-        info!("BAML runtime initialized");
+        let diagnostics = runtime.internal().diagnostics();
+        eprintln!("BAML diagnostics: {:?}", diagnostics);
+
+        if diagnostics.has_errors() {
+            let error_message = diagnostics.to_pretty_string();
+            return Err(anyhow::anyhow!("BAML diagnostics errors: {}", error_message));
+        }
 
         Ok(runtime)
     }
@@ -116,8 +120,18 @@ impl BamlConfig {
             let trimmed_input = input.trim();
             let context_value = if trimmed_input.starts_with('{') && trimmed_input.ends_with('}') {
                 eprintln!("input is a json string: {}", trimmed_input);
-                let unescaped_input = BamlConfig::unescape_json_string(trimmed_input);
-                BamlConfig::from_serde_value(serde_json::from_str(&unescaped_input).unwrap())
+                match serde_json::from_str(&trimmed_input) {
+                    Ok(parsed_json) => BamlConfig::from_serde_value(parsed_json),
+                    Err(_) => {
+                        eprintln!("Failed to parse JSON, attempting to unescape");
+                        let unescaped_input = BamlConfig::unescape_json_string(trimmed_input);
+                        eprintln!("Unescaped input: {}", unescaped_input);
+                        match serde_json::from_str(&unescaped_input) {
+                            Ok(parsed_json) => BamlConfig::from_serde_value(parsed_json),
+                            Err(e) => return Err(anyhow::anyhow!("Failed to parse JSON after unescaping: {}", e)),
+                        }
+                    }
+                }
             } else {
                 BamlValue::String(trimmed_input.to_string())
             };
@@ -125,6 +139,8 @@ impl BamlConfig {
         }
 
         if let Some(function_name) = &self.function_name {
+            eprintln!("\n\n Params string keys {:?}\n\n", params.keys());
+            eprintln!("\n\n Params string values {:?}\n\n", params.values());
             let (result, _uuid) = runtime.call_function_sync(function_name.clone(), &params, &ctx_manager, None, None);
 
             match result {
@@ -141,7 +157,7 @@ impl BamlConfig {
                                     return Ok(matched.as_str().to_string());
                                 }
                             }
-                            return Err(anyhow::anyhow!("No JSON block found in the response"));
+                            return Ok(content.to_string());
                         } else {
                             return Ok(content.to_string());
                         }
@@ -174,18 +190,34 @@ impl BamlConfig {
                 BamlValue::List(baml_values)
             }
             serde_json::Value::Object(obj) => {
-                let baml_map = obj
-                    .into_iter()
-                    .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
-                    .collect();
-                BamlValue::Map(baml_map)
+                if let Some(class_name) = obj.clone().get("class_name").and_then(|v| v.as_str()) {
+                    let class_fields = obj.into_iter()
+                        .filter(|(k, _)| k != "class_name")
+                        .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
+                        .collect();
+                    BamlValue::Class(class_name.to_string(), class_fields)
+                } else {
+                    let baml_map = obj.into_iter()
+                        .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
+                        .collect();
+                    BamlValue::Map(baml_map)
+                }
             }
         }
     }
 
     pub fn unescape_json_string(json_str: &str) -> String {
-        let re = Regex::new(r#"\\(.)"#).unwrap();
-        re.replace_all(json_str, "$1").to_string()
+        let re_backslash_quote = Regex::new(r#"\\""#).unwrap(); // Matches \"
+        let re_backslash = Regex::new(r#"\\\\"#).unwrap(); // Matches \\
+        let re_newline = Regex::new(r#"\\n"#).unwrap(); // Matches \n
+        let re_tab = Regex::new(r#"\\t"#).unwrap(); // Matches \t
+    
+        let intermediate = re_backslash_quote.replace_all(json_str, "\"");
+        let intermediate = re_backslash.replace_all(&intermediate, "\\");
+        let intermediate = re_newline.replace_all(&intermediate, "\n");
+        let intermediate = re_tab.replace_all(&intermediate, "\t");
+    
+        intermediate.to_string()
     }
 
     /// Converts the existing DSL string to the format expected by Baml.
@@ -254,5 +286,36 @@ impl BamlConfigBuilder {
             function_name: self.function_name,
             param_name: self.param_name,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unescape_json_string() {
+        let input = r#"{
+            \"documents\": [
+              {
+                \"title\": \"OmniParser Abstract\",
+                \"link\": \"https://arxiv.org\",
+                \"text\": \"- OmniParser for Pure Vision Based GUI Agent Yadong Lu 1 , Jianwei Yang 1 , Yelong Shen 2 , Ahmed Awadallah 1  1 Microsoft Research 2 Microsoft Gen AI {yadonglu, jianwei.yang, yeshe, ahmed.awadallah}@microsoft.com Abstract  (Source: 2408.00203v1.pdf, Section: )\"
+              }
+            ]
+        }"#;
+
+        let expected_output = r#"{
+            "documents": [
+              {
+                "title": "OmniParser Abstract",
+                "link": "https://arxiv.org",
+                "text": "- OmniParser for Pure Vision Based GUI Agent Yadong Lu 1 , Jianwei Yang 1 , Yelong Shen 2 , Ahmed Awadallah 1  1 Microsoft Research 2 Microsoft Gen AI {yadonglu, jianwei.yang, yeshe, ahmed.awadallah}@microsoft.com Abstract  (Source: 2408.00203v1.pdf, Section: )"
+              }
+            ]
+        }"#;
+
+        let unescaped = BamlConfig::unescape_json_string(input);
+        assert_eq!(unescaped, expected_output);
     }
 }

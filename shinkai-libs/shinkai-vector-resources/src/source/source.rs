@@ -9,18 +9,19 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
 /// What text chunking strategy was used to create this VR from the source file.
 /// This is required for performing content validation/that it matches the VR nodes.
 /// TODO: Think about how to make this more explicit/specific and future support
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum TextChunkingStrategy {
     /// The default text chunking strategy implemented in VR lib using Unstructured.
     V1,
 }
 
 /// Information about the source content a Vector Resource came from
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum VRSourceReference {
     Standard(SourceReference),
     Notarized(NotarizedSourceReference),
@@ -110,7 +111,7 @@ impl VRSourceReference {
 }
 
 /// Struct which holds the data of a source file which a VR was generated from
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum SourceFile {
     Standard(StandardSourceFile),
     TLSNotarized(TLSNotarizedSourceFile),
@@ -158,7 +159,7 @@ impl SourceFile {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 /// A standard source file that data was extracted from to create a VectorResource.
 pub struct StandardSourceFile {
     pub file_name: String,
@@ -204,7 +205,7 @@ impl StandardSourceFile {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 /// Type that acts as a reference to external file/content/data
 pub enum SourceReference {
     /// A typed specific file
@@ -216,7 +217,7 @@ pub enum SourceReference {
 
 /// Struct that represents an external URI like a website URL which
 /// has not been downloaded into a SourceFile, but is just referenced.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct ExternalURIReference {
     pub uri: String,
 }
@@ -357,7 +358,7 @@ impl fmt::Display for SourceReference {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct SourceFileReference {
     pub file_name: String,
     pub file_type: SourceFileType,
@@ -376,7 +377,7 @@ impl fmt::Display for SourceFileReference {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum SourceFileType {
     Document(DocumentFileType),
     Image(ImageFileType),
@@ -464,7 +465,7 @@ impl fmt::Display for SourceFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum ImageFileType {
     Png,
     Jpeg,
@@ -521,7 +522,7 @@ impl FromStr for ImageFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum DocumentFileType {
     Pdf,
     Md,
@@ -611,7 +612,7 @@ impl FromStr for DocumentFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum CodeFileType {
     Python,
     Java,
@@ -680,7 +681,7 @@ impl FromStr for CodeFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum ConfigFileType {
     Toml,
     Ini,
@@ -731,7 +732,7 @@ impl FromStr for ConfigFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum AudioFileType {
     Mp3,
     Wav,
@@ -800,7 +801,7 @@ impl FromStr for AudioFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum VideoFileType {
     Mp4,
     Mkv,
@@ -863,7 +864,7 @@ impl FromStr for VideoFileType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum ShinkaiFileType {
     ShinkaiJobKai,
     ShinkaiVRKai,

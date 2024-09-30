@@ -2,13 +2,24 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
+};
+use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{
+    EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion
+};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::{
     schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider,
     shinkai_message::shinkai_message_schemas::APIAddOllamaModels,
 };
-use utoipa::OpenApi;
+use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
+use std::collections::HashMap;
 
+use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use crate::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,
@@ -556,7 +567,7 @@ pub async fn add_llm_provider_handler(
 #[utoipa::path(
     post,
     path = "/v2/remove_llm_provider",
-    request_body = String,
+    request_body = HashMap<String, String>,
     responses(
         (status = 200, description = "Successfully removed LLM provider", body = String),
         (status = 500, description = "Internal server error", body = APIError)
@@ -565,9 +576,10 @@ pub async fn add_llm_provider_handler(
 pub async fn remove_llm_provider_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    llm_provider_id: String,
+    payload: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let llm_provider_id = payload.get("llm_provider_id").cloned().unwrap_or_default();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiRemoveLlmProvider {
@@ -745,7 +757,7 @@ pub async fn add_ollama_models_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct StopLLMRequest {
     pub inbox_name: String,
 }
@@ -807,7 +819,12 @@ pub async fn stop_llm_handler(
         stop_llm_handler,
     ),
     components(
-        schemas(GetPublicKeysResponse, APIError)
+        schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
+            ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
+            OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
+            ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
+            NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
+            APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError)
     ),
     tags(
         (name = "general", description = "General API endpoints")

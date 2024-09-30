@@ -495,12 +495,29 @@ impl Sheet {
         )
     }
 
-    pub fn print_as_ascii_table(&self) {
+    pub fn to_ascii_table(&self) -> String {
+        let mut table = String::new();
+
+        // Helper function to convert column index to letter
+        fn column_letter(index: usize) -> String {
+            let mut result = String::new();
+            let mut i = index + 1;
+            while i > 0 {
+                let rem = (i - 1) % 26;
+                result.insert(0, (b'A' + rem as u8) as char);
+                i = (i - rem - 1) / 26;
+            }
+            result
+        }
+
         // Collect column headers in order
         let mut headers: Vec<String> = self
             .display_columns
             .iter()
-            .filter_map(|col_uuid| self.columns.get(col_uuid).map(|col_def| col_def.name.clone()))
+            .enumerate()
+            .filter_map(|(i, col_uuid)| {
+                self.columns.get(col_uuid).map(|col_def| format!("{}: {}", column_letter(i), col_def.name.clone()))
+            })
             .collect();
         headers.insert(0, "Row".to_string());
 
@@ -538,25 +555,28 @@ impl Sheet {
             }
         }
 
-        // Print headers with padding
+        // Add headers with padding
         let header_line: Vec<String> = headers
             .iter()
             .enumerate()
             .map(|(i, header)| format!("{:width$}", header, width = col_widths[i]))
             .collect();
-        println!("{}", header_line.join(" | "));
+        table.push_str(&header_line.join(" | "));
+        table.push('\n');
 
-        // Print column IDs with padding
+        // Add column IDs with padding
         let id_line: Vec<String> = column_ids
             .iter()
             .enumerate()
             .map(|(i, id)| format!("{:width$}", id, width = col_widths[i]))
             .collect();
-        println!("{}", id_line.join(" | "));
+        table.push_str(&id_line.join(" | "));
+        table.push('\n');
 
-        println!("{}", "-".repeat(header_line.join(" | ").len()));
+        table.push_str(&"-".repeat(header_line.join(" | ").len()));
+        table.push('\n');
 
-        // Print rows with padding
+        // Add rows with padding
         for (index, row_uuid) in self.display_rows.iter().enumerate() {
             let short_row_uuid = format!("{} ({:.8}...)", index + 1, row_uuid);
             let mut row_data: Vec<String> = vec![format!("{:width$}", short_row_uuid, width = col_widths[0])];
@@ -568,11 +588,17 @@ impl Sheet {
                         .unwrap_or_else(|| "".to_string());
                     row_data.push(format!("{:width$}", cell_value, width = col_widths[col_index + 1]));
                 }
-                println!("{}", row_data.join(" | "));
+                table.push_str(&row_data.join(" | "));
+                table.push('\n');
             }
         }
-        println!();
-        println!();
+
+        table
+    }
+
+    pub fn print_as_ascii_table(&self) {
+        let table = self.to_ascii_table();
+        println!("{}", table);
     }
 }
 

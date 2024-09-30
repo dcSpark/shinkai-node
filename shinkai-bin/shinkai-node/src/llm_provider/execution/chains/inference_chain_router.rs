@@ -61,7 +61,6 @@ impl JobManager {
             user_profile,
             3,
             max_tokens_in_prompt,
-            HashMap::new(),
             ws_manager_trait.clone(),
             tool_router.clone(),
             sheet_manager.clone(),

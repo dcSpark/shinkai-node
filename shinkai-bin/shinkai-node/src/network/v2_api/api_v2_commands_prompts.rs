@@ -179,7 +179,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using LanceShinkaiDb
-        match lance_db.read().await.prompt_vector_search(&query, 5).await {
+        match lance_db.read().await.prompt_vector_search(&query, 10).await {
             Ok(prompts) => {
                 // Set embeddings to None before returning
                 let prompts_without_embeddings: Vec<CustomPrompt> = prompts
