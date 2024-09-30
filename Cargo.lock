@@ -9882,6 +9882,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai-spreadsheet-llm"
+version = "0.1.0"
+
+[[package]]
 name = "shinkai_baml"
 version = "0.1.0"
 dependencies = [
