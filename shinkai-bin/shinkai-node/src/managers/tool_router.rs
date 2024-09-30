@@ -748,6 +748,7 @@ mod tests {
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
     use tokio::task;
+    use regex::Regex;
 
     use super::*;
     use std::env;
@@ -826,7 +827,7 @@ mod tests {
 
     /// Not really a test but rather a script. I should move it to a separate file soon (tm)
     /// It's just easier to have it here because it already has access to all the necessary dependencies
-    #[tokio::test]
+    // #[tokio::test]
     #[allow(dead_code)]
     async fn test_generate_workflow_playground_documentation() {
         /*
@@ -883,81 +884,103 @@ mod tests {
         }
 
         for workflow_content in serialized_tools {
-            // Process the workflow using BAML
-            let generator_config = GeneratorConfig {
-                output_type: "typescript".to_string(),
-                output_dir: "../src/".to_string(),
-                version: "0.55.3".to_string(),
-                default_client_mode: "async".to_string(),
-            };
+            let mut attempts = 0;
+            let max_attempts = 3;
+            let mut success = false;
 
-            let client_config = ClientConfig {
-                provider: "ollama".to_string(),
-                base_url: "http://localhost:11434/v1".to_string(),
-                model: "mistral-small:22b".to_string(),
-                default_role: "user".to_string(),
-            };
+            while attempts < max_attempts && !success {
+                attempts += 1;
 
-            eprintln!("\n\nworkflow_content: {:?}", workflow_content);
+                // Process the workflow using BAML
+                let generator_config = GeneratorConfig {
+                    output_type: "typescript".to_string(),
+                    output_dir: "../src/".to_string(),
+                    version: "0.55.3".to_string(),
+                    default_client_mode: "async".to_string(),
+                };
 
-            let baml_config = BamlConfig::builder(generator_config, client_config)
-                .dsl_class_file(
-                    r##"
-                    class InputArg {
-                        name string @description(#"The name of the input argument"#)
-                        arg_type string @description(#"The type of the input argument"#)
-                        description string @description(#"The description of the input argument"#)
-                        is_required bool @description(#"Whether the input argument is required"#)
+                let client_config = ClientConfig {
+                    provider: "ollama".to_string(),
+                    base_url: "http://localhost:11434/v1".to_string(),
+                    model: "mistral-small:22b".to_string(),
+                    default_role: "user".to_string(),
+                };
+
+                eprintln!("\n\nworkflow_content: {:?}", workflow_content);
+
+                let baml_config = BamlConfig::builder(generator_config, client_config)
+                    .dsl_class_file(
+                        r##"
+                        class InputArg {
+                            name string @description(#"The name of the input argument"#)
+                            arg_type string @description(#"The type of the input argument"#)
+                            description string @description(#"The description of the input argument"#)
+                            is_required bool @description(#"Whether the input argument is required"#)
+                        }
+
+                        class Answer {
+                            name string @description(#"The name of the function. Don't include special characters like _ or - instead create an space between words."#)
+                            fn_name string @description(#"The name of the function. It's obtained from tool_router_key by removing the prefix e.g., \"local:::@@official.shinkai:::extensive_summary\" -> \"extensive_summary\""#)
+                            description string @description(#"The description of the function"#)
+                            tool_type string @description(#"The type of the tool E.g. Workflow, Prompt, JS Tool"#)
+                            author string @description(#"The author of the function"#)
+                            version string @description(#"The version of the function"#)
+                            input_args InputArg[] @description(#"The input arguments of the function"#)
+                            config string | null @description(#"The config of the function"#)
+                        }
+
+                        function DocumentFunction(function_string: string) -> Answer {
+                            client ShinkaiProvider
+
+                            prompt #"
+                            Parse the following json and return a structured representation of the data in the schema below. Don't include comments in the JSON.
+
+                            Resume:
+                            ---
+                            {{ function_string }}
+                            ---
+                                
+                            {{ ctx.output_format }}
+
+                            JSON:
+                            {{ _.role("user") }}
+                            "#
+                        }
+                        "##,
+                    )
+                    .input(&workflow_content)
+                    .function_name("DocumentFunction")
+                    .param_name("function_string")
+                    .build();
+
+                let env_vars = HashMap::new();
+                let runtime = baml_config.initialize_runtime(env_vars).unwrap();
+                // Spawn a blocking task to run the blocking code
+                let result = task::spawn_blocking(move || baml_config.execute(&runtime, true))
+                    .await
+                    .unwrap()
+                    .unwrap();
+
+                eprintln!("result: {:?}", result);
+
+                // Remove comments from the result string using regex
+                let re = Regex::new(r",\s*//.*").unwrap();
+                let cleaned_result = re.replace_all(&result, "");
+
+                // Deserialize the cleaned result string into a JSON object
+                match serde_json::from_str::<serde_json::Value>(&cleaned_result) {
+                    Ok(result_json) => {
+                        documentation_results.push(result_json);
+                        success = true;
                     }
-
-                    class Answer {
-                        name string @description(#"The name of the function. Don't include special characters like _ or - instead create an space between words."#)
-                        fn_name string @description(#"The name of the function. It's obtained from tool_router_key by removing the prefix e.g., \"local:::@@official.shinkai:::extensive_summary\" -> \"extensive_summary\""#)
-                        description string @description(#"The description of the function"#)
-                        tool_type string @description(#"The type of the tool E.g. Workflow, Prompt, JS Tool"#)
-                        author string @description(#"The author of the function"#)
-                        version string @description(#"The version of the function"#)
-                        input_args InputArg[] @description(#"The input arguments of the function"#)
-                        config string | null @description(#"The config of the function"#)
+                    Err(e) => {
+                        eprintln!("Failed to deserialize result (attempt {}): {}", attempts, e);
+                        if attempts >= max_attempts {
+                            panic!("Failed to deserialize result after {} attempts: {}", max_attempts, e);
+                        }
                     }
-
-                    function DocumentFunction(function_string: string) -> Answer {
-                        client ShinkaiProvider
-
-                        prompt #"
-                        Parse the following json and return a structured representation of the data in the schema below. Don't include comments in the JSON.
-
-                        Resume:
-                        ---
-                        {{ function_string }}
-                        ---
-                            
-                        {{ ctx.output_format }}
-
-                        JSON:
-                        {{ _.role("user") }}
-                        "#
-                    }
-                    "##,
-                )
-                .input(&workflow_content)
-                .function_name("DocumentFunction")
-                .param_name("function_string")
-                .build();
-
-            let env_vars = HashMap::new();
-            let runtime = baml_config.initialize_runtime(env_vars).unwrap();
-            // Spawn a blocking task to run the blocking code
-            let result = task::spawn_blocking(move || baml_config.execute(&runtime, true))
-                .await
-                .unwrap()
-                .unwrap();
-
-            eprintln!("result: {:?}", result);
-
-            // Deserialize the result string into a JSON object
-            let result_json: serde_json::Value = serde_json::from_str(&result).expect("Failed to deserialize result");
-            documentation_results.push(result_json);
+                }
+            }
         }
 
         println!("Documentation results: {:?}", documentation_results);
