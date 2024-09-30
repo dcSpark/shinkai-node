@@ -90,7 +90,7 @@ impl LanceShinkaiDb {
         Ok(())
     }
 
-    fn convert_batch_to_prompt(batch: &RecordBatch) -> Option<CustomPrompt> {
+    fn convert_batch_to_prompt(batch: &RecordBatch) -> Vec<CustomPrompt> {
         let name_array = batch
             .column_by_name(ShinkaiPromptSchema::name_field())
             .unwrap()
@@ -134,13 +134,15 @@ impl LanceShinkaiDb {
             .downcast_ref::<FixedSizeListArray>()
             .unwrap();
 
-        if name_array.len() > 0 {
-            let embedding = if vector_array.is_null(0) {
+        let mut prompts = Vec::new();
+
+        for i in 0..name_array.len() {
+            let embedding = if vector_array.is_null(i) {
                 None
             } else {
                 Some(
                     vector_array
-                        .value(0)
+                        .value(i)
                         .as_any()
                         .downcast_ref::<Float32Array>()
                         .unwrap()
@@ -149,18 +151,18 @@ impl LanceShinkaiDb {
                 )
             };
 
-            Some(CustomPrompt {
-                name: name_array.value(0).to_string(),
-                prompt: prompt_array.value(0).to_string(),
-                is_system: is_system_array.value(0),
-                is_enabled: is_enabled_array.value(0),
-                version: version_array.value(0).to_string(),
-                is_favorite: is_favorite_array.value(0),
+            prompts.push(CustomPrompt {
+                name: name_array.value(i).to_string(),
+                prompt: prompt_array.value(i).to_string(),
+                is_system: is_system_array.value(i),
+                is_enabled: is_enabled_array.value(i),
+                version: version_array.value(i).to_string(),
+                is_favorite: is_favorite_array.value(i),
                 embedding,
-            })
-        } else {
-            None
+            });
         }
+
+        prompts
     }
 
     pub async fn get_prompt(&self, name: &str) -> Result<Option<CustomPrompt>, ShinkaiLanceDBError> {
@@ -188,7 +190,8 @@ impl LanceShinkaiDb {
             .map_err(|e| ShinkaiLanceDBError::DatabaseError(e.to_string()))?;
 
         for batch in results {
-            if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
+            let prompts = Self::convert_batch_to_prompt(&batch);
+            for prompt in prompts {
                 return Ok(Some(prompt));
             }
         }
@@ -281,11 +284,8 @@ impl LanceShinkaiDb {
         let mut prompts = Vec::new();
         let mut res = query;
         while let Some(Ok(batch)) = res.next().await {
-            for _i in 0..batch.num_rows() {
-                if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
-                    prompts.push(prompt);
-                }
-            }
+            let prompts_batch = Self::convert_batch_to_prompt(&batch);
+            prompts.extend(prompts_batch);
         }
 
         Ok(prompts)
@@ -311,7 +311,12 @@ impl LanceShinkaiDb {
         let fts_query_builder = self
             .prompt_table
             .query()
-            .full_text_search(FullTextSearchQuery::new(query.to_owned()))
+            .full_text_search(FullTextSearchQuery {
+                columns: vec!["prompt".to_string()],
+                query: query.to_owned(),
+                limit: Some(num_results as i64),
+                wand_factor: Some(1.0),
+            })
             .select(Select::columns(&[
                 ShinkaiPromptSchema::name_field(),
                 ShinkaiPromptSchema::prompt_field(),
@@ -357,16 +362,14 @@ impl LanceShinkaiDb {
 
         let mut fts_res = fts_query;
         while let Some(Ok(batch)) = fts_res.next().await {
-            if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
-                fts_results.push(prompt);
-            }
+            let prompts = Self::convert_batch_to_prompt(&batch);
+            fts_results.extend(prompts);
         }
 
         let mut vector_res = vector_query;
         while let Some(Ok(batch)) = vector_res.next().await {
-            if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
-                vector_results.push(prompt);
-            }
+            let prompts = Self::convert_batch_to_prompt(&batch);
+            vector_results.extend(prompts);
         }
 
         // Merge results using interleave and remove duplicates
@@ -399,6 +402,21 @@ impl LanceShinkaiDb {
             }
         }
 
+        // Continue to add results from the remaining iterator if needed
+        while combined_results.len() < num_results as usize {
+            if let Some(fts_item) = fts_iter.next() {
+                if seen.insert(fts_item.name.clone()) {
+                    combined_results.push(fts_item);
+                }
+            } else if let Some(vector_item) = vector_iter.next() {
+                if seen.insert(vector_item.name.clone()) {
+                    combined_results.push(vector_item);
+                }
+            } else {
+                break;
+            }
+        }
+
         Ok(combined_results)
     }
 
@@ -422,11 +440,8 @@ impl LanceShinkaiDb {
         let mut prompts = Vec::new();
         let mut res = query;
         while let Some(Ok(batch)) = res.next().await {
-            for _i in 0..batch.num_rows() {
-                if let Some(prompt) = Self::convert_batch_to_prompt(&batch) {
-                    prompts.push(prompt);
-                }
-            }
+            let prompts_batch = Self::convert_batch_to_prompt(&batch);
+            prompts.extend(prompts_batch);
         }
 
         Ok(prompts)
