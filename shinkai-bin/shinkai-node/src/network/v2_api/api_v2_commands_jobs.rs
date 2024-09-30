@@ -704,6 +704,8 @@ impl Node {
                     top_p: None,
                     stream: None,
                     other_model_params: None,
+                    use_tools: None,
+                    web_search: None,
                 });
                 let _ = res.send(Ok(config)).await;
                 Ok(())
