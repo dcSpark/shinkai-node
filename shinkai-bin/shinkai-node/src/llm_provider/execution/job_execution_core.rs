@@ -11,14 +11,14 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, WSTopic};
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -479,30 +479,30 @@ impl JobManager {
             .await?;
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
-        // // Send WS done message
-        // if let Some(ws_manager) = ws_manager {
-        //     let ws_manager = ws_manager.lock().await;
+        // Send WS done message
+        if let Some(ws_manager) = ws_manager {
+            let ws_manager = ws_manager.lock().await;
 
-        //     let metadata = WSMetadata {
-        //         id: Some(job_message.job_id.clone()),
-        //         is_done: true,
-        //         done_reason: Some("Job completed".to_string()),
-        //         total_duration: None,
-        //         eval_count: None,
-        //     };
+            let metadata = WSMetadata {
+                id: Some(job_message.job_id.clone()),
+                is_done: true,
+                done_reason: Some("finished".to_string()),
+                total_duration: None,
+                eval_count: None,
+            };
 
-        //     let ws_message_type = WSMessageType::Metadata(metadata);
+            let ws_message_type = WSMessageType::Metadata(metadata);
 
-        //     let _ = ws_manager
-        //         .queue_message(
-        //             WSTopic::Inbox,
-        //             job_message.job_id.clone(),
-        //             response.to_string(),
-        //             ws_message_type,
-        //             true,
-        //         )
-        //         .await;
-        // }
+            let _ = ws_manager
+                .queue_message(
+                    WSTopic::Inbox,
+                    job_message.job_id.clone(),
+                    response.to_string(),
+                    ws_message_type,
+                    true,
+                )
+                .await;
+        }
 
         Ok(true)
     }
@@ -543,7 +543,6 @@ impl JobManager {
             user_profile.clone(),
             3,
             max_tokens_in_prompt,
-            HashMap::new(),
             ws_manager.clone(),
             tool_router.clone(),
             sheet_manager.clone(),

@@ -3,9 +3,10 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
+use utoipa::ToSchema;
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct SerializedLLMProvider {
     pub id: String,
     pub full_identity_name: ShinkaiName,
@@ -47,9 +48,25 @@ impl SerializedLLMProvider {
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
         }
     }
+
+    pub fn mock_provider() -> Self {
+        SerializedLLMProvider {
+            id: "mock_agent".to_string(),
+            full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent".to_string()).unwrap(),
+            perform_locally: false,
+            external_url: Some("https://api.example.com".to_string()),
+            api_key: Some("mockapikey".to_string()),
+            model: LLMProviderInterface::OpenAI(OpenAI {
+                model_type: "gpt-4o-mini".to_string(),
+            }),
+            toolkit_permissions: vec![],
+            storage_bucket_permissions: vec![],
+            allowed_message_senders: vec![],
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, ToSchema)]
 pub enum LLMProviderInterface {
     OpenAI(OpenAI),
     TogetherAI(TogetherAI),
@@ -62,10 +79,10 @@ pub enum LLMProviderInterface {
     OpenRouter(OpenRouter),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct LocalLLM {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Ollama {
     pub model_type: String,
 }
@@ -76,7 +93,7 @@ impl Ollama {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Groq {
     pub model_type: String,
 }
@@ -87,7 +104,7 @@ impl Groq {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Exo {
     pub model_type: String,
 }
@@ -98,7 +115,7 @@ impl Exo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Gemini {
     pub model_type: String,
 }
@@ -109,7 +126,7 @@ impl Gemini {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct ShinkaiBackend {
     pub model_type: String,
 }
@@ -130,7 +147,7 @@ impl ShinkaiBackend {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct OpenAI {
     pub model_type: String,
 }
@@ -271,7 +288,17 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "togetherai", "ollama", "shinkai-backend", "local-llm", "groq", "exo", "gemini", "openrouter"],
+                &[
+                    "openai",
+                    "togetherai",
+                    "ollama",
+                    "shinkai-backend",
+                    "local-llm",
+                    "groq",
+                    "exo",
+                    "gemini",
+                    "openrouter",
+                ],
             )),
         }
     }

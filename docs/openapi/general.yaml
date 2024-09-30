@@ -1,0 +1,880 @@
+openapi: 3.0.3
+info:
+  title: shinkai_node
+  description: ''
+  contact:
+    name: Nico Arqueros
+    email: nico@shinkai.com
+  license:
+    name: ''
+  version: 0.8.4
+paths:
+  /v2/add_llm_provider:
+    post:
+      tags:
+      - crate
+      operationId: add_llm_provider_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SerializedLLMProvider'
+        required: true
+      responses:
+        '200':
+          description: Successfully added LLM provider
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/add_ollama_models:
+    post:
+      tags:
+      - crate
+      operationId: add_ollama_models_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIAddOllamaModels'
+        required: true
+      responses:
+        '200':
+          description: Successfully added Ollama models
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/change_node_name:
+    post:
+      tags:
+      - crate
+      operationId: change_node_name_handler
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: string
+        required: true
+      responses:
+        '200':
+          description: Successfully changed node name
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/default_embedding_model:
+    get:
+      tags:
+      - crate
+      operationId: get_default_embedding_model_handler
+      responses:
+        '200':
+          description: Successfully retrieved default embedding model
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+    post:
+      tags:
+      - crate
+      operationId: update_default_embedding_model_handler
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: string
+        required: true
+      responses:
+        '200':
+          description: Successfully updated default embedding model
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/download_file_from_inbox/{inbox_name}/{filename}:
+    get:
+      tags:
+      - crate
+      operationId: download_file_from_inbox_handler
+      responses:
+        '200':
+          description: Successfully downloaded file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/health_check:
+    get:
+      tags:
+      - crate
+      operationId: health_check
+      responses:
+        '200':
+          description: Health check successful
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/initial_registration:
+    post:
+      tags:
+      - crate
+      operationId: initial_registration_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShinkaiMessage'
+        required: true
+      responses:
+        '200':
+          description: Successfully used registration code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIUseRegistrationCodeSuccessResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/is_pristine:
+    get:
+      tags:
+      - crate
+      operationId: is_pristine_handler
+      responses:
+        '200':
+          description: Successfully checked pristine state
+          content:
+            text/plain:
+              schema:
+                type: boolean
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/list_files_in_inbox/{inbox_name}:
+    get:
+      tags:
+      - crate
+      operationId: list_files_in_inbox_handler
+      responses:
+        '200':
+          description: Successfully listed files in inbox
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/local_processing_preference:
+    get:
+      tags:
+      - crate
+      operationId: get_local_processing_preference_handler
+      responses:
+        '200':
+          description: Successfully retrieved local processing preference
+          content:
+            text/plain:
+              schema:
+                type: boolean
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+    post:
+      tags:
+      - crate
+      operationId: update_local_processing_preference_handler
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: boolean
+        required: true
+      responses:
+        '200':
+          description: Successfully updated local processing preference
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/modify_llm_provider:
+    post:
+      tags:
+      - crate
+      operationId: modify_llm_provider_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SerializedLLMProvider'
+        required: true
+      responses:
+        '200':
+          description: Successfully modified LLM provider
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/public_keys:
+    get:
+      tags:
+      - crate
+      operationId: get_public_keys
+      responses:
+        '200':
+          description: Successfully retrieved public keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPublicKeysResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/remove_llm_provider:
+    post:
+      tags:
+      - crate
+      operationId: remove_llm_provider_handler
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: string
+        required: true
+      responses:
+        '200':
+          description: Successfully removed LLM provider
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/scan_ollama_models:
+    get:
+      tags:
+      - crate
+      operationId: scan_ollama_models_handler
+      responses:
+        '200':
+          description: Successfully scanned Ollama models
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {}
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/stop_llm:
+    post:
+      tags:
+      - crate
+      operationId: stop_llm_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StopLLMRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully stopped LLM
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/supported_embedding_models:
+    get:
+      tags:
+      - crate
+      operationId: get_supported_embedding_models_handler
+      responses:
+        '200':
+          description: Successfully retrieved supported embedding models
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+    post:
+      tags:
+      - crate
+      operationId: update_supported_embedding_models_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        '200':
+          description: Successfully updated supported embedding models
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+components:
+  schemas:
+    APIAddOllamaModels:
+      type: object
+      required:
+      - models
+      properties:
+        models:
+          type: array
+          items:
+            type: string
+    APIError:
+      type: object
+      required:
+      - code
+      - error
+      - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          minimum: 0
+        error:
+          type: string
+        message:
+          type: string
+    APIUseRegistrationCodeSuccessResponse:
+      type: object
+      required:
+      - message
+      - node_name
+      - encryption_public_key
+      - identity_public_key
+      - api_v2_key
+      properties:
+        api_v2_key:
+          type: string
+        encryption_public_key:
+          type: string
+        identity_public_key:
+          type: string
+        message:
+          type: string
+        node_name:
+          type: string
+    EncryptedShinkaiBody:
+      type: object
+      required:
+      - content
+      properties:
+        content:
+          type: string
+    EncryptedShinkaiData:
+      type: object
+      required:
+      - content
+      properties:
+        content:
+          type: string
+    EncryptionMethod:
+      type: string
+      enum:
+      - DiffieHellmanChaChaPoly1305
+      - None
+    Exo:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    ExternalMetadata:
+      type: object
+      required:
+      - sender
+      - recipient
+      - scheduled_time
+      - signature
+      - intra_sender
+      - other
+      properties:
+        intra_sender:
+          type: string
+        other:
+          type: string
+        recipient:
+          type: string
+        scheduled_time:
+          type: string
+        sender:
+          type: string
+        signature:
+          type: string
+    Gemini:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    GenericAPI:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    GetPublicKeysResponse:
+      type: object
+      required:
+      - signature_public_key
+      - encryption_public_key
+      properties:
+        encryption_public_key:
+          type: string
+        signature_public_key:
+          type: string
+    Groq:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    InternalMetadata:
+      type: object
+      required:
+      - sender_subidentity
+      - recipient_subidentity
+      - inbox
+      - signature
+      - encryption
+      properties:
+        encryption:
+          $ref: '#/components/schemas/EncryptionMethod'
+        inbox:
+          type: string
+        node_api_data:
+          allOf:
+          - $ref: '#/components/schemas/NodeApiData'
+          nullable: true
+        recipient_subidentity:
+          type: string
+        sender_subidentity:
+          type: string
+        signature:
+          type: string
+    LLMProviderInterface:
+      oneOf:
+      - type: object
+        required:
+        - OpenAI
+        properties:
+          OpenAI:
+            $ref: '#/components/schemas/OpenAI'
+      - type: object
+        required:
+        - GenericAPI
+        properties:
+          GenericAPI:
+            $ref: '#/components/schemas/GenericAPI'
+      - type: object
+        required:
+        - Ollama
+        properties:
+          Ollama:
+            $ref: '#/components/schemas/Ollama'
+      - type: object
+        required:
+        - ShinkaiBackend
+        properties:
+          ShinkaiBackend:
+            $ref: '#/components/schemas/ShinkaiBackend'
+      - type: object
+        required:
+        - LocalLLM
+        properties:
+          LocalLLM:
+            $ref: '#/components/schemas/LocalLLM'
+      - type: object
+        required:
+        - Groq
+        properties:
+          Groq:
+            $ref: '#/components/schemas/Groq'
+      - type: object
+        required:
+        - Gemini
+        properties:
+          Gemini:
+            $ref: '#/components/schemas/Gemini'
+      - type: object
+        required:
+        - Exo
+        properties:
+          Exo:
+            $ref: '#/components/schemas/Exo'
+    LocalLLM:
+      type: object
+    MessageBody:
+      oneOf:
+      - type: object
+        required:
+        - encrypted
+        properties:
+          encrypted:
+            $ref: '#/components/schemas/EncryptedShinkaiBody'
+      - type: object
+        required:
+        - unencrypted
+        properties:
+          unencrypted:
+            $ref: '#/components/schemas/ShinkaiBody'
+    MessageData:
+      oneOf:
+      - type: object
+        required:
+        - encrypted
+        properties:
+          encrypted:
+            $ref: '#/components/schemas/EncryptedShinkaiData'
+      - type: object
+        required:
+        - unencrypted
+        properties:
+          unencrypted:
+            $ref: '#/components/schemas/ShinkaiData'
+    MessageSchemaType:
+      type: string
+      enum:
+      - JobCreationSchema
+      - JobMessageSchema
+      - CreateRegistrationCode
+      - UseRegistrationCode
+      - APIGetMessagesFromInboxRequest
+      - APIReadUpToTimeRequest
+      - APIAddAgentRequest
+      - APIScanOllamaModels
+      - APIAddOllamaModels
+      - APIRemoveAgentRequest
+      - APIModifyAgentRequest
+      - APIFinishJob
+      - ChangeJobAgentRequest
+      - TextContent
+      - ChangeNodesName
+      - WSMessage
+      - FormattedMultiContent
+      - SymmetricKeyExchange
+      - EncryptedFileContent
+      - Empty
+      - VecFsRetrievePathSimplifiedJson
+      - VecFsRetrieveVectorResource
+      - VecFsRetrieveVRKai
+      - VecFsRetrieveVRPack
+      - VecFsRetrieveVectorSearchSimplifiedJson
+      - VecFsSearchItems
+      - VecFsCreateFolder
+      - VecFsDeleteFolder
+      - VecFsMoveFolder
+      - VecFsCopyFolder
+      - VecFsCreateItem
+      - VecFsMoveItem
+      - VecFsCopyItem
+      - VecFsDeleteItem
+      - AvailableSharedItems
+      - AvailableSharedItemsResponse
+      - CreateShareableFolder
+      - UpdateShareableFolder
+      - UnshareFolder
+      - GetMySubscribers
+      - ConvertFilesAndSaveToFolder
+      - SubscribeToSharedFolder
+      - UnsubscribeToSharedFolder
+      - SubscribeToSharedFolderResponse
+      - UnsubscribeToSharedFolderResponse
+      - MySubscriptions
+      - SubscriptionRequiresTreeUpdate
+      - SubscriptionRequiresTreeUpdateResponse
+      - UpdateLocalProcessingPreference
+      - GetProcessingPreference
+      - APIRemoveToolkit
+      - APIAddToolkit
+      - APIListToolkits
+      - GetNotificationsBeforeTimestamp
+      - GetLastNotifications
+      - SearchWorkflows
+      - AddWorkflow
+      - UpdateWorkflow
+      - RemoveWorkflow
+      - GetWorkflow
+      - ListWorkflows
+      - UpdateSupportedEmbeddingModels
+      - UpdateDefaultEmbeddingModel
+      - UserSheets
+      - SetColumn
+      - RemoveColumn
+      - RemoveSheet
+      - CreateEmptySheet
+      - SetCellValue
+      - GetSheet
+      - RemoveRows
+      - AddRows
+      - SetShinkaiTool
+      - ListAllShinkaiTools
+      - GetShinkaiTool
+      - SearchShinkaiTool
+      - InvoiceRequest
+      - Invoice
+      - PaidInvoice
+      - InvoiceResult
+    NodeApiData:
+      type: object
+      required:
+      - parent_hash
+      - node_message_hash
+      - node_timestamp
+      properties:
+        node_message_hash:
+          type: string
+        node_timestamp:
+          type: string
+        parent_hash:
+          type: string
+    Ollama:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    OpenAI:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    SerializedLLMProvider:
+      type: object
+      required:
+      - id
+      - full_identity_name
+      - perform_locally
+      - model
+      - toolkit_permissions
+      - storage_bucket_permissions
+      - allowed_message_senders
+      properties:
+        allowed_message_senders:
+          type: array
+          items:
+            type: string
+        api_key:
+          type: string
+          nullable: true
+        external_url:
+          type: string
+          nullable: true
+        full_identity_name:
+          $ref: '#/components/schemas/ShinkaiName'
+        id:
+          type: string
+        model:
+          $ref: '#/components/schemas/LLMProviderInterface'
+        perform_locally:
+          type: boolean
+        storage_bucket_permissions:
+          type: array
+          items:
+            type: string
+        toolkit_permissions:
+          type: array
+          items:
+            type: string
+    ShinkaiBackend:
+      type: object
+      required:
+      - model_type
+      properties:
+        model_type:
+          type: string
+    ShinkaiBody:
+      type: object
+      required:
+      - message_data
+      - internal_metadata
+      properties:
+        internal_metadata:
+          $ref: '#/components/schemas/InternalMetadata'
+        message_data:
+          $ref: '#/components/schemas/MessageData'
+    ShinkaiData:
+      type: object
+      required:
+      - message_raw_content
+      - message_content_schema
+      properties:
+        message_content_schema:
+          $ref: '#/components/schemas/MessageSchemaType'
+        message_raw_content:
+          type: string
+    ShinkaiMessage:
+      type: object
+      required:
+      - body
+      - external_metadata
+      - encryption
+      - version
+      properties:
+        body:
+          $ref: '#/components/schemas/MessageBody'
+        encryption:
+          $ref: '#/components/schemas/EncryptionMethod'
+        external_metadata:
+          $ref: '#/components/schemas/ExternalMetadata'
+        version:
+          $ref: '#/components/schemas/ShinkaiVersion'
+    ShinkaiName:
+      type: object
+      required:
+      - full_name
+      - node_name
+      properties:
+        full_name:
+          type: string
+        node_name:
+          type: string
+        profile_name:
+          type: string
+          nullable: true
+        subidentity_name:
+          type: string
+          nullable: true
+        subidentity_type:
+          allOf:
+          - $ref: '#/components/schemas/ShinkaiSubidentityType'
+          nullable: true
+    ShinkaiSubidentityType:
+      type: string
+      enum:
+      - Agent
+      - Device
+    ShinkaiVersion:
+      type: string
+      enum:
+      - V1_0
+      - Unsupported
+    StopLLMRequest:
+      type: object
+      required:
+      - inbox_name
+      properties:
+        inbox_name:
+          type: string
+tags:
+- name: general
+  description: General API endpoints

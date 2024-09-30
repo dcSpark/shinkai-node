@@ -1,7 +1,7 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_conversation_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
+    ollama_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
@@ -65,7 +65,7 @@ impl LLMService for Ollama {
 
             let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
             let messages_result = if is_stream {
-                ollama_conversation_prepare_messages(&model, prompt)?
+                ollama_prepare_messages(&model, prompt)?
             } else {
                 ollama_conversation_prepare_messages_with_tooling(&model, prompt)?
             };

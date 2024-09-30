@@ -158,14 +158,16 @@ impl GenericInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        // Only for OpenAI right now
         let job_config = full_job.config();
         let mut tools = vec![];
         let use_tools = match &llm_provider.model {
             LLMProviderInterface::OpenAI(_) => true,
             LLMProviderInterface::Ollama(model_type) => {
-                let is_supported_model =
-                    model_type.model_type.starts_with("llama3.1") || model_type.model_type.starts_with("mistral-nemo") || model_type.model_type.starts_with("mistral-small");
+                let is_supported_model = model_type.model_type.starts_with("llama3.1")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("mistral-nemo")
+                    || model_type.model_type.starts_with("mistral-small")
+                    || model_type.model_type.starts_with("mistral-large");
                 is_supported_model
                     && job_config
                         .as_ref()
@@ -260,7 +262,6 @@ impl GenericInferenceChain {
                     user_profile.clone(),
                     max_iterations,
                     max_tokens_in_prompt,
-                    HashMap::new(),
                     ws_manager_trait.clone(),
                     tool_router.clone(),
                     sheet_manager.clone(),

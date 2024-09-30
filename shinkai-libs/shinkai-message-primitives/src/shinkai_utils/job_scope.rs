@@ -3,10 +3,11 @@ use shinkai_vector_resources::vector_resource::VectorResourceCore;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
 use shinkai_vector_resources::{source::VRSourceReference, vector_resource::BaseVectorResource};
 use std::fmt;
+use utoipa::ToSchema;
 
 use crate::schemas::shinkai_name::ShinkaiName;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 /// Job's scope which includes both Local entries (vrkai stored locally only in job)
 /// and VecFS entries (source/vector resource stored in the FS, accessible to all jobs)
 pub struct JobScope {
@@ -164,7 +165,7 @@ impl fmt::Debug for JobScope {
 }
 
 /// Enum holding both Local and VectorFS scope entries
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum ScopeEntry {
     LocalScopeVRKai(LocalScopeVRKaiEntry),
     LocalScopeVRPack(LocalScopeVRPackEntry),
@@ -175,20 +176,20 @@ pub enum ScopeEntry {
 
 /// A Scope Entry for a local VRKai that only lives in the
 /// Job's scope (not in the VectorFS & thus not available to other jobs)
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct LocalScopeVRKaiEntry {
     pub vrkai: VRKai,
 }
 
 /// A Scope Entry for a local VRPack that only lives in the
 /// Job's scope (not in the VectorFS & thus not available to other jobs)
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct LocalScopeVRPackEntry {
     pub vrpack: VRPack,
 }
 
 /// A Scope Entry for a FSItem saved in the VectorFS.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct VectorFSItemScopeEntry {
     pub name: String,
     pub path: VRPath,
@@ -196,7 +197,7 @@ pub struct VectorFSItemScopeEntry {
 }
 
 /// A Scope Entry for a FSFolder saved in the VectorFS.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct VectorFSFolderScopeEntry {
     pub name: String,
     pub path: VRPath,
@@ -204,7 +205,7 @@ pub struct VectorFSFolderScopeEntry {
 
 /// A Scope Entry for a FSFolder that (potentially) exists on another node's VectorFS (if your node has perms).
 /// Unsupported currently, struct added for future compatibility.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct NetworkFolderScopeEntry {
     pub name: String,
     /// This should be the profile on the external node where the folder is stored

@@ -1,0 +1,715 @@
+openapi: 3.0.3
+info:
+  title: shinkai_node
+  description: ''
+  contact:
+    name: Nico Arqueros
+    email: nico@shinkai.com
+  license:
+    name: ''
+  version: 0.8.4
+paths:
+  /v2/available_shared_items:
+    post:
+      tags:
+      - crate
+      operationId: available_shared_items_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIAvailableSharedItems'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved available shared items
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/available_shared_items_open:
+    post:
+      tags:
+      - crate
+      operationId: available_shared_items_open_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIAvailableSharedItems'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved available shared items open
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/create_shareable_folder:
+    post:
+      tags:
+      - crate
+      operationId: create_shareable_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APICreateShareableFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully created shareable folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/http_free_subscription_links:
+    post:
+      tags:
+      - crate
+      operationId: get_http_free_subscription_links_handler
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: string
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved HTTP free subscription links
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/last_notifications:
+    post:
+      tags:
+      - crate
+      operationId: get_last_notifications_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIGetLastNotifications'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved last notifications
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/my_subscribers:
+    post:
+      tags:
+      - crate
+      operationId: get_my_subscribers_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIGetMySubscribers'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved my subscribers
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ShinkaiSubscription'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/my_subscriptions:
+    post:
+      tags:
+      - crate
+      operationId: my_subscriptions_handler
+      responses:
+        '200':
+          description: Successfully retrieved my subscriptions
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/notifications_before_timestamp:
+    post:
+      tags:
+      - crate
+      operationId: get_notifications_before_timestamp_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIGetNotificationsBeforeTimestamp'
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved notifications before timestamp
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/subscribe_to_shared_folder:
+    post:
+      tags:
+      - crate
+      operationId: subscribe_to_shared_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APISubscribeToSharedFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully subscribed to shared folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/unshare_folder:
+    post:
+      tags:
+      - crate
+      operationId: unshare_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIUnshareFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully unshared folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/unsubscribe:
+    post:
+      tags:
+      - crate
+      operationId: unsubscribe_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIUnsubscribeToSharedFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully unsubscribed from shared folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/update_shareable_folder:
+    post:
+      tags:
+      - crate
+      operationId: update_shareable_folder_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIUpdateShareableFolder'
+        required: true
+      responses:
+        '200':
+          description: Successfully updated shareable folder
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+components:
+  schemas:
+    APIAvailableSharedItems:
+      type: object
+      required:
+      - path
+      - streamer_node_name
+      - streamer_profile_name
+      properties:
+        path:
+          type: string
+        streamer_node_name:
+          type: string
+        streamer_profile_name:
+          type: string
+    APICreateShareableFolder:
+      type: object
+      required:
+      - path
+      - subscription_req
+      properties:
+        credentials:
+          allOf:
+          - $ref: '#/components/schemas/FileDestinationCredentials'
+          nullable: true
+        path:
+          type: string
+        subscription_req:
+          $ref: '#/components/schemas/FolderSubscription'
+    APIError:
+      type: object
+      required:
+      - code
+      - error
+      - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          minimum: 0
+        error:
+          type: string
+        message:
+          type: string
+    APIGetLastNotifications:
+      type: object
+      required:
+      - count
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        timestamp:
+          type: string
+          nullable: true
+    APIGetMySubscribers:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+    APIGetNotificationsBeforeTimestamp:
+      type: object
+      required:
+      - timestamp
+      - count
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        timestamp:
+          type: string
+    APISubscribeToSharedFolder:
+      type: object
+      required:
+      - path
+      - streamer_node_name
+      - streamer_profile_name
+      - payment
+      properties:
+        base_folder:
+          type: string
+          nullable: true
+        http_preferred:
+          type: boolean
+          nullable: true
+        path:
+          type: string
+        payment:
+          $ref: '#/components/schemas/SubscriptionPayment'
+        streamer_node_name:
+          type: string
+        streamer_profile_name:
+          type: string
+    APIUnshareFolder:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+    APIUnsubscribeToSharedFolder:
+      type: object
+      required:
+      - path
+      - streamer_node_name
+      - streamer_profile_name
+      properties:
+        path:
+          type: string
+        streamer_node_name:
+          type: string
+        streamer_profile_name:
+          type: string
+    APIUpdateShareableFolder:
+      type: object
+      required:
+      - path
+      - subscription
+      properties:
+        path:
+          type: string
+        subscription:
+          $ref: '#/components/schemas/FolderSubscription'
+    FileDestinationCredentials:
+      type: object
+      required:
+      - source
+      - access_key_id
+      - secret_access_key
+      - endpoint_uri
+      - bucket
+      properties:
+        access_key_id:
+          type: string
+        bucket:
+          type: string
+        endpoint_uri:
+          type: string
+        secret_access_key:
+          type: string
+        source:
+          $ref: '#/components/schemas/FileDestinationSourceType'
+    FileDestinationSourceType:
+      type: string
+      enum:
+      - S3
+      - R2
+    FolderSubscription:
+      type: object
+      required:
+      - is_free
+      - folder_description
+      properties:
+        folder_description:
+          type: string
+        has_web_alternative:
+          type: boolean
+          nullable: true
+        is_free:
+          type: boolean
+        minimum_time_delegated_hours:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        minimum_token_delegation:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        monthly_payment:
+          allOf:
+          - $ref: '#/components/schemas/PaymentOption'
+          nullable: true
+    PaymentOption:
+      oneOf:
+      - type: object
+        required:
+        - USD
+        properties:
+          USD:
+            type: number
+            format: double
+      - type: object
+        required:
+        - KAITokens
+        properties:
+          KAITokens:
+            type: number
+            format: double
+    SendResponseBody:
+      type: object
+      required:
+      - status
+      - message
+      properties:
+        data:
+          allOf:
+          - $ref: '#/components/schemas/SendResponseBodyData'
+          nullable: true
+        message:
+          type: string
+        status:
+          type: string
+    SendResponseBodyData:
+      type: object
+      required:
+      - message_id
+      - inbox
+      - scheduled_time
+      properties:
+        inbox:
+          type: string
+        message_id:
+          type: string
+        parent_message_id:
+          type: string
+          nullable: true
+        scheduled_time:
+          type: string
+    ShinkaiName:
+      type: object
+      required:
+      - full_name
+      - node_name
+      properties:
+        full_name:
+          type: string
+        node_name:
+          type: string
+        profile_name:
+          type: string
+          nullable: true
+        subidentity_name:
+          type: string
+          nullable: true
+        subidentity_type:
+          allOf:
+          - $ref: '#/components/schemas/ShinkaiSubidentityType'
+          nullable: true
+    ShinkaiSubidentityType:
+      type: string
+      enum:
+      - Agent
+      - Device
+    ShinkaiSubscription:
+      type: object
+      required:
+      - subscription_id
+      - shared_folder
+      - streaming_node
+      - streaming_profile
+      - subscriber_node
+      - subscriber_profile
+      - state
+      - date_created
+      - last_modified
+      - last_sync
+      properties:
+        date_created:
+          type: string
+          format: date
+        http_preferred:
+          type: boolean
+          nullable: true
+        last_modified:
+          type: string
+          format: date
+        last_sync:
+          type: string
+          format: date
+        payment:
+          allOf:
+          - $ref: '#/components/schemas/SubscriptionPayment'
+          nullable: true
+        shared_folder:
+          type: string
+        state:
+          $ref: '#/components/schemas/ShinkaiSubscriptionStatus'
+        streaming_node:
+          $ref: '#/components/schemas/ShinkaiName'
+        streaming_profile:
+          type: string
+        subscriber_destination_path:
+          type: string
+          nullable: true
+        subscriber_node:
+          $ref: '#/components/schemas/ShinkaiName'
+        subscriber_profile:
+          type: string
+        subscription_description:
+          type: string
+          nullable: true
+        subscription_id:
+          $ref: '#/components/schemas/SubscriptionId'
+    ShinkaiSubscriptionStatus:
+      type: string
+      enum:
+      - SubscriptionRequested
+      - SubscriptionConfirmed
+      - UnsubscribeRequested
+      - UnsubscribeConfirmed
+      - UpdateSubscriptionRequested
+      - UpdateSubscriptionConfirmed
+    SubscriptionId:
+      type: object
+      required:
+      - unique_id
+      properties:
+        exclude_folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/VRPath'
+          nullable: true
+        include_folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/VRPath'
+          nullable: true
+        unique_id:
+          type: string
+    SubscriptionPayment:
+      oneOf:
+      - type: string
+        enum:
+        - Free
+      - type: string
+        enum:
+        - DirectDelegation
+      - type: object
+        required:
+        - Payment
+        properties:
+          Payment:
+            type: string
+    VRPath:
+      type: object
+      description: |-
+        A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
+        Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
+      required:
+      - path_ids
+      properties:
+        path_ids:
+          type: array
+          items:
+            type: string
+tags:
+- name: subscriptions
+  description: Subscription API endpoints

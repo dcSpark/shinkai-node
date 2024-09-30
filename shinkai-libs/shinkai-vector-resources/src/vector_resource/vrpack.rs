@@ -12,9 +12,10 @@ use base64::{decode, encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use utoipa::ToSchema;
 
 // Versions of VRPack that are supported
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, ToSchema)]
 pub enum VRPackVersion {
     #[serde(rename = "V1")]
     V1,
@@ -30,7 +31,7 @@ impl VRPackVersion {
 /// In other words, a `.vrpack` file is akin to a "compressed archive" of internally held VRKais with folder structure preserved.
 /// Of note, VRPacks are not compressed at the top level because the VRKais held inside already are. This improves performance for large VRPacks.
 /// To save as a file or transfer the VRPack, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct VRPack {
     pub name: String,
     pub resource: BaseVectorResource,

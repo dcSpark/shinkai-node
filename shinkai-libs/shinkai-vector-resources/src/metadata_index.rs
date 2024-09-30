@@ -1,8 +1,9 @@
 use super::vector_resource::Node;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct MetadataIndex {
     index: HashMap<String, Vec<String>>,
 }

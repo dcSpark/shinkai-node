@@ -476,7 +476,7 @@ impl Prompt {
     }
 
     /// Processes all sub-prompts into a single output String in OpenAI's message format.
-    pub fn generate_openai_messages<F>(
+    pub fn generate_llm_messages<F>(
         &self,
         max_prompt_tokens: Option<usize>,
         tool_response_field_name: Option<String>,

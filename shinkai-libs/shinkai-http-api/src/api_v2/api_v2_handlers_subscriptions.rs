@@ -1,10 +1,17 @@
 use async_channel::Sender;
 use futures::StreamExt;
 use reqwest::StatusCode;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
-    APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
-    APIUpdateShareableFolder,
+use shinkai_message_primitives::{
+    schemas::{
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId},
+        shinkai_subscription_req::{FolderSubscription, PaymentOption, SubscriptionPayment},
+    },
+    shinkai_message::shinkai_message_schemas::{
+        APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
+        APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder,
+        APIUpdateShareableFolder, FileDestinationCredentials, FileDestinationSourceType,
+    },
 };
 use utoipa::OpenApi;
 use warp::Filter;
@@ -598,7 +605,10 @@ pub async fn get_notifications_before_timestamp_handler(
         get_notifications_before_timestamp_handler
     ),
     components(
-        schemas(SendResponseBody, SendResponseBodyData, APIError)
+        schemas(SendResponseBody, SendResponseBodyData, APIError, APIAvailableSharedItems, APICreateShareableFolder, APIGetLastNotifications, APIGetMySubscribers,
+            ShinkaiSubscription, APIGetNotificationsBeforeTimestamp, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
+            FileDestinationCredentials, FolderSubscription, SubscriptionPayment, ShinkaiSubscriptionStatus, ShinkaiName, SubscriptionId, PaymentOption, FileDestinationSourceType,
+            ShinkaiSubidentityType)
     ),
     tags(
         (name = "subscriptions", description = "Subscription API endpoints")

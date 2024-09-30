@@ -1,6 +1,7 @@
 use super::vector_resource::Node;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use std::collections::HashMap;
 use std::error::Error;
 
@@ -43,7 +44,7 @@ impl DataTag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct DataTagIndex {
     index: HashMap<String, Vec<String>>,
 }

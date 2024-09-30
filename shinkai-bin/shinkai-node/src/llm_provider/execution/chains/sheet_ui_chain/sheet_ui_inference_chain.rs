@@ -1,9 +1,6 @@
-use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::job::{Job, JobLike};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
@@ -14,14 +11,17 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use async_trait::async_trait;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::any::Any;
@@ -163,9 +163,24 @@ impl SheetUIInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        // Only for OpenAI right now
+        let job_config = full_job.config();
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(_openai) = &llm_provider.model.clone() {
+        let use_tools = match &llm_provider.model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model_type) => {
+                let is_supported_model = model_type.model_type.starts_with("llama3.1")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("mistral-nemo")
+                    || model_type.model_type.starts_with("mistral-small")
+                    || model_type.model_type.starts_with("mistral-large");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            _ => false,
+        };
+        if use_tools {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
             if let Some(tool_router) = &tool_router {
@@ -190,12 +205,37 @@ impl SheetUIInferenceChain {
 
         // 3) Generate Prompt
         let job_config = full_job.config();
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+        
+        let csv_result = {
+            let sheet_manager_clone = sheet_manager.clone().unwrap();
+            let sheet_id_clone = sheet_id.clone();
+            
+            // Export the current CSV data
+            let csv_result = SheetRustFunctions::get_table(sheet_manager_clone, sheet_id_clone, HashMap::new()).await;
+
+            let csv_data = match csv_result {
+                Ok(data) => data,
+                Err(_) => String::new(),
+            };
+
+            csv_data
+        };        
+
+        // Extend the user message to include the CSV data if available
+        let extended_user_message = if csv_result.is_empty() {
+            user_message.clone()
+        } else {
+            format!(
+                "{}\n\nThis is the current table that we are working on:\n\n{}",
+                user_message, csv_result
+            )
+        };
+        eprintln!("Extended user message: {}", extended_user_message);
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            custom_prompt,
+            None, // No custom prompt
             None, // TODO: connect later on
-            user_message.clone(),
+            extended_user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
             summary_node_text.clone(),
@@ -301,7 +341,6 @@ impl SheetUIInferenceChain {
                         user_profile.clone(),
                         max_iterations,
                         max_tokens_in_prompt,
-                        HashMap::new(),
                         ws_manager_trait.clone(),
                         tool_router.clone(),
                         sheet_manager.clone(),

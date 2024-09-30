@@ -1,0 +1,315 @@
+openapi: 3.0.3
+info:
+  title: shinkai_node
+  description: ''
+  contact:
+    name: Nico Arqueros
+    email: nico@shinkai.com
+  license:
+    name: ''
+  version: 0.8.4
+paths:
+  /v2/create_local_wallet:
+    post:
+      tags:
+      - crate
+      operationId: create_local_wallet_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLocalWalletRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully created wallet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalEthersWallet'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/pay_invoice:
+    post:
+      tags:
+      - crate
+      operationId: pay_invoice_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayInvoiceRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully paid invoice
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/restore_coinbase_mpc_wallet:
+    post:
+      tags:
+      - crate
+      operationId: restore_coinbase_mpc_wallet_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestoreCoinbaseMPCWalletRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully restored Coinbase MPC wallet
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /v2/restore_local_wallet:
+    post:
+      tags:
+      - crate
+      operationId: restore_local_wallet_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestoreLocalWalletRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully restored wallet
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+components:
+  schemas:
+    APIError:
+      type: object
+      required:
+      - code
+      - error
+      - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          minimum: 0
+        error:
+          type: string
+        message:
+          type: string
+    Address:
+      type: object
+      description: Represents an address in a wallet.
+      required:
+      - wallet_id
+      - network_id
+      - address_id
+      properties:
+        address_id:
+          type: string
+          description: The onchain address derived on the server-side.
+        network_id:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        public_key:
+          type: string
+          description: The public key from which the address is derived.
+          nullable: true
+        wallet_id:
+          type: string
+          description: The ID of the wallet that owns the address.
+    Asset:
+      type: object
+      description: Represents an asset onchain scoped to a particular network.
+      required:
+      - network_id
+      - asset_id
+      properties:
+        asset_id:
+          type: string
+          description: The ID for the asset on the network.
+        contract_address:
+          type: string
+          description: The optional contract address for the asset. This will be specified for smart contract-based assets, for example ERC20s.
+          nullable: true
+        decimals:
+          type: integer
+          format: int32
+          description: The number of decimals the asset supports. This is used to convert from atomic units to base units.
+          nullable: true
+          minimum: 0
+        network_id:
+          $ref: '#/components/schemas/NetworkIdentifier'
+    CoinbaseMPCWalletConfig:
+      type: object
+      required:
+      - name
+      - private_key
+      properties:
+        name:
+          type: string
+        private_key:
+          type: string
+        use_server_signer:
+          type: string
+          nullable: true
+        wallet_id:
+          type: string
+          nullable: true
+    CreateLocalWalletRequest:
+      type: object
+      required:
+      - network
+      - role
+      properties:
+        network:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        role:
+          $ref: '#/components/schemas/WalletRole'
+    LocalEthersWallet:
+      type: object
+      required:
+      - id
+      - network
+      - address
+      - wallet_private_key
+      - provider_url
+      properties:
+        address:
+          $ref: '#/components/schemas/Address'
+        id:
+          type: string
+        network:
+          $ref: '#/components/schemas/Network'
+        provider_url:
+          type: string
+        wallet_private_key:
+          type: string
+    Network:
+      type: object
+      description: Represents a blockchain network.
+      required:
+      - id
+      - display_name
+      - chain_id
+      - protocol_family
+      - is_testnet
+      - native_asset
+      properties:
+        chain_id:
+          type: integer
+          format: int32
+          description: The chain ID of the blockchain network.
+          minimum: 0
+        display_name:
+          type: string
+          description: The human-readable name of the blockchain network.
+        id:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        is_testnet:
+          type: boolean
+          description: Whether the network is a testnet or not.
+        native_asset:
+          $ref: '#/components/schemas/Asset'
+        protocol_family:
+          $ref: '#/components/schemas/NetworkProtocolFamilyEnum'
+    NetworkIdentifier:
+      type: string
+      description: Enum representing the ID of the blockchain network.
+      enum:
+      - BaseSepolia
+      - BaseMainnet
+      - EthereumSepolia
+      - EthereumMainnet
+      - ArbitrumSepolia
+      - ArbitrumMainnet
+      - Anvil
+    NetworkProtocolFamilyEnum:
+      type: string
+      description: Enum representing the protocol family of the blockchain network.
+      enum:
+      - Evm
+    PayInvoiceRequest:
+      type: object
+      required:
+      - invoice_id
+      - data_for_tool
+      properties:
+        data_for_tool: {}
+        invoice_id:
+          type: string
+    RestoreCoinbaseMPCWalletRequest:
+      type: object
+      required:
+      - network
+      - wallet_id
+      - role
+      properties:
+        config:
+          allOf:
+          - $ref: '#/components/schemas/CoinbaseMPCWalletConfig'
+          nullable: true
+        network:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        role:
+          $ref: '#/components/schemas/WalletRole'
+        wallet_id:
+          type: string
+    RestoreLocalWalletRequest:
+      type: object
+      required:
+      - network
+      - source
+      - role
+      properties:
+        network:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        role:
+          $ref: '#/components/schemas/WalletRole'
+        source:
+          $ref: '#/components/schemas/WalletSource'
+    WalletRole:
+      type: string
+      description: Enum to represent different wallet roles. Useful for the API.
+      enum:
+      - Payment
+      - Receiving
+      - Both
+    WalletSource:
+      oneOf:
+      - type: object
+        required:
+        - Mnemonic
+        properties:
+          Mnemonic:
+            type: string
+      - type: object
+        required:
+        - PrivateKey
+        properties:
+          PrivateKey:
+            type: string
+tags:
+- name: wallet
+  description: Wallet API endpoints

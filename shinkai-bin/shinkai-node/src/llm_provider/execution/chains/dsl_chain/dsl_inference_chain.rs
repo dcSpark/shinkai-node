@@ -2,13 +2,15 @@ use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::I
 
 use crate::{
     llm_provider::execution::{
-        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator, user_message_parser::ParsedUserMessage,
+        chains::inference_chain_trait::InferenceChainContextTrait, prompts::general_prompts::JobPromptGenerator,
+        user_message_parser::ParsedUserMessage,
     },
     managers::model_capabilities_manager::ModelCapabilitiesManager,
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
 use dashmap::DashMap;
+use regex::Regex;
 use shinkai_baml::baml_builder::{BamlConfig, ClientConfig, GeneratorConfig};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
@@ -89,10 +91,14 @@ impl<'a> InferenceChain for DslChain<'a> {
             .unwrap_or_else(String::new);
         let new_contenxt = HashMap::new();
 
+        // Clean up the response_register using regex
+        let re = Regex::new(r"\\n").unwrap();
+        let cleaned_response = re.replace_all(&response_register, "\n").to_string();
+
         // Debug
         // let logs = WorkflowEngine::formatted_logs(&logs);
 
-        Ok(InferenceChainResult::new(response_register, new_contenxt))
+        Ok(InferenceChainResult::new(cleaned_response, new_contenxt))
     }
 }
 
@@ -434,6 +440,7 @@ impl AsyncFunction for BamlInference {
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
+        eprintln!("BamlInference> user_message: {:?}", user_message);
 
         // TODO: connect them
         // let custom_system_prompt: Option<String> = args.get(1).and_then(|arg| arg.downcast_ref::<String>().cloned());
@@ -671,8 +678,7 @@ impl AsyncFunction for ShinkaiToolFunction {
 
                 // Create a new DslChain for the nested workflow
                 let functions = HashMap::new();
-                let mut nested_dsl_inference =
-                    DslChain::new(new_context, workflow.workflow.clone(), functions);
+                let mut nested_dsl_inference = DslChain::new(new_context, workflow.workflow.clone(), functions);
 
                 // TODO: read the fns from the workflow code and the missing ones from the tool router
 
@@ -758,13 +764,12 @@ fn parse_params(args: Vec<Box<dyn Any + Send>>) -> Result<serde_json::Map<String
             if value.starts_with('{') && value.ends_with('}') {
                 if let Ok(parsed_value) = serde_json::from_str::<serde_json::Value>(value) {
                     // Serialize the parsed JSON value back to a string
-                    let serialized_value = serde_json::to_string(&parsed_value)
-                        .map_err(|e| WorkflowError::InvalidArgument(format!("Failed to serialize JSON value: {}", e)))?;
+                    let serialized_value = serde_json::to_string(&parsed_value).map_err(|e| {
+                        WorkflowError::InvalidArgument(format!("Failed to serialize JSON value: {}", e))
+                    })?;
                     params.insert(key.clone(), serde_json::Value::String(serialized_value));
                 } else {
-                    return Err(WorkflowError::InvalidArgument(
-                        "Failed to parse JSON value".to_string(),
-                    ));
+                    return Err(WorkflowError::InvalidArgument("Failed to parse JSON value".to_string()));
                 }
             } else {
                 // Insert each key-value pair into the params map
