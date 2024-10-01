@@ -388,11 +388,12 @@ impl<'a> Iterator for StepExecutor<'a> {
         if self.current_step < self.workflow.steps.len() {
             let step = &self.workflow.steps[self.current_step];
             let step_name = step.name.clone();
+
             // Add log entry for the start of the step and add the step name and content to the logs
             self.logs
                 .entry(step_name.clone())
                 .or_default()
-                .push(format!("Executing step: {:?}", step));
+                .push(format!("Executing step: {:?}", step.name));
 
             eprintln!("Executing step: {:?}", step);
             let mut result = Ok(self.registers.clone());
