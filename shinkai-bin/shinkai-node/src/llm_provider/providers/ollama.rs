@@ -419,6 +419,9 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     if let Some(top_p) = get_value("LLM_TOP_P", config.and_then(|c| c.top_p.as_ref())) {
         options.insert("top_p".to_string(), serde_json::json!(top_p));
     }
+    if let Some(max_tokens) = get_value("LLM_MAX_TOKENS", config.and_then(|c| c.max_tokens.as_ref())) {
+        options.insert("num_predict".to_string(), serde_json::json!(max_tokens));
+    }
 
     // Handle streaming option
     let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref())).unwrap_or(true); // Default to true if not specified
