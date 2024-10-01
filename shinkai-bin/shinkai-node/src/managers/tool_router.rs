@@ -7,7 +7,7 @@ use std::time::Instant;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
 use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
-use crate::llm_provider::execution::chains::inference_chain_trait::{InferenceChainContextTrait, FunctionCall};
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::workflows::sm_executor::AsyncFunction;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -179,12 +179,12 @@ impl ToolRouter {
 
             for item in json_array {
                 let shinkai_tool: Result<ShinkaiTool, _> = serde_json::from_value(item.clone());
-                
+
                 let shinkai_tool = match shinkai_tool {
                     Ok(tool) => {
                         eprintln!("adding shinkai_tool (workflow): {:?}", tool.name());
                         tool
-                    },
+                    }
                     Err(e) => {
                         eprintln!("Failed to parse shinkai_tool: {}. JSON: {:?}", e, item);
                         continue; // Skip this item and continue with the next one
@@ -365,7 +365,7 @@ impl ToolRouter {
                         .vector_search_all_tools(&name, 10, true)
                         .await
                         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    
+
                     // Search for the result that has the same name
                     if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
                         match lance_db.get_tool(&matching_result.tool_router_key).await {
@@ -373,11 +373,11 @@ impl ToolRouter {
                             Ok(None) => {
                                 eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
                                 continue; // Skip this tool and continue with the next one
-                            },
+                            }
                             Err(e) => {
                                 eprintln!("Database error: {}", e);
                                 continue; // Skip this tool and continue with the next one
-                            },
+                            }
                         }
                     } else {
                         eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
@@ -387,7 +387,7 @@ impl ToolRouter {
                 Err(e) => {
                     eprintln!("get_tools_by_names_with_smart_retry> Database error: {}", e);
                     continue; // Skip this tool and continue with the next one
-                },
+                }
             }
         }
 
@@ -694,7 +694,11 @@ impl ToolRouter {
 
     /// This function is used to call a JS function directly
     /// It's very handy for agent-to-agent communication
-    pub async fn call_js_function(&self, function_args: serde_json::Map<String, Value>, js_tool_name: &str) -> Result<String, LLMProviderError> {
+    pub async fn call_js_function(
+        &self,
+        function_args: serde_json::Map<String, Value>,
+        js_tool_name: &str,
+    ) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
 
         if shinkai_tool.is_none() {
@@ -738,8 +742,13 @@ impl ToolRouter {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use shinkai_baml::baml_builder::BamlConfig;
+    use shinkai_baml::baml_builder::ClientConfig;
+    use shinkai_baml::baml_builder::GeneratorConfig;
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+    use tokio::task;
+    use regex::Regex;
 
     use super::*;
     use std::env;
@@ -814,5 +823,178 @@ mod tests {
         )
         .expect("Failed to write to file");
         writeln!(file, "pub static WORKFLOWS_JSON: &str = r###\"{}\"###;", json_data).expect("Failed to write to file");
+    }
+
+    /// Not really a test but rather a script. I should move it to a separate file soon (tm)
+    /// It's just easier to have it here because it already has access to all the necessary dependencies
+    // #[tokio::test]
+    #[allow(dead_code)]
+    async fn test_generate_workflow_playground_documentation() {
+        /*
+        - read all the workflows
+        - read all the JS tools
+        - read all the Rust tools
+        - (eventually) read all the Python tools
+        - read the baml file
+        - (do we need prompts here? is there a way to read them from the playground?)
+        - generate the documentation
+        - save it to a file
+         */
+
+        let mut tools_json = Vec::new();
+        let mut serialized_tools = Vec::new();
+        let mut documentation_results = Vec::new();
+
+        let workflows = WorkflowTool::static_tools();
+        println!("Number of production workflows: {}", workflows.len());
+
+        for (workflow_tool, is_enabled) in workflows {
+            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
+            tools_json.push(json!(shinkai_tool));
+
+            let tool_content = serde_json::to_string(&shinkai_tool)
+                .expect("Failed to serialize workflow")
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+                .to_string();
+
+            serialized_tools.push(tool_content);
+        }
+
+        // Process JS tools
+        let tools = built_in_tools::get_tools();
+        for (name, definition) in tools {
+            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+            for tool in toolkit.tools {
+                let mut mut_tool = tool.clone();
+                mut_tool.embedding = None;
+                mut_tool.js_code = "".to_string();
+                let shinkai_tool = ShinkaiTool::JS(mut_tool, true);
+                
+                tools_json.push(json!(shinkai_tool));
+
+                let tool_content = serde_json::to_string(&shinkai_tool)
+                    .expect("Failed to serialize JS tool")
+                    .trim_start_matches('{')
+                    .trim_end_matches('}')
+                    .to_string();
+
+                serialized_tools.push(tool_content);
+            }
+        }
+
+        for workflow_content in serialized_tools {
+            let mut attempts = 0;
+            let max_attempts = 3;
+            let mut success = false;
+
+            while attempts < max_attempts && !success {
+                attempts += 1;
+
+                // Process the workflow using BAML
+                let generator_config = GeneratorConfig {
+                    output_type: "typescript".to_string(),
+                    output_dir: "../src/".to_string(),
+                    version: "0.55.3".to_string(),
+                    default_client_mode: "async".to_string(),
+                };
+
+                let client_config = ClientConfig {
+                    provider: "ollama".to_string(),
+                    base_url: "http://localhost:11434/v1".to_string(),
+                    model: "mistral-small:22b".to_string(),
+                    default_role: "user".to_string(),
+                };
+
+                eprintln!("\n\nworkflow_content: {:?}", workflow_content);
+
+                let baml_config = BamlConfig::builder(generator_config, client_config)
+                    .dsl_class_file(
+                        r##"
+                        class InputArg {
+                            name string @description(#"The name of the input argument"#)
+                            arg_type string @description(#"The type of the input argument"#)
+                            description string @description(#"The description of the input argument"#)
+                            is_required bool @description(#"Whether the input argument is required"#)
+                        }
+
+                        class Answer {
+                            name string @description(#"The name of the function. Don't include special characters like _ or - instead create an space between words."#)
+                            fn_name string @description(#"The name of the function. It's obtained from tool_router_key by removing the prefix e.g., \"local:::@@official.shinkai:::extensive_summary\" -> \"extensive_summary\""#)
+                            description string @description(#"The description of the function"#)
+                            tool_type string @description(#"The type of the tool E.g. Workflow, Prompt, JS Tool"#)
+                            author string @description(#"The author of the function"#)
+                            version string @description(#"The version of the function"#)
+                            input_args InputArg[] @description(#"The input arguments of the function"#)
+                            config string | null @description(#"The config of the function"#)
+                        }
+
+                        function DocumentFunction(function_string: string) -> Answer {
+                            client ShinkaiProvider
+
+                            prompt #"
+                            Parse the following json and return a structured representation of the data in the schema below. Don't include comments in the JSON.
+
+                            Resume:
+                            ---
+                            {{ function_string }}
+                            ---
+                                
+                            {{ ctx.output_format }}
+
+                            JSON:
+                            {{ _.role("user") }}
+                            "#
+                        }
+                        "##,
+                    )
+                    .input(&workflow_content)
+                    .function_name("DocumentFunction")
+                    .param_name("function_string")
+                    .build();
+
+                let env_vars = HashMap::new();
+                let runtime = baml_config.initialize_runtime(env_vars).unwrap();
+                // Spawn a blocking task to run the blocking code
+                let result = task::spawn_blocking(move || baml_config.execute(&runtime, true))
+                    .await
+                    .unwrap()
+                    .unwrap();
+
+                eprintln!("result: {:?}", result);
+
+                // Remove comments from the result string using regex
+                let re = Regex::new(r",\s*//.*").unwrap();
+                let cleaned_result = re.replace_all(&result, "");
+
+                // Deserialize the cleaned result string into a JSON object
+                match serde_json::from_str::<serde_json::Value>(&cleaned_result) {
+                    Ok(result_json) => {
+                        documentation_results.push(result_json);
+                        success = true;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to deserialize result (attempt {}): {}", attempts, e);
+                        if attempts >= max_attempts {
+                            panic!("Failed to deserialize result after {} attempts: {}", max_attempts, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("Documentation results: {:?}", documentation_results);
+
+        // Serialize documentation results to JSON
+        let json_data =
+            serde_json::to_string_pretty(&documentation_results).expect("Failed to serialize documentation results");
+
+        // Print the current directory
+        let current_dir = env::current_dir().expect("Failed to get current directory");
+        println!("Current directory: {:?}", current_dir);
+
+        // Write the documentation results to a file
+        let mut file = File::create("../../tmp/documentation_results.json").expect("Failed to create file");
+        writeln!(file, "{}", json_data).expect("Failed to write to file");
     }
 }
