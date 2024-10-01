@@ -1,0 +1,15 @@
+[package]
+name = "shinkai_sqlite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1.0.117"
+dashmap = "5.5.3"
+chrono = "0.4"
+regex = "1"
+rusqlite = { version = "0.28.0", features = ["bundled"] } 
+
+[dependencies.serde]
+version = "1.0.188"
+features = ["derive"]
