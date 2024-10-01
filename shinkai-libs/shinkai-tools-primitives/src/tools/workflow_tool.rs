@@ -195,7 +195,8 @@ impl WorkflowTool {
         let re = Regex::new(r#"""#).unwrap();
         let escaped_dsl_content = re.replace_all(dsl_content.trim(), r#"\""#);
 
-        let raw_workflow = format!(r##"
+        let raw_workflow = format!(
+            r##"
             workflow baml_answer_with_citations v0.1 {{
                 step Initialize {{
                     $DSL = "{}"
@@ -204,7 +205,9 @@ impl WorkflowTool {
                     $RESULT = call baml_inference($INPUT, "", "", $DSL, $FUNCTION, $PARAM)
                 }}
             }} @@official.shinkai
-        "##, escaped_dsl_content);
+        "##,
+            escaped_dsl_content
+        );
 
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates an answer to a question with citations from the provided content using BAML. The answer includes quotes from the content as citations.".to_string());
@@ -221,13 +224,18 @@ impl WorkflowTool {
                     $LLM_RESPONSE = call baml_answer_with_citations($LLM_INPUT)
                     $JINJA = "# Introduction\n{%- for sentence in answer.brief_introduction.sentences %}\n{{ sentence }}\n{%- endfor %}\n\n# Main Content\n{%- if answer.extensive_body | length > 1 %}\n{%- for part in answer.extensive_body %}\n### Part {{ loop.index }}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- else %}\n{%- for part in answer.extensive_body %}\n{%- for sentence in part.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n{%- endif %}\n\n# Conclusion\n{%- for section in answer.conclusion %}\n{%- for sentence in section.sentences %}\n{{ sentence }}\n{%- endfor %}\n{%- endfor %}\n\n# Citations\n{%- for citation in relevantSentencesFromText %}\n[{{ citation.citation_id }}]: {{ citation.relevantTextFromDocument }} ({{ citation.document_reference }})\n{%- endfor %}"
                     
-                    $RESULT = call shinkai__json-to-md("message",$LLM_RESPONSE,"template",$JINJA)
+                    $PROMPT = "Apply the following template to the following answer (just give me the answer dont mention anything about a template): "
+                    $NEW_INPUT = call concat($PROMPT, $JINJA, $LLM_RESPONSE) 
+                    $RESULT = call inference($NEW_INPUT)
                 }
             } @@official.shinkai
         "##;
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
-        workflow.description = Some("Generates an answer to a question with citations from the provided content using RAG workflow.".to_string());
+        workflow.description = Some(
+            "Generates an answer to a question with citations from the provided content using RAG workflow."
+                .to_string(),
+        );
 
         WorkflowTool::new(workflow)
     }
