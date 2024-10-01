@@ -371,7 +371,7 @@ impl ToolRouter {
                         match lance_db.get_tool(&matching_result.tool_router_key).await {
                             Ok(Some(tool)) => tools.push(tool),
                             Ok(None) => {
-                                eprintln!("Tool not found: {}", name);
+                                eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
                                 continue; // Skip this tool and continue with the next one
                             },
                             Err(e) => {
@@ -380,12 +380,12 @@ impl ToolRouter {
                             },
                         }
                     } else {
-                        eprintln!("Tool not found: {}", name);
+                        eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
                         continue; // Skip this tool and continue with the next one
                     }
                 }
                 Err(e) => {
-                    eprintln!("Database error: {}", e);
+                    eprintln!("get_tools_by_names_with_smart_retry> Database error: {}", e);
                     continue; // Skip this tool and continue with the next one
                 },
             }

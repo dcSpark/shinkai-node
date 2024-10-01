@@ -195,7 +195,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
         eprintln!("Registers: {:?}", registers);
@@ -448,7 +448,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -491,7 +491,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -528,7 +528,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -558,7 +558,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -746,7 +746,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
