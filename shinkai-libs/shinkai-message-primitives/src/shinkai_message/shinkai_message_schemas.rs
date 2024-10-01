@@ -86,6 +86,7 @@ pub enum MessageSchemaType {
     AddRows,
     ImportSheet,
     ExportSheet,
+    SetSheetUploadedFiles,
     SetShinkaiTool,
     ListAllShinkaiTools,
     GetShinkaiTool,
@@ -173,6 +174,7 @@ impl MessageSchemaType {
             "AddRows" => Some(Self::AddRows),
             "ImportSheet" => Some(Self::ImportSheet),
             "ExportSheet" => Some(Self::ExportSheet),
+            "SetSheetUploadedFiles" => Some(Self::SetSheetUploadedFiles),
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
@@ -260,6 +262,7 @@ impl MessageSchemaType {
             Self::AddRows => "AddRows",
             Self::ImportSheet => "ImportSheet",
             Self::ExportSheet => "ExportSheet",
+            Self::SetSheetUploadedFiles => "SetSheetUploadedFiles",
             Self::SetShinkaiTool => "SetShinkaiTool",
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
@@ -681,6 +684,12 @@ pub enum SpreadSheetPayload {
 pub enum SheetFileFormat {
     CSV,
     XLSX,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct APISetSheetUploadedFilesPayload {
+    pub sheet_id: String,
+    pub files: HashMap<(UuidString, UuidString), Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]

@@ -703,6 +703,7 @@ impl Node {
                     top_k: None,
                     top_p: None,
                     stream: None,
+                    max_tokens: None,
                     other_model_params: None,
                 });
                 let _ = res.send(Ok(config)).await;
