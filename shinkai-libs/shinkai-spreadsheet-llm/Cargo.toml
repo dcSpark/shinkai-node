@@ -5,3 +5,5 @@ edition = "2021"
 authors.workspace = true
 
 [dependencies]
+polars = { version = "0.41.3", features = ["dtype-struct", "is_in", "lazy"] }
+polars-lazy = "0.41.3"
