@@ -125,6 +125,8 @@ pub trait VectorResourceCore: Send + Sync {
     /// the struct does not support the OrderedVectorResource trait.
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
 
+    fn count_total_tokens(&self) -> u64;
+
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_root_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
         self.insert_node_dt_specified(id, node, embedding, None, true)
