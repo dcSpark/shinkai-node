@@ -41,6 +41,8 @@ pub struct VRKai {
     pub metadata: HashMap<String, String>,
     #[serde(default)]
     pub rag_strategy: RAGStrategy,
+    #[serde(default)]
+    pub total_token_count: u64,
 }
 
 impl VRKai {
@@ -51,12 +53,14 @@ impl VRKai {
 
     /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap.
     pub fn new(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
+        let total_token_count = resource.as_trait_object().count_total_tokens();
         VRKai {
             resource,
             sfm,
             version: Self::default_vrkai_version(),
             metadata: HashMap::new(),
             rag_strategy: RAGStrategy::Basic,
+            total_token_count,
         }
     }
 
