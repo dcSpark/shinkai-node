@@ -1,1 +1,126 @@
-pub mod sqlite;
+use rusqlite::{Connection, Result};
+use std::path::Path;
+use serde_json::Value;
+use serde::{Serialize, Deserialize};
+
+pub mod logger;
+
+// Struct to manage SQLite connections
+pub struct SqliteManager {
+    conn: Connection, // Holds the SQLite connection
+}
+
+impl SqliteManager {
+    // Creates a new SqliteManager with a connection to the specified database path
+    pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
+        let conn = Connection::open(db_path)?; // Open a connection to the database
+        Ok(SqliteManager { conn }) // Return a new instance of SqliteManager
+    }
+
+    // Returns a reference to the SQLite connection
+    pub fn get_connection(&self) -> &Connection {
+        &self.conn
+    }
+}
+
+/// Represents the status of an operation or step in a log entry.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum LogStatus {
+    Success,
+    Failure,
+    Cancelled,
+    // Add more status types as needed
+}
+
+/// Represents a log entry in the database, capturing details of operations, tool executions, and workflow steps.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogEntry {
+    /// Unique identifier for the log entry.
+    /// This field will be set by the database upon insertion.
+    #[serde(skip_deserializing)]
+    pub id: Option<i32>,
+
+    /// Identifier for the related message or task that initiated this log entry.
+    /// This allows grouping of logs related to a single user request or system task.
+    pub message_id: i32,
+
+    /// Identifier for the tool that generated this log entry.
+    /// Tools can be workflows, individual operations, or any other executable components in the system.
+    pub tool_id: i32,
+
+    /// Optional identifier for a subprocess within a tool execution.
+    /// For example, in a workflow, this could represent a specific step or operation.
+    /// It allows for more granular tracking of complex tool executions.
+    pub subprocess: Option<String>,
+
+    /// Optional identifier referencing another log entry that is the "parent" of this entry.
+    /// This creates a hierarchical structure in logging, useful for:
+    /// 1. Workflow steps: The main workflow execution log can be the parent of its step logs.
+    /// 2. Nested operations: A high-level operation log can be the parent of its sub-operation logs.
+    /// 3. Error contexts: An error log can have the operation log that caused it as its parent.
+    /// This field allows for tracing the execution path and understanding the context of each log entry.
+    pub parent_id: Option<i32>,
+
+    /// The order in which this log entry was executed relative to other entries in the same context.
+    /// This is particularly useful for maintaining the sequence of operations in a workflow or complex process.
+    pub execution_order: i32,
+
+    /// The input data or parameters for the operation or step that this log entry represents.
+    /// Stored as a JSON Value for flexibility in data structure.
+    pub input: Value,
+
+    /// Optional duration of the operation, typically in seconds.
+    /// Useful for performance monitoring and optimization.
+    pub duration: Option<f64>,
+
+    /// The result or output of the operation or step.
+    /// Stored as a JSON Value to accommodate various result structures.
+    pub result: Value,
+
+    /// The status of the operation or step.
+    /// This enum provides a clear set of possible statuses for the logged action.
+    pub status: LogStatus,
+
+    /// Optional error message if the operation or step encountered an error.
+    /// This field is particularly useful for debugging and error tracking.
+    pub error_message: Option<String>,
+
+    /// Timestamp of when this log entry was created.
+    /// Typically stored in a standardized format like ISO 8601.
+    pub timestamp: String,
+
+    /// The type of log entry, e.g., "workflow_execution", "tool_operation", "system_event".
+    /// This field helps in categorizing and filtering logs for analysis.
+    pub log_type: String,
+
+    /// Optional field for any additional information that doesn't fit into the standard fields.
+    /// Stored as a JSON Value for flexibility.
+    pub additional_info: Option<Value>,
+}
+
+// Struct representing a tool in the database
+#[derive(Debug)]
+pub struct Tool {
+    pub id: i32, // Unique identifier for the tool
+    pub name: String, // Name of the tool
+    pub tool_type: String, // Type of the tool
+    pub tool_router_key: Option<String>, // Optional router key for the tool
+    pub instructions: Option<String>, // Optional instructions for the tool
+}
+
+// Struct representing a step in a workflow
+#[derive(Debug)]
+pub struct WorkflowStep {
+    pub name: String, // Name of the workflow step
+    pub operations: Vec<WorkflowOperation>, // List of operations in the workflow step
+}
+
+// Enum representing different types of workflow operations
+#[derive(Debug)]
+pub enum WorkflowOperation {
+    RegisterOperation { register: String, value: String }, // Operation to register a value
+    FunctionCall { name: String, args: Vec<String> }, // Operation to call a function with arguments
+}
+
+// Re-export the logger for convenience
+pub use logger::SqliteLogger;

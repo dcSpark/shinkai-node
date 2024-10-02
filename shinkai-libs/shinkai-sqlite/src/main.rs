@@ -1,63 +1,77 @@
-use rusqlite::{params, Connection, Result};
+use shinkai_sqlite::{SqliteManager, SqliteLogger, LogEntry, Tool, WorkflowStep, WorkflowOperation, LogStatus};
 use std::time::Instant;
+use serde_json::json;
+use chrono::Utc;
 
-fn main() -> Result<()> {
-    /*
-    SQL for logs and other stuff:
+fn main() -> rusqlite::Result<()> {
+    let manager = SqliteManager::new("example.db")?;
+    let logger = SqliteLogger::new(&manager)?;
 
-    - we need to pass where the db will be stored (probably next to rocksdb and lancedb)
-    - we need to create the tables if they don't exist
-     */
-    let conn = Connection::open("example.db")?;
+    // Add a tool
+    let tool = Tool {
+        id: 0,
+        name: "MyProcess".to_string(),
+        tool_type: "Workflow".to_string(),
+        tool_router_key: Some("workflow_router".to_string()),
+        instructions: Some("workflow MyProcess v0.1 { ... }".to_string()),
+    };
+    let tool_id = logger.add_tool(&tool)?;
 
-    // Create the first table
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS parent (
-                  id INTEGER PRIMARY KEY,
-                  name TEXT NOT NULL
-                  )",
-        [],
-    )?;
+    // Log a general (non-workflow) entry
+    let general_log = LogEntry {
+        id: Some(0),
+        message_id: 1,
+        tool_id,
+        subprocess: None,
+        parent_id: None,
+        execution_order: 1,
+        input: json!({"user_input": "Hello, world!"}),
+        duration: Some(0.1),
+        result: json!({"response": "Greetings!"}),
+        status: LogStatus::Success,
+        error_message: None,
+        timestamp: Utc::now().to_rfc3339(),
+        log_type: "general".to_string(),
+        additional_info: None,
+    };
+    logger.add_log(&general_log)?;
 
-    // Create the second table with a foreign key pointing to the first table
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS child (
-                  id INTEGER PRIMARY KEY,
-                  parent_id INTEGER,
-                  name TEXT NOT NULL,
-                  FOREIGN KEY(parent_id) REFERENCES parent(id)
-                  )",
-        [],
-    )?;
+    // Create a sample workflow
+    let workflow = vec![
+        WorkflowStep {
+            name: "Initialize".to_string(),
+            operations: vec![
+                WorkflowOperation::RegisterOperation {
+                    register: "$R1".to_string(),
+                    value: "Create an outline for a blog post about the topic of the user's message ".to_string(),
+                },
+                WorkflowOperation::RegisterOperation {
+                    register: "$R2".to_string(),
+                    value: "\n separate the sections using a comma e.g. red,green,blue".to_string(),
+                },
+                WorkflowOperation::FunctionCall {
+                    name: "concat".to_string(),
+                    args: vec!["$R1".to_string(), "$R0".to_string()],
+                },
+                WorkflowOperation::FunctionCall {
+                    name: "concat".to_string(),
+                    args: vec!["$R3".to_string(), "$R2".to_string()],
+                },
+            ],
+        },
+    ];
 
-    // Benchmark for inserting 1,000 records
-    let start_insert = Instant::now();
-    for i in 1..=1000 {
-        conn.execute(
-            "INSERT INTO parent (name) VALUES (?1)",
-            params![format!("Parent {}", i)],
-        )?;
-        conn.execute(
-            "INSERT INTO child (parent_id, name) VALUES (?1, ?2)",
-            params![i, format!("Child {}", i)],
-        )?;
-    }
-    let duration_insert = start_insert.elapsed();
-    println!("Time taken to insert 1,000 records: {:?}", duration_insert);
+    // Log the workflow execution
+    logger.log_workflow_execution(1, tool_id, &workflow)?;
 
-    // Benchmark for reading 1,000 records
+    // Benchmark for reading logs
     let start_read = Instant::now();
-    let mut stmt = conn.prepare("SELECT child.id, child.name, parent.name FROM child JOIN parent ON child.parent_id = parent.id")?;
-    let child_iter = stmt.query_map([], |row| {
-        Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
-    })?;
-
-    for child in child_iter {
-        let (child_id, child_name, parent_name) = child?;
-        // println!("Child ID: {}, Child Name: {}, Parent Name: {}", child_id, child_name, parent_name);
+    let logs = logger.get_logs(Some(1), Some(tool_id), None)?;
+    for log in logs.iter() {
+        println!("{:?}", log);
     }
     let duration_read = start_read.elapsed();
-    println!("Time taken to read 1,000 records: {:?}", duration_read);
+    println!("Time taken to read logs: {:?}", duration_read);
 
     Ok(())
 }
