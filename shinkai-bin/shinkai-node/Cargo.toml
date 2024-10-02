@@ -46,20 +46,21 @@ reqwest = { version = "0.11.26", features = [
     "stream",
 ] }
 keyphrases = "0.3.3"
-shinkai_message_primitives = { workspace = true }
-shinkai_vector_resources = { workspace = true }
-shinkai_crypto_identities = { workspace = true }
-shinkai_tcp_relayer = { workspace = true }
-shinkai_dsl = { workspace = true }
-shinkai_sheet = { workspace = true }
-shinkai_vector_fs = { workspace = true }
-shinkai_db = { workspace = true }
 shinkai_subscription_manager = { workspace = true }
+shinkai_message_primitives = { workspace = true }
+shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }
-shinkai_baml = { workspace = true }
-shinkai_http_api = { workspace = true }
+shinkai_vector_resources = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
+shinkai_tcp_relayer = { workspace = true }
+shinkai_vector_fs = { workspace = true }
+shinkai_http_api = { workspace = true }
 shinkai_lancedb = { workspace = true }
+shinkai_sqlite = { workspace = true }
+shinkai_sheet = { workspace = true }
+shinkai_baml = { workspace = true }
+shinkai_dsl = { workspace = true }
+shinkai_db = { workspace = true }
 bincode = "1.3.3"
 qrcode = "0.12"
 image = "0.23"

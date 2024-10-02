@@ -1,16 +1,20 @@
 use crate::{LogEntry, LogStatus, LogTree, SqliteManager, Tool, WorkflowOperation, WorkflowStep};
 use rusqlite::{Result, params};
 use serde_json::{Value, json};
+use tokio::sync::Mutex;
 use std::collections::HashMap;
+use std::sync::Arc;
+use futures::future::try_join_all;
 
-// Struct representing the SQLite logger
-pub struct SqliteLogger<'a> {
-    manager: &'a SqliteManager,
+// Updated struct representing the SQLite logger
+#[derive(Clone)]
+pub struct SqliteLogger {
+    manager: Arc<SqliteManager>,
 }
 
-impl<'a> SqliteLogger<'a> {
+impl SqliteLogger {
     // Constructor for SqliteLogger, initializes the logger and creates necessary tables
-    pub fn new(manager: &'a SqliteManager) -> Result<Self> {
+    pub fn new(manager: Arc<SqliteManager>) -> Result<Self> {
         let logger = SqliteLogger { manager };
         logger.initialize_tables()?;
         Ok(logger)
@@ -18,8 +22,10 @@ impl<'a> SqliteLogger<'a> {
 
     // Initializes the required tables in the SQLite database
     fn initialize_tables(&self) -> Result<()> {
+        let conn = self.manager.get_connection()?;
+        
         // Create the tools table if it doesn't exist
-        self.manager.get_connection().execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS tools (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -31,7 +37,7 @@ impl<'a> SqliteLogger<'a> {
         )?;
 
         // Create the logs table if it doesn't exist
-        self.manager.get_connection().execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id INTEGER NOT NULL,
@@ -58,7 +64,8 @@ impl<'a> SqliteLogger<'a> {
 
     // Adds a log entry to the logs table
     pub fn add_log(&self, log: &LogEntry) -> Result<i32> {
-        self.manager.get_connection().execute(
+        let conn = self.manager.get_connection()?;
+        conn.execute(
             "INSERT INTO logs (message_id, tool_id, subprocess, parent_id, execution_order, input, duration, result, status, error_message, timestamp, log_type, additional_info)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
@@ -77,16 +84,17 @@ impl<'a> SqliteLogger<'a> {
                 log.additional_info.as_ref().map(|v| v.to_string()),
             ],
         )?;
-        Ok(self.manager.get_connection().last_insert_rowid() as i32)
+        Ok(conn.last_insert_rowid() as i32)
     }
 
     // Adds a tool entry to the tools table
     pub fn add_tool(&self, tool: &Tool) -> Result<i32> {
-        self.manager.get_connection().execute(
+        let conn = self.manager.get_connection()?;
+        conn.execute(
             "INSERT INTO tools (name, tool_type, tool_router_key, instructions) VALUES (?1, ?2, ?3, ?4)",
             params![tool.name, tool.tool_type, tool.tool_router_key, tool.instructions],
         )?;
-        Ok(self.manager.get_connection().last_insert_rowid() as i32)
+        Ok(conn.last_insert_rowid() as i32)
     }
 
     // Logs the execution of a workflow, including its steps and operations
@@ -170,14 +178,14 @@ impl<'a> SqliteLogger<'a> {
 
     // New method to get log IDs for a specific message
     pub fn get_log_ids_for_message(&self, message_id: i32) -> Result<Vec<i32>> {
-        let mut stmt = self.manager.get_connection().prepare("SELECT id FROM logs WHERE message_id = ?")?;
+        let conn = self.manager.get_connection()?;
+        let mut stmt = conn.prepare("SELECT id FROM logs WHERE message_id = ?")?;
         let log_ids = stmt.query_map([message_id], |row| row.get(0))?;
         log_ids.collect()
     }
 
     // Retrieves logs based on optional filters for message_id, tool_id, and subprocess
     pub fn get_logs(&self, message_id: Option<i32>, tool_id: Option<i32>, subprocess: Option<&str>) -> Result<Vec<LogEntry>> {
-        // Build the query string with optional filters
         let mut query = "SELECT * FROM logs WHERE 1=1".to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
@@ -194,12 +202,12 @@ impl<'a> SqliteLogger<'a> {
             params.push(Box::new(sp.to_string()));
         }
 
-        // Prepare the query and execute it
-        let mut stmt = self.manager.get_connection().prepare(&query)?;
+        let conn = self.manager.get_connection()?;
+        let mut stmt = conn.prepare(&query)?;
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let log_iter = stmt.query_map(param_refs.as_slice(), |row| {
             Ok(LogEntry {
-                id: Some(row.get(0)?),  // Changed to Some(...)
+                id: Some(row.get(0)?),
                 message_id: row.get(1)?,
                 tool_id: row.get(2)?,
                 subprocess: row.get(3)?,
@@ -216,36 +224,44 @@ impl<'a> SqliteLogger<'a> {
             })
         })?;
 
-        // Collect and return the logs
         log_iter.collect()
     }
 
-    pub fn get_log_tree(&self, log_id: i32) -> Result<LogTree> {
-        fn build_tree(logger: &SqliteLogger, log_id: i32, cache: &mut HashMap<i32, LogEntry>) -> Result<LogTree> {
-            let log = if let Some(log) = cache.get(&log_id) {
+    // Standalone async function to build the log tree
+    async fn build_tree(logger: Arc<SqliteLogger>, log_id: i32, cache: Arc<Mutex<HashMap<i32, LogEntry>>>) -> Result<LogTree> {
+        let log = {
+            let mut cache = cache.lock().await;
+            if let Some(log) = cache.get(&log_id) {
                 log.clone()
             } else {
-                let log = logger.get_log(log_id)?;
+                let log = logger.get_log(log_id).await?;
                 cache.insert(log_id, log.clone());
                 log
-            };
+            }
+        };
 
-            let children = logger.get_child_logs(log_id)?
-                .into_iter()
-                .map(|child_log| {
-                    build_tree(logger, child_log.id.unwrap(), cache)
-                })
-                .collect::<Result<Vec<LogTree>>>()?;
+        let child_logs = logger.get_child_logs(log_id).await?;
+        let child_futures = child_logs.into_iter().map(|child_log| {
+            let logger = Arc::clone(&logger);
+            let cache = Arc::clone(&cache);
+            async move {
+                Self::build_tree(logger, child_log.id.unwrap(), cache).await
+            }
+        });
 
-            Ok(LogTree { log, children })
-        }
+        let children = try_join_all(child_futures).await?;
 
-        let mut cache = HashMap::new();
-        build_tree(self, log_id, &mut cache)
+        Ok(LogTree { log, children })
     }
 
-    fn get_log(&self, log_id: i32) -> Result<LogEntry> {
-        let mut stmt = self.manager.get_connection().prepare("SELECT * FROM logs WHERE id = ?")?;
+    pub async fn get_log_tree(&self, log_id: i32) -> Result<LogTree> {
+        let cache = Arc::new(Mutex::new(HashMap::new()));
+        Self::build_tree(Arc::new(self.clone()), log_id, cache).await
+    }
+
+    async fn get_log(&self, log_id: i32) -> Result<LogEntry> {
+        let conn = self.manager.get_connection()?;
+        let mut stmt = conn.prepare("SELECT * FROM logs WHERE id = ?")?;
         let log = stmt.query_row(params![log_id], |row| {
             Ok(LogEntry {
                 id: Some(row.get(0)?),
@@ -267,8 +283,9 @@ impl<'a> SqliteLogger<'a> {
         Ok(log)
     }
 
-    fn get_child_logs(&self, parent_id: i32) -> Result<Vec<LogEntry>> {
-        let mut stmt = self.manager.get_connection().prepare("SELECT * FROM logs WHERE parent_id = ?")?;
+    async fn get_child_logs(&self, parent_id: i32) -> Result<Vec<LogEntry>> {
+        let conn = self.manager.get_connection()?;
+        let mut stmt = conn.prepare("SELECT * FROM logs WHERE parent_id = ?")?;
         let logs = stmt.query_map(params![parent_id], |row| {
             Ok(LogEntry {
                 id: Some(row.get(0)?),

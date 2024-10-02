@@ -9,6 +9,10 @@ dashmap = "5.5.3"
 chrono = "0.4"
 regex = "1"
 rusqlite = { version = "0.28.0", features = ["bundled"] } 
+tokio = { version = "1.36", features = ["full"] }
+futures = "0.3.30"
+r2d2 = "0.8"
+r2d2_sqlite = "0.21"
 
 [dependencies.serde]
 version = "1.0.188"

@@ -28,6 +28,7 @@ use chashmap::CHashMap;
 use chrono::Utc;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
+use shinkai_sqlite::{SqliteLogger, SqliteManager};
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -111,6 +112,8 @@ pub struct Node {
     pub vector_fs: Arc<VectorFS>,
     // The LanceDB
     pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    // Sqlite3
+    pub sqlite_logger: Arc<RwLock<SqliteLogger>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -333,6 +336,12 @@ impl Node {
         .unwrap();
         let lance_db = Arc::new(RwLock::new(lance_db));
 
+
+        // Initialize SqliteLogger
+        let sqlite_manager = SqliteManager::new(main_db_path).unwrap();
+        let sqlite_logger = SqliteLogger::new(Arc::new(sqlite_manager)).unwrap();
+        let sqlite_logger = Arc::new(RwLock::new(sqlite_logger));
+
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(lance_db.clone());
 
@@ -465,6 +474,7 @@ impl Node {
             initial_llm_providers,
             vector_fs: vector_fs_arc.clone(),
             lance_db,
+            sqlite_logger,
             embedding_generator,
             unstructured_api,
             conn_limiter,

@@ -8518,6 +8518,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "r2d2"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51de85fb3fb6524929c8a2eb85e6b6d363de4e8c48f9e2c2eac4944abc181c93"
+dependencies = [
+ "log 0.4.22",
+ "parking_lot 0.12.3",
+ "scheduled-thread-pool",
+]
+
+[[package]]
+name = "r2d2_sqlite"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4f5d0337e99cd5cacd91ffc326c6cc9d8078def459df560c4f9bf9ba4a51034"
+dependencies = [
+ "r2d2",
+ "rusqlite",
+]
+
+[[package]]
 name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10181,6 +10202,7 @@ dependencies = [
  "shinkai_lancedb",
  "shinkai_message_primitives",
  "shinkai_sheet",
+ "shinkai_sqlite",
  "shinkai_subscription_manager",
  "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
@@ -10239,10 +10261,14 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dashmap",
+ "futures",
+ "r2d2",
+ "r2d2_sqlite",
  "regex",
  "rusqlite",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

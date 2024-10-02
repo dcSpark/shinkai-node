@@ -1,26 +1,66 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, Result, ToSql, Row};
 use std::path::Path;
 use serde_json::Value;
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use r2d2_sqlite::SqliteConnectionManager;
+use r2d2::Pool;
+use std::sync::Arc;
 
 pub mod logger;
 
-// Struct to manage SQLite connections
+// Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
-    conn: Connection, // Holds the SQLite connection
+    pool: Arc<Pool<SqliteConnectionManager>>,
 }
 
 impl SqliteManager {
-    // Creates a new SqliteManager with a connection to the specified database path
+    // Creates a new SqliteManager with a connection pool to the specified database path
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
-        let conn = Connection::open(db_path)?; // Open a connection to the database
-        Ok(SqliteManager { conn }) // Return a new instance of SqliteManager
+        let manager = SqliteConnectionManager::file(db_path);
+        let pool = Pool::builder()
+            .max_size(10) // Adjust based on your needs
+            .build(manager)
+            .map_err(|e| rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1),
+                Some(e.to_string())
+            ))?;
+
+        // Enable WAL mode and set some optimizations
+        let conn = pool.get().map_err(|e| rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(1),
+            Some(e.to_string())
+        ))?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA temp_store=MEMORY;
+             PRAGMA mmap_size=262144000;"  // 250 MB in bytes (250 * 1024 * 1024)
+        )?;
+
+        Ok(SqliteManager { pool: Arc::new(pool) })
     }
 
-    // Returns a reference to the SQLite connection
-    pub fn get_connection(&self) -> &Connection {
-        &self.conn
+    // Returns a connection from the pool
+    pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
+        self.pool.get().map_err(|e| rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(1), // Using a generic error code
+            Some(e.to_string())
+        ))
+    }
+
+    // Execute a SQL query with parameters
+    pub fn execute(&self, sql: &str, params: &[&dyn ToSql]) -> Result<usize> {
+        let conn = self.get_connection()?;
+        conn.execute(sql, params)
+    }
+
+    // Query a row from the database
+    pub fn query_row<T, F>(&self, sql: &str, params: &[&dyn ToSql], f: F) -> Result<T>
+    where
+        F: FnOnce(&Row<'_>) -> Result<T>,
+    {
+        let conn = self.get_connection()?;
+        conn.query_row(sql, params, f)
     }
 }
 
