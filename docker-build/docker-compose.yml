@@ -1,23 +1,6 @@
 version: '3.9'
 
 services:
-  unstructured-api:
-    image: downloads.unstructured.io/unstructured-io/unstructured-api:latest
-    container_name: unstructured-api
-    restart: "always"
-    command: --port 8000 --host 0.0.0.0
-    environment:
-      - UNSTRUCTURED_MEMORY_FREE_MINIMUM_MB=512
-    networks:
-      - shinkai
-    ports:
-      - 9080:8000/tcp
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "10"
-
   text-embeddings-router:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
     container_name: text-embeddings-router
@@ -48,7 +31,6 @@ services:
       - INITIAL_AGENT_MODELS=${INITIAL_AGENT_MODELS:-openai:gpt-4-1106-preview,openai:gpt-4-vision-preview}
       - INITIAL_AGENT_URLS=${INITIAL_AGENT_URLS:-https://api.openai.com,https://api.openai.com}
       - INITIAL_AGENT_API_KEYS=${INITIAL_AGENT_API_KEYS}
-      - UNSTRUCTURED_SERVER_URL=http://unstructured-api:9080/
       - EMBEDDINGS_SERVER_URL=http://text-embeddings-router:9081/
       - NODE_STORAGE_PATH=storage
       - NODE_IP=0.0.0.0

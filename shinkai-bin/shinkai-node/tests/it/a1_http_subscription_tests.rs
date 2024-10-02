@@ -9,7 +9,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair 
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
@@ -113,7 +112,6 @@ fn http_subscription_manager_test() {
             node1_fs_db_path,
             None,
             None,
-            None,
             default_embedding_model(),
             supported_embedding_models(),
             None,
@@ -134,7 +132,6 @@ fn http_subscription_manager_test() {
             true,
             vec![],
             node2_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),

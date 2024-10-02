@@ -1,6 +1,9 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider};
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -13,7 +16,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_vector_resources::utils::hash_string;
 use std::fs;
@@ -36,7 +38,6 @@ fn setup() {
 fn workflow_integration_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
-    
 
     // WIP: need to find a way to test the agent registration
     setup();
@@ -133,7 +134,6 @@ fn workflow_integration_test() {
             true,
             vec![agent],
             node1_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),
@@ -328,7 +328,6 @@ fn workflow_integration_test() {
 // #[test]
 fn workflow_complex_integration_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
-    
 
     setup();
     let rt = Runtime::new().unwrap();
@@ -395,7 +394,6 @@ fn workflow_complex_integration_test() {
             true,
             vec![agent],
             node1_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),

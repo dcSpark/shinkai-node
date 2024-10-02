@@ -72,7 +72,7 @@ shinkai_vector_resources = { path = "../shinkai-vector-resources", default-featu
 
 ## How To Use Vector Resources
 
-Reference `unstructured_tests.rs` to see the examples of the basic flow of:
+Reference `vector_resource_tests.rs` to see the examples of the basic flow of:
 
 1. Ingesting a source document (pdf/txt/epub/...) into a Vector Resource
 2. Generating a query

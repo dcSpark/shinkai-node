@@ -1137,7 +1137,6 @@ impl Node {
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 let embedding_generator_clone = self.embedding_generator.clone();
-                let unstructured_api_clone = self.unstructured_api.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_convert_files_and_save_to_folder(
@@ -1147,7 +1146,6 @@ impl Node {
                         identity_manager_clone,
                         encryption_secret_key_clone,
                         Arc::new(embedding_generator_clone),
-                        Arc::new(unstructured_api_clone),
                         ext_subscription_manager_clone,
                         msg,
                         res,
@@ -1664,41 +1662,6 @@ impl Node {
                     .await;
                 });
             }
-            // Add these inside the match command block:
-            NodeCommand::APIGetLocalProcessingPreference { msg, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_get_local_processing_preference(
-                        db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            NodeCommand::APIUpdateLocalProcessingPreference { preference, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_update_local_processing_preference(
-                        db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        preference,
-                        res,
-                    )
-                    .await;
-                });
-            }
             // NodeCommand::APISearchWorkflows { msg, res } => self.api_search_workflows(msg, res).await,
             NodeCommand::APISearchWorkflows { msg, res } => {
                 let node_name_clone = self.node_name.clone();
@@ -2040,7 +2003,6 @@ impl Node {
                 let vector_fs_clone = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let embedding_generator_clone = self.embedding_generator.clone();
-                let unstructured_api_clone = self.unstructured_api.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_convert_files_and_save_to_folder(
@@ -2049,7 +2011,6 @@ impl Node {
                         identity_manager_clone,
                         payload,
                         Arc::new(embedding_generator_clone),
-                        Arc::new(unstructured_api_clone),
                         ext_subscription_manager_clone,
                         bearer,
                         res,
@@ -2208,7 +2169,6 @@ impl Node {
                 let vector_fs_clone = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let embedding_generator_clone = self.embedding_generator.clone();
-                let unstructured_api_clone = self.unstructured_api.clone();
                 let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_upload_file_to_folder(
@@ -2216,7 +2176,6 @@ impl Node {
                         vector_fs_clone,
                         identity_manager_clone,
                         Arc::new(embedding_generator_clone),
-                        Arc::new(unstructured_api_clone),
                         ext_subscription_manager_clone,
                         bearer,
                         filename,
@@ -2430,22 +2389,6 @@ impl Node {
                         res,
                     )
                     .await;
-                });
-            }
-            NodeCommand::V2ApiGetLocalProcessingPreference { bearer, res } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_get_local_processing_preference(db_clone, bearer, res).await;
-                });
-            }
-            NodeCommand::V2ApiUpdateLocalProcessingPreference {
-                bearer,
-                preference,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_update_local_processing_preference(db_clone, bearer, preference, res).await;
                 });
             }
             NodeCommand::V2ApiSearchWorkflows { bearer, query, res } => {

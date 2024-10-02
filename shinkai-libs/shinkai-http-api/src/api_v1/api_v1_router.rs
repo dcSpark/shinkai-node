@@ -48,7 +48,6 @@ use super::api_v1_handlers::get_last_messages_from_inbox_handler;
 use super::api_v1_handlers::get_last_messages_from_inbox_with_branches_handler;
 use super::api_v1_handlers::get_last_notifications_handler;
 use super::api_v1_handlers::get_last_unread_messages_from_inbox_handler;
-use super::api_v1_handlers::get_local_processing_preference_handler;
 use super::api_v1_handlers::get_my_subscribers_handler;
 use super::api_v1_handlers::get_notifications_before_timestamp_handler;
 use super::api_v1_handlers::get_public_key_handler;
@@ -82,7 +81,6 @@ use super::api_v1_handlers::shinkai_health_handler;
 use super::api_v1_handlers::subscribe_to_shared_folder_handler;
 use super::api_v1_handlers::unsubscribe_handler;
 use super::api_v1_handlers::update_job_to_finished_handler;
-use super::api_v1_handlers::update_local_processing_preference_handler;
 use super::api_v1_handlers::update_smart_inbox_name_handler;
 use super::api_v1_handlers::update_workflow_handler;
 use super::api_v1_handlers::use_registration_code_handler;
@@ -623,26 +621,6 @@ pub fn v1_routes(
             })
     };
 
-    let get_local_processing_preference = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("get_local_processing_preference")
-            .and(warp::get())
-            .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                get_local_processing_preference_handler(node_commands_sender.clone(), message)
-            })
-    };
-
-    let update_local_processing_preference = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("update_local_processing_preference")
-            .and(warp::post())
-            .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                update_local_processing_preference_handler(node_commands_sender.clone(), message)
-            })
-    };
-
     let search_workflows = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("search_workflows")
@@ -893,8 +871,6 @@ pub fn v1_routes(
         .or(change_job_agent)
         .or(get_last_notifications)
         .or(get_notifications_before_timestamp)
-        .or(get_local_processing_preference)
-        .or(update_local_processing_preference)
         .or(search_workflows)
         .or(add_workflow)
         .or(update_workflow)
