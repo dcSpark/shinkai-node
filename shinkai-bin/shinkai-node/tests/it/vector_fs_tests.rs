@@ -84,6 +84,9 @@ pub async fn get_shinkai_intro_doc_async(
     generator: &RemoteEmbeddingGenerator,
     data_tags: &Vec<DataTag>,
 ) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
+    // Initialize local PDF parser
+    ShinkaiTestingFramework::initialize_pdfium().await;
+
     // Read the pdf from file into a buffer
     let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("../../files/{}", source_file_name)).map_err(|_| VRError::FailedPDFParsing)?;
@@ -396,7 +399,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     assert_eq!(
-        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com",
+        "Shinkai Network Manifesto (Early Preview)",
         res[0]
             .resource_retrieved_node
             .node
