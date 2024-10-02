@@ -1,6 +1,7 @@
-use crate::{SqliteManager, LogEntry, Tool, WorkflowStep, WorkflowOperation, LogStatus};
+use crate::{LogEntry, LogStatus, LogTree, SqliteManager, Tool, WorkflowOperation, WorkflowStep};
 use rusqlite::{Result, params};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 // Struct representing the SQLite logger
 pub struct SqliteLogger<'a> {
@@ -167,6 +168,13 @@ impl<'a> SqliteLogger<'a> {
         Ok(())
     }
 
+    // New method to get log IDs for a specific message
+    pub fn get_log_ids_for_message(&self, message_id: i32) -> Result<Vec<i32>> {
+        let mut stmt = self.manager.get_connection().prepare("SELECT id FROM logs WHERE message_id = ?")?;
+        let log_ids = stmt.query_map([message_id], |row| row.get(0))?;
+        log_ids.collect()
+    }
+
     // Retrieves logs based on optional filters for message_id, tool_id, and subprocess
     pub fn get_logs(&self, message_id: Option<i32>, tool_id: Option<i32>, subprocess: Option<&str>) -> Result<Vec<LogEntry>> {
         // Build the query string with optional filters
@@ -210,5 +218,75 @@ impl<'a> SqliteLogger<'a> {
 
         // Collect and return the logs
         log_iter.collect()
+    }
+
+    pub fn get_log_tree(&self, log_id: i32) -> Result<LogTree> {
+        fn build_tree(logger: &SqliteLogger, log_id: i32, cache: &mut HashMap<i32, LogEntry>) -> Result<LogTree> {
+            let log = if let Some(log) = cache.get(&log_id) {
+                log.clone()
+            } else {
+                let log = logger.get_log(log_id)?;
+                cache.insert(log_id, log.clone());
+                log
+            };
+
+            let children = logger.get_child_logs(log_id)?
+                .into_iter()
+                .map(|child_log| {
+                    build_tree(logger, child_log.id.unwrap(), cache)
+                })
+                .collect::<Result<Vec<LogTree>>>()?;
+
+            Ok(LogTree { log, children })
+        }
+
+        let mut cache = HashMap::new();
+        build_tree(self, log_id, &mut cache)
+    }
+
+    fn get_log(&self, log_id: i32) -> Result<LogEntry> {
+        let mut stmt = self.manager.get_connection().prepare("SELECT * FROM logs WHERE id = ?")?;
+        let log = stmt.query_row(params![log_id], |row| {
+            Ok(LogEntry {
+                id: Some(row.get(0)?),
+                message_id: row.get(1)?,
+                tool_id: row.get(2)?,
+                subprocess: row.get(3)?,
+                parent_id: row.get(4)?,
+                execution_order: row.get(5)?,
+                input: serde_json::from_str(&row.get::<_, String>(6)?).unwrap(),
+                duration: row.get(7)?,
+                result: serde_json::from_str(&row.get::<_, String>(8)?).unwrap(),
+                status: serde_json::from_str(&row.get::<_, String>(9)?).unwrap(),
+                error_message: row.get(10)?,
+                timestamp: row.get(11)?,
+                log_type: row.get(12)?,
+                additional_info: row.get::<_, Option<String>>(13)?.map(|s| serde_json::from_str(&s).unwrap()),
+            })
+        })?;
+        Ok(log)
+    }
+
+    fn get_child_logs(&self, parent_id: i32) -> Result<Vec<LogEntry>> {
+        let mut stmt = self.manager.get_connection().prepare("SELECT * FROM logs WHERE parent_id = ?")?;
+        let logs = stmt.query_map(params![parent_id], |row| {
+            Ok(LogEntry {
+                id: Some(row.get(0)?),
+                message_id: row.get(1)?,
+                tool_id: row.get(2)?,
+                subprocess: row.get(3)?,
+                parent_id: row.get(4)?,
+                execution_order: row.get(5)?,
+                input: serde_json::from_str(&row.get::<_, String>(6)?).unwrap(),
+                duration: row.get(7)?,
+                result: serde_json::from_str(&row.get::<_, String>(8)?).unwrap(),
+                status: serde_json::from_str(&row.get::<_, String>(9)?).unwrap(),
+                error_message: row.get(10)?,
+                timestamp: row.get(11)?,
+                log_type: row.get(12)?,
+                additional_info: row.get::<_, Option<String>>(13)?.map(|s| serde_json::from_str(&s).unwrap()),
+            })
+        })?;
+        logs.collect()
     }
 }

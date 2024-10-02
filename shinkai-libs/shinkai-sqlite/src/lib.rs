@@ -2,6 +2,7 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 use serde_json::Value;
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
 
 pub mod logger;
 
@@ -98,6 +99,27 @@ pub struct LogEntry {
     pub additional_info: Option<Value>,
 }
 
+impl Clone for LogEntry {
+    fn clone(&self) -> Self {
+        LogEntry {
+            id: self.id,
+            message_id: self.message_id,
+            tool_id: self.tool_id,
+            subprocess: self.subprocess.clone(),
+            parent_id: self.parent_id,
+            execution_order: self.execution_order,
+            input: self.input.clone(),
+            duration: self.duration,
+            result: self.result.clone(),
+            status: self.status.clone(),
+            error_message: self.error_message.clone(),
+            timestamp: self.timestamp.clone(),
+            log_type: self.log_type.clone(),
+            additional_info: self.additional_info.clone(),
+        }
+    }
+}
+
 // Struct representing a tool in the database
 #[derive(Debug)]
 pub struct Tool {
@@ -124,3 +146,9 @@ pub enum WorkflowOperation {
 
 // Re-export the logger for convenience
 pub use logger::SqliteLogger;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogTree {
+    pub log: LogEntry,
+    pub children: Vec<LogTree>,
+}

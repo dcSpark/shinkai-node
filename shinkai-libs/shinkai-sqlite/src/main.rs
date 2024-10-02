@@ -1,4 +1,4 @@
-use shinkai_sqlite::{SqliteManager, SqliteLogger, LogEntry, Tool, WorkflowStep, WorkflowOperation, LogStatus};
+use shinkai_sqlite::{SqliteManager, SqliteLogger, LogEntry, Tool, WorkflowStep, WorkflowOperation, LogStatus, LogTree};
 use std::time::Instant;
 use serde_json::json;
 use chrono::Utc;
@@ -16,25 +16,6 @@ fn main() -> rusqlite::Result<()> {
         instructions: Some("workflow MyProcess v0.1 { ... }".to_string()),
     };
     let tool_id = logger.add_tool(&tool)?;
-
-    // Log a general (non-workflow) entry
-    let general_log = LogEntry {
-        id: Some(0),
-        message_id: 1,
-        tool_id,
-        subprocess: None,
-        parent_id: None,
-        execution_order: 1,
-        input: json!({"user_input": "Hello, world!"}),
-        duration: Some(0.1),
-        result: json!({"response": "Greetings!"}),
-        status: LogStatus::Success,
-        error_message: None,
-        timestamp: Utc::now().to_rfc3339(),
-        log_type: "general".to_string(),
-        additional_info: None,
-    };
-    logger.add_log(&general_log)?;
 
     // Create a sample workflow
     let workflow = vec![
@@ -62,16 +43,27 @@ fn main() -> rusqlite::Result<()> {
     ];
 
     // Log the workflow execution
-    logger.log_workflow_execution(1, tool_id, &workflow)?;
+    let message_id = 1; // Assuming this is the message ID for this execution
+    logger.log_workflow_execution(message_id, tool_id, &workflow)?;
 
-    // Benchmark for reading logs
-    let start_read = Instant::now();
-    let logs = logger.get_logs(Some(1), Some(tool_id), None)?;
-    for log in logs.iter() {
-        println!("{:?}", log);
+    // Get all log IDs for this message
+    let log_ids = logger.get_log_ids_for_message(message_id)?;
+
+    // Fetch and display the log tree for each log ID
+    for log_id in log_ids {
+        let log_tree = logger.get_log_tree(log_id)?;
+        println!("Log tree for log ID {}:", log_id);
+        print_log_tree(&log_tree, 0);
+        println!(); // Add a blank line between trees
     }
-    let duration_read = start_read.elapsed();
-    println!("Time taken to read logs: {:?}", duration_read);
 
     Ok(())
+}
+
+fn print_log_tree(tree: &LogTree, depth: usize) {
+    let indent = "  ".repeat(depth);
+    println!("{}Log ID: {}, Type: {}", indent, tree.log.id.unwrap(), tree.log.log_type);
+    for child in &tree.children {
+        print_log_tree(child, depth + 1);
+    }
 }
