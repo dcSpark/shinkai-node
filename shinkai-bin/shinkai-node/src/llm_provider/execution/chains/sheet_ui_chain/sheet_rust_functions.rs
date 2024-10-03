@@ -361,11 +361,10 @@ impl SheetRustFunctions {
             let row_cells = worksheet.get_collection_by_row(&1);
             let num_columns = row_cells.len();
 
-            for cell in row_cells {
-                let column_name = cell.get_cell_value().get_value();
+            for _ in 1..=num_columns {
                 let column_definition = ColumnDefinition {
                     id: Uuid::new_v4().to_string(),
-                    name: column_name.to_string(),
+                    name: "".to_string(),
                     behavior: ColumnBehavior::Text,
                 };
                 column_definitions.push(column_definition);
@@ -379,7 +378,7 @@ impl SheetRustFunctions {
             }
 
             let mut num_rows: u32 = 0;
-            for row_index in 2..u32::MAX {
+            for row_index in 1..u32::MAX {
                 let row_cells = worksheet.get_collection_by_row(&row_index);
                 let is_empty_row =
                     row_cells.is_empty() || row_cells.into_iter().all(|cell| cell.get_cell_value().is_empty());
@@ -407,7 +406,7 @@ impl SheetRustFunctions {
 
             for row_index in 1..=num_rows {
                 for col_index in 1..=num_columns {
-                    if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index + 1)) {
+                    if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index)) {
                         let cell_value = cell.get_value();
                         let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
 
@@ -475,27 +474,7 @@ impl SheetRustFunctions {
 
         let mut spreadsheet = new_file();
 
-        let headers: Vec<String> = sheet
-            .display_columns
-            .iter()
-            .map(|column_id| {
-                sheet
-                    .columns
-                    .get(column_id)
-                    .map(|column| column.name.clone())
-                    .unwrap_or_else(|| "Unknown Column".to_string())
-            })
-            .collect();
-
-        for (index, header) in headers.iter().enumerate() {
-            spreadsheet
-                .get_sheet_mut(&0)
-                .unwrap()
-                .get_cell_mut((1, index.to_u32().unwrap_or_default() + 1))
-                .set_value(header);
-        }
-
-        for (row_idx, row_id) in sheet.display_rows.iter().enumerate() {
+        for (row_index, row_id) in sheet.display_rows.iter().enumerate() {
             let row_values: Vec<String> = sheet
                 .display_columns
                 .iter()
@@ -506,13 +485,13 @@ impl SheetRustFunctions {
                 })
                 .collect();
 
-            for (index, cell_value) in row_values.iter().enumerate() {
+            for (col_index, cell_value) in row_values.iter().enumerate() {
                 spreadsheet
                     .get_sheet_mut(&0)
                     .unwrap()
                     .get_cell_mut((
-                        row_idx.to_u32().unwrap_or_default() + 1,
-                        index.to_u32().unwrap_or_default() + 1,
+                        col_index.to_u32().unwrap_or_default() + 1,
+                        row_index.to_u32().unwrap_or_default() + 1,
                     ))
                     .set_value(cell_value);
             }
@@ -555,11 +534,7 @@ impl SheetRustFunctions {
             ))
         });
         tool_map.insert("get_table", |sheet_manager, sheet_id, args| {
-            Box::pin(SheetRustFunctions::get_table(
-                sheet_manager,
-                sheet_id,
-                args,
-            ))
+            Box::pin(SheetRustFunctions::get_table(sheet_manager, sheet_id, args))
         });
         tool_map
     }
