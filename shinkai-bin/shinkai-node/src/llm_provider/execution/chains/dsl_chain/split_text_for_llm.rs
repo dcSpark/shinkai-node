@@ -14,15 +14,28 @@ pub fn split_text_for_llm(
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for input2".to_string()))?
         .clone();
 
-    let agent = context.agent();
-    let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+    let max_tokens = if args.len() > 2 {
+        if let Some(input3) = args[2].downcast_ref::<String>() {
+            if !input3.is_empty() && input3 != "0" {
+                input3.parse::<usize>().map_err(|_| {
+                    WorkflowError::InvalidArgument("Invalid argument for input3".to_string())
+                })?
+            } else {
+                ModelCapabilitiesManager::get_max_input_tokens(&context.agent().model)
+            }
+        } else {
+            ModelCapabilitiesManager::get_max_input_tokens(&context.agent().model)
+        }
+    } else {
+        ModelCapabilitiesManager::get_max_input_tokens(&context.agent().model)
+    };
     
     let mut result = Vec::new();
     let current_text = input1.clone();
     let mut remaining_text = input2.clone();
 
     while !remaining_text.is_empty() {
-        let combined_text = format!("{}{}", current_text, remaining_text);
+        let combined_text = format!("{}\n{}", current_text, remaining_text);
         let token_count = (ModelCapabilitiesManager::count_tokens_from_message_llama3(&combined_text) as f64 * 1.2).ceil() as usize; // we multiply it by 1.2 to be safe
 
         if token_count <= max_tokens {

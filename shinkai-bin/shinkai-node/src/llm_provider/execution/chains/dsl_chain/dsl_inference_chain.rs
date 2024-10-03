@@ -543,10 +543,31 @@ impl AsyncFunction for MultiInferenceFunction {
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for first argument".to_string()))?
             .clone();
 
+        let first_argument = "You are an expert summarizer with extensive knowledge across various fields. Your task is to create a comprehensive, in-depth summary.
+
+Please adhere to these guidelines:
+- Produce a detailed summary in paragraph form, organized into logical sections with appropriate headings.
+- Create an extensive summary that captures all main ideas, important details, and nuances of the original text. Aim for a length that is about 25-30% of the original document.
+- Include main ideas, supporting details, key arguments, methodologies (if applicable), results, and conclusions. Explain complex concepts and provide context where necessary.
+- Analyze the significance of the information presented, identify any patterns or trends, and highlight the most impactful points.
+- Write in a clear, academic tone, using professional language appropriate for a well-educated audience.
+- If summarizing multiple documents, synthesize the information coherently, noting any conflicting viewpoints or complementary ideas across sources.
+
+Begin your summary now, ensuring it is thorough, well-structured, and captures the essence of the original text(s). Text to summarize:\n";
+
+        // Note arg[1] is the actual content
+
         let custom_system_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
         let custom_user_prompt: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
-        let split_result = split_text_for_llm(self.context.as_ref(), args)?;
+        // Manually create a new set of args with a fixed number "3000" as the third argument
+        let split_text_args = vec![
+            Box::new(first_argument.clone()) as Box<dyn Any + Send>,
+            Box::new(args[1].downcast_ref::<String>().unwrap().clone()) as Box<dyn Any + Send>,
+            Box::new("4000".to_string()) as Box<dyn Any + Send>,
+        ];
+
+        let split_result = split_text_for_llm(self.context.as_ref(), split_text_args)?;
         let split_texts = split_result
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid split result".to_string()))?
@@ -572,6 +593,7 @@ impl AsyncFunction for MultiInferenceFunction {
         let mut responses = Vec::new();
         let agent = self.context.agent();
         let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+        eprintln!("max_tokens: {:?}", max_tokens);
 
         for text in split_texts.iter() {
             let inference_args = vec![
@@ -588,9 +610,11 @@ impl AsyncFunction for MultiInferenceFunction {
         }
 
         // Perform one more inference with all the responses together
-        let combined_responses = responses.join(" ");
+        let combined_responses = responses.join("\n--- separation ---\n");
         let combined_token_count = ModelCapabilitiesManager::count_tokens_from_message_llama3(&combined_responses);
+        eprintln!("combined_token_count: {:?}", combined_token_count);
         let max_safe_tokens = (max_tokens as f64 * 0.8).ceil() as usize;
+        eprintln!("max_safe_tokens: {:?}", max_safe_tokens);
 
         let final_text = if combined_token_count > max_safe_tokens {
             let (part, _) = split_text_at_token_limit(&combined_responses, max_safe_tokens, combined_token_count);
@@ -600,7 +624,7 @@ impl AsyncFunction for MultiInferenceFunction {
         };
 
         // Concatenate the first argument with the final text for the final inference call
-        let concatenated_final_text = format!("{}{}", first_argument, final_text);
+        let concatenated_final_text = format!("We asked the following question to multiple chunks: {}\n Can you stick them together so they feel like one big response instead of multiple chunks? These are the chunks: {}", first_argument, final_text);
         let final_inference_args = vec![Box::new(concatenated_final_text) as Box<dyn Any + Send>];
         let final_response = self.inference_function_ws.call(final_inference_args).await?;
         let final_response_text = final_response
