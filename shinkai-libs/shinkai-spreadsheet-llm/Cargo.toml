@@ -5,7 +5,9 @@ edition = "2021"
 authors.workspace = true
 
 [dependencies]
+chrono = "0.4"
 csv = "1.1.6"
 ndarray = "0.16.1"
+regex = "1"
 polars = { version = "0.41.3", features = ["dtype-struct", "is_in", "lazy"] }
 polars-lazy = "0.41.3"

@@ -1,11 +1,14 @@
+use chrono::NaiveDateTime;
+use csv::ReaderBuilder;
+use ndarray::Array1;
+use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
     io::Cursor,
 };
 
-use csv::ReaderBuilder;
-use ndarray::Array1;
+use crate::excel_helpers::{combine_cells, convert_rowcol_to_excel_index};
 
 const K: usize = 4;
 
@@ -20,6 +23,7 @@ pub struct MarkdownCell {
     address: String,
     value: String,
     format: String,
+    category: String,
 }
 
 impl SheetCompressor {
@@ -33,20 +37,20 @@ impl SheetCompressor {
     }
 
     // Vanilla Spreadsheet Encoding to Markdown
-    pub fn encode(csv_data: &Vec<u8>) -> Result<HashMap<(usize, usize), MarkdownCell>, Box<dyn Error>> {
+    pub fn encode(csv_data: &Vec<u8>) -> Result<Vec<MarkdownCell>, Box<dyn Error>> {
         let mut reader = ReaderBuilder::new()
             .flexible(true)
             .has_headers(false)
             .from_reader(Cursor::new(csv_data));
 
-        let mut cells = HashMap::new();
+        let mut cells = Vec::new();
 
         let records = reader.records().collect::<Result<Vec<_>, _>>()?;
         let num_rows = records.len();
         for (i, record) in records.into_iter().enumerate() {
             let row: Vec<String> = record.iter().map(String::from).collect();
             for (j, value) in row.iter().enumerate() {
-                let address = Self::convert_rowcol_to_excel_index(i, j);
+                let address = convert_rowcol_to_excel_index(i, j);
 
                 let format = {
                     let mut format = Vec::new();
@@ -69,9 +73,10 @@ impl SheetCompressor {
                     address,
                     value: value.clone(),
                     format,
+                    category: Self::get_category(value).to_string(),
                 };
 
-                cells.insert((i, j), cell);
+                cells.push(cell);
             }
         }
 
@@ -171,18 +176,63 @@ impl SheetCompressor {
         Ok(result)
     }
 
-    fn convert_rowcol_to_excel_index(row: usize, col: usize) -> String {
-        let mut result = String::new();
-        let mut col = col + 1;
-        let row = row + 1;
+    // Inverted-index Translation
+    pub fn inverted_index(markdown: Vec<MarkdownCell>) -> HashMap<String, String> {
+        let mut dictionary: HashMap<String, Vec<String>> = HashMap::new();
 
-        while col > 0 {
-            let rem = (col - 1) % 26;
-            result.push((rem as u8 + b'A') as char);
-            col = (col - rem) / 26;
+        for row in markdown.iter() {
+            let value = row.value.clone();
+            let address = row.address.clone();
+
+            dictionary
+                .entry(value)
+                .and_modify(|e| e.push(address.clone()))
+                .or_insert_with(|| vec![address]);
         }
 
-        format!("{}{}", result.chars().rev().collect::<String>(), &row.to_string())
+        dictionary.retain(|k, _| !k.is_empty());
+
+        dictionary.into_iter().map(|(k, v)| (k, combine_cells(v))).collect()
+    }
+
+    // Data-format-aware Aggregation
+    pub fn identical_cell_aggregation(
+        sheet: Vec<Vec<String>>,
+        markdown: Vec<MarkdownCell>,
+    ) -> Vec<((usize, usize), (usize, usize), String)> {
+        let dictionary = Self::inverted_category(markdown);
+        let other = "Other".to_string();
+
+        let m = sheet.len();
+        let n = sheet[0].len();
+
+        let mut visited = vec![vec![false; n]; m];
+        let mut areas = Vec::new();
+
+        for r in 0..m {
+            for c in 0..n {
+                if !visited[r][c] {
+                    let val_type = dictionary.get(&sheet[r][c]).unwrap_or(&other);
+                    let bounds = Self::dfs(&sheet, &dictionary, r, c, val_type, &mut visited);
+                    areas.push(((bounds.0, bounds.1), (bounds.2, bounds.3), val_type.to_string()));
+                }
+            }
+        }
+
+        areas
+    }
+
+    fn inverted_category(markdown: Vec<MarkdownCell>) -> HashMap<String, String> {
+        let mut dictionary: HashMap<String, String> = HashMap::new();
+
+        for row in markdown.iter() {
+            let category = row.category.clone();
+            let value = row.value.clone();
+
+            dictionary.insert(value, category);
+        }
+
+        dictionary
     }
 
     fn get_dtype_row(&mut self, csv_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
@@ -321,6 +371,61 @@ impl SheetCompressor {
         }
     }
 
+    fn get_category(string: &str) -> &str {
+        if string.is_empty() {
+            return "Other";
+        }
+        if let Ok(_) = string.parse::<f64>() {
+            return "Float";
+        }
+        if let Ok(_) = string.parse::<i64>() {
+            return "Integer";
+        }
+        if let Ok(_) = NaiveDateTime::parse_from_str(string, "%Y-%m-%d %H:%M:%S") {
+            return "yyyy/mm/dd";
+        }
+
+        let integer_re = Regex::new(r"^(\+|-)?\d+$").unwrap();
+        let formatted_integer_re = Regex::new(r"^\d{1,3}(,\d{1,3})*$").unwrap();
+        if integer_re.is_match(string) || formatted_integer_re.is_match(string) {
+            return "Integer";
+        }
+
+        let float_re = Regex::new(r"^[-+]?\d*\.?\d*$").unwrap();
+        let formatted_float_re = Regex::new(r"^\d{1,3}(,\d{3})*(\.\d+)?$").unwrap();
+        if float_re.is_match(string) || formatted_float_re.is_match(string) {
+            return "Float";
+        }
+
+        let percentage_re = Regex::new(r"^[-+]?\d*\.?\d*%$").unwrap();
+        let formatted_percentage_re = Regex::new(r"^\d{1,3}(,\d{3})*(\.\d+)?%$").unwrap();
+        if percentage_re.is_match(string) || formatted_percentage_re.is_match(string) {
+            return "Percentage";
+        }
+
+        let currency_re = Regex::new(r"^[-+]?[$]\d*\.?\d{2}$").unwrap();
+        let formatted_currency_re = Regex::new(r"^[-+]?[$]\d{1,3}(,\d{3})*(\.\d{2})?$").unwrap();
+        if currency_re.is_match(string) || formatted_currency_re.is_match(string) {
+            return "Currency";
+        }
+
+        let scientific_notation_re = Regex::new(r"\b-?1-9?[Ee][-+]?\d+\b").unwrap();
+        if scientific_notation_re.is_match(string) {
+            return "Scientific Notation";
+        }
+
+        let email_re = Regex::new(r"^((([!#$%&'*+\-/=?^_`{|}~\w])|([!#$%&'*+\-/=?^_`{|}~\w][!#$%&'*+\-/=?^_`{|}~\.\w]{0,}[!#$%&'*+\-/=?^_`{|}~\w]))[@]\w+([-.]\w+)*\.\w+([-.]\w+)*)$").unwrap();
+        if email_re.is_match(string) {
+            return "Email";
+        }
+
+        if let Ok(_) = NaiveDateTime::parse_from_str(string, "%Y-%m-%d %H:%M:%S") {
+            return "yyyy/mm/dd";
+        }
+
+        "Other"
+    }
+
     fn intersect1d(arr1: &Array1<usize>, arr2: &Array1<usize>) -> Vec<usize> {
         let set1: HashSet<_> = arr1.iter().cloned().collect();
         let set2: HashSet<_> = arr2.iter().cloned().collect();
@@ -329,5 +434,41 @@ impl SheetCompressor {
 
     fn surrounding_k(num: usize, k: usize) -> Vec<usize> {
         (num - k..=num + k).collect()
+    }
+
+    fn dfs(
+        sheet: &Vec<Vec<String>>,
+        dictionary: &HashMap<String, String>,
+        r: usize,
+        c: usize,
+        val_type: &str,
+        visited: &mut Vec<Vec<bool>>,
+    ) -> (usize, usize, usize, usize) {
+        let other = "Other".to_string();
+        let match_val = dictionary.get(&sheet[r][c]).unwrap_or(&other);
+        if visited[r][c] || val_type != match_val {
+            return (r, c, r.wrapping_sub(1), c.wrapping_sub(1));
+        }
+        visited[r][c] = true;
+        let mut bounds = (r, c, r, c);
+        let directions = [(-1, 0), (0, -1), (1, 0), (0, 1)];
+
+        for &(dr, dc) in &directions {
+            let new_r = (r as isize + dr) as usize;
+            let new_c = (c as isize + dc) as usize;
+            if new_r < sheet.len() && new_c < sheet[0].len() {
+                let match_val = dictionary.get(&sheet[new_r][new_c]).unwrap_or(&other);
+                if !visited[new_r][new_c] && val_type == match_val {
+                    let new_bounds = Self::dfs(sheet, dictionary, new_r, new_c, val_type, visited);
+                    bounds = (
+                        bounds.0.min(new_bounds.0),
+                        bounds.1.min(new_bounds.1),
+                        bounds.2.max(new_bounds.2),
+                        bounds.3.max(new_bounds.3),
+                    );
+                }
+            }
+        }
+        bounds
     }
 }

@@ -10541,10 +10541,12 @@ dependencies = [
 name = "shinkai-spreadsheet-llm"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "csv",
  "ndarray",
  "polars",
  "polars-lazy",
+ "regex",
 ]
 
 [[package]]
