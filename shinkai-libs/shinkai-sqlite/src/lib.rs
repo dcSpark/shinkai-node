@@ -16,6 +16,11 @@ pub struct SqliteManager {
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
+        let mut db_path = db_path.as_ref().to_path_buf();
+        if db_path.extension().and_then(|ext| ext.to_str()) != Some("db") {
+            db_path.set_extension("db");
+        }
+
         let manager = SqliteConnectionManager::file(db_path);
         let pool = Pool::builder()
             .max_size(10) // Adjust based on your needs
