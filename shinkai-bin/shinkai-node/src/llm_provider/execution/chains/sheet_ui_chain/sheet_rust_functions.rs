@@ -13,22 +13,22 @@ pub struct SheetRustFunctions;
 
 // Function to detect the delimiter
 fn detect_delimiter(csv_data: &str) -> u8 {
-    let mut comma_count = 0;
-    let mut semicolon_count = 0;
-    let mut tab_count = 0;
+    if let Some(first_line) = csv_data.lines().next() {
+        let comma_count = first_line.matches(',').count();
+        let semicolon_count = first_line.matches(';').count();
+        let tab_count = first_line.matches('\t').count();
 
-    for line in csv_data.lines().take(10) {
-        comma_count += line.matches(',').count();
-        semicolon_count += line.matches(';').count();
-        tab_count += line.matches('\t').count();
-    }
-
-    if comma_count >= semicolon_count && comma_count >= tab_count {
-        b','
-    } else if semicolon_count >= comma_count && semicolon_count >= tab_count {
-        b';'
+        // Choose the delimiter with the highest count in the first line
+        if semicolon_count > comma_count && semicolon_count > tab_count {
+            b';'
+        } else if comma_count > semicolon_count && comma_count > tab_count {
+            b','
+        } else {
+            b'\t'
+        }
     } else {
-        b'\t'
+        // Default to comma if no lines are present
+        b','
     }
 }
 
@@ -1205,6 +1205,80 @@ mod tests {
                     "",
                     "",
                 ],
+            ];
+            for (row_index, expected_row) in expected_values.iter().enumerate() {
+                let row_id = sheet.display_rows.get(row_index).expect("Row ID not found").clone();
+                for (col_index, expected_value) in expected_row.iter().enumerate() {
+                    let col_id = sheet
+                        .display_columns
+                        .get(col_index)
+                        .expect("Column ID not found")
+                        .clone();
+                    let cell_value = sheet
+                        .get_cell_value(row_id.clone(), col_id.clone())
+                        .expect("Cell value not found");
+                    assert_eq!(
+                        cell_value, *expected_value,
+                        "The value in row {}, column {} should be '{}'",
+                        row_index, col_index, expected_value
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_new_columns_with_semicolon_csv() {
+        setup();
+        let node_name = "@@test.arb-sep-shinkai".to_string();
+        let db = create_testing_db(node_name.clone());
+        let db = Arc::new(db);
+        let node_name = ShinkaiName::new(node_name).unwrap();
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        let sheet_manager = Arc::new(Mutex::new(
+            SheetManager::new(Arc::downgrade(&db), node_name, ws_manager)
+                .await
+                .unwrap(),
+        ));
+
+        let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
+        sheet_manager.lock().await.set_job_manager(mock_job_manager);
+
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+
+        // Create new columns with semicolon-separated CSV data
+        let csv_data = r#"Countries;New Column;New Column
+;France;"France, officially known as the French Republic, is a country located in Western Europe. It shares borders with several countries including Belgium, Luxembourg, Germany, Switzerland, Italy, Spain, and Andorra. The country's geographical location allows it to have diverse landscapes ranging from mountains to coastlines along the Atlantic Ocean, Mediterranean Sea, and North Sea."
+;"30";
+;"25";"UK's a country
+that's basically
+an island"
+Charlie;"35";"Canada""#;
+        let mut args = HashMap::new();
+        args.insert(
+            "csv_data".to_string(),
+            Box::new(csv_data.to_string()) as Box<dyn Any + Send>,
+        );
+        let result =
+            SheetRustFunctions::create_new_columns_with_csv(sheet_manager.clone(), sheet_id.clone(), args).await;
+        assert!(
+            result.is_ok(),
+            "Creating new columns with semicolon-separated CSV data should succeed"
+        );
+
+        {
+            let sheet_manager = sheet_manager.lock().await;
+            let sheet = sheet_manager.get_sheet(&sheet_id).unwrap();
+            assert_eq!(sheet.columns.len(), 3, "There should be three columns in the sheet");
+            assert_eq!(sheet.rows.len(), 4, "There should be four rows in the sheet");
+
+            // Check the values in the columns
+            let expected_values = vec![
+                vec!["", "France", "France, officially known as the French Republic, is a country located in Western Europe. It shares borders with several countries including Belgium, Luxembourg, Germany, Switzerland, Italy, Spain, and Andorra. The country's geographical location allows it to have diverse landscapes ranging from mountains to coastlines along the Atlantic Ocean, Mediterranean Sea, and North Sea."],
+                vec!["", "30", ""],
+                vec!["", "25", "UK's a country\nthat's basically\nan island"],
+                vec!["Charlie", "35", "Canada"],
             ];
             for (row_index, expected_row) in expected_values.iter().enumerate() {
                 let row_id = sheet.display_rows.get(row_index).expect("Row ID not found").clone();
