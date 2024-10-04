@@ -350,10 +350,16 @@ impl SheetRustFunctions {
     pub async fn import_sheet_from_xlsx(
         sheet_manager: Arc<Mutex<SheetManager>>,
         xlsx_data: Vec<u8>,
+        sheet_name: Option<String>,
     ) -> Result<String, String> {
         let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
         let spreadsheet =
             umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(xlsx_data), true).map_err(|e| e.to_string())?;
+
+        if let Some(sheet_name) = sheet_name {
+            let mut sheet_manager = sheet_manager.lock().await;
+            sheet_manager.update_sheet_name(&sheet_id, sheet_name).await?;
+        }
 
         if let Some(worksheet) = spreadsheet.get_sheet(&0) {
             let mut column_definitions: Vec<ColumnDefinition> = Vec::new();
