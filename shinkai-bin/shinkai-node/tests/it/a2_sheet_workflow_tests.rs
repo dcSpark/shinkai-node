@@ -17,7 +17,6 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, unsafe_deterministic_aes_encryption_key,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use tokio::time::sleep;
@@ -349,6 +348,7 @@ fn import_export_sheet_tests() {
                 // Import from CSV
                 let payload = APIImportSheetPayload {
                     sheet_data: SpreadSheetPayload::CSV("column1,column2,column3\n1,2,3\n4,5,6".to_string()),
+                    sheet_name: Some("Test Sheet".to_string()),
                 };
 
                 let msg = generate_message_with_payload(
@@ -411,6 +411,7 @@ fn import_export_sheet_tests() {
                 let xlsx_data = std::fs::read("../../files/cars.xlsx").unwrap();
                 let payload = APIImportSheetPayload {
                     sheet_data: SpreadSheetPayload::XLSX(xlsx_data),
+                    sheet_name: Some("Cars".to_string()),
                 };
 
                 let msg = generate_message_with_payload(
