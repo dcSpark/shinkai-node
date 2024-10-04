@@ -1,78 +1,84 @@
 use chrono::NaiveDateTime;
-use csv::ReaderBuilder;
 use ndarray::Array1;
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
-    error::Error,
-    io::Cursor,
+    fmt::{self},
 };
 
 use crate::excel_helpers::{combine_cells, convert_rowcol_to_excel_index};
 
+// Structure-anchor Threshold
 const K: usize = 4;
 
-pub struct SheetCompressor {
-    row_candidates: Vec<usize>,
-    column_candidates: Vec<usize>,
-    row_lengths: HashMap<usize, usize>,
-    col_lengths: HashMap<usize, usize>,
-}
+pub struct SheetCompressor {}
 
+#[derive(Debug, Clone)]
 pub struct MarkdownCell {
     address: String,
     value: String,
-    format: String,
     category: String,
 }
 
-impl SheetCompressor {
-    pub fn new() -> Self {
-        Self {
-            row_candidates: Vec::new(),
-            column_candidates: Vec::new(),
-            row_lengths: HashMap::new(),
-            col_lengths: HashMap::new(),
+pub struct CompressedSheet {
+    pub areas: CellAreas,
+    pub dictionary: IndexDictionary,
+}
+
+pub type SheetRows = Vec<Vec<String>>;
+pub type CellAreas = Vec<((usize, usize), (usize, usize), String)>;
+
+pub struct IndexDictionary(HashMap<String, String>);
+
+impl fmt::Display for IndexDictionary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut result = String::new();
+        for (key, value) in &self.0 {
+            result.push_str(&format!("{}: {}\n", key, value));
         }
+        write!(f, "{}", result)
+    }
+}
+
+impl FromIterator<(String, String)> for IndexDictionary {
+    fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
+        let mut map = HashMap::new();
+        for (key, value) in iter {
+            map.insert(key, value);
+        }
+        IndexDictionary(map)
+    }
+}
+
+impl SheetCompressor {
+    pub fn compress_sheet(sheet: &SheetRows) -> CompressedSheet {
+        // Structural-anchor-based Extraction
+        let sheet = Self::anchor(sheet);
+
+        // Encode sheet to Markdown
+        let markdown = Self::encode(&sheet);
+
+        // Inverted-index Translation
+        let dictionary = Self::inverted_index(markdown.clone());
+
+        // Data-format-aware Aggregation
+        let areas = Self::identical_cell_aggregation(sheet, markdown);
+
+        CompressedSheet { areas, dictionary }
     }
 
     // Vanilla Spreadsheet Encoding to Markdown
-    pub fn encode(csv_data: &Vec<u8>) -> Result<Vec<MarkdownCell>, Box<dyn Error>> {
-        let mut reader = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(Cursor::new(csv_data));
-
+    pub fn encode(sheet: &SheetRows) -> Vec<MarkdownCell> {
         let mut cells = Vec::new();
 
-        let records = reader.records().collect::<Result<Vec<_>, _>>()?;
-        let num_rows = records.len();
-        for (i, record) in records.into_iter().enumerate() {
-            let row: Vec<String> = record.iter().map(String::from).collect();
+        for (i, row) in sheet.iter().enumerate() {
             for (j, value) in row.iter().enumerate() {
                 let address = convert_rowcol_to_excel_index(i, j);
-
-                let format = {
-                    let mut format = Vec::new();
-                    if i == 0 {
-                        format.push("Left Border".to_string());
-                    }
-                    if j == 0 {
-                        format.push("Top Border".to_string());
-                    }
-                    if i == num_rows - 1 {
-                        format.push("Bottom Border".to_string());
-                    }
-                    if j == row.len() - 1 {
-                        format.push("Right Border".to_string());
-                    }
-                    format.join(", ")
-                };
 
                 let cell = MarkdownCell {
                     address,
                     value: value.clone(),
-                    format,
+
                     category: Self::get_category(value).to_string(),
                 };
 
@@ -80,104 +86,70 @@ impl SheetCompressor {
             }
         }
 
-        Ok(cells)
+        cells
     }
 
     // Structural-anchor-based Extraction
-    pub fn anchor(&mut self, csv_data: &Vec<u8>) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
-        let mut reader = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(Cursor::new(csv_data));
+    pub fn anchor(sheet: &SheetRows) -> SheetRows {
+        let num_rows = sheet.len();
+        let num_cols = sheet.get(0).unwrap_or(&vec![]).len();
 
-        let records = reader.records().collect::<Result<Vec<_>, _>>()?;
-        let csv_rows = records
-            .iter()
-            .map(|r| r.iter().map(String::from).collect())
-            .collect::<Vec<Vec<String>>>();
-        let num_rows = csv_rows.len();
-        let num_cols = csv_rows.get(0).unwrap_or(&vec![]).len();
-
-        self.get_dtype_row(csv_data)?;
-        self.get_dtype_column(csv_data)?;
-        self.get_length_row(csv_data)?;
-        self.get_length_col(csv_data)?;
+        let mut row_candidates = Self::get_dtype_row(sheet);
+        let mut column_candidates = Self::get_dtype_column(sheet);
+        let row_lengths = Self::get_length_row(sheet);
+        let col_lengths = Self::get_length_col(sheet);
 
         // Keep candidates found in both dtype/length method
-        self.row_candidates = Self::intersect1d(
-            &Array1::from(self.row_lengths.keys().cloned().collect::<Vec<usize>>()),
-            &Array1::from(self.row_candidates.clone()),
+        row_candidates = Self::intersect1d(
+            &Array1::from(row_lengths.keys().cloned().collect::<Vec<usize>>()),
+            &Array1::from(row_candidates.clone()),
         );
-        self.column_candidates = Self::intersect1d(
-            &Array1::from(self.col_lengths.keys().cloned().collect::<Vec<usize>>()),
-            &Array1::from(self.column_candidates.clone()),
+        column_candidates = Self::intersect1d(
+            &Array1::from(col_lengths.keys().cloned().collect::<Vec<usize>>()),
+            &Array1::from(column_candidates.clone()),
         );
 
         // Add first and last row/column as candidates
-        self.row_candidates = ndarray::stack![
-            ndarray::Axis(0),
-            self.row_candidates,
-            Array1::from(vec![0, num_rows - 1])
-        ]
-        .into_iter()
-        .collect();
-        self.column_candidates = ndarray::stack![
-            ndarray::Axis(0),
-            self.column_candidates,
-            Array1::from(vec![0, num_cols - 1])
-        ]
-        .into_iter()
-        .collect();
+        row_candidates.extend_from_slice(&[0, num_rows - 1]);
+        column_candidates.extend_from_slice(&[0, num_cols - 1]);
 
         // Get K closest rows/columns to each candidate
         let mut concatenated: Vec<usize> = vec![];
-        for i in &self.row_candidates {
+        for i in &row_candidates {
             concatenated.extend(Self::surrounding_k(*i, K));
         }
 
         let array = Array1::from(concatenated);
         let unique: HashSet<_> = array.iter().cloned().collect();
-        self.row_candidates = unique.into_iter().collect();
+        row_candidates = unique.into_iter().collect();
 
         concatenated = vec![];
-        for i in &self.column_candidates {
+        for i in &column_candidates {
             concatenated.extend(Self::surrounding_k(*i, K));
         }
 
         let array = Array1::from(concatenated);
         let unique: HashSet<_> = array.iter().cloned().collect();
-        self.column_candidates = unique.into_iter().collect();
+        column_candidates = unique.into_iter().collect();
 
         // Filter out invalid candidates
-        self.row_candidates = self
-            .row_candidates
-            .clone()
-            .into_iter()
-            .filter(|&x| x < num_rows)
-            .collect();
-        self.column_candidates = self
-            .column_candidates
+        row_candidates = row_candidates.clone().into_iter().filter(|&x| x < num_rows).collect();
+        column_candidates = column_candidates
             .clone()
             .into_iter()
             .filter(|&x| x < num_cols)
             .collect();
 
-        let result: Vec<Vec<String>> = self
-            .row_candidates
+        let result: SheetRows = row_candidates
             .iter()
-            .map(|&row| {
-                self.column_candidates
-                    .iter()
-                    .map(|&col| csv_rows[row][col].clone())
-                    .collect()
-            })
+            .map(|&row| column_candidates.iter().map(|&col| sheet[row][col].clone()).collect())
             .collect();
 
-        Ok(result)
+        result
     }
 
     // Inverted-index Translation
-    pub fn inverted_index(markdown: Vec<MarkdownCell>) -> HashMap<String, String> {
+    pub fn inverted_index(markdown: Vec<MarkdownCell>) -> IndexDictionary {
         let mut dictionary: HashMap<String, Vec<String>> = HashMap::new();
 
         for row in markdown.iter() {
@@ -197,7 +169,7 @@ impl SheetCompressor {
 
     // Data-format-aware Aggregation
     pub fn identical_cell_aggregation(
-        sheet: Vec<Vec<String>>,
+        sheet: SheetRows,
         markdown: Vec<MarkdownCell>,
     ) -> Vec<((usize, usize), (usize, usize), String)> {
         let dictionary = Self::inverted_category(markdown);
@@ -235,35 +207,25 @@ impl SheetCompressor {
         dictionary
     }
 
-    fn get_dtype_row(&mut self, csv_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
-        let mut reader = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(Cursor::new(csv_data));
-
+    fn get_dtype_row(sheet: &SheetRows) -> Vec<usize> {
+        let mut row_candidates: Vec<usize> = Vec::new();
         let mut current_type: Vec<String> = Vec::new();
-        for (i, record) in reader.records().enumerate() {
-            let row: Vec<String> = record?.iter().map(String::from).collect();
+        for (i, row) in sheet.iter().enumerate() {
             let temp: Vec<String> = row.iter().map(|s| Self::detect_type(s).to_string()).collect();
             if current_type != temp {
                 current_type = temp;
-                self.row_candidates.push(i);
+                row_candidates.push(i);
             }
         }
 
-        Ok(())
+        row_candidates
     }
 
-    fn get_dtype_column(&mut self, csv_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
-        let mut reader = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(Cursor::new(csv_data));
-
+    fn get_dtype_column(sheet: &SheetRows) -> Vec<usize> {
+        let mut column_candidates: Vec<usize> = Vec::new();
         let mut current_type: Vec<String> = Vec::new();
         let mut columns: Vec<Vec<String>> = Vec::new();
-        for (i, record) in reader.records().enumerate() {
-            let row: Vec<String> = record?.iter().map(String::from).collect();
+        for (i, row) in sheet.iter().enumerate() {
             for (j, value) in row.iter().enumerate() {
                 if i == 0 {
                     columns.push(Vec::new());
@@ -276,22 +238,16 @@ impl SheetCompressor {
             let temp: Vec<String> = column.iter().map(|s| Self::detect_type(s).to_string()).collect();
             if current_type != temp {
                 current_type = temp;
-                self.column_candidates.push(i);
+                column_candidates.push(i);
             }
         }
 
-        Ok(())
+        column_candidates
     }
 
-    fn get_length_row(&mut self, csv_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
-        let mut reader = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(Cursor::new(csv_data));
-
+    fn get_length_row(sheet: &SheetRows) -> HashMap<usize, usize> {
         let mut row_lengths = HashMap::new();
-        for (i, record) in reader.records().enumerate() {
-            let row: Vec<String> = record?.iter().map(String::from).collect();
+        for (i, row) in sheet.iter().enumerate() {
             let row_length = row
                 .iter()
                 .map(|s| match Self::detect_type(s) {
@@ -308,24 +264,18 @@ impl SheetCompressor {
         let min = (mean - 2.0 * std).max(0.0);
         let max = mean + 2.0 * std;
 
-        self.row_lengths = row_lengths
+        row_lengths = row_lengths
             .into_iter()
             .filter(|&(_, v)| ((v as f64) < min) || ((v as f64) > max))
             .collect();
 
-        Ok(())
+        row_lengths
     }
 
-    fn get_length_col(&mut self, csv_data: &Vec<u8>) -> Result<(), Box<dyn Error>> {
-        let mut reader = ReaderBuilder::new()
-            .flexible(true)
-            .has_headers(false)
-            .from_reader(Cursor::new(csv_data));
-
+    fn get_length_col(sheet: &SheetRows) -> HashMap<usize, usize> {
         let mut col_lengths = HashMap::new();
         let mut columns: Vec<Vec<String>> = Vec::new();
-        for (i, record) in reader.records().enumerate() {
-            let row: Vec<String> = record?.iter().map(String::from).collect();
+        for (i, row) in sheet.iter().enumerate() {
             for (j, value) in row.iter().enumerate() {
                 if i == 0 {
                     columns.push(Vec::new());
@@ -351,12 +301,12 @@ impl SheetCompressor {
         let min = (mean - 2.0 * std).max(0.0);
         let max = mean + 2.0 * std;
 
-        self.col_lengths = col_lengths
+        col_lengths = col_lengths
             .into_iter()
             .filter(|&(_, v)| ((v as f64) < min) || ((v as f64) > max))
             .collect();
 
-        Ok(())
+        col_lengths
     }
 
     fn detect_type(input: &str) -> &str {
@@ -433,11 +383,12 @@ impl SheetCompressor {
     }
 
     fn surrounding_k(num: usize, k: usize) -> Vec<usize> {
-        (num - k..=num + k).collect()
+        let start = (num as isize - k as isize).max(0) as usize;
+        (start..=num + k).collect()
     }
 
     fn dfs(
-        sheet: &Vec<Vec<String>>,
+        sheet: &SheetRows,
         dictionary: &HashMap<String, String>,
         r: usize,
         c: usize,
