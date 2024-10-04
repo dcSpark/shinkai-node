@@ -195,7 +195,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
         eprintln!("Registers: {:?}", registers);
@@ -448,7 +448,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -491,7 +491,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -528,7 +528,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -558,7 +558,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 
@@ -679,6 +679,7 @@ mod tests {
 
         // Assert logs
         let expected_logs = [
+            r#"Executing step: "Initialize""#,
             r#"Setting register $R1 to "Create an outline for a blog post about the topic of the user's message ""#,
             r#"Composite body 0: "RegisterOperation { register: \"$R1\", value: String(\"Create an outline for a blog post about the topic of the user's message \") }""#,
             r#"Setting register $R2 to "\\n separate the sections using a comma e.g. red,green,blue""#,
@@ -746,7 +747,7 @@ mod tests {
 
         // Execute the workflow
         let registers = executor
-            .execute_workflow(&workflow)
+            .execute_workflow(&workflow, None)
             .await
             .expect("Failed to execute workflow");
 

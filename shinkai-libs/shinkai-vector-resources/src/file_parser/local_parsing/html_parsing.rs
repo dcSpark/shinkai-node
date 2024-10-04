@@ -8,8 +8,7 @@ use crate::{
 
 use super::LocalFileParser;
 
-/// If the file provided is an html file, attempt to extract out the core content to improve
-/// overall quality of UnstructuredElements returned.
+/// If the file provided is an html file, attempt to extract out the core content to improve overall quality.
 pub fn extract_core_content(file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
     if file_name.ends_with(".html") || file_name.ends_with(".htm") {
         let file_content = String::from_utf8_lossy(&file_buffer);

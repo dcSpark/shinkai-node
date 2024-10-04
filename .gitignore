@@ -91,3 +91,5 @@ image_0.txt
 storage_debug_0_7_33.zip
 shinkai-libs/shinkai-lancedb/lance_db_tests
 example.db
+shinkai-bin/shinkai-node/ocrs/text-detection.rten
+shinkai-bin/shinkai-node/ocrs/text-recognition.rten

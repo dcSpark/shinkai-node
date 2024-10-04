@@ -195,7 +195,8 @@ impl WorkflowTool {
         let re = Regex::new(r#"""#).unwrap();
         let escaped_dsl_content = re.replace_all(dsl_content.trim(), r#"\""#);
 
-        let raw_workflow = format!(r##"
+        let raw_workflow = format!(
+            r##"
             workflow baml_answer_with_citations v0.1 {{
                 step Initialize {{
                     $DSL = "{}"
@@ -204,7 +205,9 @@ impl WorkflowTool {
                     $RESULT = call baml_inference($INPUT, "", "", $DSL, $FUNCTION, $PARAM)
                 }}
             }} @@official.shinkai
-        "##, escaped_dsl_content);
+        "##,
+            escaped_dsl_content
+        );
 
         let mut workflow = parse_workflow(&raw_workflow).expect("Failed to parse workflow");
         workflow.description = Some("Generates an answer to a question with citations from the provided content using BAML. The answer includes quotes from the content as citations.".to_string());
@@ -229,7 +232,10 @@ impl WorkflowTool {
         "##;
 
         let mut workflow = parse_workflow(raw_workflow).expect("Failed to parse workflow");
-        workflow.description = Some("Generates an answer to a question with citations from the provided content using RAG workflow.".to_string());
+        workflow.description = Some(
+            "Generates an answer to a question with citations from the provided content using RAG workflow."
+                .to_string(),
+        );
 
         WorkflowTool::new(workflow)
     }

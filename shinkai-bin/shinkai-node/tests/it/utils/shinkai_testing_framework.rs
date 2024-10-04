@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::vecfs_test_utils::{
     create_folder, generate_message_with_payload, make_folder_shareable, make_folder_shareable_http_free,
@@ -14,7 +14,10 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_subscription_manager::subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination};
+use shinkai_subscription_manager::subscription_manager::http_manager::subscription_file_uploader::{
+    upload_file_http, FileDestination,
+};
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 /// Struct to simplify testing by encapsulating common test components.
@@ -253,5 +256,34 @@ impl ShinkaiTestingFramework {
         }
 
         response_json
+    }
+
+    // Initialize PDF parser, check and download dependencies
+    pub async fn initialize_pdfium() {
+        #[cfg(target_os = "linux")]
+        let os = "linux";
+
+        #[cfg(target_os = "macos")]
+        let os = "mac";
+
+        #[cfg(target_os = "windows")]
+        let os = "win";
+
+        #[cfg(target_arch = "aarch64")]
+        let arch = "arm64";
+
+        #[cfg(target_arch = "x86_64")]
+        let arch = "x64";
+
+        let current_directory = std::env::current_dir().unwrap();
+        let current_directory = current_directory.iter().collect::<Vec<_>>();
+        let project_directory = current_directory
+            .iter()
+            .take(current_directory.len() - 2)
+            .collect::<PathBuf>();
+        let pdfium_directory = project_directory.join(format!("shinkai-libs/shinkai-ocr/pdfium/{}-{}", os, arch));
+        std::env::set_var("PDFIUM_DYNAMIC_LIB_PATH", pdfium_directory);
+
+        ShinkaiFileParser::initialize_local_file_parser().await.unwrap();
     }
 }

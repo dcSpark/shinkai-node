@@ -18,7 +18,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_secret_key_to_string,
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
@@ -100,9 +99,8 @@ pub async fn initialize_node() -> Result<
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
     let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key);
 
-    // Initialize Embedding Generator & Unstructured API
+    // Initialize Embedding Generator
     let embedding_generator = init_embedding_generator(&node_env);
-    let unstructured_api = init_unstructured_api(&node_env);
 
     // Log the address, port, and public_key
     shinkai_log(
@@ -171,7 +169,6 @@ pub async fn initialize_node() -> Result<
         initial_llm_providers,
         vector_fs_db_path.clone(),
         Some(embedding_generator),
-        Some(unstructured_api),
         node_env.ws_address,
         node_env.default_embedding_model.clone(),
         node_env.supported_embedding_models.clone(),
@@ -229,7 +226,6 @@ pub async fn initialize_node() -> Result<
         }
     });
 
-    #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
     tokio::spawn(async {
         use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 
@@ -335,16 +331,6 @@ fn parse_secrets_file(secrets_file_path: &str) -> HashMap<String, String> {
             (key, value)
         })
         .collect()
-}
-
-/// Initializes UnstructuredAPI struct using node environment
-fn init_unstructured_api(node_env: &NodeEnvironment) -> UnstructuredAPI {
-    let api_url = node_env
-        .unstructured_server_url
-        .clone()
-        .expect("UNSTRUCTURED_SERVER_URL not found in node_env");
-    let api_key = node_env.unstructured_server_api_key.clone();
-    UnstructuredAPI::new(api_url, api_key)
 }
 
 /// Initializes RemoteEmbeddingGenerator struct using node environment/default embedding model for now

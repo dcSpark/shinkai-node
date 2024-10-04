@@ -21,7 +21,6 @@ use shinkai_node::llm_provider::llm_stopper::LLMStopper;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -119,7 +118,6 @@ async fn test_process_job_queue_concurrency() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: UnstructuredAPI,
                               _: Arc<Mutex<SheetManager>>,
                               _: Arc<Mutex<JobCallbackManager>>,
                               _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
@@ -175,7 +173,6 @@ async fn test_process_job_queue_concurrency() {
         num_threads,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
-        UnstructuredAPI::new_default(),
         None,
         None,
         sheet_manager.clone(),
@@ -189,7 +186,6 @@ async fn test_process_job_queue_concurrency() {
               node_name,
               identity_sk,
               generator,
-              unstructured_api,
               _ws_manager,
               _tool_router,
               _sheet_manager,
@@ -205,7 +201,6 @@ async fn test_process_job_queue_concurrency() {
                 node_name.clone(),
                 identity_sk,
                 generator,
-                unstructured_api,
                 sheet_manager.clone(),
                 callback_manager.clone(),
                 job_queue_manager.clone(),
@@ -276,7 +271,6 @@ async fn test_sequential_process_for_same_job_id() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: UnstructuredAPI,
                               _: Arc<Mutex<SheetManager>>,
                               _: Arc<Mutex<JobCallbackManager>>,
                               _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
@@ -332,7 +326,6 @@ async fn test_sequential_process_for_same_job_id() {
         num_threads,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
-        UnstructuredAPI::new_default(),
         None,
         None,
         sheet_manager.clone(),
@@ -346,7 +339,6 @@ async fn test_sequential_process_for_same_job_id() {
               node_name,
               identity_sk,
               generator,
-              unstructured_api,
               _ws_manager,
               _tool_router,
               _sheet_manager,
@@ -362,7 +354,6 @@ async fn test_sequential_process_for_same_job_id() {
                 node_name.clone(),
                 identity_sk,
                 generator,
-                unstructured_api,
                 sheet_manager.clone(),
                 callback_manager.clone(),
                 job_queue_manager.clone(),

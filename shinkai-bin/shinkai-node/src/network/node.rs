@@ -26,7 +26,6 @@ use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_sqlite::{SqliteLogger, SqliteManager};
 use core::panic;
@@ -38,6 +37,8 @@ use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -51,7 +52,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -116,8 +116,6 @@ pub struct Node {
     pub sqlite_logger: Arc<SqliteLogger>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
-    /// Unstructured server connection
-    pub unstructured_api: UnstructuredAPI,
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
     /// External Subscription Manager (when others are subscribing to this node's data)
@@ -177,7 +175,6 @@ impl Node {
         initial_llm_providers: Vec<SerializedLLMProvider>,
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
-        unstructured_api: Option<UnstructuredAPI>,
         ws_address: Option<SocketAddr>,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
@@ -211,8 +208,7 @@ impl Node {
         let subidentity_manager = IdentityManager::new(db_weak.clone(), node_name.clone()).await.unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
-        // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided
-        let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
+        // Initialize default RemoteEmbeddingGenerator if none provided
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
         // Fetch list of existing profiles from the node to push into the VectorFS
@@ -373,7 +369,7 @@ impl Node {
         }
 
         let wallet_manager = Arc::new(Mutex::new(wallet_manager));
-        
+
         let tool_router = Arc::new(tool_router);
 
         let my_agent_payments_manager = Arc::new(Mutex::new(
@@ -476,7 +472,6 @@ impl Node {
             lance_db,
             sqlite_logger,
             embedding_generator,
-            unstructured_api,
             conn_limiter,
             ext_subscription_manager: ext_subscriber_manager,
             my_subscription_manager,
@@ -512,7 +507,6 @@ impl Node {
                 self.node_name.clone(),
                 vector_fs_weak.clone(),
                 self.embedding_generator.clone(),
-                self.unstructured_api.clone(),
                 self.ws_manager_trait.clone(),
                 self.tool_router.clone(),
                 self.sheet_manager.clone(),

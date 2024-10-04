@@ -20,6 +20,17 @@ impl VRKaiVersion {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub enum RAGStrategy {
+    Basic,
+}
+
+impl Default for RAGStrategy {
+    fn default() -> Self {
+        RAGStrategy::Basic
+    }
+}
+
 /// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap.
 /// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
@@ -28,6 +39,10 @@ pub struct VRKai {
     pub sfm: Option<SourceFileMap>,
     pub version: VRKaiVersion,
     pub metadata: HashMap<String, String>,
+    #[serde(default)]
+    pub rag_strategy: RAGStrategy,
+    #[serde(default)]
+    pub total_token_count: u64,
 }
 
 impl VRKai {
@@ -38,11 +53,14 @@ impl VRKai {
 
     /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap.
     pub fn new(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
+        let total_token_count = resource.as_trait_object().count_total_tokens();
         VRKai {
             resource,
             sfm,
             version: Self::default_vrkai_version(),
             metadata: HashMap::new(),
+            rag_strategy: RAGStrategy::Basic,
+            total_token_count,
         }
     }
 
@@ -162,5 +180,9 @@ impl VRKai {
             traversal_options,
             starting_path,
         )
+    }
+
+    pub fn count_total_tokens(&self) -> u64 {
+        self.resource.as_trait_object().count_total_tokens()
     }
 }

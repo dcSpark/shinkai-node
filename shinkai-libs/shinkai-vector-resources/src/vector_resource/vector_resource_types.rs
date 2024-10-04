@@ -8,6 +8,7 @@ use crate::source::DistributionInfo;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSourceReference,
 };
+use crate::utils::count_tokens_from_message_llama3;
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use blake3::hash;
 use chrono::{DateTime, Utc};
@@ -185,7 +186,10 @@ impl RetrievedNode {
         let mut data_string = self.node.get_text_content().ok()?.to_string();
         if data_string.len() > max_characters {
             let amount_over = data_string.len() - max_characters;
-            let amount_to_add = source_string.len() + position_string.len() + datetime_string.as_ref().map_or(0, |s| s.len()) + amount_over;
+            let amount_to_add = source_string.len()
+                + position_string.len()
+                + datetime_string.as_ref().map_or(0, |s| s.len())
+                + amount_over;
             let amount_to_cut = amount_over + amount_to_add + 25;
             data_string = data_string.chars().take(amount_to_cut).collect::<String>();
         }
@@ -197,10 +201,7 @@ impl RetrievedNode {
                     data_string, source_string, position_string, datetime_string
                 )
             } else {
-                format!(
-                    "- {} (Source: {}, {})",
-                    data_string, source_string, position_string
-                )
+                format!("- {} (Source: {}, {})", data_string, source_string, position_string)
             }
         } else {
             if let Some(datetime_string) = datetime_string {
@@ -699,6 +700,14 @@ impl Node {
             }
         }
         None
+    }
+
+    pub fn count_total_tokens(&self) -> u64 {
+        match &self.content {
+            NodeContent::Text(text) => count_tokens_from_message_llama3(text),
+            NodeContent::Resource(resource) => resource.as_trait_object().count_total_tokens(),
+            _ => 0,
+        }
     }
 }
 
