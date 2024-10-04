@@ -13,4 +13,6 @@ pub struct JobConfig {
     pub top_p: Option<f64>,
     pub stream: Option<bool>,
     pub other_model_params: Option<Value>,
+    pub use_tools: Option<bool>,
+    pub web_search: Option<bool>,
 }

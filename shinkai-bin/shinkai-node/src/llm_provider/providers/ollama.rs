@@ -1,7 +1,7 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages_with_tooling, ollama_prepare_messages, OllamaAPIStreamingResponse,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
@@ -105,8 +105,11 @@ impl LLMService for Ollama {
                 }
             }
 
-            // Conditionally add functions to the payload if tools_json is not empty
-            if !tools_json.is_empty() {
+            // Add this line to extract the use_tools flag from the config
+            let use_tools = config.as_ref().map_or(true, |c| c.use_tools.unwrap_or(true));
+
+            // Conditionally add tools to the payload if use_tools is true
+            if use_tools && !tools_json.is_empty() {
                 payload["tools"] = serde_json::Value::Array(tools_json);
             }
 

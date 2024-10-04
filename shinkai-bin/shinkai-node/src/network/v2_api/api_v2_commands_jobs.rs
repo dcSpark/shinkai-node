@@ -705,6 +705,8 @@ impl Node {
                     stream: None,
                     max_tokens: None,
                     other_model_params: None,
+                    use_tools: None,
+                    web_search: None,
                 });
                 let _ = res.send(Ok(config)).await;
                 Ok(())

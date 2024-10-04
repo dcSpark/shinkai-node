@@ -4,9 +4,7 @@ use std::sync::Arc;
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::{
-    LLMInferenceResponse, FunctionCall,
-};
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
@@ -100,8 +98,11 @@ impl LLMService for OpenAI {
                     "max_tokens": result.remaining_tokens,
                 });
 
-                // Conditionally add functions to the payload if tools_json is not empty
-                if !tools_json.is_empty() {
+                // Add this line to extract the use_tools flag from the config
+                let use_tools = config.as_ref().map_or(true, |c| c.use_tools.unwrap_or(true));
+
+                // Conditionally add tools to the payload if use_tools is true
+                if use_tools && !tools_json.is_empty() {
                     payload["functions"] = serde_json::Value::Array(tools_json);
                 }
 
