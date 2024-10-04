@@ -113,7 +113,7 @@ pub struct Node {
     // The LanceDB
     pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
     // Sqlite3
-    pub sqlite_logger: Arc<RwLock<SqliteLogger>>,
+    pub sqlite_logger: Arc<SqliteLogger>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -340,7 +340,7 @@ impl Node {
         // Initialize SqliteLogger
         let sqlite_manager = SqliteManager::new(main_db_path).unwrap();
         let sqlite_logger = SqliteLogger::new(Arc::new(sqlite_manager)).unwrap();
-        let sqlite_logger = Arc::new(RwLock::new(sqlite_logger));
+        let sqlite_logger = Arc::new(sqlite_logger);
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(lance_db.clone());
