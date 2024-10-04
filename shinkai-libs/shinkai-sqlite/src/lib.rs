@@ -1,9 +1,9 @@
-use rusqlite::{Connection, Result, ToSql, Row};
-use std::path::Path;
-use serde_json::Value;
-use serde::{Serialize, Deserialize};
-use r2d2_sqlite::SqliteConnectionManager;
 use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{Result, Row, ToSql};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::path::Path;
 use std::sync::Arc;
 
 pub mod logger;
@@ -25,21 +25,17 @@ impl SqliteManager {
         let pool = Pool::builder()
             .max_size(10) // Adjust based on your needs
             .build(manager)
-            .map_err(|e| rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error::new(1),
-                Some(e.to_string())
-            ))?;
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
 
         // Enable WAL mode and set some optimizations
-        let conn = pool.get().map_err(|e| rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(1),
-            Some(e.to_string())
-        ))?;
+        let conn = pool
+            .get()
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
              PRAGMA temp_store=MEMORY;
-             PRAGMA mmap_size=262144000;"  // 250 MB in bytes (250 * 1024 * 1024)
+             PRAGMA mmap_size=262144000;", // 250 MB in bytes (250 * 1024 * 1024)
         )?;
 
         Ok(SqliteManager { pool: Arc::new(pool) })
@@ -47,10 +43,12 @@ impl SqliteManager {
 
     // Returns a connection from the pool
     pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
-        self.pool.get().map_err(|e| rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(1), // Using a generic error code
-            Some(e.to_string())
-        ))
+        self.pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })
     }
 
     // Execute a SQL query with parameters
@@ -84,15 +82,15 @@ pub struct LogEntry {
     /// Unique identifier for the log entry.
     /// This field will be set by the database upon insertion.
     #[serde(skip_deserializing)]
-    pub id: Option<i32>,
+    pub id: Option<i64>,  // Changed from Option<i32> to Option<i64>
 
     /// Identifier for the related message or task that initiated this log entry.
     /// This allows grouping of logs related to a single user request or system task.
-    pub message_id: i32,
+    pub message_id: String,
 
     /// Identifier for the tool that generated this log entry.
     /// Tools can be workflows, individual operations, or any other executable components in the system.
-    pub tool_id: i32,
+    pub tool_id: String,
 
     /// Optional identifier for a subprocess within a tool execution.
     /// For example, in a workflow, this could represent a specific step or operation.
@@ -105,7 +103,7 @@ pub struct LogEntry {
     /// 2. Nested operations: A high-level operation log can be the parent of its sub-operation logs.
     /// 3. Error contexts: An error log can have the operation log that caused it as its parent.
     /// This field allows for tracing the execution path and understanding the context of each log entry.
-    pub parent_id: Option<i32>,
+    pub parent_id: Option<String>,
 
     /// The order in which this log entry was executed relative to other entries in the same context.
     /// This is particularly useful for maintaining the sequence of operations in a workflow or complex process.
@@ -148,10 +146,10 @@ impl Clone for LogEntry {
     fn clone(&self) -> Self {
         LogEntry {
             id: self.id,
-            message_id: self.message_id,
-            tool_id: self.tool_id,
+            message_id: self.message_id.clone(),
+            tool_id: self.tool_id.clone(),
             subprocess: self.subprocess.clone(),
-            parent_id: self.parent_id,
+            parent_id: self.parent_id.clone(),
             execution_order: self.execution_order,
             input: self.input.clone(),
             duration: self.duration,
@@ -168,17 +166,17 @@ impl Clone for LogEntry {
 // Struct representing a tool in the database
 #[derive(Debug)]
 pub struct Tool {
-    pub id: i32, // Unique identifier for the tool
-    pub name: String, // Name of the tool
-    pub tool_type: String, // Type of the tool
+    pub id: i32,                         // Unique identifier for the tool
+    pub name: String,                    // Name of the tool
+    pub tool_type: String,               // Type of the tool
     pub tool_router_key: Option<String>, // Optional router key for the tool
-    pub instructions: Option<String>, // Optional instructions for the tool
+    pub instructions: Option<String>,    // Optional instructions for the tool
 }
 
 // Struct representing a step in a workflow
 #[derive(Debug)]
 pub struct WorkflowStep {
-    pub name: String, // Name of the workflow step
+    pub name: String,                       // Name of the workflow step
     pub operations: Vec<WorkflowOperation>, // List of operations in the workflow step
 }
 
@@ -186,7 +184,7 @@ pub struct WorkflowStep {
 #[derive(Debug)]
 pub enum WorkflowOperation {
     RegisterOperation { register: String, value: String }, // Operation to register a value
-    FunctionCall { name: String, args: Vec<String> }, // Operation to call a function with arguments
+    FunctionCall { name: String, args: Vec<String> },      // Operation to call a function with arguments
 }
 
 // Re-export the logger for convenience

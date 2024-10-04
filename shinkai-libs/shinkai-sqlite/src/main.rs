@@ -40,11 +40,11 @@ async fn main() -> rusqlite::Result<()> {
     }];
 
     // Log the workflow execution
-    let message_id = 1; // Assuming this is the message ID for this execution
-    logger.log_workflow_execution(message_id, tool_id, &workflow)?;
+    let message_id = "1".to_string(); // Change this to a String
+    logger.log_workflow_execution(message_id.clone(), tool_id.to_string(), &workflow)?;
 
     // Get all log IDs for this message
-    let log_ids = logger.get_log_ids_for_message(message_id)?;
+    let log_ids = logger.get_log_ids_for_message(&message_id)?;
 
     // Fetch and display the log tree for each log ID
     for log_id in log_ids {

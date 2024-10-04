@@ -40,10 +40,10 @@ impl SqliteLogger {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER NOT NULL,
-                tool_id INTEGER NOT NULL,
+                message_id TEXT NOT NULL,
+                tool_id TEXT NOT NULL,
                 subprocess TEXT,
-                parent_id INTEGER,
+                parent_id TEXT,
                 execution_order INTEGER NOT NULL,
                 input TEXT NOT NULL,
                 duration REAL,
@@ -63,7 +63,7 @@ impl SqliteLogger {
     }
 
     // Adds a log entry to the logs table
-    pub fn add_log(&self, log: &LogEntry) -> Result<i32> {
+    pub fn add_log(&self, log: &LogEntry) -> Result<i64> {
         let conn = self.manager.get_connection()?;
         conn.execute(
             "INSERT INTO logs (message_id, tool_id, subprocess, parent_id, execution_order, input, duration, result, status, error_message, timestamp, log_type, additional_info)
@@ -84,7 +84,7 @@ impl SqliteLogger {
                 log.additional_info.as_ref().map(|v| v.to_string()),
             ],
         )?;
-        Ok(conn.last_insert_rowid() as i32)
+        Ok(conn.last_insert_rowid())
     }
 
     // Adds a tool entry to the tools table
@@ -98,11 +98,11 @@ impl SqliteLogger {
     }
 
     // Logs the execution of a workflow, including its steps and operations
-    pub fn log_workflow_execution(&self, message_id: i32, tool_id: i32, workflow: &[WorkflowStep]) -> Result<()> {
+    pub fn log_workflow_execution(&self, message_id: String, tool_id: String, workflow: &[WorkflowStep]) -> Result<()> {
         let workflow_log_id = self.add_log(&LogEntry {
-            id: None,  // Changed from 0 to None
-            message_id,
-            tool_id,
+            id: None,
+            message_id: message_id.clone(),
+            tool_id: tool_id.clone(),
             subprocess: None,
             parent_id: None,
             execution_order: 0,
@@ -118,11 +118,11 @@ impl SqliteLogger {
 
         for (step_index, step) in workflow.iter().enumerate() {
             let step_log_id = self.add_log(&LogEntry {
-                id: None,  // Changed from 0 to None
-                message_id,
-                tool_id,
+                id: None,
+                message_id: message_id.clone(),
+                tool_id: tool_id.clone(),
                 subprocess: Some(step.name.clone()),
-                parent_id: Some(workflow_log_id),
+                parent_id: Some(workflow_log_id.to_string()),
                 execution_order: step_index as i32,
                 input: Value::Null,
                 duration: None,
@@ -155,11 +155,11 @@ impl SqliteLogger {
 
                 // Log the operation
                 self.add_log(&LogEntry {
-                    id: None,  // Changed from 0 to None
-                    message_id,
-                    tool_id,
+                    id: None,
+                    message_id: message_id.clone(),
+                    tool_id: tool_id.clone(),
                     subprocess: Some(format!("{}.{}", step.name, operation_type)),
-                    parent_id: Some(step_log_id),
+                    parent_id: Some(step_log_id.to_string()),
                     execution_order: op_index as i32,
                     input: Value::Null,
                     duration: None,
@@ -177,7 +177,7 @@ impl SqliteLogger {
     }
 
     // New method to get log IDs for a specific message
-    pub fn get_log_ids_for_message(&self, message_id: i32) -> Result<Vec<i32>> {
+    pub fn get_log_ids_for_message(&self, message_id: &str) -> Result<Vec<i64>> {
         let conn = self.manager.get_connection()?;
         let mut stmt = conn.prepare("SELECT id FROM logs WHERE message_id = ?")?;
         let log_ids = stmt.query_map([message_id], |row| row.get(0))?;
@@ -185,17 +185,17 @@ impl SqliteLogger {
     }
 
     // Retrieves logs based on optional filters for message_id, tool_id, and subprocess
-    pub fn get_logs(&self, message_id: Option<i32>, tool_id: Option<i32>, subprocess: Option<&str>) -> Result<Vec<LogEntry>> {
+    pub fn get_logs(&self, message_id: Option<&str>, tool_id: Option<&str>, subprocess: Option<&str>) -> Result<Vec<LogEntry>> {
         let mut query = "SELECT * FROM logs WHERE 1=1".to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
         if let Some(mid) = message_id {
             query.push_str(" AND message_id = ?");
-            params.push(Box::new(mid));
+            params.push(Box::new(mid.to_string()));
         }
         if let Some(tid) = tool_id {
             query.push_str(" AND tool_id = ?");
-            params.push(Box::new(tid));
+            params.push(Box::new(tid.to_string()));
         }
         if let Some(sp) = subprocess {
             query.push_str(" AND subprocess = ?");
@@ -228,7 +228,7 @@ impl SqliteLogger {
     }
 
     // Standalone async function to build the log tree
-    async fn build_tree(logger: Arc<SqliteLogger>, log_id: i32, cache: Arc<Mutex<HashMap<i32, LogEntry>>>) -> Result<LogTree> {
+    async fn build_tree(logger: Arc<SqliteLogger>, log_id: i64, cache: Arc<Mutex<HashMap<i64, LogEntry>>>) -> Result<LogTree> {
         let log = {
             let mut cache = cache.lock().await;
             if let Some(log) = cache.get(&log_id) {
@@ -240,12 +240,12 @@ impl SqliteLogger {
             }
         };
 
-        let child_logs = logger.get_child_logs(log_id).await?;
+        let child_logs = logger.get_child_logs(&log.id.unwrap().to_string()).await?;
         let child_futures = child_logs.into_iter().map(|child_log| {
             let logger = Arc::clone(&logger);
             let cache = Arc::clone(&cache);
             async move {
-                Self::build_tree(logger, child_log.id.unwrap(), cache).await
+                Self::build_tree(logger, child_log.id.unwrap() as i64, cache).await
             }
         });
 
@@ -254,12 +254,12 @@ impl SqliteLogger {
         Ok(LogTree { log, children })
     }
 
-    pub async fn get_log_tree(&self, log_id: i32) -> Result<LogTree> {
+    pub async fn get_log_tree(&self, log_id: i64) -> Result<LogTree> {
         let cache = Arc::new(Mutex::new(HashMap::new()));
         Self::build_tree(Arc::new(self.clone()), log_id, cache).await
     }
 
-    async fn get_log(&self, log_id: i32) -> Result<LogEntry> {
+    async fn get_log(&self, log_id: i64) -> Result<LogEntry> {
         let conn = self.manager.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM logs WHERE id = ?")?;
         let log = stmt.query_row(params![log_id], |row| {
@@ -283,7 +283,7 @@ impl SqliteLogger {
         Ok(log)
     }
 
-    async fn get_child_logs(&self, parent_id: i32) -> Result<Vec<LogEntry>> {
+    async fn get_child_logs(&self, parent_id: &str) -> Result<Vec<LogEntry>> {
         let conn = self.manager.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM logs WHERE parent_id = ?")?;
         let logs = stmt.query_map(params![parent_id], |row| {
