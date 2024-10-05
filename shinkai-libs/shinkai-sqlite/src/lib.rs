@@ -73,6 +73,7 @@ pub enum LogStatus {
     Success,
     Failure,
     Cancelled,
+    NonDetermined,
     // Add more status types as needed
 }
 
@@ -103,7 +104,7 @@ pub struct LogEntry {
     /// 2. Nested operations: A high-level operation log can be the parent of its sub-operation logs.
     /// 3. Error contexts: An error log can have the operation log that caused it as its parent.
     /// This field allows for tracing the execution path and understanding the context of each log entry.
-    pub parent_id: Option<String>,
+    pub parent_id: Option<i64>,
 
     /// The order in which this log entry was executed relative to other entries in the same context.
     /// This is particularly useful for maintaining the sequence of operations in a workflow or complex process.

@@ -13,6 +13,7 @@ tokio = { version = "1.36", features = ["full"] }
 futures = "0.3.30"
 r2d2 = "0.8"
 r2d2_sqlite = "0.21"
+uuid = { version = "1.6.1", features = ["v4"] }
 
 [dependencies.serde]
 version = "1.0.188"

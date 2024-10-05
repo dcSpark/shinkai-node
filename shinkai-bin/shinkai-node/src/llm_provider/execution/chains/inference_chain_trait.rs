@@ -13,6 +13,7 @@ use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::fmt;
@@ -59,6 +60,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn vector_fs(&self) -> Arc<VectorFS>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
+    fn message_hash_id(&self) -> Option<String>;
     fn image_files(&self) -> &HashMap<String, String>;
     fn agent(&self) -> &SerializedLLMProvider;
     fn execution_context(&self) -> &HashMap<String, String>;
@@ -73,6 +75,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
+    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>>;
     fn llm_stopper(&self) -> Arc<LLMStopper>;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
@@ -115,6 +118,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn user_message(&self) -> &ParsedUserMessage {
         &self.user_message
+    }
+
+    fn message_hash_id(&self) -> Option<String> {
+        self.message_hash_id.clone()
     }
 
     fn image_files(&self) -> &HashMap<String, String> {
@@ -173,6 +180,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.ext_agent_payments_manager.clone()
     }
 
+    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
+        self.sqlite_logger.clone()
+    }
+
     fn llm_stopper(&self) -> Arc<LLMStopper> {
         self.llm_stopper.clone()
     }
@@ -190,6 +201,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
+    pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: SerializedLLMProvider,
     /// Job's execution context, used to store potentially relevant data across job steps.
@@ -205,6 +217,7 @@ pub struct InferenceChainContext {
     pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+    pub sqlite_logger: Option<Arc<SqliteLogger>>,
     pub llm_stopper: Arc<LLMStopper>,
 }
 
@@ -215,6 +228,7 @@ impl InferenceChainContext {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
+        message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
@@ -227,6 +241,7 @@ impl InferenceChainContext {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         Self {
@@ -234,6 +249,7 @@ impl InferenceChainContext {
             vector_fs,
             full_job,
             user_message,
+            message_hash_id,
             image_files,
             llm_provider: agent,
             execution_context,
@@ -248,6 +264,7 @@ impl InferenceChainContext {
             sheet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
+            sqlite_logger,
             llm_stopper,
         }
     }
@@ -270,6 +287,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("vector_fs", &self.vector_fs)
             .field("full_job", &self.full_job)
             .field("user_message", &self.user_message)
+            .field("message_hash_id", &self.message_hash_id)
             .field("image_files", &self.image_files.len())
             .field("llm_provider", &self.llm_provider)
             .field("execution_context", &self.execution_context)
@@ -284,6 +302,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("sheet_manager", &self.sheet_manager.is_some())
             .field("my_agent_payments_manager", &self.my_agent_payments_manager.is_some())
             .field("ext_agent_payments_manager", &self.ext_agent_payments_manager.is_some())
+            .field("sqlite_logger", &self.sqlite_logger.is_some())
             .finish()
     }
 }
@@ -380,6 +399,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).user_message()
     }
 
+    fn message_hash_id(&self) -> Option<String> {
+        (**self).message_hash_id()
+    }
+
     fn image_files(&self) -> &HashMap<String, String> {
         (**self).image_files()
     }
@@ -434,6 +457,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>> {
         (**self).ext_agent_payments_manager()
+    }
+
+    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
+        (**self).sqlite_logger()
     }
 
     fn llm_stopper(&self) -> Arc<LLMStopper> {
@@ -555,6 +582,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         &self.user_message
     }
 
+    fn message_hash_id(&self) -> Option<String> {
+        None
+    }
+
     fn image_files(&self) -> &HashMap<String, String> {
         &self.image_files
     }
@@ -609,6 +640,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>> {
         unimplemented!()
+    }
+
+    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
+        None
     }
 
     fn llm_stopper(&self) -> Arc<LLMStopper> {

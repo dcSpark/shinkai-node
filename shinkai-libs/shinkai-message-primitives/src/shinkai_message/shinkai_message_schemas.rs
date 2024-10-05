@@ -289,6 +289,7 @@ pub struct SymmetricKeyExchange {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum AssociatedUI {
     Sheet(String),
+    Playground,
     // Add more variants as needed
 }
 
@@ -318,6 +319,7 @@ pub struct JobMessage {
     pub workflow_name: Option<String>,
     pub sheet_job_data: Option<String>,
     pub callback: Option<Box<CallbackAction>>,
+    // TODO: add tools here
 }
 
 fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>

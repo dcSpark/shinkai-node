@@ -20,6 +20,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
@@ -64,6 +65,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
+            self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
             self.context.execution_context.clone(),
@@ -76,6 +78,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
+            self.context.sqlite_logger.clone(),
             self.context.llm_stopper.clone(),
         )
         .await?;
@@ -101,6 +104,7 @@ impl GenericInferenceChain {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
+        message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
@@ -113,6 +117,7 @@ impl GenericInferenceChain {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
@@ -255,6 +260,7 @@ impl GenericInferenceChain {
                     vector_fs.clone(),
                     full_job.clone(),
                     parsed_message,
+                    message_hash_id.clone(),
                     image_files.clone(),
                     llm_provider.clone(),
                     execution_context.clone(),
@@ -267,6 +273,7 @@ impl GenericInferenceChain {
                     sheet_manager.clone(),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    sqlite_logger.clone(),
                     llm_stopper.clone(),
                 );
 

@@ -98,6 +98,12 @@ impl<'a> InferenceChain for DslChain<'a> {
 
         // Debug
         // let logs = WorkflowEngine::formatted_logs(&logs);
+        if let Some(logger) = self.context.sqlite_logger() {
+            // TODO: we need something better than or_default here
+            let message_id = self.context.message_hash_id().unwrap_or_default();
+            let workflow_name = self.workflow_tool.workflow.name.clone();
+            logger.log_workflow_execution(message_id, workflow_name, logs);
+        }
 
         Ok(InferenceChainResult::new(cleaned_response, new_contenxt))
     }

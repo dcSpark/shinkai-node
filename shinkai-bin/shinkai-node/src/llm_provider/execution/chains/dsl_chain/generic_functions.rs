@@ -269,14 +269,15 @@ pub fn process_embeddings_in_job_scope_with_metadata(
         return Err(WorkflowError::InvalidArgument("Expected 0 or 1 argument".to_string()));
     }
 
-    let map_fn: &(dyn Fn(&str) -> String + Send + Sync) = if args.is_empty() {
-        &|s: &str| s.to_string() // Default map function
-    } else {
-        args[0]
-            .downcast_ref::<Box<dyn Fn(&str) -> String + Send + Sync>>()
-            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?
-            .as_ref()
-    };
+    // TODO: delete this
+    // let map_fn: &(dyn Fn(&str) -> String + Send + Sync) = if args.is_empty() {
+    //     &|s: &str| s.to_string() // Default map function
+    // } else {
+    //     args[0]
+    //         .downcast_ref::<Box<dyn Fn(&str) -> String + Send + Sync>>()
+    //         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?
+    //         .as_ref()
+    // };
 
     let result = tokio::task::block_in_place(|| {
         tokio::runtime::Runtime::new()
@@ -714,6 +715,7 @@ mod tests {
                 original_user_message_string: "".to_string(),
                 elements: vec![],
             },
+            None,
             image_files,
             agent,
             HashMap::new(),
@@ -724,6 +726,7 @@ mod tests {
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
+            None, // Replace with actual if needed
             None, // Replace with actual if needed
             None, // Replace with actual if needed
             Arc::new(LLMStopper::new()),
@@ -848,6 +851,7 @@ mod tests {
                 original_user_message_string: "".to_string(),
                 elements: vec![],
             },
+            None,
             image_files,
             agent,
             HashMap::new(),
@@ -858,6 +862,7 @@ mod tests {
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
+            None, // Replace with actual if needed
             None, // Replace with actual if needed
             None, // Replace with actual if needed
             Arc::new(LLMStopper::new()),
@@ -997,6 +1002,7 @@ mod tests {
                 original_user_message_string: "".to_string(),
                 elements: vec![],
             },
+            None,
             image_files,
             agent,
             HashMap::new(),
@@ -1007,6 +1013,7 @@ mod tests {
             None, // Replace with actual WSUpdateHandler if needed
             None, // Replace with actual ToolRouter if needed
             None, // Replace with actual SheetManager if needed
+            None, // Replace with actual if needed
             None, // Replace with actual if needed
             None, // Replace with actual if needed
             Arc::new(LLMStopper::new()),

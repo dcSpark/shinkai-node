@@ -256,7 +256,8 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-                .queue_job_message(first_job_message, user_profile)
+            // TODO: I'm not sure about this one
+                .queue_job_message(first_job_message, user_profile, "")
                 .await
                 .map_err(|e| e.to_string())?;
         }

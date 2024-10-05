@@ -696,6 +696,7 @@ mod tests {
             &'a mut self,
             _job_message: &'a JobMessage,
             _user_profile: &'a ShinkaiName,
+            _message_hash_id: &'a str,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
             Box::pin(async move { Ok("mock_job_id".to_string()) })
         }

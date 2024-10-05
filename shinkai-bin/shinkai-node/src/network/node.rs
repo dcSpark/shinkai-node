@@ -38,7 +38,6 @@ use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -513,6 +512,7 @@ impl Node {
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
+                Some(self.sqlite_logger.clone()),
                 self.llm_stopper.clone(),
             )
             .await,

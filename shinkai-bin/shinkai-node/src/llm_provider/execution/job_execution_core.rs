@@ -28,6 +28,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::DistributionInfo;
@@ -59,6 +60,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -127,6 +129,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
+            job_message.message_hash_id.clone(),
             llm_provider_found.clone(),
             full_job.clone(),
             clone_signature_secret_key(&identity_secret_key),
@@ -137,6 +140,7 @@ impl JobManager {
             Some(sheet_manager.clone()),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await;
@@ -156,6 +160,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
+            job_message.message_hash_id.clone(),
             llm_provider_found.clone(),
             full_job.clone(),
             user_profile.clone(),
@@ -166,6 +171,7 @@ impl JobManager {
             job_queue_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await?;
@@ -179,6 +185,7 @@ impl JobManager {
             vector_fs.clone(),
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
+            job_message.message_hash_id.clone(),
             full_job,
             llm_provider_found.clone(),
             user_profile.clone(),
@@ -188,6 +195,7 @@ impl JobManager {
             Some(sheet_manager.clone()),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await;
@@ -246,6 +254,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
+        message_hash_id: Option<String>,
         full_job: Job,
         llm_provider_found: Option<SerializedLLMProvider>,
         user_profile: ShinkaiName,
@@ -255,6 +264,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let job_id = full_job.job_id().to_string();
@@ -308,6 +318,7 @@ impl JobManager {
             llm_provider_found,
             full_job,
             job_message.clone(),
+            message_hash_id,
             image_files.clone(),
             prev_execution_context,
             generator,
@@ -317,6 +328,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await?;
@@ -370,6 +382,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
+        message_hash_id: Option<String>,
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         identity_secret_key: SigningKey,
@@ -380,6 +393,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         let workflow = if let Some(code) = &job_message.workflow_code {
@@ -422,6 +436,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             job_message,
+            message_hash_id,
             job_message.content.to_string(),
             llm_provider_found,
             full_job.clone(),
@@ -433,6 +448,7 @@ impl JobManager {
             workflow,
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await;
@@ -512,6 +528,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
+        message_hash_id: Option<String>,
         message_content: String,
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
@@ -523,6 +540,7 @@ impl JobManager {
         workflow: Workflow,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -536,6 +554,7 @@ impl JobManager {
             vector_fs.clone(),
             full_job,
             parsed_user_message,
+            message_hash_id,
             empty_files,
             llm_provider,
             full_execution_context,
@@ -548,6 +567,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         );
 
@@ -609,6 +629,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
+        message_hash_id: Option<String>,
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         user_profile: ShinkaiName,
@@ -619,6 +640,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         if let Some(sheet_job_data) = &job_message.sheet_job_data {
@@ -659,6 +681,7 @@ impl JobManager {
                     db.clone(),
                     vector_fs.clone(),
                     job_message,
+                    message_hash_id,
                     input_string,
                     llm_provider_found,
                     full_job.clone(),
@@ -670,6 +693,7 @@ impl JobManager {
                     workflow,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    sqlite_logger.clone(),
                     llm_stopper.clone(),
                 )
                 .await?
@@ -685,6 +709,7 @@ impl JobManager {
                     llm_provider_found,
                     full_job.clone(),
                     job_message.clone(),
+                    message_hash_id,
                     empty_files,
                     HashMap::new(), // Assuming prev_execution_context is an empty HashMap
                     generator,
@@ -694,6 +719,7 @@ impl JobManager {
                     Some(sheet_manager.clone()),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    sqlite_logger.clone(),
                     llm_stopper.clone(),
                 )
                 .await?
@@ -724,7 +750,7 @@ impl JobManager {
                         job_queue_manager
                             .push(
                                 &next_job_message.job_id,
-                                JobForProcessing::new(next_job_message.clone(), user_profile),
+                                JobForProcessing::new(next_job_message.clone(), user_profile, None),
                             )
                             .await?;
                     }
