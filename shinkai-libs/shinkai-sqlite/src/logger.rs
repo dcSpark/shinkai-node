@@ -116,7 +116,7 @@ impl SqliteLogger {
                 log.input.to_string(),
                 log.duration,
                 log.result.to_string(),
-                serde_json::to_string(&log.status).unwrap(),
+                log.status.to_string(),
                 log.error_message,
                 log.timestamp,
                 log.log_type,

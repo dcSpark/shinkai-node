@@ -58,6 +58,7 @@ async fn main() -> rusqlite::Result<()> {
         }
     }
 
+    eprintln!("Before logging");
     // Log the workflow execution
     let message_id = "1".to_string();
     logger.log_workflow_execution(message_id.clone(), tool_id.to_string(), logs.clone())?;
@@ -66,6 +67,7 @@ async fn main() -> rusqlite::Result<()> {
     let log_ids = logger.get_log_ids_for_message(&message_id)?;
 
     // Fetch and display the log tree for each log ID
+    eprintln!("Before getting log tree");
     for log_id in log_ids {
         let log_tree = logger.get_log_tree(log_id).await?;
         println!("Log tree for log ID {}:", log_id);
@@ -78,11 +80,18 @@ async fn main() -> rusqlite::Result<()> {
 
 fn print_log_tree(tree: &LogTree, depth: usize) {
     let indent = "  ".repeat(depth);
+    let result_preview = match &tree.log.result {
+        Value::String(s) => s.chars().take(20).collect::<String>(),
+        _ => "Non-string result".to_string(),
+    };
     println!(
-        "{}Log ID: {}, Type: {}",
+        "{}Log ID: {}, Type: {}, Result: {:?}, Status: {}, Timestamp: {}",
         indent,
         tree.log.id.unwrap(),
-        tree.log.log_type
+        tree.log.log_type,
+        result_preview, // Print only the first 20 characters of the result
+        tree.log.status, // Assuming status is a field in your log structure
+        tree.log.timestamp // Assuming timestamp is a field in your log structure
     );
     for child in &tree.children {
         print_log_tree(child, depth + 1);

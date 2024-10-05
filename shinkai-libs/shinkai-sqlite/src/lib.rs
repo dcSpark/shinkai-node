@@ -3,6 +3,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Result, Row, ToSql};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -75,6 +76,17 @@ pub enum LogStatus {
     Canceled,
     NonDetermined,
     // Add more status types as needed
+}
+
+impl fmt::Display for LogStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogStatus::Success => write!(f, "Success"),
+            LogStatus::Failure => write!(f, "Failure"),
+            LogStatus::Canceled => write!(f, "Canceled"),
+            LogStatus::NonDetermined => write!(f, "NonDetermined"),
+        }
+    }
 }
 
 /// Represents a log entry in the database, capturing details of operations, tool executions, and workflow steps.
