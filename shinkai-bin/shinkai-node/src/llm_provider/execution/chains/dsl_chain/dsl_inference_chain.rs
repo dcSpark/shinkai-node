@@ -96,13 +96,22 @@ impl<'a> InferenceChain for DslChain<'a> {
         let re = Regex::new(r"\\n").unwrap();
         let cleaned_response = re.replace_all(&response_register, "\n").to_string();
 
+        // Convert logs to a HashMap and then to a serde_json::Value
+        let logs_map: HashMap<String, Vec<String>> = logs
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+        let logs_json = serde_json::to_value(logs_map).unwrap_or_else(|_| serde_json::Value::Null);
+        println!("Logs as JSON: {}", logs_json);
+
         // Debug
         // let logs = WorkflowEngine::formatted_logs(&logs);
         if let Some(logger) = self.context.sqlite_logger() {
             // TODO: we need something better than or_default here
             let message_id = self.context.message_hash_id().unwrap_or_default();
             let workflow_name = self.workflow_tool.workflow.name.clone();
-            logger.log_workflow_execution(message_id, workflow_name, logs);
+            let result = logger.log_workflow_execution(message_id, workflow_name, logs);
+            println!("Logged workflow execution: {:?}", result);
         }
 
         Ok(InferenceChainResult::new(cleaned_response, new_contenxt))

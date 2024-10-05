@@ -72,7 +72,7 @@ impl SqliteManager {
 pub enum LogStatus {
     Success,
     Failure,
-    Cancelled,
+    Canceled,
     NonDetermined,
     // Add more status types as needed
 }
@@ -109,6 +109,7 @@ pub struct LogEntry {
     /// The order in which this log entry was executed relative to other entries in the same context.
     /// This is particularly useful for maintaining the sequence of operations in a workflow or complex process.
     pub execution_order: i32,
+    // TODO: remove this and leverage timestamp instead
 
     /// The input data or parameters for the operation or step that this log entry represents.
     /// Stored as a JSON Value for flexibility in data structure.

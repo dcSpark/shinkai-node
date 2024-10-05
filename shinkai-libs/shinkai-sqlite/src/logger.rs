@@ -1,8 +1,8 @@
-use crate::{LogEntry, LogStatus, LogTree, SqliteManager, Tool, WorkflowOperation, WorkflowStep};
+use crate::{LogEntry, LogStatus, LogTree, SqliteManager, Tool};
 use dashmap::DashMap;
 use futures::future::try_join_all;
 use rusqlite::{params, Result};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -53,7 +53,7 @@ impl SqliteLogger {
                 input TEXT NOT NULL,
                 duration REAL,
                 result TEXT NOT NULL,
-                status TEXT NOT NULL CHECK (status IN ('Success', 'Failure', 'Pending')),
+                status TEXT NOT NULL CHECK (status IN ('Success', 'Failure', 'Canceled', 'NonDetermined')),
                 error_message TEXT,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now')),
                 log_type TEXT NOT NULL,

@@ -8,11 +8,11 @@ serde_json = "1.0.117"
 dashmap = "5.5.3"
 chrono = "0.4"
 regex = "1"
-rusqlite = { version = "0.28.0", features = ["bundled"] } 
+rusqlite = { version = "0.32.1", features = ["bundled"] } 
 tokio = { version = "1.36", features = ["full"] }
 futures = "0.3.30"
-r2d2 = "0.8"
-r2d2_sqlite = "0.21"
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.25"
 uuid = { version = "1.6.1", features = ["v4"] }
 
 [dependencies.serde]
