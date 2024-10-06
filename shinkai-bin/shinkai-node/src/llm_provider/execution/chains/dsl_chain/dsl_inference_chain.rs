@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, sync::Arc, time::Instant};
+use std::{any::Any, collections::HashMap, env, fmt, fs::{self, File}, marker::PhantomData, path::Path, sync::Arc, time::Instant};
 
 use crate::{
     llm_provider::execution::{
@@ -19,6 +19,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool};
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::RetrievedNode};
+use std::io::Write;
 
 use crate::llm_provider::{
     error::LLMProviderError,
@@ -171,8 +172,8 @@ impl<'a> DslChain<'a> {
 
     pub fn add_multi_inference_function(&mut self) {
         self.functions.insert(
-            "multi_inference".to_string(),
-            Box::new(MultiInferenceFunction {
+            "map_reduce_inference".to_string(),
+            Box::new(MapReduceInferenceFunction {
                 context: self.context.clone_box(),
                 inference_function_ws: InferenceFunction {
                     context: self.context.clone_box(),
@@ -529,42 +530,34 @@ impl AsyncFunction for BamlInference {
 }
 
 #[derive(Clone)]
-struct MultiInferenceFunction {
+struct MapReduceInferenceFunction {
     context: Box<dyn InferenceChainContextTrait>,
     inference_function_ws: InferenceFunction,
     inference_function_no_ws: InferenceFunction,
 }
 
 #[async_trait]
-impl AsyncFunction for MultiInferenceFunction {
+impl AsyncFunction for MapReduceInferenceFunction {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         let first_argument = args[0]
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for first argument".to_string()))?
             .clone();
 
-        let first_argument = "You are an expert summarizer with extensive knowledge across various fields. Your task is to create a comprehensive, in-depth summary.
+        let content = args[1]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for content".to_string()))?
+            .clone();
 
-Please adhere to these guidelines:
-- Produce a detailed summary in paragraph form, organized into logical sections with appropriate headings.
-- Create an extensive summary that captures all main ideas, important details, and nuances of the original text. Aim for a length that is about 25-30% of the original document.
-- Include main ideas, supporting details, key arguments, methodologies (if applicable), results, and conclusions. Explain complex concepts and provide context where necessary.
-- Analyze the significance of the information presented, identify any patterns or trends, and highlight the most impactful points.
-- Write in a clear, academic tone, using professional language appropriate for a well-educated audience.
-- If summarizing multiple documents, synthesize the information coherently, noting any conflicting viewpoints or complementary ideas across sources.
-
-Begin your summary now, ensuring it is thorough, well-structured, and captures the essence of the original text(s). Text to summarize:\n";
-
-        // Note arg[1] is the actual content
-
-        let custom_system_prompt: Option<String> = args.get(2).and_then(|arg| arg.downcast_ref::<String>().cloned());
-        let custom_user_prompt: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let split_limit = args[2].downcast_ref::<String>().unwrap().clone();
+        let custom_system_prompt: Option<String> = args.get(3).and_then(|arg| arg.downcast_ref::<String>().cloned());
+        let custom_user_prompt: Option<String> = args.get(4).and_then(|arg| arg.downcast_ref::<String>().cloned());
 
         // Manually create a new set of args with a fixed number "3000" as the third argument
         let split_text_args = vec![
             Box::new(first_argument.clone()) as Box<dyn Any + Send>,
-            Box::new(args[1].downcast_ref::<String>().unwrap().clone()) as Box<dyn Any + Send>,
-            Box::new("4000".to_string()) as Box<dyn Any + Send>,
+            Box::new(content.clone()) as Box<dyn Any + Send>,
+            Box::new(split_limit) as Box<dyn Any + Send>,
         ];
 
         let split_result = split_text_for_llm(self.context.as_ref(), split_text_args)?;
