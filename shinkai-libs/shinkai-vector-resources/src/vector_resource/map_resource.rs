@@ -379,6 +379,10 @@ impl VectorResourceCore for MapVectorResource {
 
         Ok(results)
     }
+
+    fn count_total_tokens(&self) -> u64 {
+        self.nodes.values().map(|node| node.count_total_tokens()).sum()
+    }
 }
 
 impl MapVectorResource {

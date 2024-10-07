@@ -1,6 +1,6 @@
 use shinkai_vector_resources::{
     embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
-    file_parser::file_parser::{FileParser, ShinkaiFileParser},
+    file_parser::file_parser::ShinkaiFileParser,
     source::DistributionInfo,
 };
 
@@ -19,7 +19,6 @@ async fn local_pdf_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        FileParser::Local,
     )
     .await
     .unwrap();

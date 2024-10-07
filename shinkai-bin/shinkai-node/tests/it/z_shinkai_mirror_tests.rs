@@ -26,11 +26,11 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     EncryptionMethod,
 };
 
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -211,7 +211,6 @@ fn mirror_sync_tests() {
             true,
             vec![],
             node1_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),

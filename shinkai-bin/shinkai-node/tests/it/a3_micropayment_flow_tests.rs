@@ -1,6 +1,9 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry};
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{
+    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
+};
 use shinkai_message_primitives::schemas::wallet_complementary::WalletRole;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -10,7 +13,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
@@ -107,7 +109,6 @@ fn micropayment_flow_test() {
             node1_fs_db_path,
             None,
             None,
-            None,
             default_embedding_model(),
             supported_embedding_models(),
             Some(api_v2_key.to_string()),
@@ -128,7 +129,6 @@ fn micropayment_flow_test() {
             true,
             vec![],
             node2_fs_db_path,
-            None,
             None,
             None,
             default_embedding_model(),

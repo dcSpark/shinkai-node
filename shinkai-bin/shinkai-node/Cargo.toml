@@ -12,7 +12,6 @@ shinkai_tools_runner = { version = "0.7.15", features = ["built-in-tools"] }
 [features]
 default = []
 console = ["console-subscriber"]
-dynamic-pdf-parser = ["shinkai_vector_resources/dynamic-pdf-parser"]
 static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]

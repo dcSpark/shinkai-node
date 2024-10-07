@@ -33,7 +33,7 @@
 //         },
 //     };
 //     use shinkai_vector_resources::{
-//         embedding_generator::RemoteEmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI,
+//         embedding_generator::RemoteEmbeddingGenerator
 //     };
 //     use std::{env, sync::Weak};
 //     use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
@@ -126,7 +126,6 @@
 //     //             node_profile_name.clone(),
 //     //             vector_fs_weak.clone(),
 //     //             RemoteEmbeddingGenerator::new_default(),
-//     //             UnstructuredAPI::new_default(),
 //     //             None,
 //     //             None,
 //     //             sheet_manager.clone(),

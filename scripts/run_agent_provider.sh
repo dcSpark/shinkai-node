@@ -17,7 +17,6 @@ export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="http://localhost:11434/"
-export UNSTRUCTURED_SERVER_URL="https://public.shinkai.com/x-un"
 
 export INITIAL_AGENT_NAMES="my_gpt"
 export INITIAL_AGENT_URLS="https://api.openai.com"

@@ -3,13 +3,16 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::{any::Any, fmt};
 
 use async_trait::async_trait;
 use chrono::Utc;
 use dashmap::DashMap;
 use futures::Future;
-use shinkai_dsl::dsl_schemas::{Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, Workflow, WorkflowValue};
+use shinkai_dsl::dsl_schemas::{
+    Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
+};
 use tokio::runtime::Runtime;
 use tokio::task;
 
@@ -59,7 +62,7 @@ pub struct StepExecutor<'a> {
     workflow: &'a Workflow,
     pub current_step: usize,
     pub registers: DashMap<String, String>,
-    pub logs: DashMap<String, Vec<String>>,
+    pub logs: Arc<DashMap<String, Vec<String>>>,
 }
 
 impl<'a> WorkflowEngine<'a> {
@@ -67,9 +70,19 @@ impl<'a> WorkflowEngine<'a> {
         WorkflowEngine { functions }
     }
 
-    pub async fn execute_workflow(&self, workflow: &Workflow) -> Result<DashMap<String, String>, WorkflowError> {
+    pub async fn execute_workflow(
+        &self,
+        workflow: &Workflow,
+        logs: Option<Arc<DashMap<String, Vec<String>>>>,
+    ) -> Result<DashMap<String, String>, WorkflowError> {
         let registers = DashMap::new();
-        let logs = DashMap::new();
+        let logs: Arc<DashMap<String, Vec<String>>> = logs.unwrap_or_default();
+
+        // Log the start of the workflow execution
+        logs.entry("workflow".to_string())
+            .or_default()
+            .push("Starting workflow execution".to_string());
+
         for step in &workflow.steps {
             for body in &step.body {
                 self.execute_step_body(&step.name.clone(), body, &registers, &logs)
@@ -282,7 +295,7 @@ impl<'a> WorkflowEngine<'a> {
                     let mut arg_values = Vec::new();
                     for arg in args {
                         let evaluated_arg = self.evaluate_param(arg, registers).await;
-                        eprintln!("Evaluated arg: {:?}", evaluated_arg);
+                        // eprintln!("Evaluated arg: {:?}", evaluated_arg);
                         match evaluated_arg {
                             Ok(value) => arg_values.push(Box::new(value) as Box<dyn Any + Send>),
                             Err(e) => {
@@ -325,7 +338,7 @@ impl<'a> WorkflowEngine<'a> {
         &'a self,
         workflow: &'a Workflow,
         initial_registers: Option<DashMap<String, String>>,
-        logs: Option<DashMap<String, Vec<String>>>,
+        logs: Option<Arc<DashMap<String, Vec<String>>>>,
     ) -> StepExecutor<'a> {
         StepExecutor {
             engine: self,
@@ -375,6 +388,13 @@ impl<'a> Iterator for StepExecutor<'a> {
         if self.current_step < self.workflow.steps.len() {
             let step = &self.workflow.steps[self.current_step];
             let step_name = step.name.clone();
+
+            // Add log entry for the start of the step and add the step name and content to the logs
+            self.logs
+                .entry(step_name.clone())
+                .or_default()
+                .push(format!("Executing step: {:?}", step.name));
+
             eprintln!("Executing step: {:?}", step);
             let mut result = Ok(self.registers.clone());
 

@@ -422,10 +422,6 @@ pub enum NodeCommand {
     LocalMySubscriptionTriggerHttpDownload {
         res: Sender<Result<(), String>>,
     },
-    APIGetLocalProcessingPreference {
-        msg: ShinkaiMessage,
-        res: Sender<Result<bool, APIError>>,
-    },
     APIGetLastNotifications {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
@@ -433,10 +429,6 @@ pub enum NodeCommand {
     APIGetNotificationsBeforeTimestamp {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
-    },
-    APIUpdateLocalProcessingPreference {
-        preference: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
     },
     APISearchWorkflows {
         msg: ShinkaiMessage,
@@ -762,15 +754,6 @@ pub enum NodeCommand {
         bearer: String,
         payload: String,
         res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetLocalProcessingPreference {
-        bearer: String,
-        res: Sender<Result<bool, APIError>>,
-    },
-    V2ApiUpdateLocalProcessingPreference {
-        bearer: String,
-        preference: bool,
-        res: Sender<Result<String, APIError>>,
     },
     V2ApiGetDefaultEmbeddingModel {
         bearer: String,

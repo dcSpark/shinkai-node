@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, time::Instant};
+use std::{any::Any, collections::HashMap, env, fmt, marker::PhantomData, sync::Arc, time::Instant};
 
 use crate::{
     llm_provider::execution::{
@@ -59,7 +59,8 @@ impl<'a> InferenceChain for DslChain<'a> {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let engine = WorkflowEngine::new(&self.functions);
         let mut final_registers = DashMap::new();
-        let logs = DashMap::new();
+        let logs: DashMap<String, Vec<String>> = DashMap::new();
+        let logs = Arc::new(logs);
 
         // Inject user_message into $R0
         final_registers.insert(

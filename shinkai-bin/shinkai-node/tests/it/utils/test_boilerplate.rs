@@ -17,11 +17,11 @@ use futures::Future;
 use std::env;
 use std::sync::Arc;
 
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
@@ -130,7 +130,6 @@ where
             vec![],
             node1_fs_db_path,
             Some(RemoteEmbeddingGenerator::new_default()),
-            None,
             None,
             default_embedding_model(),
             supported_embedding_models(),

@@ -29,6 +29,8 @@ use std::sync::Arc;
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use crate::it::utils::shinkai_testing_framework::ShinkaiTestingFramework;
+
 use super::utils;
 use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
@@ -190,9 +192,8 @@ fn vector_fs_api_tests() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
-                // Use Unstructrued for PDF parsing until the local one is integrated
-                let db_strong = node1_db_weak.upgrade().unwrap();
-                db_strong.update_local_processing_preference(false).unwrap();
+                // Initialize local PDF parser
+                ShinkaiTestingFramework::initialize_pdfium().await;
 
                 // Create Folder
                 let payload = APIVecFsCreateFolder {
@@ -744,9 +745,7 @@ fn vector_fs_api_tests() {
                     eprintln!("\n\nSearch result: {:?}", r);
                 }
 
-                let check_first = &resp[0].0
-                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com"
-                        .to_string()
+                let check_first = &resp[0].0 == &"Shinkai Network Manifesto (Early Preview)".to_string()
                     && (&resp[0].1
                         == &vec![
                             "test_folder2".to_string(),
@@ -755,9 +754,7 @@ fn vector_fs_api_tests() {
                         ]
                         || &resp[0].1 == &vec!["test_folder2".to_string(), "shinkai_intro".to_string()]);
 
-                let check_second = &resp[1].0
-                    == &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com"
-                        .to_string()
+                let check_second = &resp[1].0 == &"Shinkai Network Manifesto (Early Preview)".to_string()
                     && (&resp[1].1
                         == &vec![
                             "test_folder2".to_string(),

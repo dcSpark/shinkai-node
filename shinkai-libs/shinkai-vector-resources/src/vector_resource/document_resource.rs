@@ -522,6 +522,10 @@ impl VectorResourceCore for DocumentVectorResource {
 
         Ok(results)
     }
+
+    fn count_total_tokens(&self) -> u64 {
+        self.nodes.iter().map(|node| node.count_total_tokens()).sum()
+    }
 }
 
 impl DocumentVectorResource {

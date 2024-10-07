@@ -1189,16 +1189,6 @@ pub async fn change_job_agent_handler(
     .await
 }
 
-pub async fn get_local_processing_preference_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
-        NodeCommand::APIGetLocalProcessingPreference { msg, res }
-    })
-    .await
-}
-
 pub async fn get_last_notifications_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1257,16 +1247,6 @@ pub async fn get_shinkai_tool_handler(
             msg: message,
             res: res_sender,
         }
-    })
-    .await
-}
-
-pub async fn update_local_processing_preference_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |_sender, msg, res| {
-        NodeCommand::APIUpdateLocalProcessingPreference { preference: msg, res }
     })
     .await
 }
