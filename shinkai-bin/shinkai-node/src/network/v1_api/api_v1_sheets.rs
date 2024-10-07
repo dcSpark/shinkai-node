@@ -622,6 +622,11 @@ impl Node {
 
         let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
 
+        if let Some(sheet_name) = &payload.sheet_name {
+            let mut sheet_manager = sheet_manager.lock().await;
+            sheet_manager.update_sheet_name(&sheet_id, sheet_name.clone()).await?;
+        }
+
         match payload.sheet_data {
             SpreadSheetPayload::CSV(csv_data) => {
                 let mut args = HashMap::new();
@@ -649,7 +654,9 @@ impl Node {
                 }
             }
             SpreadSheetPayload::XLSX(xlsx_data) => {
-                let sheet_result = SheetRustFunctions::import_sheet_from_xlsx(sheet_manager.clone(), xlsx_data).await;
+                let sheet_result =
+                    SheetRustFunctions::import_sheet_from_xlsx(sheet_manager.clone(), xlsx_data, payload.sheet_name)
+                        .await;
 
                 match sheet_result {
                     Ok(sheet_id) => {
