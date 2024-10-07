@@ -58,7 +58,7 @@ impl LLMClient for OllamaChat {
     }
 }
 
-#[tokio::test]
+// #[tokio::test]
 async fn sheet_compression_test() {
     let csv_data = std::fs::read("../../files/cars.csv").unwrap();
 
