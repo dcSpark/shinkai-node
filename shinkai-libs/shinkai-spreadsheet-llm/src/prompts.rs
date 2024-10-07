@@ -1,5 +1,4 @@
-pub const STAGE_1_PROMPT: &str = r#"
-INSTRUCTION:
+pub const FIND_TABLE_PROMPT: &str = r#"INSTRUCTION:
 Given an input that is a string denoting data of cells in a table.
 The input table contains many tuples, describing the cells with content in the spreadsheet.
 Each tuple consists of two elements separated by a ’|’: the cell content and the cell address/region, like (Year|A1), ( |A1) or (IntNum|A1:B3).
@@ -13,16 +12,15 @@ I need you to determine in which table the answer to the following question can 
 INPUT: {table_input}
 "#;
 
-pub const STAGE_2_PROMPT: &str = r#"
-INSTRUCTION:
+pub const QUESTION_PROMPT: &str = r#"INSTRUCTION:
 Given an input that is a string denoting data of cells in a table and a question about this table.
 The answer to the question can be found in the table.
-The input table includes many pairs, and each pair consists of a cell address and the text in that cell with a ',' in between, like 'A1,Year'.
-Cells are separated by '|' like 'A1,Year|A2,Profit'.
-The text can be empty so the cell data is like 'A1, |A2,Profit'.
-The cells are organized in row-major order.
+The input table contains many tuples, describing the cells with content in the spreadsheet.
+Each tuple consists of two elements separated by a ’|’: the cell content and the cell address/region, like (Year|A1), ( |A1) or (IntNum|A1:B3).
 The answer to the input question is contained in the input table and can be represented by cell address.
 I need you to find the cell address of the answer in the given table based on the given question description, and return the cell ADDRESS of the answer like '[B3]' or '[SUM(A2:A10)]'.
 DON'T ADD ANY OTHER WORDS.
 INPUT: {table_input}
+
+QUESTION: {question}
 "#;

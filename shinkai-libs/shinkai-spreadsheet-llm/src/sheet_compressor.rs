@@ -34,7 +34,7 @@ impl fmt::Display for IndexDictionary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut result = String::new();
         for (key, value) in &self.0 {
-            result.push_str(&format!("{}: {}\n", key, value));
+            result.push_str(&format!("({}|{})\n", key, value));
         }
         write!(f, "{}", result)
     }
@@ -53,7 +53,7 @@ impl FromIterator<(String, String)> for IndexDictionary {
 impl SheetCompressor {
     pub fn compress_sheet(sheet: &SheetRows) -> CompressedSheet {
         // Structural-anchor-based Extraction
-        let sheet = Self::anchor(sheet);
+        // let sheet = Self::anchor(sheet);
 
         // Encode sheet to Markdown
         let markdown = Self::encode(&sheet);
@@ -169,7 +169,7 @@ impl SheetCompressor {
 
     // Data-format-aware Aggregation
     pub fn identical_cell_aggregation(
-        sheet: SheetRows,
+        sheet: &SheetRows,
         markdown: Vec<MarkdownCell>,
     ) -> Vec<((usize, usize), (usize, usize), String)> {
         let dictionary = Self::inverted_category(markdown);
@@ -325,11 +325,11 @@ impl SheetCompressor {
         if string.is_empty() {
             return "Other";
         }
-        if let Ok(_) = string.parse::<f64>() {
-            return "Float";
-        }
         if let Ok(_) = string.parse::<i64>() {
             return "Integer";
+        }
+        if let Ok(_) = string.parse::<f64>() {
+            return "Float";
         }
         if let Ok(_) = NaiveDateTime::parse_from_str(string, "%Y-%m-%d %H:%M:%S") {
             return "yyyy/mm/dd";
@@ -373,7 +373,7 @@ impl SheetCompressor {
             return "yyyy/mm/dd";
         }
 
-        "Other"
+        "String"
     }
 
     fn intersect1d(arr1: &Array1<usize>, arr2: &Array1<usize>) -> Vec<usize> {
