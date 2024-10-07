@@ -15,14 +15,15 @@ pub struct SheetCompressor {}
 
 #[derive(Debug, Clone)]
 pub struct MarkdownCell {
-    address: String,
-    value: String,
-    category: String,
+    pub address: String,
+    pub value: String,
+    pub category: String,
 }
 
 pub struct CompressedSheet {
     pub areas: CellAreas,
     pub dictionary: IndexDictionary,
+    pub markdown: Vec<MarkdownCell>,
 }
 
 pub type SheetRows = Vec<Vec<String>>;
@@ -62,9 +63,13 @@ impl SheetCompressor {
         let dictionary = Self::inverted_index(markdown.clone());
 
         // Data-format-aware Aggregation
-        let areas = Self::identical_cell_aggregation(sheet, markdown);
+        let areas = Self::identical_cell_aggregation(sheet, markdown.clone());
 
-        CompressedSheet { areas, dictionary }
+        CompressedSheet {
+            areas,
+            dictionary,
+            markdown,
+        }
     }
 
     // Vanilla Spreadsheet Encoding to Markdown

@@ -74,15 +74,19 @@ async fn sheet_compression_test() {
 
     let compressed_sheet = SheetCompressor::compress_sheet(&sheet_rows);
 
-    let ollama_chat = OllamaChat::new("http://localhost:11434", "llama3.2");
+    let ollama_chat = OllamaChat::new("http://localhost:11434", "llama3.1");
 
-    let answer = SpreadsheetLLM::question(
+    let table_answer = SpreadsheetLLM::find_table(&ollama_chat, "Which car is the most expensive?", &compressed_sheet);
+
+    println!("Table answer: {}", table_answer.await.unwrap());
+
+    let question_answer = SpreadsheetLLM::uncompressed_question(
         &ollama_chat,
         "Which car is the most expensive?",
-        &compressed_sheet.dictionary,
+        &compressed_sheet.markdown,
     )
     .await
     .unwrap();
 
-    println!("Answer: {}", answer);
+    println!("Question Answer: {}", question_answer);
 }
