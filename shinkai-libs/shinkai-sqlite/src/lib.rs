@@ -90,7 +90,7 @@ impl fmt::Display for LogStatus {
 }
 
 /// Represents a log entry in the database, capturing details of operations, tool executions, and workflow steps.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     /// Unique identifier for the log entry.
     /// This field will be set by the database upon insertion.
@@ -127,9 +127,9 @@ pub struct LogEntry {
     /// Stored as a JSON Value for flexibility in data structure.
     pub input: Value,
 
-    /// Optional duration of the operation, typically in seconds.
+    /// Optional duration of the operation, in ms.
     /// Useful for performance monitoring and optimization.
-    pub duration: Option<f64>,
+    pub duration_ms: Option<u64>,
 
     /// The result or output of the operation or step.
     /// Stored as a JSON Value to accommodate various result structures.
@@ -156,34 +156,12 @@ pub struct LogEntry {
     pub additional_info: Option<Value>,
 }
 
-impl Clone for LogEntry {
-    fn clone(&self) -> Self {
-        LogEntry {
-            id: self.id,
-            message_id: self.message_id.clone(),
-            tool_id: self.tool_id.clone(),
-            subprocess: self.subprocess.clone(),
-            parent_id: self.parent_id.clone(),
-            execution_order: self.execution_order,
-            input: self.input.clone(),
-            duration: self.duration,
-            result: self.result.clone(),
-            status: self.status.clone(),
-            error_message: self.error_message.clone(),
-            timestamp: self.timestamp.clone(),
-            log_type: self.log_type.clone(),
-            additional_info: self.additional_info.clone(),
-        }
-    }
-}
-
 // Struct representing a tool in the database
 #[derive(Debug)]
 pub struct Tool {
-    pub id: i32,                         // Unique identifier for the tool
+    pub tool_router_key: String,         // Primary Key router key for the tool
     pub name: String,                    // Name of the tool
     pub tool_type: String,               // Type of the tool
-    pub tool_router_key: Option<String>, // Optional router key for the tool
     pub instructions: Option<String>,    // Optional instructions for the tool
 }
 

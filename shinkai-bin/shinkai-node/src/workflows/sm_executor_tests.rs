@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use std::any::Any;
+    use std::sync::Arc;
+    use std::{any::Any, collections::VecDeque};
     use std::collections::HashMap;
 
     use async_trait::async_trait;
@@ -12,6 +13,7 @@ mod tests {
         parser::parse_workflow,
     };
 
+    use tokio::sync::RwLock;
     use tokio::time::{sleep, Duration};
 
     use crate::workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError};
@@ -260,7 +262,7 @@ mod tests {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
         let registers = DashMap::new();
-        let logs = DashMap::new();
+        let logs = Arc::new(RwLock::new(VecDeque::new()));
 
         let loop_body = StepBody::RegisterOperation {
             register: "$Last".to_string(),
@@ -289,7 +291,7 @@ mod tests {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
         let registers = DashMap::new();
-        let logs = DashMap::new();
+        let logs = Arc::new(RwLock::new(VecDeque::new()));
 
         let loop_body = StepBody::RegisterOperation {
             register: "$Last".to_string(),
@@ -625,8 +627,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_blog_post_outline_workflow() {
+    #[tokio::test]
+    async fn test_blog_post_outline_workflow() {
         let dsl_input = r#"
     workflow MyProcess v0.1 {
         step Initialize {
@@ -651,8 +653,11 @@ mod tests {
         let registers = DashMap::new();
         registers.insert("$R0".to_string(), "about Rust programming".to_string());
 
+        // Initialize logs as Arc<RwLock<VecDeque<(String, String)>>>
+        let logs = Arc::new(RwLock::new(VecDeque::new()));
+
         // Create the StepExecutor iterator
-        let mut step_executor = engine.iter(&workflow, Some(registers), None);
+        let mut step_executor = engine.iter(&workflow, Some(registers), Some(logs.clone()));
 
         // Execute the workflow step by step
         for (i, result) in step_executor.by_ref().enumerate() {
@@ -689,14 +694,12 @@ mod tests {
             r#"Setting register $R3 to "Create an outline for a blog post about the topic of the user's message about Rust programming\\n separate the sections using a comma e.g. red,green,blue""#,
             r#"Composite body 3: "RegisterOperation { register: \"$R3\", value: FunctionCall(FunctionCall { name: \"concat\", args: [Register(\"$R3\"), Register(\"$R2\")] }) }""#,
         ];
-        let log_values: Vec<String> = step_executor
-            .logs
-            .get("Initialize")
-            .unwrap()
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
 
+        // Read logs from the RwLock
+        let log_values: Vec<String> = {
+            let logs = logs.read().await;
+            logs.iter().map(|(_, v)| v.clone()).collect()
+        };
         // let logs = WorkflowEngine::formatted_logs(&step_executor.logs);
         // eprintln!("run_chain logs: {:?}", logs);
 
@@ -754,7 +757,10 @@ mod tests {
         eprintln!("Registers: {:?}", registers);
 
         // Check the results
-        assert_eq!(registers.get("$WEBPAGE").unwrap().as_str(), "http://quotes.toscrape.com");
+        assert_eq!(
+            registers.get("$WEBPAGE").unwrap().as_str(),
+            "http://quotes.toscrape.com"
+        );
         assert!(registers.get("$RESULT").unwrap().as_str().contains("<html"));
     }
 }

@@ -10269,6 +10269,8 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "shinkai_dsl",
+ "shinkai_tools_primitives",
  "tokio",
  "uuid 1.10.0",
 ]

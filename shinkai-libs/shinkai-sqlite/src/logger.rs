@@ -1,12 +1,31 @@
 use crate::{LogEntry, LogStatus, LogTree, SqliteManager, Tool};
-use dashmap::DashMap;
+use chrono::{DateTime, Utc};
 use futures::future::try_join_all;
 use rusqlite::{params, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use shinkai_dsl::dsl_schemas::Workflow;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use uuid::Uuid; // Add this for generating unique tool IDs
+use tokio::sync::{Mutex, RwLock};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowLogEntry {
+    pub subprocess: Option<String>, // Renamed from step_name and made optional
+    pub input: Option<String>,      // New optional field for input
+    pub additional_info: String,    // Renamed from message
+    pub timestamp: DateTime<Utc>,
+    pub status: WorkflowLogEntryStatus, // Updated to include a string for success
+    pub result: Option<String>,
+}
+
+// Define an enum to represent the status of a log entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WorkflowLogEntryStatus {
+    Success(String), // Now includes a string for additional success information
+    Error(String),   // Includes an error message
+}
 
 // Updated struct representing the SQLite logger
 #[derive(Clone)]
@@ -32,10 +51,9 @@ impl SqliteLogger {
         // Create the tools table if it doesn't exist
         conn.execute(
             "CREATE TABLE IF NOT EXISTS tools (
-                id TEXT PRIMARY KEY, -- Changed from INTEGER to TEXT
+                tool_router_key TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 tool_type TEXT NOT NULL,
-                tool_router_key TEXT,
                 instructions TEXT
             );",
             [],
@@ -46,19 +64,19 @@ impl SqliteLogger {
             "CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 message_id TEXT NOT NULL,
-                tool_id TEXT NOT NULL, -- Remains TEXT
+                tool_id TEXT NOT NULL,
                 subprocess TEXT,
-                parent_id INTEGER, -- Changed from TEXT to INTEGER
+                parent_id INTEGER,
                 execution_order INTEGER NOT NULL,
                 input TEXT NOT NULL,
-                duration REAL,
+                duration_ms INTEGER,
                 result TEXT NOT NULL,
                 status TEXT NOT NULL CHECK (status IN ('Success', 'Failure', 'Canceled', 'NonDetermined')),
                 error_message TEXT,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now')),
                 log_type TEXT NOT NULL,
                 additional_info TEXT,
-                FOREIGN KEY(tool_id) REFERENCES tools(id) ON DELETE CASCADE,
+                FOREIGN KEY(tool_id) REFERENCES tools(tool_router_key) ON DELETE CASCADE,
                 FOREIGN KEY(parent_id) REFERENCES logs(id) ON DELETE CASCADE
             );",
             [],
@@ -99,7 +117,7 @@ impl SqliteLogger {
                 parent_id,
                 execution_order,
                 input,
-                duration,
+                duration_ms,
                 result,
                 status,
                 error_message,
@@ -114,7 +132,7 @@ impl SqliteLogger {
                 log.parent_id, // Should be Option<i64>
                 log.execution_order,
                 log.input.to_string(),
-                log.duration,
+                log.duration_ms, // Updated field name
                 log.result.to_string(),
                 log.status.to_string(),
                 log.error_message,
@@ -129,36 +147,47 @@ impl SqliteLogger {
     // Adds a tool entry to the tools table
     pub fn add_tool(&self, tool: &Tool) -> Result<String> {
         let conn = self.manager.get_connection()?;
-        let tool_id = Uuid::new_v4().to_string(); // Generate a unique UUID for the tool ID
         conn.execute(
-            "INSERT INTO tools (id, name, tool_type, tool_router_key, instructions) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                tool_id,
-                tool.name,
-                tool.tool_type,
-                tool.tool_router_key,
-                tool.instructions
-            ],
+            "INSERT INTO tools (tool_router_key, name, tool_type, instructions) VALUES (?1, ?2, ?3, ?4)",
+            params![tool.tool_router_key, tool.name, tool.tool_type, tool.instructions],
         )?;
-        Ok(tool_id)
+        Ok(tool.tool_router_key.clone())
     }
 
-    pub fn log_workflow_execution(
+    pub async fn log_workflow_execution(
         &self,
         message_id: String,
-        tool_id: String,
-        logs: Arc<DashMap<String, Vec<String>>>,
+        workflow: Workflow,
+        logs: Arc<RwLock<VecDeque<WorkflowLogEntry>>>,
     ) -> Result<()> {
+        // Generate the tool key from the workflow
+        let tool_key = ShinkaiTool::gen_router_key("local".to_string(), workflow.author.clone(), workflow.name.clone());
+
+        // Check if the tool exists by tool key
+        let tool_exists = self.tool_exists_by_key(&tool_key)?;
+
+        // Use the tool key directly as the tool ID
+        let tool_id = if tool_exists {
+            tool_key.clone()
+        } else {
+            self.add_tool(&Tool {
+                name: workflow.name.clone(),
+                tool_type: "Workflow".to_string(),
+                tool_router_key: tool_key.clone(),
+                instructions: Some(workflow.description.clone().unwrap_or_default()),
+            })?
+        };
+
         // Create a log entry for the workflow execution
         let workflow_log_id = self.add_log(&LogEntry {
             id: None,
             message_id: message_id.clone(),
             tool_id: tool_id.clone(),
             subprocess: None,
-            parent_id: None, // No parent for workflow execution
+            parent_id: None,
             execution_order: 0,
             input: Value::Null,
-            duration: None,
+            duration_ms: None,
             result: Value::Null,
             status: LogStatus::Success,
             error_message: None,
@@ -167,53 +196,56 @@ impl SqliteLogger {
             additional_info: None,
         })?;
 
-        // Collect entries from the logs DashMap
-        let logs_entries: Vec<(String, Vec<String>)> =
-            logs.iter().map(|e| (e.key().clone(), e.value().clone())).collect();
+        // Collect entries from the logs VecDeque
+        let logs_entries = {
+            let logs = logs.read().await;
+            logs.clone()
+        };
 
         // Iterate over each step in the logs
-        for (step_index, (step_name, log_messages)) in logs_entries.into_iter().enumerate() {
-            // Create a log entry for the step
-            let step_log_id = self.add_log(&LogEntry {
+        for (step_index, workflow_log_entry) in logs_entries.iter().enumerate() {
+            eprintln!("step_index: {:?}", step_index);
+            eprintln!("workflow_log_entry: {:?}", workflow_log_entry);
+            eprintln!("---");
+
+            let duration_ms = if step_index > 0 { // Updated variable name
+                let previous_entry = &logs_entries[step_index - 1];
+                let duration = workflow_log_entry.timestamp - previous_entry.timestamp;
+                Some(duration.num_milliseconds() as u64)
+            } else {
+                None
+            };
+
+            self.add_log(&LogEntry {
                 id: None,
                 message_id: message_id.clone(),
                 tool_id: tool_id.clone(),
-                subprocess: Some(step_name.clone()),
+                subprocess: workflow_log_entry.subprocess.clone(),
                 parent_id: Some(workflow_log_id),
                 execution_order: step_index as i32,
-                input: Value::Null,
-                duration: None,
-                result: Value::Null,
-                status: LogStatus::Success,
+                input: workflow_log_entry.input.clone().map_or(Value::Null, |s| Value::String(s)),
+                duration_ms, // Updated field name
+                result: workflow_log_entry.result.clone().map_or(Value::Null, |s| Value::String(s)),
+                status: match workflow_log_entry.status {
+                    WorkflowLogEntryStatus::Success(_) => LogStatus::Success,
+                    WorkflowLogEntryStatus::Error(_) => LogStatus::Failure,
+                },
                 error_message: None,
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                log_type: "workflow_step".to_string(),
-                additional_info: None,
+                timestamp: workflow_log_entry.timestamp.to_rfc3339(),
+                log_type: "workflow_operation".to_string(),
+                additional_info: Some(Value::String(workflow_log_entry.additional_info.clone())),
             })?;
-
-            // Iterate over each log message within the step
-            for (msg_index, log_message) in log_messages.iter().enumerate() {
-                // Create a log entry for each message
-                self.add_log(&LogEntry {
-                    id: None,
-                    message_id: message_id.clone(),
-                    tool_id: tool_id.clone(),
-                    subprocess: Some(step_name.clone()),
-                    parent_id: Some(step_log_id),
-                    execution_order: msg_index as i32,
-                    input: Value::Null,
-                    duration: None,
-                    result: Value::String(log_message.clone()),
-                    status: LogStatus::Success,
-                    error_message: None,
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                    log_type: "workflow_operation".to_string(),
-                    additional_info: None,
-                })?;
-            }
         }
 
         Ok(())
+    }
+
+    // Updated helper method to check if a tool exists by tool key
+    fn tool_exists_by_key(&self, tool_key: &str) -> Result<bool> {
+        let conn = self.manager.get_connection()?;
+        let mut stmt = conn.prepare("SELECT EXISTS(SELECT 1 FROM tools WHERE tool_router_key = ?1);")?;
+        let exists: bool = stmt.query_row(params![tool_key], |row| row.get(0))?;
+        Ok(exists)
     }
 
     // New method to get log IDs for a specific message
@@ -262,7 +294,7 @@ impl SqliteLogger {
                 parent_id: row.get(4)?,
                 execution_order: row.get(5)?,
                 input: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or(Value::Null),
-                duration: row.get(7)?,
+                duration_ms: row.get(7)?, // Updated field name
                 result: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or(Value::Null),
                 status: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or(LogStatus::NonDetermined),
                 error_message: row.get(10)?,
@@ -324,7 +356,7 @@ impl SqliteLogger {
                 parent_id: row.get(4)?,
                 execution_order: row.get(5)?,
                 input: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or(Value::Null),
-                duration: row.get(7)?,
+                duration_ms: row.get(7)?, // Updated field name
                 result: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or(Value::Null),
                 status: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or(LogStatus::NonDetermined),
                 error_message: row.get(10)?,
@@ -351,7 +383,7 @@ impl SqliteLogger {
                 parent_id: row.get(4)?,
                 execution_order: row.get(5)?,
                 input: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or(Value::Null),
-                duration: row.get(7)?,
+                duration_ms: row.get(7)?, // Updated field name
                 result: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or(Value::Null),
                 status: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or(LogStatus::NonDetermined),
                 error_message: row.get(10)?,

@@ -9,6 +9,7 @@ use crate::{
     workflows::sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
 use async_trait::async_trait;
+use chrono::Utc;
 use dashmap::DashMap;
 use regex::Regex;
 use shinkai_baml::baml_builder::{BamlConfig, ClientConfig, GeneratorConfig};
@@ -17,8 +18,10 @@ use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use shinkai_sqlite::logger::{WorkflowLogEntry, WorkflowLogEntryStatus};
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, workflow_tool::WorkflowTool};
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::RetrievedNode};
+use tokio::sync::RwLock;
 
 use crate::llm_provider::{
     error::LLMProviderError,
@@ -30,6 +33,7 @@ use super::{
     generic_functions::{self},
     split_text_for_llm::{split_text_at_token_limit, split_text_for_llm},
 };
+use std::collections::VecDeque;
 
 pub struct DslChain<'a> {
     pub context: Box<dyn InferenceChainContextTrait>,
@@ -59,24 +63,34 @@ impl<'a> InferenceChain for DslChain<'a> {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let engine = WorkflowEngine::new(&self.functions);
         let mut final_registers = DashMap::new();
-        let logs: DashMap<String, Vec<String>> = DashMap::new();
-        let logs = Arc::new(logs);
+        let logs = Arc::new(RwLock::new(VecDeque::new()));
 
         // Inject user_message into $R0
-        final_registers.insert(
-            "$INPUT".to_string(),
-            self.context.user_message().clone().original_user_message_string,
-        );
+        let user_message = self.context.user_message().clone().original_user_message_string;
+        final_registers.insert("$INPUT".to_string(), user_message.clone());
+
+        // Log the $INPUT
+        {
+            let mut logs_write = logs.write().await;
+            logs_write.push_back(WorkflowLogEntry {
+                subprocess: Some("$INPUT".to_string()),
+                input: Some(user_message.clone()),
+                additional_info: "User message injected".to_string(),
+                timestamp: Utc::now(),
+                status: WorkflowLogEntryStatus::Success("Input logged".to_string()),
+                result: None,
+            });
+        }
+
         let executor = engine.iter(
             &self.workflow_tool.workflow,
             Some(final_registers.clone()),
-            Some(logs.clone()),
+            Some(logs.clone()), // Pass the updated logs
         );
 
         for result in executor {
             match result {
                 Ok(registers) => {
-                    // Is this required if we are passing a dashmap reference?
                     final_registers = registers;
                 }
                 Err(e) => {
@@ -90,31 +104,50 @@ impl<'a> InferenceChain for DslChain<'a> {
             .get("$RESULT")
             .map(|r| r.clone())
             .unwrap_or_else(String::new);
-        let new_contenxt = HashMap::new();
+
+        // Log the $RESULT
+        {
+            let mut logs_write = logs.write().await;
+            logs_write.push_back(WorkflowLogEntry {
+                subprocess: Some("$RESULT".to_string()),
+                input: None,
+                additional_info: "Final result obtained".to_string(),
+                timestamp: Utc::now(),
+                status: WorkflowLogEntryStatus::Success("Result logged".to_string()),
+                result: Some(response_register.clone()),
+            });
+        }
+
+        let new_context = HashMap::new();
 
         // Clean up the response_register using regex
         let re = Regex::new(r"\\n").unwrap();
         let cleaned_response = re.replace_all(&response_register, "\n").to_string();
 
-        // Convert logs to a HashMap and then to a serde_json::Value
-        let logs_map: HashMap<String, Vec<String>> = logs
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-        let logs_json = serde_json::to_value(logs_map).unwrap_or_else(|_| serde_json::Value::Null);
+        // Convert logs to a Vec and then to a serde_json::Value
+        let logs_vec: Vec<WorkflowLogEntry> = logs.read().await.iter().cloned().collect();
+        let logs_json = serde_json::to_value(logs_vec).unwrap_or_else(|_| serde_json::Value::Null);
         println!("Logs as JSON: {}", logs_json);
 
-        // Debug
-        // let logs = WorkflowEngine::formatted_logs(&logs);
+        // Debug Code
+        // Write logs_json to a file
+        if let Ok(logs_string) = serde_json::to_string_pretty(&logs_json) {
+            if let Err(e) = std::fs::write("logs.json", logs_string) {
+                eprintln!("Failed to write logs to file: {}", e);
+            }
+        } else {
+            eprintln!("Failed to convert logs to string");
+        }
+
+        // Logging to SQLite
         if let Some(logger) = self.context.sqlite_logger() {
-            // TODO: we need something better than or_default here
             let message_id = self.context.message_hash_id().unwrap_or_default();
-            let workflow_name = self.workflow_tool.workflow.name.clone();
-            let result = logger.log_workflow_execution(message_id, workflow_name, logs);
+            let workflow = self.workflow_tool.workflow.clone();
+            let result = logger.log_workflow_execution(message_id, workflow, logs).await;
             println!("Logged workflow execution: {:?}", result);
         }
 
-        Ok(InferenceChainResult::new(cleaned_response, new_contenxt))
+        Ok(InferenceChainResult::new(cleaned_response, new_context))
     }
 }
 

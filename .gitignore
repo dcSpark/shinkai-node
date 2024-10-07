@@ -93,3 +93,6 @@ shinkai-libs/shinkai-lancedb/lance_db_tests
 example.db
 shinkai-bin/shinkai-node/ocrs/text-detection.rten
 shinkai-bin/shinkai-node/ocrs/text-recognition.rten
+logs.json
+example.db-shm
+example.db-wal
