@@ -627,7 +627,7 @@ mod tests {
         });
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_blog_post_outline_workflow() {
         let dsl_input = r#"
     workflow MyProcess v0.1 {
@@ -698,7 +698,7 @@ mod tests {
         // Read logs from the RwLock
         let log_values: Vec<String> = {
             let logs = logs.read().await;
-            logs.iter().map(|(_, v)| v.clone()).collect()
+            logs.iter().map(|entry| entry.additional_info.clone()).collect()
         };
         // let logs = WorkflowEngine::formatted_logs(&step_executor.logs);
         // eprintln!("run_chain logs: {:?}", logs);
