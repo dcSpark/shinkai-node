@@ -314,6 +314,7 @@ impl CronManager {
                 job_id.to_string(),
                 cron_request_message.to_string(),
                 "".to_string(),
+                None,
                 identity_secret_key,
                 node_profile_name.node_name.clone(),
                 node_profile_name.node_name.clone(),
@@ -337,6 +338,7 @@ impl CronManager {
             workflow_name: None,
             callback: None,
             sheet_job_data: None,
+            metadata: None,
         };
 
         job_manager

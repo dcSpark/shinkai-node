@@ -1249,6 +1249,7 @@ impl PyShinkaiMessageBuilder {
                 workflow_name,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             };
 
             let body = match serde_json::to_string(&job_message) {

@@ -18,7 +18,7 @@ use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueMan
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, WSTopic};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata, WSTopic};
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -233,6 +233,7 @@ impl JobManager {
             job_id.to_string(),
             error_for_frontend.to_string(),
             "".to_string(),
+            None,
             identity_secret_key_clone,
             node_name.clone(),
             node_name.clone(),
@@ -332,8 +333,8 @@ impl JobManager {
             llm_stopper.clone(),
         )
         .await?;
-        let inference_response_content = inference_response.response;
-        let new_execution_context = inference_response.new_job_execution_context;
+        let inference_response_content = inference_response.response.clone();
+        let new_execution_context = inference_response.new_job_execution_context.clone();
 
         let duration = start.elapsed();
         shinkai_log(
@@ -342,12 +343,19 @@ impl JobManager {
             &format!("Time elapsed for inference chain processing is: {:?}", duration),
         );
 
+        let message_metadata = MessageMetadata {
+            tps: inference_response.tps.clone(),
+            duration_ms: inference_response.answer_duration.clone(),
+            function_calls: inference_response.tool_calls_metadata(),
+        };
+
         // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             inference_response_content.to_string(),
             "".to_string(),
+            Some(message_metadata),
             identity_secret_key_clone,
             user_profile.node_name.clone(),
             user_profile.node_name.clone(),
@@ -453,12 +461,18 @@ impl JobManager {
         )
         .await;
 
-        let (response, new_execution_context) = match inference_result {
-            Ok(result) => (result.response, result.new_job_execution_context),
+        let result = match inference_result {
+            Ok(result) => result,
             Err(e) => {
                 let error_response = format!("Error: {}", e);
-                (error_response, full_job.execution_context.clone())
+                InferenceChainResult::new(error_response, full_job.execution_context.clone())
             }
+        };
+
+        let metadata = MessageMetadata {
+            tps: result.tps.clone(),
+            duration_ms: result.answer_duration.clone(),
+            function_calls: result.tool_calls_metadata(),
         };
 
         // Prepare data to save inference response to the DB
@@ -468,8 +482,9 @@ impl JobManager {
         // TODO: What should be the structure of this metadata?
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id,
-            response.to_string(),
+            result.response.to_string(),
             "".to_string(),
+            Some(metadata),
             identity_secret_key_clone,
             user_profile.get_node_name_string(),
             user_profile.get_node_name_string(),
@@ -487,13 +502,13 @@ impl JobManager {
             job_message.job_id.clone(),
             job_message.content.clone(),
             None,
-            response.to_string(),
+            result.response.to_string(),
             None,
             None,
         )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager.clone())
             .await?;
-        db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+        db.set_job_execution_context(job_message.job_id.clone(), result.new_job_execution_context, None)?;
 
         // Send WS done message
         if let Some(ws_manager) = ws_manager {
@@ -513,7 +528,7 @@ impl JobManager {
                 .queue_message(
                     WSTopic::Inbox,
                     job_message.job_id.clone(),
-                    response.to_string(),
+                    result.response.to_string(),
                     ws_message_type,
                     true,
                 )

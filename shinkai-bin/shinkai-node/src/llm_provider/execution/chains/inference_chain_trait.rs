@@ -13,6 +13,7 @@ use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
 use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -314,6 +315,7 @@ pub struct InferenceChainResult {
     pub tps: Option<String>,
     pub answer_duration: Option<String>,
     pub new_job_execution_context: HashMap<String, String>,
+    pub tool_calls: Option<Vec<FunctionCall>>,
 }
 
 impl InferenceChainResult {
@@ -323,6 +325,7 @@ impl InferenceChainResult {
             new_job_execution_context,
             tps: None,
             answer_duration: None,
+            tool_calls: None,
         }
     }
 
@@ -333,12 +336,27 @@ impl InferenceChainResult {
     pub fn new_empty() -> Self {
         Self::new_empty_execution_context(String::new())
     }
+
+    pub fn tool_calls_metadata(&self) -> Option<Vec<FunctionCallMetadata>> {
+        self.tool_calls.as_ref().map(|calls| {
+            calls.iter().map(FunctionCall::to_metadata).collect()
+        })
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FunctionCall {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
+}
+
+impl FunctionCall {
+    pub fn to_metadata(&self) -> FunctionCallMetadata {
+        FunctionCallMetadata {
+            name: self.name.clone(),
+            arguments: self.arguments.clone(),
+        }
+    }
 }
 
 /// A struct that holds the response from inference an LLM.

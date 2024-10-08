@@ -145,6 +145,7 @@ impl JobMessageWrapper {
             workflow_name,
             sheet_job_data: None,
             callback: None,
+            metadata: None,
         };
         Ok(JobMessageWrapper { inner: job_message })
     }
@@ -190,6 +191,7 @@ impl JobMessageWrapper {
             workflow_name,
             sheet_job_data: None,
             callback: None,
+            metadata: None,
         };
         JobMessageWrapper { inner: job_message }
     }
