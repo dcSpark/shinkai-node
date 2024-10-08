@@ -2,9 +2,9 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
+use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use crate::managers::tool_router::ToolRouter;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -329,6 +329,22 @@ impl InferenceChainResult {
         }
     }
 
+    pub fn with_full_details(
+        response: String,
+        tps: Option<String>,
+        answer_duration_ms: Option<String>,
+        new_job_execution_context: HashMap<String, String>,
+        tool_calls: Option<Vec<FunctionCall>>,
+    ) -> Self {
+        Self {
+            response,
+            tps,
+            answer_duration: answer_duration_ms,
+            new_job_execution_context,
+            tool_calls,
+        }
+    }
+
     pub fn new_empty_execution_context(response: String) -> Self {
         Self::new(response, HashMap::new())
     }
@@ -338,9 +354,9 @@ impl InferenceChainResult {
     }
 
     pub fn tool_calls_metadata(&self) -> Option<Vec<FunctionCallMetadata>> {
-        self.tool_calls.as_ref().map(|calls| {
-            calls.iter().map(FunctionCall::to_metadata).collect()
-        })
+        self.tool_calls
+            .as_ref()
+            .map(|calls| calls.iter().map(FunctionCall::to_metadata).collect())
     }
 }
 

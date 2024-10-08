@@ -26,6 +26,7 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::fmt;
 use std::result::Result::Ok;
+use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -82,8 +83,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.llm_stopper.clone(),
         )
         .await?;
-        let job_execution_context = self.context.execution_context.clone();
-        Ok(InferenceChainResult::new(response, job_execution_context))
+        Ok(response)
     }
 }
 
@@ -119,12 +119,13 @@ impl GenericInferenceChain {
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
-    ) -> Result<String, LLMProviderError> {
+    ) -> Result<InferenceChainResult, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
             &format!("start_generic_inference_chain>  message: {:?}", user_message),
         );
+        let start_time = Instant::now(); 
 
         /*
         How it (should) work:
@@ -218,6 +219,7 @@ impl GenericInferenceChain {
         );
 
         let mut iteration_count = 0;
+        let mut tool_calls_history = Vec::new(); 
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
@@ -253,6 +255,7 @@ impl GenericInferenceChain {
 
             // 5) Check response if it requires a function call
             if let Some(function_call) = response.function_call {
+                tool_calls_history.push(function_call.clone());
                 let parsed_message = ParsedUserMessage::new(user_message.clone());
                 let image_files = HashMap::new();
                 let context = InferenceChainContext::new(
@@ -316,9 +319,17 @@ impl GenericInferenceChain {
                 );
             } else {
                 // No more function calls required, return the final response
-                // TODO: update job metrics here
-                eprintln!("TPS: {:?}", response.tps);
-                return Ok(response.response_string);
+                let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
+
+                let inference_result = InferenceChainResult::with_full_details(
+                    response.response_string,
+                    response.tps.map(|tps| tps.to_string()),
+                    answer_duration_ms,
+                    execution_context.clone(),
+                    Some(tool_calls_history.clone()),
+                );
+
+                return Ok(inference_result);
             }
 
             // Increment the iteration count

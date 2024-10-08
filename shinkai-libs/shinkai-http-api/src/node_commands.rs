@@ -940,6 +940,11 @@ pub enum NodeCommand {
         job_id: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiGetToolingLogs {
+        bearer: String,
+        message_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiImportSheet {
         bearer: String,
         payload: APIImportSheetPayload,
