@@ -1,7 +1,7 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_prepare_messages, ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages_with_tooling, ollama_prepare_messages, OllamaAPIStreamingResponse,
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
@@ -141,7 +141,7 @@ impl LLMService for Ollama {
                 )
                 .await
             } else {
-                handle_non_streaming_response(client, url, payload, inbox_name, llm_stopper).await
+                handle_non_streaming_response(client, url, payload, inbox_name, ws_manager_trait, llm_stopper).await
             }
         } else {
             Err(LLMProviderError::UrlNotSet)
@@ -303,6 +303,7 @@ async fn handle_non_streaming_response(
     url: String,
     payload: JsonValue,
     inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
@@ -355,6 +356,40 @@ async fn handle_non_streaming_response(
                                 ShinkaiLogLevel::Info,
                                 format!("Function Call: {:?}", function_call).as_str(),
                             );
+
+                            // Send WS message if a function call is detected
+                            if let Some(ref manager) = ws_manager_trait {
+                                if let Some(ref inbox_name) = inbox_name {
+                                    if let Some(ref function_call) = function_call {
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+
+                                        let metadata = WSMetadata {
+                                            id: Some(Uuid::new_v4().to_string()),
+                                            is_done: false,
+                                            done_reason: Some(format!("Function call: {:?}", function_call)),
+                                            total_duration: None,
+                                            eval_count: None,
+                                        };
+
+                                        let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                        // Serialize FunctionCall to JSON string
+                                        let function_call_json = serde_json::to_string(&function_call)
+                                            .unwrap_or_else(|_| "{}".to_string());
+
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                function_call_json,
+                                                ws_message_type,
+                                                true,
+                                            )
+                                            .await;
+                                    }
+                                }
+                            }
 
                             // Calculate tps
                             let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
