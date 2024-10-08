@@ -20,15 +20,17 @@ pub struct JobForProcessing {
     pub job_message: JobMessage,
     pub profile: ShinkaiName,
     pub date_created: String,
+    pub message_hash_id: Option<String>,
     // TODO: add a new optional field for callbacks
 }
 
 impl JobForProcessing {
-    pub fn new(job_message: JobMessage, profile: ShinkaiName) -> Self {
+    pub fn new(job_message: JobMessage, profile: ShinkaiName, message_hash_id: Option<String>) -> Self {
         JobForProcessing {
             job_message,
             profile,
             date_created: Utc::now().to_rfc3339(),
+            message_hash_id,
         }
     }
 }
@@ -321,8 +323,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         manager.push("job_id::123::false", job.clone()).await.unwrap();
 
@@ -354,8 +358,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         let job2 = JobForProcessing::new(
             JobMessage {
@@ -367,8 +373,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         manager.push("my_queue", job.clone()).await.unwrap();
         manager.push("my_queue", job2.clone()).await.unwrap();
@@ -470,8 +478,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         let job_a2 = JobForProcessing::new(
             JobMessage {
@@ -483,8 +493,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         let job_a3 = JobForProcessing::new(
             JobMessage {
@@ -496,8 +508,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
 
         let job_b1 = JobForProcessing::new(
@@ -510,8 +524,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
 
         let job_c1 = JobForProcessing::new(
@@ -524,8 +540,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
 
         let job_c2 = JobForProcessing::new(
@@ -538,8 +556,10 @@ mod tests {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
 
         // Push jobs to queues

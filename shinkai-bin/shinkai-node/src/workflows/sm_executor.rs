@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io;
 use std::io::Write;
@@ -13,7 +14,9 @@ use futures::Future;
 use shinkai_dsl::dsl_schemas::{
     Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
 };
+use shinkai_sqlite::logger::{WorkflowLogEntry, WorkflowLogEntryStatus};
 use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
 use tokio::task;
 
 /*
@@ -55,6 +58,7 @@ pub type FunctionMap<'a> = HashMap<String, Box<dyn AsyncFunction + 'a>>;
 
 pub struct WorkflowEngine<'a> {
     functions: &'a FunctionMap<'a>,
+    logs: Arc<RwLock<VecDeque<WorkflowLogEntry>>>,
 }
 
 pub struct StepExecutor<'a> {
@@ -62,26 +66,78 @@ pub struct StepExecutor<'a> {
     workflow: &'a Workflow,
     pub current_step: usize,
     pub registers: DashMap<String, String>,
-    pub logs: Arc<DashMap<String, Vec<String>>>,
+    pub logs: Arc<RwLock<VecDeque<WorkflowLogEntry>>>,
 }
 
 impl<'a> WorkflowEngine<'a> {
     pub fn new(functions: &'a FunctionMap<'a>) -> Self {
-        WorkflowEngine { functions }
+        WorkflowEngine {
+            functions,
+            logs: Arc::new(RwLock::new(VecDeque::new())),
+        }
+    }
+
+    pub async fn log(&self, subprocess: Option<String>, additional_info: String, status: WorkflowLogEntryStatus) {
+        let mut logs = self.logs.write().await;
+        logs.push_back(WorkflowLogEntry {
+            subprocess,
+            input: None,
+            additional_info,
+            timestamp: Utc::now(),
+            status,
+            result: None,
+        });
+    }
+
+    pub async fn formatted_logs(logs: &RwLock<VecDeque<WorkflowLogEntry>>) -> String {
+        let logs = logs.read().await;
+        let mut formatted_logs = String::new();
+        for log_entry in logs.iter() {
+            formatted_logs.push_str(&format!(
+                "{}: {}\nStatus: {:?}\n---\n",
+                log_entry.subprocess.clone().unwrap_or_default(),
+                log_entry.additional_info.replace("\\n", "\n"),
+                log_entry.status
+            ));
+        }
+        formatted_logs
+    }
+
+    pub async fn write_logs_to_file(logs: &RwLock<VecDeque<WorkflowLogEntry>>, file_path: &str) -> io::Result<()> {
+        let logs = logs.read().await;
+        let mut file = File::create(file_path)?;
+
+        let now = Utc::now();
+        writeln!(file, "Log file created on: {}\n", now.to_rfc2822())?;
+
+        for log_entry in logs.iter() {
+            let pretty_value = log_entry.additional_info.replace("\\n", "\n").replace("\\\"", "\"");
+            let timestamp = Utc::now().to_rfc3339();
+            writeln!(file, "[{}] Subprocess {}: {}\nStatus: {:?}\n---\n", timestamp, log_entry.subprocess.clone().unwrap_or_default(), pretty_value, log_entry.status)?;
+        }
+        Ok(())
     }
 
     pub async fn execute_workflow(
         &self,
         workflow: &Workflow,
-        logs: Option<Arc<DashMap<String, Vec<String>>>>,
+        logs: Option<Arc<RwLock<VecDeque<WorkflowLogEntry>>>>,
     ) -> Result<DashMap<String, String>, WorkflowError> {
         let registers = DashMap::new();
-        let logs: Arc<DashMap<String, Vec<String>>> = logs.unwrap_or_default();
+        let logs = logs.unwrap_or_else(|| Arc::new(RwLock::new(VecDeque::new())));
 
         // Log the start of the workflow execution
-        logs.entry("workflow".to_string())
-            .or_default()
-            .push("Starting workflow execution".to_string());
+        {
+            let mut logs = logs.write().await;
+            logs.push_back(WorkflowLogEntry {
+                subprocess: Some("workflow".to_string()),
+                input: None,
+                additional_info: "Starting workflow execution".to_string(),
+                timestamp: Utc::now(),
+                status: WorkflowLogEntryStatus::Success("Workflow started".to_string()),
+                result: None,
+            });
+        }
 
         for step in &workflow.steps {
             for body in &step.body {
@@ -97,23 +153,44 @@ impl<'a> WorkflowEngine<'a> {
         step_name: &'b str,
         step_body: &'b StepBody,
         registers: &'b DashMap<String, String>,
-        logs: &'b DashMap<String, Vec<String>>,
+        logs: &'b Arc<RwLock<VecDeque<WorkflowLogEntry>>>,
     ) -> Pin<Box<dyn Future<Output = Result<(), WorkflowError>> + Send + 'b>> {
         Box::pin(async move {
             match step_body {
                 StepBody::Action(action) => {
                     let result = self.execute_action(action, registers).await;
-                    logs.entry(step_name.to_string())
-                        .or_default()
-                        .push(format!("Executing action: {:?}, Result: {:?}", action, result));
+                    {
+                        let mut logs = logs.write().await;
+                        logs.push_back(WorkflowLogEntry {
+                            subprocess: Some(step_name.to_string()),
+                            input: None,
+                            additional_info: format!("Executing action: {:?}", action),
+                            timestamp: Utc::now(),
+                            status: match &result {
+                                Ok(_) => WorkflowLogEntryStatus::Success("Action executed successfully".to_string()),
+                                Err(e) => WorkflowLogEntryStatus::Error(e.to_string()),
+                            },
+                            result: result.as_ref().ok().map(|_| "Success".to_string()),
+                        });
+                    }
                     result
                 }
                 StepBody::Condition { condition, body } => {
                     let condition_result = self.evaluate_condition(condition, registers).await;
-                    logs.entry(step_name.to_string()).or_default().push(format!(
-                        "Evaluating condition: {:?}, Result: {:?}",
-                        condition, condition_result
-                    ));
+                    {
+                        let mut logs = logs.write().await;
+                        logs.push_back(WorkflowLogEntry {
+                            subprocess: Some(step_name.to_string()),
+                            input: None,
+                            additional_info: format!("Evaluating condition: {:?}, Result: {:?}", condition, condition_result),
+                            timestamp: Utc::now(),
+                            status: match &condition_result {
+                                Ok(_) => WorkflowLogEntryStatus::Success("Condition evaluated successfully".to_string()),
+                                Err(e) => WorkflowLogEntryStatus::Error(e.to_string()),
+                            },
+                            result: condition_result.as_ref().ok().map(|_| "Success".to_string()),
+                        });
+                    }
                     if condition_result? {
                         self.execute_step_body(step_name, body, registers, logs).await?;
                     }
@@ -134,9 +211,17 @@ impl<'a> WorkflowEngine<'a> {
                                 .unwrap_or(0);
                             for i in start..=end {
                                 registers.insert(var.clone(), i.to_string());
-                                logs.entry(step_name.to_string())
-                                    .or_default()
-                                    .push(format!("ForLoop iteration: {} = {}", var, i));
+                                {
+                                    let mut logs = logs.write().await;
+                                    logs.push_back(WorkflowLogEntry {
+                                        subprocess: Some(step_name.to_string()),
+                                        input: Some(format!("{}..{}", start, end)),
+                                        additional_info: format!("ForLoop iteration: {} = {}", var, i),
+                                        timestamp: Utc::now(),
+                                        status: WorkflowLogEntryStatus::Success(format!("Iteration {} completed", i)),
+                                        result: Some(format!("Iteration {} completed", i)),
+                                    });
+                                }
                                 self.execute_step_body(step_name, body, registers, logs).await?;
                             }
                         }
@@ -145,35 +230,69 @@ impl<'a> WorkflowEngine<'a> {
                             let parts: Vec<&str> = source_value.split(delimiter).collect();
                             for part in parts {
                                 registers.insert(var.clone(), part.to_string());
-                                logs.entry(step_name.to_string())
-                                    .or_default()
-                                    .push(format!("ForLoop iteration: {} = {}", var, part));
+                                {
+                                    let mut logs = logs.write().await;
+                                    logs.push_back(WorkflowLogEntry {
+                                        subprocess: Some(step_name.to_string()),
+                                        input: Some(source_value.clone()),
+                                        additional_info: format!("ForLoop iteration: {} = {}", var, part),
+                                        timestamp: Utc::now(),
+                                        status: WorkflowLogEntryStatus::Success(format!("Iteration with part '{}' completed", part)),
+                                        result: Some(format!("Iteration with part '{}' completed", part)),
+                                    });
+                                }
                                 self.execute_step_body(step_name, body, registers, logs).await?;
                             }
                         }
                     }
-                    logs.entry(step_name.to_string()).or_default().push(format!(
-                        "Executing for loop: {:?}, Registers: {:?}",
-                        in_expr,
-                        registers.clone()
-                    ));
+                    {
+                        let mut logs = logs.write().await;
+                        logs.push_back(
+                            WorkflowLogEntry {
+                                subprocess: Some(step_name.to_string()),
+                                input: None,
+                                additional_info: format!("Executing for loop: {:?}, Registers: {:?}", in_expr, registers.clone()),
+                                timestamp: Utc::now(),
+                                status: WorkflowLogEntryStatus::Success("For loop executed successfully".to_string()),
+                                result: Some("For loop executed successfully".to_string()),
+                            }
+                        );
+                    }
                     Ok(())
                 }
                 StepBody::RegisterOperation { register, value } => {
                     let value = self.evaluate_workflow_value(value, registers).await?;
                     registers.insert(register.clone(), value.clone());
-                    logs.entry(step_name.to_string())
-                        .or_default()
-                        .push(format!("Setting register {} to {:?}", register, value));
+                    {
+                        let mut logs = logs.write().await;
+                        logs.push_back(WorkflowLogEntry {
+                            subprocess: Some(step_name.to_string()),
+                            input: None,
+                            additional_info: format!("Setting register {} to {:?}", register, value),
+                            timestamp: Utc::now(),
+                            status: WorkflowLogEntryStatus::Success(format!("Register {} set successfully", register)),
+                            result: Some(format!("Register {} set successfully", register)),
+                        });
+                    }
                     Ok(())
                 }
                 StepBody::Composite(bodies) => {
                     for (index, body) in bodies.iter().enumerate() {
                         let step_body_str = format!("{:?}", body);
                         self.execute_step_body(step_name, body, registers, logs).await?;
-                        logs.entry(step_name.to_string())
-                            .or_default()
-                            .push(format!("Composite body {}: {:?}", index, step_body_str));
+                        {
+                            let mut logs = logs.write().await;
+                            logs.push_back(
+                                WorkflowLogEntry {
+                                    subprocess: Some(step_name.to_string()),
+                                    input: None,
+                                    additional_info: format!("Composite body {}: {:?}", index, step_body_str),
+                                    timestamp: Utc::now(),
+                                    status: WorkflowLogEntryStatus::Success(format!("Composite body {} executed successfully", index)),
+                                    result: Some(format!("Composite body {} executed successfully", index)),
+                                }
+                            );
+                        }
                     }
                     Ok(())
                 }
@@ -338,46 +457,15 @@ impl<'a> WorkflowEngine<'a> {
         &'a self,
         workflow: &'a Workflow,
         initial_registers: Option<DashMap<String, String>>,
-        logs: Option<Arc<DashMap<String, Vec<String>>>>,
+        logs: Option<Arc<RwLock<VecDeque<WorkflowLogEntry>>>>,
     ) -> StepExecutor<'a> {
         StepExecutor {
             engine: self,
             workflow,
             current_step: 0,
             registers: initial_registers.unwrap_or_default(),
-            logs: logs.unwrap_or_default(),
+            logs: logs.unwrap_or_else(|| Arc::new(RwLock::new(VecDeque::new()))),
         }
-    }
-
-    pub fn formatted_logs(logs: &DashMap<String, Vec<String>>) -> String {
-        let mut formatted_logs = String::new();
-        for entry in logs.iter() {
-            let key = entry.key();
-            let values = entry.value();
-            for value in values {
-                formatted_logs.push_str(&format!("{}: {}\n---\n", key, value.replace("\\n", "\n")));
-            }
-        }
-        formatted_logs
-    }
-
-    pub fn write_logs_to_file(logs: &DashMap<String, Vec<String>>, file_path: &str) -> io::Result<()> {
-        let mut file = File::create(file_path)?;
-
-        // Write the top message with the current date and time
-        let now = Utc::now();
-        writeln!(file, "Log file created on: {}\n", now.to_rfc2822())?;
-
-        for entry in logs.iter() {
-            let key = entry.key();
-            let values = entry.value();
-            for value in values {
-                let pretty_value = value.replace("\\n", "\n").replace("\\\"", "\"");
-                let timestamp = Utc::now().to_rfc3339();
-                writeln!(file, "[{}] Step {}: {}\n---\n", timestamp, key, pretty_value)?;
-            }
-        }
-        Ok(())
     }
 }
 
@@ -389,18 +477,25 @@ impl<'a> Iterator for StepExecutor<'a> {
             let step = &self.workflow.steps[self.current_step];
             let step_name = step.name.clone();
 
-            // Add log entry for the start of the step and add the step name and content to the logs
-            self.logs
-                .entry(step_name.clone())
-                .or_default()
-                .push(format!("Executing step: {:?}", step.name));
-
-            eprintln!("Executing step: {:?}", step);
             let mut result = Ok(self.registers.clone());
 
             task::block_in_place(|| {
                 let rt = Runtime::new().unwrap();
                 rt.block_on(async {
+                    {
+                        let mut logs = self.logs.write().await;
+                        logs.push_back(WorkflowLogEntry {
+                            subprocess: Some(step_name.clone()),
+                            input: None,
+                            additional_info: format!("Executing step: {:?}", step.name),
+                            timestamp: Utc::now(),
+                            status: WorkflowLogEntryStatus::Success(format!("Step {} started", step.name)),
+                            result: None,
+                        });
+                    }
+
+                    eprintln!("Executing step: {:?}", step);
+
                     for body in step.body.iter() {
                         if let Err(e) = self
                             .engine

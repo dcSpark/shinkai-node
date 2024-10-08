@@ -233,6 +233,7 @@ impl SheetManager {
                 workflow_name: None, // it could be in the sheet_job_data
                 sheet_job_data: Some(serde_json::to_string(&job_data).unwrap()),
                 callback: None,
+                metadata: None,
             };
 
             job_messages.push((job_message, job_data));
@@ -256,7 +257,8 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-                .queue_job_message(first_job_message, user_profile)
+            // TODO: I'm not sure about this one
+                .queue_job_message(first_job_message, user_profile, "")
                 .await
                 .map_err(|e| e.to_string())?;
         }

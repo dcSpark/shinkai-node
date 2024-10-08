@@ -883,6 +883,7 @@ impl ShinkaiMessageBuilderWrapper {
             workflow_name,
             sheet_job_data: None,
             callback: None,
+            metadata: None,
         };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;

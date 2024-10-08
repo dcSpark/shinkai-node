@@ -179,6 +179,7 @@ async fn test_process_job_queue_concurrency() {
         callback_manager.clone(),
         None,
         None,
+        None,
         llm_stopper.clone(),
         move |job,
               _db,
@@ -193,6 +194,7 @@ async fn test_process_job_queue_concurrency() {
               _job_queue_manager,
               _my_agent_payments_manager,
               _ext_agent_payments_manager,
+              _sqlite_logger,
               _llm_stopper| {
             mock_processing_fn(
                 job,
@@ -221,8 +223,10 @@ async fn test_process_job_queue_concurrency() {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         job_queue
             .push(format!("job_id::{}::false", i).as_str(), job)
@@ -332,6 +336,7 @@ async fn test_sequential_process_for_same_job_id() {
         callback_manager.clone(),
         None,
         None,
+        None,
         llm_stopper.clone(),
         move |job,
               _db,
@@ -346,6 +351,7 @@ async fn test_sequential_process_for_same_job_id() {
               _job_queue_manager,
               _my_agent_payments_manager,
               _ext_agent_payments_manager,
+              _sqlite_logger,
               _llm_stopper| {
             mock_processing_fn(
                 job,
@@ -373,8 +379,10 @@ async fn test_sequential_process_for_same_job_id() {
                 workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
+                metadata: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+            None,
         );
         job_queue.push("job_id::123::false", job).await.unwrap();
     }
