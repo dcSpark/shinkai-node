@@ -225,6 +225,33 @@ async fn handle_streaming_response(
                                 let m = manager.lock().await;
                                 let inbox_name_string = inbox_name.to_string();
 
+                                // Send WS message if a function call is detected
+                                if let Some(ref function_call) = function_call {
+                                    let metadata = WSMetadata {
+                                        id: Some(Uuid::new_v4().to_string()),
+                                        is_done: false,
+                                        done_reason: Some(format!("Function call: {:?}", function_call)),
+                                        total_duration: None,
+                                        eval_count: None,
+                                    };
+
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                    // Serialize FunctionCall to JSON string
+                                    let function_call_json = serde_json::to_string(&function_call)
+                                        .unwrap_or_else(|_| "{}".to_string());
+
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            function_call_json,
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                }
+
                                 let metadata = WSMetadata {
                                     id: Some(session_id.clone()),
                                     is_done: data.get("done").and_then(|d| d.as_bool()).unwrap_or(false),
@@ -363,6 +390,41 @@ async fn handle_non_streaming_response(
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);
+
+                        if let Some(ref manager) = ws_manager_trait {
+                            if let Some(ref inbox_name) = inbox_name {
+                                // Send WS message if a function call is detected
+                                if let Some(ref function_call) = function_call {
+                                    let m = manager.lock().await;
+                                    let inbox_name_string = inbox_name.to_string();
+
+                                    let metadata = WSMetadata {
+                                        id: Some(Uuid::new_v4().to_string()),
+                                        is_done: false,
+                                        done_reason: Some(format!("Function call: {:?}", function_call)),
+                                        total_duration: None,
+                                        eval_count: None,
+                                    };
+
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                    // Serialize FunctionCall to JSON string
+                                    let function_call_json = serde_json::to_string(&function_call)
+                                        .unwrap_or_else(|_| "{}".to_string());
+
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            function_call_json,
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                }
+                            }
+                        }
+
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),
