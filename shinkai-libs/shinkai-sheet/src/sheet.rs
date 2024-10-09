@@ -516,7 +516,9 @@ impl Sheet {
             .iter()
             .enumerate()
             .filter_map(|(i, col_uuid)| {
-                self.columns.get(col_uuid).map(|col_def| format!("{}: {}", column_letter(i), col_def.name.clone()))
+                self.columns
+                    .get(col_uuid)
+                    .map(|col_def| format!("{}: {}", column_letter(i), col_def.name.clone()))
             })
             .collect();
         headers.insert(0, "Row".to_string());
@@ -1061,12 +1063,37 @@ pub fn sheet_reducer(
                         visited: HashSet::new(),
                         depth: 0,
                     });
+
+                    // Add jobs for LLM columns
+                    if let ColumnBehavior::LLMCall {
+                        input: _, // used under the hood with get_input_cells_for_column
+                        workflow,
+                        workflow_name,
+                        llm_provider_name,
+                        input_hash: _,
+                    } = &col_def.behavior
+                    {
+                        let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
+                        let workflow_job_data = WorkflowSheetJobData {
+                            sheet_id: state.uuid.clone(),
+                            row: row_uuid.clone(),
+                            col: col_uuid.clone(),
+                            col_definition: col_def.clone(),
+                            workflow: workflow.clone(),
+                            workflow_name: workflow_name.clone(),
+                            input_cells,
+                            llm_provider_name: llm_provider_name.clone(),
+                        };
+
+                        jobs.push(workflow_job_data);
+                    }
                 }
 
                 // Apply update events
                 for event in update_events {
                     let (new_state, mut new_jobs) = sheet_reducer(state.clone(), event).await;
                     eprintln!("update_events New state: {:?}", new_state);
+                    eprintln!("update_events New jobs: {:?}", new_jobs.len());
                     state = new_state;
                     jobs.append(&mut new_jobs);
                 }

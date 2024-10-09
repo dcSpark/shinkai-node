@@ -937,6 +937,49 @@ mod tests {
         // Print final state of the sheet
         sheet.print_as_ascii_table();
     }
+
+    #[tokio::test]
+    async fn test_new_rows_should_create_jobs() {
+        let mut sheet = Sheet::new();
+        let column_ai_id = Uuid::new_v4().to_string();
+
+        // Define the workflow for the AI column
+        let workflow_str = r#"
+    workflow WorkflowTest v0.1 {
+        step Main {
+            $RESULT = call opinionated_inference($INPUT)
+        }
+    }
+    "#;
+        let workflow = parse_workflow(workflow_str).unwrap();
+
+        // Create an AI column
+        let column_ai = ColumnDefinition {
+            id: column_ai_id.clone(),
+            name: "AI Column".to_string(),
+            behavior: ColumnBehavior::LLMCall {
+                input: "=\"Hello World\"".to_string(),
+                workflow: Some(workflow),
+                workflow_name: None,
+                llm_provider_name: "MockProvider".to_string(),
+                input_hash: None,
+            },
+        };
+        let _ = sheet.set_column(column_ai.clone()).await;
+
+        // Add an extra row and check for job creation
+        let row_2_id = Uuid::new_v4().to_string();
+        let new_jobs = sheet.add_row(row_2_id.clone()).await.unwrap();
+        assert_eq!(new_jobs.len(), 1, "A new job should be created for the newly added row");
+
+        // We add a new row and check for job creation
+        let row_3_id = Uuid::new_v4().to_string();
+        let new_jobs = sheet.add_row(row_3_id.clone()).await.unwrap();
+        assert_eq!(new_jobs.len(), 1, "A new job should be created for the newly added row");
+
+        // Print final state of the sheet
+        sheet.print_as_ascii_table();
+    }
 }
 
 // // TODO: add test that A (text missing) -> B (workflow depending on A) -> C (workflo depending on B)
