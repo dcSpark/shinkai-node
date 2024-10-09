@@ -8,7 +8,13 @@ use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity, inbox_name::InboxName, job::JobLike, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
+        identity::Identity,
+        inbox_name::InboxName,
+        job::JobLike,
+        job_config::JobConfig,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        smart_inbox::{SmartInbox, V2SmartInbox},
     },
     shinkai_message::shinkai_message_schemas::{
         APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
@@ -16,6 +22,7 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -23,10 +30,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
-    network::{
-        node_error::NodeError,
-        Node,
-    },
+    network::{node_error::NodeError, Node},
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1063,6 +1067,48 @@ impl Node {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),
                     message: format!("Job with ID {} not found", job_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_get_tooling_logs(
+        db: Arc<ShinkaiDB>,
+        sqlite_logger: Arc<SqliteLogger>,
+        bearer: String,
+        message_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve logs for the given message_id using SqliteLogger
+        match sqlite_logger.get_logs(Some(&message_id), None, None) {
+            Ok(logs) => {
+                match serde_json::to_value(&logs) {
+                    Ok(logs_value) => {
+                        let _ = res.send(Ok(logs_value)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize logs: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve logs: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

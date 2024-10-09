@@ -4,9 +4,7 @@ use std::sync::Arc;
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::{
-    LLMInferenceResponse, FunctionCall,
-};
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
@@ -135,7 +133,16 @@ impl LLMService for OpenAI {
                     )
                     .await
                 } else {
-                    handle_non_streaming_response(client, url, payload, key.clone(), inbox_name, llm_stopper).await
+                    handle_non_streaming_response(
+                        client,
+                        url,
+                        payload,
+                        key.clone(),
+                        inbox_name,
+                        llm_stopper,
+                        ws_manager_trait,
+                    )
+                    .await
                 }
             } else {
                 Err(LLMProviderError::ApiKeyNotSet)
@@ -225,28 +232,55 @@ async fn handle_streaming_response(
                                 let m = manager.lock().await;
                                 let inbox_name_string = inbox_name.to_string();
 
-                                let metadata = WSMetadata {
-                                    id: Some(session_id.clone()),
-                                    is_done: data.get("done").and_then(|d| d.as_bool()).unwrap_or(false),
-                                    done_reason: data
-                                        .get("done_reason")
-                                        .and_then(|d| d.as_str())
-                                        .map(|s| s.to_string()),
-                                    total_duration: data.get("total_duration").and_then(|d| d.as_u64()),
-                                    eval_count: data.get("eval_count").and_then(|c| c.as_u64()),
-                                };
+                                // Send WS message if a function call is detected
+                                if let Some(ref function_call) = function_call {
+                                    let metadata = WSMetadata {
+                                        id: Some(Uuid::new_v4().to_string()),
+                                        is_done: false,
+                                        done_reason: Some(format!("Function call: {:?}", function_call)),
+                                        total_duration: None,
+                                        eval_count: None,
+                                    };
 
-                                let ws_message_type = WSMessageType::Metadata(metadata);
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
 
-                                let _ = m
-                                    .queue_message(
-                                        WSTopic::Inbox,
-                                        inbox_name_string,
-                                        response_text.clone(),
-                                        ws_message_type,
-                                        true,
-                                    )
-                                    .await;
+                                    // Serialize FunctionCall to JSON string
+                                    let function_call_json =
+                                        serde_json::to_string(&function_call).unwrap_or_else(|_| "{}".to_string());
+
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            function_call_json,
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                } else {
+                                    let metadata = WSMetadata {
+                                        id: Some(session_id.clone()),
+                                        is_done: data.get("done").and_then(|d| d.as_bool()).unwrap_or(false),
+                                        done_reason: data
+                                            .get("done_reason")
+                                            .and_then(|d| d.as_str())
+                                            .map(|s| s.to_string()),
+                                        total_duration: data.get("total_duration").and_then(|d| d.as_u64()),
+                                        eval_count: data.get("eval_count").and_then(|c| c.as_u64()),
+                                    };
+
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            response_text.clone(),
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                }
                             }
                         }
                     }
@@ -281,6 +315,7 @@ async fn handle_non_streaming_response(
     api_key: String,
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
@@ -363,6 +398,41 @@ async fn handle_non_streaming_response(
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);
+
+                        if let Some(ref manager) = ws_manager_trait {
+                            if let Some(ref inbox_name) = inbox_name {
+                                // Send WS message if a function call is detected
+                                if let Some(ref function_call) = function_call {
+                                    let m = manager.lock().await;
+                                    let inbox_name_string = inbox_name.to_string();
+
+                                    let metadata = WSMetadata {
+                                        id: Some(Uuid::new_v4().to_string()),
+                                        is_done: false,
+                                        done_reason: Some(format!("Function call: {:?}", function_call)),
+                                        total_duration: None,
+                                        eval_count: None,
+                                    };
+
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                    // Serialize FunctionCall to JSON string
+                                    let function_call_json = serde_json::to_string(&function_call)
+                                        .unwrap_or_else(|_| "{}".to_string());
+
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            function_call_json,
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                }
+                            }
+                        }
+
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),

@@ -2952,6 +2952,13 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiGetToolingLogs { bearer, message_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let sqlite_logger_clone = Arc::clone(&self.sqlite_logger);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tooling_logs(db_clone, sqlite_logger_clone, bearer, message_id, res).await;
+                });
+            }
             NodeCommand::V2ApiImportSheet { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let sheet_manager_clone = self.sheet_manager.clone();
