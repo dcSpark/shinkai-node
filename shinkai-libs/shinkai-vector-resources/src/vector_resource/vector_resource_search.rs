@@ -337,14 +337,39 @@ pub trait VectorResourceSearch: VectorResourceCore {
         starting_path: Option<VRPath>,
     ) -> Vec<RetrievedNode> {
         // Call the new method, passing None for the root_header parameter
-        self._vector_search_customized_with_root_header(
+        let retrieved_nodes = self._vector_search_customized_with_root_header(
             query,
             num_of_results,
             traversal_method,
             traversal_options,
             starting_path,
             None,
-        )
+        );
+
+        if let VRSourceReference::Standard(SourceReference::FileRef(file_ref)) = self.source() {
+            if let SourceFileType::Document(file_type) = file_ref.file_type {
+                if file_type == DocumentFileType::Csv {
+                    if let Some(first_node) = retrieved_nodes.first() {
+                        if let Some(merged_node) = self.get_all_node_content_merged() {
+                            let retrieved_node = RetrievedNode {
+                                node: merged_node,
+                                score: retrieved_nodes
+                                    .iter()
+                                    .reduce(|a, b| if a.score > b.score { a } else { b })
+                                    .unwrap()
+                                    .score,
+                                resource_header: first_node.resource_header.clone(),
+                                retrieval_path: first_node.retrieval_path.clone(),
+                            };
+
+                            return vec![retrieved_node];
+                        }
+                    }
+                }
+            }
+        }
+
+        retrieved_nodes
     }
 
     /// Vector search customized core logic, with ability to specify root_header
