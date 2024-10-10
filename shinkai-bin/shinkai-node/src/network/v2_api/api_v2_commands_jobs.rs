@@ -1115,4 +1115,14 @@ impl Node {
             }
         }
     }
+
+    pub async fn v2_fork_job_messages(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        message_id: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        Ok(())
+    }
 }
