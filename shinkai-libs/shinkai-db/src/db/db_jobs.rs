@@ -7,7 +7,7 @@ use crate::schemas::ws_types::WSUpdateHandler;
 use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 
 use rocksdb::WriteBatch;
-use shinkai_message_primitives::schemas::job::{Job, JobLike, JobStepResult};
+use shinkai_message_primitives::schemas::job::{ForkedJob, Job, JobLike, JobStepResult};
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
@@ -57,6 +57,7 @@ impl ShinkaiDB {
         let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
         let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
         let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
+        let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
 
         // Content
         let conversation_inbox_prefix = format!("inbox_{}", Self::job_id_to_hash(&job_id)); // 47 characters so prefix works
@@ -93,6 +94,7 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
         batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "");
+        batch.put_cf(cf_inbox, forked_jobs_key.as_bytes(), "[]");
 
         // Serialize and put associated_ui if it exists
         if let Some(ui) = &associated_ui {
@@ -129,13 +131,13 @@ impl ShinkaiDB {
     pub fn update_job_config(&self, job_id: &str, config: JobConfig) -> Result<(), ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let config_key = format!("jobinbox_{}_config", job_id);
-    
+
         // Serialize the config
         let config_value = serde_json::to_vec(&config)?;
-    
+
         // Update the config in the database
         self.db.put_cf(cf_inbox, config_key.as_bytes(), &config_value)?;
-    
+
         Ok(())
     }
 
@@ -206,6 +208,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            forked_jobs,
         ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
@@ -222,6 +225,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            forked_jobs,
         };
 
         let duration = start.elapsed();
@@ -251,6 +255,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            forked_jobs,
         ) = self.get_job_data(job_id, false)?;
 
         // Construct the job
@@ -267,6 +272,7 @@ impl ShinkaiDB {
             execution_context,
             associated_ui,
             config,
+            forked_jobs,
         };
 
         let duration = start.elapsed();
@@ -300,6 +306,7 @@ impl ShinkaiDB {
             HashMap<String, String>,
             Option<AssociatedUI>,
             Option<JobConfig>,
+            Vec<ForkedJob>,
         ),
         ShinkaiDBError,
     > {
@@ -365,6 +372,14 @@ impl ShinkaiDB {
             .flatten()
             .and_then(|value| serde_json::from_slice(&value).ok());
 
+        let forked_jobs_value = self
+            .db
+            .get_cf(cf_jobs, format!("jobinbox_{}_forked_jobs", job_id).as_bytes())
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_slice(&value).ok())
+            .unwrap_or_default();
+
         Ok((
             scope,
             is_finished,
@@ -377,6 +392,7 @@ impl ShinkaiDB {
             self.get_job_execution_context(job_id)?,
             associated_ui_value,
             config_value,
+            forked_jobs_value,
         ))
     }
 
@@ -713,6 +729,33 @@ impl ShinkaiDB {
     ) -> Result<(), ShinkaiDBError> {
         self.unsafe_insert_inbox_message(message, parent_message_key, ws_manager)
             .await?;
+        Ok(())
+    }
+
+    pub fn add_forked_job(&self, job_id: &str, forked_job: ForkedJob) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
+
+        // Fetch the current forked jobs
+        let forked_jobs_value: Vec<u8> = self
+            .db
+            .get_cf(cf_inbox, forked_jobs_key.as_bytes())
+            .ok()
+            .flatten()
+            .and_then(|value| serde_json::from_slice(&value).ok())
+            .unwrap_or_default();
+        let mut forked_jobs: Vec<ForkedJob> = serde_json::from_slice(&forked_jobs_value)?;
+
+        // Add the new forked job
+        forked_jobs.push(forked_job);
+
+        // Serialize the forked jobs
+        let forked_jobs_value = serde_json::to_vec(&forked_jobs)?;
+
+        // Update the forked jobs in the database
+        self.db
+            .put_cf(cf_inbox, forked_jobs_key.as_bytes(), &forked_jobs_value)?;
+
         Ok(())
     }
 }
