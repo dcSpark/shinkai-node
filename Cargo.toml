@@ -17,6 +17,7 @@ members = [
   "shinkai-libs/shinkai-tools-primitives",
   "shinkai-libs/shinkai-mini-libs",
   "shinkai-libs/shinkai-lancedb",
+  "shinkai-libs/shinkai-spreadsheet-llm",
   "shinkai-libs/shinkai-sqlite",
   "shinkai-bin/*",
 ]
