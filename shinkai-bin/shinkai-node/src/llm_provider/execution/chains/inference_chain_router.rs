@@ -3,6 +3,7 @@ use super::inference_chain_trait::{InferenceChain, InferenceChainContext, Infere
 use super::sheet_ui_chain::sheet_ui_inference_chain::SheetUIInferenceChain;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::job::Job;
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -32,6 +33,7 @@ impl JobManager {
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         job_message: JobMessage,
+        message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         prev_execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -41,6 +43,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         // Initializations
@@ -54,6 +57,7 @@ impl JobManager {
             vector_fs,
             full_job.clone(),
             parsed_user_message,
+            message_hash_id,
             image_files,
             llm_provider,
             prev_execution_context,
@@ -66,6 +70,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         );
 

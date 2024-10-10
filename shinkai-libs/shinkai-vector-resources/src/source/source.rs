@@ -82,16 +82,12 @@ impl VRSourceReference {
         let file_name_without_extension = SourceFileType::clean_string_of_extension(file_name);
         // Attempt to auto-detect, else use file extension
         let file_type = SourceFileType::detect_file_type(file_name)?;
-        if file_name.starts_with("http") {
-            Ok(VRSourceReference::new_uri_ref(file_name))
-        } else {
-            let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
-            Ok(VRSourceReference::new_source_file_ref(
-                file_name_without_extension.to_string(),
-                file_type,
-                text_chunking_strategy,
-            ))
-        }
+        let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
+        Ok(VRSourceReference::new_source_file_ref(
+            file_name_without_extension.to_string(),
+            file_type,
+            text_chunking_strategy,
+        ))
     }
 
     /// Checks if the VRSourceReference is of type Standard

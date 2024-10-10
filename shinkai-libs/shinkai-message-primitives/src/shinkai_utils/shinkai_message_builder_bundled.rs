@@ -1,4 +1,4 @@
-use crate::{schemas::shinkai_name::ShinkaiName, shinkai_utils::job_scope::JobScope};
+use crate::{schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::MessageMetadata, shinkai_utils::job_scope::JobScope};
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -151,6 +151,7 @@ impl ShinkaiMessageBuilder {
             workflow_name,
             sheet_job_data: None,
             callback: None,
+            metadata: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -178,6 +179,7 @@ impl ShinkaiMessageBuilder {
         job_id: String,
         content: String,
         files_inbox: String,
+        metadata: Option<MessageMetadata>,
         my_signature_secret_key: SigningKey,
         node_sender: ShinkaiNameString,
         node_receiver: ShinkaiNameString,
@@ -192,6 +194,7 @@ impl ShinkaiMessageBuilder {
             workflow_name: None, // the agent wont be sending you a workflow
             sheet_job_data: None,
             callback: None,
+            metadata,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

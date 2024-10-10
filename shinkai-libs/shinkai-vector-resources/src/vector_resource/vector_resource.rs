@@ -21,6 +21,7 @@ pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::any::Any;
+use std::collections::HashMap;
 
 #[async_trait]
 pub trait VectorResource: Send + Sync + VectorResourceCore + VectorResourceSearch {}
@@ -897,6 +898,46 @@ pub trait VectorResourceCore: Send + Sync {
         return Err(VRError::InvalidNodeType(
             "Expected an OrderedVectorResource or a description".to_string(),
         ));
+    }
+
+    /// Generates a Node that contains the merged text of all nodes in the Vector Resource.
+    fn get_all_node_content_merged(&self) -> Option<Node> {
+        let all_nodes = self.get_all_nodes_flattened();
+
+        let node_id = all_nodes.first().and_then(|n| Some(n.id.clone())).unwrap_or_default();
+        let mut merged_text = String::new();
+        let mut merged_data_tags = Vec::new();
+        let mut merged_metadata: Option<HashMap<String, String>> = None;
+        for node in all_nodes {
+            if let Ok(text) = node.get_text_content() {
+                merged_text += text;
+                merged_text += "\n";
+                merged_data_tags.extend(node.data_tag_names.clone());
+
+                if let Some(metadata) = node.metadata {
+                    if merged_metadata.is_none() {
+                        merged_metadata = Some(metadata.clone());
+                    } else {
+                        let mut merged_metadata_unwrapped = merged_metadata.unwrap();
+                        for (key, value) in metadata {
+                            merged_metadata_unwrapped.insert(key, value);
+                        }
+                        merged_metadata = Some(merged_metadata_unwrapped);
+                    }
+                }
+            }
+        }
+
+        if merged_text.is_empty() {
+            return None;
+        }
+
+        Some(Node::from_node_content(
+            node_id,
+            NodeContent::Text(merged_text),
+            merged_metadata,
+            merged_data_tags,
+        ))
     }
 }
 

@@ -24,6 +24,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::collections::HashSet;
@@ -48,6 +49,7 @@ pub trait JobManagerTrait {
         &'a mut self,
         job_message: &'a JobMessage,
         user_profile: &'a ShinkaiName,
+        message_hash_id: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
 }
 
@@ -60,21 +62,8 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
-    pub vector_fs: Weak<VectorFS>,
-    // An EmbeddingGenerator initialized with the Node's default embedding model + server info
-    pub embedding_generator: RemoteEmbeddingGenerator,
     // Websocket manager for sending updates to the frontend
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    // Tool router for managing installed tools
-    pub tool_router: Option<Arc<ToolRouter>>,
-    // Sheet manager for managing installed sheets
-    pub sheet_manager: Arc<Mutex<SheetManager>>,
-    // Job callback manager for handling job callbacks
-    pub callback_manager: Arc<Mutex<JobCallbackManager>>,
-    // My agent payments manager for managing payments to agents
-    pub my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
-    // Ext agent payments manager for managing payments to agents
-    pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
 }
 
 impl JobManager {
@@ -92,6 +81,7 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
@@ -145,6 +135,7 @@ impl JobManager {
             callback_manager.clone(),
             Some(my_agent_payments_manager.clone()),
             Some(ext_agent_payments_manager.clone()),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
             |job,
              db,
@@ -159,6 +150,7 @@ impl JobManager {
              job_queue_manager,
              my_agent_payments_manager,
              ext_agent_payments_manager,
+             sqlite_logger,
              llm_stopper| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
@@ -174,6 +166,7 @@ impl JobManager {
                     job_queue_manager,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    sqlite_logger.clone(),
                     llm_stopper.clone(),
                 ))
             },
@@ -189,14 +182,7 @@ impl JobManager {
             llm_providers,
             job_queue_manager: job_queue_manager.clone(),
             job_processing_task: Some(job_queue_handler),
-            vector_fs,
-            embedding_generator,
             ws_manager,
-            tool_router,
-            sheet_manager,
-            callback_manager,
-            my_agent_payments_manager,
-            ext_agent_payments_manager,
         }
     }
 
@@ -215,6 +201,7 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
@@ -230,6 +217,7 @@ impl JobManager {
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
                 Option<Arc<Mutex<MyAgentOfferingsManager>>>,
                 Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+                Option<Arc<SqliteLogger>>,
                 Arc<LLMStopper>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
@@ -242,6 +230,7 @@ impl JobManager {
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
+        let sqlite_logger = sqlite_logger.clone();
         let llm_stopper = Arc::clone(&llm_stopper);
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
@@ -310,6 +299,7 @@ impl JobManager {
                         let callback_manager = callback_manager.clone();
                         let my_agent_payments_manager = my_agent_payments_manager.clone();
                         let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                        let sqlite_logger = sqlite_logger.clone();
                         let llm_stopper = Arc::clone(&llm_stopper);
 
                         tokio::spawn(async move {
@@ -339,6 +329,7 @@ impl JobManager {
                                             job_queue_manager.clone(),
                                             my_agent_payments_manager,
                                             ext_agent_payments_manager,
+                                            sqlite_logger,
                                             llm_stopper,
                                         )
                                         .await;
@@ -468,7 +459,6 @@ impl JobManager {
         profile: &ShinkaiName,
         llm_provider_id: &String,
     ) -> Result<String, LLMProviderError> {
-        // TODO: add job_id to agent so it's aware
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -563,7 +553,8 @@ impl JobManager {
             .await?;
         std::mem::drop(db_arc);
 
-        self.add_job_message_to_job_queue(&job_message, &profile).await?;
+        let message_hash_id = message.calculate_message_hash_for_pagination();
+        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id)).await?;
 
         Ok(job_message.job_id.clone().to_string())
     }
@@ -572,8 +563,9 @@ impl JobManager {
         &mut self,
         job_message: &JobMessage,
         profile: &ShinkaiName,
+        message_hash_id: Option<String>,
     ) -> Result<String, LLMProviderError> {
-        let job_for_processing = JobForProcessing::new(job_message.clone(), profile.clone());
+        let job_for_processing = JobForProcessing::new(job_message.clone(), profile.clone(), message_hash_id);
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;
         let _ = job_queue_manager.push(&job_message.job_id, job_for_processing).await;
@@ -600,9 +592,15 @@ impl JobManagerTrait for JobManager {
         &'a mut self,
         job_message: &'a JobMessage,
         user_profile: &'a ShinkaiName,
+        message_hash_id: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
-            self.add_job_message_to_job_queue(job_message, user_profile)
+            let message_hash_id_option = if message_hash_id.is_empty() {
+                None
+            } else {
+                Some(message_hash_id.to_string())
+            };
+            self.add_job_message_to_job_queue(job_message, user_profile, message_hash_id_option)
                 .await
                 .map_err(|e| e.to_string())
         })

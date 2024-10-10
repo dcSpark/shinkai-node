@@ -40,6 +40,13 @@ pub struct CellUpdateData {
     pub value: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProcessedInput {
+    pub content: String,
+    pub local_files: Vec<(String, String)>, // (FilePath, FileName)
+    pub uploaded_files: Vec<String>,
+}
+
 /// The `Sheet` struct represents the state of a spreadsheet.
 /// This implementation uses a Redux-like architecture for managing state updates.
 /// State updates are performed through actions, and the reducer function processes these actions to produce a new state.
@@ -423,18 +430,24 @@ impl Sheet {
     /// * `col` - The UUID of the column containing the cell.
     ///
     /// # Returns
-    /// An `Option<String>` containing the processed input if successful, or `None` if the column behavior is not LLMCall.
-    pub fn get_processed_input(&self, row: UuidString, col: UuidString) -> Option<String> {
+    /// An `Option<ProcessedInput>` containing the processed input if successful, or `None` if the column behavior is not LLMCall.
+    pub fn get_processed_input(&self, row: UuidString, col: UuidString) -> Option<ProcessedInput> {
         if let Some(column_definition) = self.columns.get(&col) {
             if let ColumnBehavior::LLMCall { input, .. } = &column_definition.behavior {
                 if !input.starts_with('=') {
                     // If the input does not start with '=', return it as is
-                    return Some(input.clone());
+                    return Some(ProcessedInput {
+                        content: input.clone(),
+                        local_files: Vec::new(),
+                        uploaded_files: Vec::new(),
+                    });
                 }
 
                 let formula = &input[1..]; // Remove the initial '='
                 let parts: Vec<&str> = formula.split('+').collect();
                 let mut result = String::new();
+                let mut local_files = Vec::new();
+                let mut uploaded_files = Vec::new();
 
                 for part in parts {
                     let part = part.trim();
@@ -446,14 +459,41 @@ impl Sheet {
                         // Handle cell references
                         let col_index = CellNameConverter::column_name_to_index(part);
                         if let Some(col_uuid) = self.display_columns.get(col_index) {
-                            if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
-                                result.push_str(&value);
+                            if let Some(referenced_column) = self.columns.get(col_uuid) {
+                                match &referenced_column.behavior {
+                                    ColumnBehavior::Text | ColumnBehavior::Number | ColumnBehavior::Formula(_) => {
+                                        if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
+                                            result.push_str(&value);
+                                        }
+                                    }
+                                    ColumnBehavior::MultipleVRFiles { files } => {
+                                        local_files.extend(files.clone());
+                                    }
+                                    ColumnBehavior::UploadedFiles { files } => {
+                                        if let Some(cell_files) =
+                                            self.uploaded_files.get(&(row.clone(), col_uuid.clone()))
+                                        {
+                                            uploaded_files.extend(cell_files.clone());
+                                            result.push_str(&format!("Uploaded files: {:?}", cell_files));
+                                        }
+                                    }
+                                    ColumnBehavior::LLMCall { .. } => {
+                                        // Handle nested LLMCall if needed
+                                        if let Some(value) = self.get_cell_value(row.clone(), col_uuid.clone()) {
+                                            result.push_str(&value);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                return Some(result);
+                return Some(ProcessedInput {
+                    content: result,
+                    local_files,
+                    uploaded_files,
+                });
             }
         }
         None
@@ -516,7 +556,9 @@ impl Sheet {
             .iter()
             .enumerate()
             .filter_map(|(i, col_uuid)| {
-                self.columns.get(col_uuid).map(|col_def| format!("{}: {}", column_letter(i), col_def.name.clone()))
+                self.columns
+                    .get(col_uuid)
+                    .map(|col_def| format!("{}: {}", column_letter(i), col_def.name.clone()))
             })
             .collect();
         headers.insert(0, "Row".to_string());
@@ -1061,12 +1103,37 @@ pub fn sheet_reducer(
                         visited: HashSet::new(),
                         depth: 0,
                     });
+
+                    // Add jobs for LLM columns
+                    if let ColumnBehavior::LLMCall {
+                        input: _, // used under the hood with get_input_cells_for_column
+                        workflow,
+                        workflow_name,
+                        llm_provider_name,
+                        input_hash: _,
+                    } = &col_def.behavior
+                    {
+                        let input_cells = state.get_input_cells_for_column(row_uuid.clone(), col_uuid.clone());
+                        let workflow_job_data = WorkflowSheetJobData {
+                            sheet_id: state.uuid.clone(),
+                            row: row_uuid.clone(),
+                            col: col_uuid.clone(),
+                            col_definition: col_def.clone(),
+                            workflow: workflow.clone(),
+                            workflow_name: workflow_name.clone(),
+                            input_cells,
+                            llm_provider_name: llm_provider_name.clone(),
+                        };
+
+                        jobs.push(workflow_job_data);
+                    }
                 }
 
                 // Apply update events
                 for event in update_events {
                     let (new_state, mut new_jobs) = sheet_reducer(state.clone(), event).await;
                     eprintln!("update_events New state: {:?}", new_state);
+                    eprintln!("update_events New jobs: {:?}", new_jobs.len());
                     state = new_state;
                     jobs.append(&mut new_jobs);
                 }

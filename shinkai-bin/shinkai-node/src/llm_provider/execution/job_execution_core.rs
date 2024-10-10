@@ -18,7 +18,7 @@ use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueMan
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, WSTopic};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata, WSTopic};
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -28,9 +28,10 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::DistributionInfo;
+use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
@@ -59,6 +60,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -127,6 +129,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
+            job_message.message_hash_id.clone(),
             llm_provider_found.clone(),
             full_job.clone(),
             clone_signature_secret_key(&identity_secret_key),
@@ -137,6 +140,7 @@ impl JobManager {
             Some(sheet_manager.clone()),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await;
@@ -156,6 +160,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
+            job_message.message_hash_id.clone(),
             llm_provider_found.clone(),
             full_job.clone(),
             user_profile.clone(),
@@ -166,6 +171,7 @@ impl JobManager {
             job_queue_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await?;
@@ -179,6 +185,7 @@ impl JobManager {
             vector_fs.clone(),
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
+            job_message.message_hash_id.clone(),
             full_job,
             llm_provider_found.clone(),
             user_profile.clone(),
@@ -188,6 +195,7 @@ impl JobManager {
             Some(sheet_manager.clone()),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await;
@@ -225,6 +233,7 @@ impl JobManager {
             job_id.to_string(),
             error_for_frontend.to_string(),
             "".to_string(),
+            None,
             identity_secret_key_clone,
             node_name.clone(),
             node_name.clone(),
@@ -246,6 +255,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
+        message_hash_id: Option<String>,
         full_job: Job,
         llm_provider_found: Option<SerializedLLMProvider>,
         user_profile: ShinkaiName,
@@ -255,6 +265,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let job_id = full_job.job_id().to_string();
@@ -308,6 +319,7 @@ impl JobManager {
             llm_provider_found,
             full_job,
             job_message.clone(),
+            message_hash_id,
             image_files.clone(),
             prev_execution_context,
             generator,
@@ -317,11 +329,12 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await?;
-        let inference_response_content = inference_response.response;
-        let new_execution_context = inference_response.new_job_execution_context;
+        let inference_response_content = inference_response.response.clone();
+        let new_execution_context = inference_response.new_job_execution_context.clone();
 
         let duration = start.elapsed();
         shinkai_log(
@@ -330,12 +343,19 @@ impl JobManager {
             &format!("Time elapsed for inference chain processing is: {:?}", duration),
         );
 
+        let message_metadata = MessageMetadata {
+            tps: inference_response.tps.clone(),
+            duration_ms: inference_response.answer_duration.clone(),
+            function_calls: inference_response.tool_calls_metadata(),
+        };
+
         // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             inference_response_content.to_string(),
             "".to_string(),
+            Some(message_metadata),
             identity_secret_key_clone,
             user_profile.node_name.clone(),
             user_profile.node_name.clone(),
@@ -370,6 +390,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
+        message_hash_id: Option<String>,
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         identity_secret_key: SigningKey,
@@ -380,6 +401,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         let workflow = if let Some(code) = &job_message.workflow_code {
@@ -422,6 +444,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             job_message,
+            message_hash_id,
             job_message.content.to_string(),
             llm_provider_found,
             full_job.clone(),
@@ -433,16 +456,23 @@ impl JobManager {
             workflow,
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         )
         .await;
 
-        let (response, new_execution_context) = match inference_result {
-            Ok(result) => (result.response, result.new_job_execution_context),
+        let result = match inference_result {
+            Ok(result) => result,
             Err(e) => {
                 let error_response = format!("Error: {}", e);
-                (error_response, full_job.execution_context.clone())
+                InferenceChainResult::new(error_response, full_job.execution_context.clone())
             }
+        };
+
+        let metadata = MessageMetadata {
+            tps: result.tps.clone(),
+            duration_ms: result.answer_duration.clone(),
+            function_calls: result.tool_calls_metadata(),
         };
 
         // Prepare data to save inference response to the DB
@@ -452,8 +482,9 @@ impl JobManager {
         // TODO: What should be the structure of this metadata?
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id,
-            response.to_string(),
+            result.response.to_string(),
             "".to_string(),
+            Some(metadata),
             identity_secret_key_clone,
             user_profile.get_node_name_string(),
             user_profile.get_node_name_string(),
@@ -471,13 +502,13 @@ impl JobManager {
             job_message.job_id.clone(),
             job_message.content.clone(),
             None,
-            response.to_string(),
+            result.response.to_string(),
             None,
             None,
         )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager.clone())
             .await?;
-        db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+        db.set_job_execution_context(job_message.job_id.clone(), result.new_job_execution_context, None)?;
 
         // Send WS done message
         if let Some(ws_manager) = ws_manager {
@@ -497,7 +528,7 @@ impl JobManager {
                 .queue_message(
                     WSTopic::Inbox,
                     job_message.job_id.clone(),
-                    response.to_string(),
+                    result.response.to_string(),
                     ws_message_type,
                     true,
                 )
@@ -512,6 +543,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
+        message_hash_id: Option<String>,
         message_content: String,
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
@@ -523,6 +555,7 @@ impl JobManager {
         workflow: Workflow,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -536,6 +569,7 @@ impl JobManager {
             vector_fs.clone(),
             full_job,
             parsed_user_message,
+            message_hash_id,
             empty_files,
             llm_provider,
             full_execution_context,
@@ -548,6 +582,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            sqlite_logger.clone(),
             llm_stopper.clone(),
         );
 
@@ -609,6 +644,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
+        message_hash_id: Option<String>,
         llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         user_profile: ShinkaiName,
@@ -619,6 +655,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
         if let Some(sheet_job_data) = &job_message.sheet_job_data {
@@ -636,6 +673,35 @@ impl JobManager {
                     .get_processed_input(sheet_job_data.row.clone(), sheet_job_data.col.clone())
                     .ok_or(LLMProviderError::InputProcessingError(format!("{:?}", sheet_job_data)))?
             };
+
+            // Create a mutable copy of full_job
+            let mut mutable_job = full_job.clone();
+
+            // TODO: fix this once we have uploaded files
+            // // Update the job scope based on the ProcessedInput
+            // for (file_path, file_name) in &input_string.local_files {
+            //     let local_entry = LocalScopeVRKaiEntry {
+            //         vrkai: VRKai::new(
+            //             BaseVectorResource::Document(Document::new(
+            //                 file_name.clone(),
+            //                 VRSourceReference::LocalFile(file_path.clone()),
+            //                 vec![],
+            //             )),
+            //             vec![],
+            //         ),
+            //     };
+            //     mutable_job.scope.local_vrkai.push(local_entry);
+            // }
+
+            for (local_file_path, local_file_name) in &input_string.local_files {
+                let vector_fs_entry = VectorFSItemScopeEntry {
+                    name: local_file_name.clone(),
+                    path: VRPath::from_string(local_file_path)
+                        .map_err(|e| LLMProviderError::InvalidVRPath(e.to_string()))?,
+                    source: VRSourceReference::None,
+                };
+                mutable_job.scope.vector_fs_items.push(vector_fs_entry);
+            }
 
             // Determine the workflow to use
             let workflow = if let Some(workflow) = sheet_job_data.workflow {
@@ -659,9 +725,10 @@ impl JobManager {
                     db.clone(),
                     vector_fs.clone(),
                     job_message,
-                    input_string,
+                    message_hash_id,
+                    input_string.content,
                     llm_provider_found,
-                    full_job.clone(),
+                    mutable_job.clone(),
                     generator,
                     user_profile.clone(),
                     ws_manager.clone(),
@@ -670,12 +737,13 @@ impl JobManager {
                     workflow,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    sqlite_logger.clone(),
                     llm_stopper.clone(),
                 )
                 .await?
             } else {
                 let mut job_message = job_message.clone();
-                job_message.content = input_string;
+                job_message.content = input_string.content;
 
                 let empty_files = HashMap::new();
 
@@ -683,8 +751,9 @@ impl JobManager {
                     db.clone(),
                     vector_fs.clone(),
                     llm_provider_found,
-                    full_job.clone(),
+                    mutable_job.clone(),
                     job_message.clone(),
+                    message_hash_id,
                     empty_files,
                     HashMap::new(), // Assuming prev_execution_context is an empty HashMap
                     generator,
@@ -694,6 +763,7 @@ impl JobManager {
                     Some(sheet_manager.clone()),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    sqlite_logger.clone(),
                     llm_stopper.clone(),
                 )
                 .await?
@@ -724,7 +794,7 @@ impl JobManager {
                         job_queue_manager
                             .push(
                                 &next_job_message.job_id,
-                                JobForProcessing::new(next_job_message.clone(), user_profile),
+                                JobForProcessing::new(next_job_message.clone(), user_profile, None),
                             )
                             .await?;
                     }

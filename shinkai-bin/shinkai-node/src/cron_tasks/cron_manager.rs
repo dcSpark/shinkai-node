@@ -30,7 +30,10 @@ use std::{
 use chrono::{Timelike, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::{db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB}, schemas::{inbox_permission::InboxPermission, ws_types::WSUpdateHandler}};
+use shinkai_db::{
+    db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
+    schemas::{inbox_permission::InboxPermission, ws_types::WSUpdateHandler},
+};
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::{InboxName, InboxNameError},
@@ -262,7 +265,7 @@ impl CronManager {
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Weak<ShinkaiDB>,
-        vector_fs: Weak<VectorFS>,
+        _vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
@@ -290,6 +293,7 @@ impl CronManager {
             .process_job_creation(job_creation, &shinkai_profile, &cron_job.llm_provider_id)
             .await?;
 
+        let message_hash_id: String;
         {
             // Get the inbox name
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
@@ -310,11 +314,14 @@ impl CronManager {
                 job_id.to_string(),
                 cron_request_message.to_string(),
                 "".to_string(),
+                None,
                 identity_secret_key,
                 node_profile_name.node_name.clone(),
                 node_profile_name.node_name.clone(),
             )
             .unwrap();
+
+            message_hash_id = shinkai_message.calculate_message_hash_for_pagination();
             db_arc
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
                 .await?;
@@ -331,12 +338,13 @@ impl CronManager {
             workflow_name: None,
             callback: None,
             sheet_job_data: None,
+            metadata: None,
         };
 
         job_manager
             .lock()
             .await
-            .add_job_message_to_job_queue(&job_message, &node_profile_name)
+            .add_job_message_to_job_queue(&job_message, &node_profile_name, Some(message_hash_id.clone()))
             .await?;
 
         Ok(true)

@@ -172,7 +172,7 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         result_json = json.loads(result)
 
         # Add assertions to check the fields of the result
-        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_raw_content"], "{\"job_id\":\"job1\",\"content\":\"Job content\",\"files_inbox\":\"\",\"parent\":\"\",\"workflow_code\":null,\"workflow_name\":null,\"sheet_job_data\":null,\"callback\":null}")
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_raw_content"], "{\"job_id\":\"job1\",\"content\":\"Job content\",\"files_inbox\":\"\",\"parent\":\"\",\"workflow_code\":null,\"workflow_name\":null,\"sheet_job_data\":null,\"callback\":null,\"metadata\":null}")
         self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_content_schema"], "JobMessageSchema")
         self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["sender_subidentity"], "")
         self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["recipient_subidentity"], "main/agent/agent_1")

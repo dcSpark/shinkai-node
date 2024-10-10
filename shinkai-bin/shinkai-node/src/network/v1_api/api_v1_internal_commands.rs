@@ -481,6 +481,7 @@ impl Node {
                                     job_id.to_string(),
                                     WELCOME_MESSAGE.to_string(),
                                     "".to_string(),
+                                    None,
                                     identity_secret_key_clone,
                                     profile.node_name.clone(),
                                     profile.node_name.clone(),
