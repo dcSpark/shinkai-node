@@ -84,8 +84,31 @@ pub enum WSMessageType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolMetadata {
+    pub tool_name: String,
+    pub args: serde_json::Map<String, serde_json::Value>,
+    pub result: Option<serde_json::Value>,
+    pub status: ToolStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolStatus {
+    pub type_: ToolStatusType,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ToolStatusType {
+    Running,
+    Complete,
+    Incomplete,
+    RequiresAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WidgetMetadata {
     PaymentRequest(PaymentMetadata),
+    ToolRequest(ToolMetadata),
 }
 
 pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, WSMessageType, bool)>>>;
