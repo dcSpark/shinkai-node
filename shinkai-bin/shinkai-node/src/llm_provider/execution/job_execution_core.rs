@@ -31,7 +31,7 @@ use shinkai_message_primitives::{
 use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::DistributionInfo;
+use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
@@ -674,6 +674,35 @@ impl JobManager {
                     .ok_or(LLMProviderError::InputProcessingError(format!("{:?}", sheet_job_data)))?
             };
 
+            // Create a mutable copy of full_job
+            let mut mutable_job = full_job.clone();
+
+            // TODO: fix this once we have uploaded files
+            // // Update the job scope based on the ProcessedInput
+            // for (file_path, file_name) in &input_string.local_files {
+            //     let local_entry = LocalScopeVRKaiEntry {
+            //         vrkai: VRKai::new(
+            //             BaseVectorResource::Document(Document::new(
+            //                 file_name.clone(),
+            //                 VRSourceReference::LocalFile(file_path.clone()),
+            //                 vec![],
+            //             )),
+            //             vec![],
+            //         ),
+            //     };
+            //     mutable_job.scope.local_vrkai.push(local_entry);
+            // }
+
+            for (local_file_path, local_file_name) in &input_string.local_files {
+                let vector_fs_entry = VectorFSItemScopeEntry {
+                    name: local_file_name.clone(),
+                    path: VRPath::from_string(local_file_path)
+                        .map_err(|e| LLMProviderError::InvalidVRPath(e.to_string()))?,
+                    source: VRSourceReference::None,
+                };
+                mutable_job.scope.vector_fs_items.push(vector_fs_entry);
+            }
+
             // Determine the workflow to use
             let workflow = if let Some(workflow) = sheet_job_data.workflow {
                 Some(workflow)
@@ -697,9 +726,9 @@ impl JobManager {
                     vector_fs.clone(),
                     job_message,
                     message_hash_id,
-                    input_string,
+                    input_string.content,
                     llm_provider_found,
-                    full_job.clone(),
+                    mutable_job.clone(),
                     generator,
                     user_profile.clone(),
                     ws_manager.clone(),
@@ -714,7 +743,7 @@ impl JobManager {
                 .await?
             } else {
                 let mut job_message = job_message.clone();
-                job_message.content = input_string;
+                job_message.content = input_string.content;
 
                 let empty_files = HashMap::new();
 
@@ -722,7 +751,7 @@ impl JobManager {
                     db.clone(),
                     vector_fs.clone(),
                     llm_provider_found,
-                    full_job.clone(),
+                    mutable_job.clone(),
                     job_message.clone(),
                     message_hash_id,
                     empty_files,

@@ -83,6 +83,7 @@ pub enum LLMProviderError {
     InputProcessingError(String),
     ToolRouterNotFound,
     UnexpectedResponseFormat(String),
+    InvalidVRPath(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -168,6 +169,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::InputProcessingError(s) => write!(f, "{}", s),
             LLMProviderError::ToolRouterNotFound => write!(f, "Tool Router not found"),
             LLMProviderError::UnexpectedResponseFormat(s) => write!(f, "Unexpected response format: {}", s),
+            LLMProviderError::InvalidVRPath(s) => write!(f, "Invalid VRPath: {}", s),
         }
     }
 }
@@ -243,6 +245,7 @@ impl LLMProviderError {
             LLMProviderError::InputProcessingError(_) => "InputProcessingError",
             LLMProviderError::ToolRouterNotFound => "ToolRouterNotFound",
             LLMProviderError::UnexpectedResponseFormat(_) => "UnexpectedResponseFormat",
+            LLMProviderError::InvalidVRPath(_) => "InvalidVRPath",
         };
 
         let error_message = format!("{}", self);
