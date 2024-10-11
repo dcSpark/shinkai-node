@@ -1980,6 +1980,28 @@ impl Node {
                     let _ = Node::v2_get_available_llm_providers(db_clone, node_name_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiForkJobMessages {
+                bearer,
+                job_id,
+                message_id,
+                res,
+            } => {
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let db_clone = self.db.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_fork_job_messages(
+                        db_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        bearer,
+                        job_id,
+                        message_id,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2952,7 +2974,11 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetToolingLogs { bearer, message_id, res } => {
+            NodeCommand::V2ApiGetToolingLogs {
+                bearer,
+                message_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_logger_clone = Arc::clone(&self.sqlite_logger);
                 tokio::spawn(async move {

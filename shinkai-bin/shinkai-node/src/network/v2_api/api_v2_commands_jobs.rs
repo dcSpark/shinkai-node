@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -16,8 +16,11 @@ use shinkai_message_primitives::{
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
         smart_inbox::{SmartInbox, V2SmartInbox},
     },
-    shinkai_message::shinkai_message_schemas::{
-        APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiBody, ShinkaiData},
+        shinkai_message_schemas::{
+            APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+        },
     },
     shinkai_utils::job_scope::JobScope,
 };
@@ -1118,11 +1121,171 @@ impl Node {
 
     pub async fn v2_fork_job_messages(
         db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
         bearer: String,
         job_id: String,
         message_id: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
+        // Validate the bearer token and extract the sender identity
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the job and the messages
+        let source_job = match db.get_job(&job_id) {
+            Ok(job) => job,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve job: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = source_job.conversation_inbox_name.to_string();
+        let source_messages =
+            match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX, Some(message_id.clone())) {
+                Ok(messages) => messages,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve messages: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+        // Get the main identity from the identity manager
+        let main_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(identity) => identity.clone(),
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        let job_creation_message = source_messages.iter().flatten().find(|message| {
+            if let MessageBody::Unencrypted(body) = &message.body {
+                if let MessageData::Unencrypted(data) = &body.message_data {
+                    if let MessageSchemaType::JobCreationSchema = data.message_content_schema {
+                        return true;
+                    }
+                }
+            }
+
+            false
+        });
+
+        let job_creation_message = match job_creation_message {
+            Some(message) => message,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Job creation message not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Create a new job
+        let forked_job_id = match Self::internal_create_new_job(
+            job_manager.clone(),
+            db,
+            job_creation_message.clone(),
+            main_identity.clone(),
+        )
+        .await
+        {
+            Ok(job_id) => job_id,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let forked_inbox_name = match InboxName::get_job_inbox_name_from_params(forked_job_id.clone()) {
+            Ok(inbox) => inbox.to_string(),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Fork the messages
+        for message in source_messages.iter().flatten() {
+            if let MessageBody::Unencrypted(body) = &message.body {
+                if let MessageData::Unencrypted(data) = &body.message_data {
+                    if let MessageSchemaType::JobMessageSchema = data.message_content_schema {
+                        let mut job_message = match serde_json::from_str::<JobMessage>(&data.message_raw_content) {
+                            Ok(message) => message,
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to deserialize job message: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        };
+
+                        job_message.job_id = forked_job_id.clone();
+                        job_message.files_inbox = forked_inbox_name.clone();
+
+                        let mut forked_message = message.clone();
+                        forked_message.body = MessageBody::Unencrypted(ShinkaiBody {
+                            message_data: MessageData::Unencrypted(ShinkaiData {
+                                message_content_schema: MessageSchemaType::JobMessageSchema,
+                                message_raw_content: serde_json::to_string(&job_message).unwrap(),
+                            }),
+                            internal_metadata: body.internal_metadata.clone(),
+                        });
+
+                        match Self::internal_job_message(job_manager.clone(), forked_message).await {
+                            Ok(_) => {}
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("{}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = res.send(Ok(job_id)).await;
         Ok(())
     }
 }

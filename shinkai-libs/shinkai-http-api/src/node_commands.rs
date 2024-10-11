@@ -557,6 +557,12 @@ pub enum NodeCommand {
         job_message: JobMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
+    V2ApiForkJobMessages {
+        bearer: String,
+        job_id: String,
+        message_id: String,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,
         payload: APIVecFsRetrievePathSimplifiedJson,
