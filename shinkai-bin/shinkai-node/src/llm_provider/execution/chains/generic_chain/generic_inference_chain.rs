@@ -351,9 +351,23 @@ impl GenericInferenceChain {
         function_response: &ToolCallFunctionResponse,
     ) {
         if let Some(ref manager) = ws_manager_trait {
-            if let Some(ref inbox_name) = job_id {
+            if let Some(job_id) = job_id {
+                // Derive inbox name from job_id
+                let inbox_name_result = InboxName::get_job_inbox_name_from_params(job_id.clone());
+                let inbox_name_string = match inbox_name_result {
+                    Ok(inbox_name) => inbox_name.to_string(),
+                    Err(e) => {
+                        // Log the error and exit the function
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to create inbox name from job_id {}: {}", job_id, e),
+                        );
+                        return;
+                    }
+                };
+
                 let m = manager.lock().await;
-                let inbox_name_string = inbox_name.to_string();
 
                 // Prepare ToolMetadata with result and Completed status
                 let tool_metadata = ToolMetadata {
