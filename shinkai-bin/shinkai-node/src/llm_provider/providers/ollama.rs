@@ -380,7 +380,7 @@ async fn handle_non_streaming_response(
                                                 .unwrap_or_default(),
                                             result: None,
                                             status: ToolStatus {
-                                                type_: ToolStatusType::Complete,
+                                                type_: ToolStatusType::Running,
                                                 reason: None,
                                             },
                                         };
