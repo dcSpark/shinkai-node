@@ -310,7 +310,7 @@ impl GenericInferenceChain {
                 };
 
                 // Trigger WS update after receiving function_response
-                Self::trigger_ws_update(&ws_manager_trait, &message_hash_id, &function_response).await;
+                Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response).await;
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -347,11 +347,11 @@ impl GenericInferenceChain {
     /// Triggers a WebSocket update after receiving a function response.
     async fn trigger_ws_update(
         ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        message_hash_id: &Option<String>,
+        job_id: &Option<String>,
         function_response: &ToolCallFunctionResponse,
     ) {
         if let Some(ref manager) = ws_manager_trait {
-            if let Some(ref inbox_name) = message_hash_id {
+            if let Some(ref inbox_name) = job_id {
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
 
