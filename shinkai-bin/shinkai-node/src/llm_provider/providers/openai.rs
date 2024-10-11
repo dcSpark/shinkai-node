@@ -240,6 +240,7 @@ async fn handle_streaming_response(
                                     // Prepare ToolMetadata
                                     let tool_metadata = ToolMetadata {
                                         tool_name: function_call.name.clone(),
+                                        tool_router_key: None,
                                         args: function_call_json
                                             .as_object()
                                             .cloned()
@@ -396,6 +397,7 @@ async fn handle_non_streaming_response(
                                     // Prepare ToolMetadata
                                     let tool_metadata = ToolMetadata {
                                         tool_name: function_call.name.clone(),
+                                        tool_router_key: None,
                                         args: function_call_json
                                             .as_object()
                                             .cloned()

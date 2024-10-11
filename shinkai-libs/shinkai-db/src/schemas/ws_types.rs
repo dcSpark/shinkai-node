@@ -86,6 +86,7 @@ pub enum WSMessageType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolMetadata {
     pub tool_name: String,
+    pub tool_router_key: Option<String>,
     pub args: serde_json::Map<String, serde_json::Value>,
     pub result: Option<serde_json::Value>,
     pub status: ToolStatus,

@@ -291,6 +291,7 @@ impl GenericInferenceChain {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
+                let shinkai_tool = shinkai_tool.unwrap();
 
                 // Note: here we can add logic to handle the case that we have network tools
 
@@ -298,7 +299,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call, &context, shinkai_tool.unwrap())
+                    .call_function(function_call, &context, &shinkai_tool)
                     .await
                 {
                     Ok(response) => response,
@@ -310,7 +311,7 @@ impl GenericInferenceChain {
                 };
 
                 // Trigger WS update after receiving function_response
-                Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response).await;
+                Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response, shinkai_tool.tool_router_key()).await;
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -349,6 +350,7 @@ impl GenericInferenceChain {
         ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_id: &Option<String>,
         function_response: &ToolCallFunctionResponse,
+        tool_router_key: String,
     ) {
         if let Some(ref manager) = ws_manager_trait {
             if let Some(job_id) = job_id {
@@ -372,6 +374,7 @@ impl GenericInferenceChain {
                 // Prepare ToolMetadata with result and Completed status
                 let tool_metadata = ToolMetadata {
                     tool_name: function_response.function_call.name.clone(),
+                    tool_router_key: Some(tool_router_key),
                     args: serde_json::to_value(&function_response.function_call)
                         .unwrap_or_else(|_| serde_json::json!({}))
                         .as_object()
