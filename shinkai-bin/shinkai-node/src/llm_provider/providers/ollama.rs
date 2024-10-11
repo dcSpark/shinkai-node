@@ -367,7 +367,7 @@ async fn handle_non_streaming_response(
                                         let m = manager.lock().await;
                                         let inbox_name_string = inbox_name.to_string();
 
-                                                   // Serialize FunctionCall to JSON value
+                                        // Serialize FunctionCall to JSON value
                                         let function_call_json = serde_json::to_value(function_call)
                                             .unwrap_or_else(|_| serde_json::json!({}));
 

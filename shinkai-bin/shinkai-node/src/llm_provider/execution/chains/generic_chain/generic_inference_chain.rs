@@ -6,19 +6,23 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::sheet_manager::SheetManager;
-use crate::managers::tool_router::ToolRouter;
+use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use async_trait::async_trait;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -125,7 +129,7 @@ impl GenericInferenceChain {
             ShinkaiLogLevel::Info,
             &format!("start_generic_inference_chain>  message: {:?}", user_message),
         );
-        let start_time = Instant::now(); 
+        let start_time = Instant::now();
 
         /*
         How it (should) work:
@@ -219,7 +223,7 @@ impl GenericInferenceChain {
         );
 
         let mut iteration_count = 0;
-        let mut tool_calls_history = Vec::new(); 
+        let mut tool_calls_history = Vec::new();
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
@@ -305,6 +309,9 @@ impl GenericInferenceChain {
                     }
                 };
 
+                // Trigger WS update after receiving function_response
+                Self::trigger_ws_update(&ws_manager_trait, &message_hash_id, &function_response).await;
+
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
                     None, // TODO: connect later on
@@ -334,6 +341,49 @@ impl GenericInferenceChain {
 
             // Increment the iteration count
             iteration_count += 1;
+        }
+    }
+
+    /// Triggers a WebSocket update after receiving a function response.
+    async fn trigger_ws_update(
+        ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        message_hash_id: &Option<String>,
+        function_response: &ToolCallFunctionResponse,
+    ) {
+        if let Some(ref manager) = ws_manager_trait {
+            if let Some(ref inbox_name) = message_hash_id {
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+
+                // Prepare ToolMetadata with result and Completed status
+                let tool_metadata = ToolMetadata {
+                    tool_name: function_response.function_call.name.clone(),
+                    args: serde_json::to_value(&function_response.function_call)
+                        .unwrap_or_else(|_| serde_json::json!({}))
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                    result: serde_json::from_str(&function_response.response)
+                        .map(Some)
+                        .unwrap_or_else(|_| Some(serde_json::Value::String(function_response.response.clone()))),
+                    status: ToolStatus {
+                        type_: ToolStatusType::Complete,
+                        reason: None,
+                    },
+                };
+
+                let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                let _ = m
+                    .queue_message(
+                        WSTopic::Inbox,
+                        inbox_name_string,
+                        serde_json::to_string(&function_response).unwrap_or_else(|_| "{}".to_string()),
+                        ws_message_type,
+                        true,
+                    )
+                    .await;
+            }
         }
     }
 }
