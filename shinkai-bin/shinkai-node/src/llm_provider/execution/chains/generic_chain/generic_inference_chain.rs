@@ -177,10 +177,33 @@ impl GenericInferenceChain {
                     || model_type.model_type.starts_with("llama3.2")
                     || model_type.model_type.starts_with("llama-3.1")
                     || model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("groq_llama3_2")
                     || model_type.model_type.starts_with("mistral-nemo")
                     || model_type.model_type.starts_with("mistral-small")
                     || model_type.model_type.starts_with("mistral-large");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            LLMProviderInterface::Groq(model_type) => {
+                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("llama-3.1")
+                    || model_type.model_type.starts_with("llama3.1");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            LLMProviderInterface::OpenRouter(model_type) => {
+                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("llama-3.1")
+                    || model_type.model_type.starts_with("llama3.1")
+                    || model_type.model_type.starts_with("mistral-nemo")
+                    || model_type.model_type.starts_with("mistral-small")
+                    || model_type.model_type.starts_with("mistral-large")
+                    || model_type.model_type.starts_with("mistral-pixtral");
                 is_supported_model
                     && job_config
                         .as_ref()
