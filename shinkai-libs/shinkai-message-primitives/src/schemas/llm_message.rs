@@ -21,6 +21,9 @@ pub struct FunctionParameters {
 pub struct FunctionDetails {
     /// The name of the function.
     pub name: String,
+    /// The tool router key of the function.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_router_key: Option<String>,
     /// The description of the function.
     pub description: String,
     /// The parameters of the function.

@@ -13,7 +13,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
+use shinkai_db::schemas::ws_types::{ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
@@ -100,7 +100,7 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json);
+                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Add options to payload
@@ -130,6 +130,7 @@ impl LLMService for OpenAI {
                         ws_manager_trait,
                         llm_stopper,
                         session_id,
+                        Some(tools_json),
                     )
                     .await
                 } else {
@@ -141,6 +142,7 @@ impl LLMService for OpenAI {
                         inbox_name,
                         llm_stopper,
                         ws_manager_trait,
+                        Some(tools_json),
                     )
                     .await
                 }
@@ -162,6 +164,7 @@ async fn handle_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
@@ -216,9 +219,22 @@ async fn handle_streaming_response(
                                                     args_value.as_object().cloned()
                                                 })
                                                 .unwrap_or_else(|| serde_json::Map::new());
+
+                                            // Extract tool_router_key
+                                            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                tools_array.iter().find_map(|tool| {
+                                                    if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
+                                                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                            });
+
                                             function_call = Some(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
                                                 arguments: fc_arguments.clone(),
+                                                tool_router_key,
                                             });
                                         }
                                     }
@@ -226,56 +242,40 @@ async fn handle_streaming_response(
                             }
                         }
 
-                        // Note: this is the code for enabling WS
+                        // Updated WS message handling for tooling
                         if let Some(ref manager) = ws_manager_trait {
                             if let Some(ref inbox_name) = inbox_name {
-                                let m = manager.lock().await;
-                                let inbox_name_string = inbox_name.to_string();
-
-                                // Send WS message if a function call is detected
                                 if let Some(ref function_call) = function_call {
-                                    let metadata = WSMetadata {
-                                        id: Some(Uuid::new_v4().to_string()),
-                                        is_done: false,
-                                        done_reason: Some(format!("Function call: {:?}", function_call)),
-                                        total_duration: None,
-                                        eval_count: None,
+                                    let m = manager.lock().await;
+                                    let inbox_name_string = inbox_name.to_string();
+
+                                    // Serialize FunctionCall to JSON value
+                                    let function_call_json = serde_json::to_value(function_call)
+                                        .unwrap_or_else(|_| serde_json::json!({}));
+
+                                    // Prepare ToolMetadata
+                                    let tool_metadata = ToolMetadata {
+                                        tool_name: function_call.name.clone(),
+                                        tool_router_key: function_call.tool_router_key.clone(),
+                                        args: function_call_json
+                                            .as_object()
+                                            .cloned()
+                                            .unwrap_or_default(),
+                                        result: None,
+                                        status: ToolStatus {
+                                            type_: ToolStatusType::Running,
+                                            reason: None,
+                                        },
                                     };
 
-                                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                    // Serialize FunctionCall to JSON string
-                                    let function_call_json =
-                                        serde_json::to_string(&function_call).unwrap_or_else(|_| "{}".to_string());
+                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
                                     let _ = m
                                         .queue_message(
                                             WSTopic::Inbox,
                                             inbox_name_string,
-                                            function_call_json,
-                                            ws_message_type,
-                                            true,
-                                        )
-                                        .await;
-                                } else {
-                                    let metadata = WSMetadata {
-                                        id: Some(session_id.clone()),
-                                        is_done: data.get("done").and_then(|d| d.as_bool()).unwrap_or(false),
-                                        done_reason: data
-                                            .get("done_reason")
-                                            .and_then(|d| d.as_str())
-                                            .map(|s| s.to_string()),
-                                        total_duration: data.get("total_duration").and_then(|d| d.as_u64()),
-                                        eval_count: data.get("eval_count").and_then(|c| c.as_u64()),
-                                    };
-
-                                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                    let _ = m
-                                        .queue_message(
-                                            WSTopic::Inbox,
-                                            inbox_name_string,
-                                            response_text.clone(),
+                                            serde_json::to_string(&function_call)
+                                                .unwrap_or_else(|_| "{}".to_string()),
                                             ws_message_type,
                                             true,
                                         )
@@ -316,6 +316,7 @@ async fn handle_non_streaming_response(
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
@@ -390,41 +391,62 @@ async fn handle_non_streaming_response(
                                     .ok()
                                     .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
                                     .unwrap_or_else(|| serde_json::Map::new());
+
+                                // Extract tool_router_key
+                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                    tools_array.iter().find_map(|tool| {
+                                        if tool.get("name")?.as_str()? == fc.name {
+                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+
                                 FunctionCall {
                                     name: fc.name,
                                     arguments,
+                                    tool_router_key,
                                 }
                             })
                         });
                         eprintln!("Function Call: {:?}", function_call);
                         eprintln!("Response String: {:?}", response_string);
 
+                        // Updated WS message handling for tooling
                         if let Some(ref manager) = ws_manager_trait {
                             if let Some(ref inbox_name) = inbox_name {
-                                // Send WS message if a function call is detected
                                 if let Some(ref function_call) = function_call {
                                     let m = manager.lock().await;
                                     let inbox_name_string = inbox_name.to_string();
 
-                                    let metadata = WSMetadata {
-                                        id: Some(Uuid::new_v4().to_string()),
-                                        is_done: false,
-                                        done_reason: Some(format!("Function call: {:?}", function_call)),
-                                        total_duration: None,
-                                        eval_count: None,
+                                    // Serialize FunctionCall to JSON value
+                                    let function_call_json = serde_json::to_value(function_call)
+                                        .unwrap_or_else(|_| serde_json::json!({}));
+
+                                    // Prepare ToolMetadata
+                                    let tool_metadata = ToolMetadata {
+                                        tool_name: function_call.name.clone(),
+                                        tool_router_key: function_call.tool_router_key.clone(),
+                                        args: function_call_json
+                                            .as_object()
+                                            .cloned()
+                                            .unwrap_or_default(),
+                                        result: None,
+                                        status: ToolStatus {
+                                            type_: ToolStatusType::Running,
+                                            reason: None,
+                                        },
                                     };
 
-                                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                    // Serialize FunctionCall to JSON string
-                                    let function_call_json = serde_json::to_string(&function_call)
-                                        .unwrap_or_else(|_| "{}".to_string());
+                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
                                     let _ = m
                                         .queue_message(
                                             WSTopic::Inbox,
                                             inbox_name_string,
-                                            function_call_json,
+                                            serde_json::to_string(&function_call)
+                                                .unwrap_or_else(|_| "{}".to_string()),
                                             ws_message_type,
                                             true,
                                         )

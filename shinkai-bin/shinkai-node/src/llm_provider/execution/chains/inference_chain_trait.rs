@@ -364,6 +364,7 @@ impl InferenceChainResult {
 pub struct FunctionCall {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
+    pub tool_router_key: Option<String>,
 }
 
 impl FunctionCall {
@@ -371,6 +372,7 @@ impl FunctionCall {
         FunctionCallMetadata {
             name: self.name.clone(),
             arguments: self.arguments.clone(),
+            tool_router_key: self.tool_router_key.clone(),
         }
     }
 }
