@@ -109,7 +109,20 @@ impl LLMService for Ollama {
 
             // Conditionally add functions to the payload if tools_json is not empty
             if !tools_json.is_empty() {
-                payload["tools"] = serde_json::Value::Array(tools_json);
+                // Create a new vector to store modified tools
+                let mut modified_tools = Vec::new();
+
+                // Iterate over each tool and remove the "tool_router_key" if it exists
+                for tool in &tools_json {
+                    if let Some(mut tool_object) = tool.as_object().cloned() {
+                        tool_object.remove("tool_router_key");
+                        modified_tools.push(serde_json::Value::Object(tool_object));
+                    } else {
+                        modified_tools.push(tool.clone());
+                    }
+                }
+
+                payload["tools"] = serde_json::Value::Array(modified_tools);
             }
 
             let mut payload_log = payload.clone();
@@ -140,10 +153,20 @@ impl LLMService for Ollama {
                     ws_manager_trait,
                     llm_stopper,
                     session_id,
+                    Some(tools_json),
                 )
                 .await
             } else {
-                handle_non_streaming_response(client, url, payload, inbox_name, ws_manager_trait, llm_stopper).await
+                handle_non_streaming_response(
+                    client,
+                    url,
+                    payload,
+                    inbox_name,
+                    ws_manager_trait,
+                    llm_stopper,
+                    Some(tools_json),
+                )
+                .await
             }
         } else {
             Err(LLMProviderError::UrlNotSet)
@@ -159,6 +182,7 @@ async fn handle_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
+    _tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client.post(url).json(&payload).send().await?;
 
@@ -307,6 +331,7 @@ async fn handle_non_streaming_response(
     inbox_name: Option<InboxName>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client.post(url).json(&payload).send();
@@ -346,7 +371,19 @@ async fn handle_non_streaming_response(
                                                 let arguments = function.get("arguments")
                                                     .and_then(|args_value| args_value.as_object().cloned())
                                                     .unwrap_or_else(|| serde_json::Map::new());
-                                                Some(FunctionCall { name, arguments })
+
+                                                // Search for the tool_router_key in the tools array
+                                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                    tools_array.iter().find_map(|tool| {
+                                                        if tool.get("name")?.as_str()? == name {
+                                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                        } else {
+                                                            None
+                                                        }
+                                                    })
+                                                });
+
+                                                Some(FunctionCall { name, arguments, tool_router_key })
                                             })
                                         })
                                     })

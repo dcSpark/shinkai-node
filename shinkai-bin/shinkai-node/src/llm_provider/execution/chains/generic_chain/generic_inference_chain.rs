@@ -175,6 +175,9 @@ impl GenericInferenceChain {
             LLMProviderInterface::Ollama(model_type) => {
                 let is_supported_model = model_type.model_type.starts_with("llama3.1")
                     || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("llama-3.1")
+                    || model_type.model_type.starts_with("llama-3.2")
+                    || model_type.model_type.starts_with("groq_llama3_2")
                     || model_type.model_type.starts_with("mistral-nemo")
                     || model_type.model_type.starts_with("mistral-small")
                     || model_type.model_type.starts_with("mistral-large");

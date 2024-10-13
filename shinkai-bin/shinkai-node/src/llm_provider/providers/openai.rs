@@ -13,7 +13,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_db::schemas::ws_types::{ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata};
+use shinkai_db::schemas::ws_types::{ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
@@ -100,7 +100,7 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json);
+                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Add options to payload
@@ -130,6 +130,7 @@ impl LLMService for OpenAI {
                         ws_manager_trait,
                         llm_stopper,
                         session_id,
+                        Some(tools_json),
                     )
                     .await
                 } else {
@@ -141,6 +142,7 @@ impl LLMService for OpenAI {
                         inbox_name,
                         llm_stopper,
                         ws_manager_trait,
+                        Some(tools_json),
                     )
                     .await
                 }
@@ -162,6 +164,7 @@ async fn handle_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
@@ -216,9 +219,22 @@ async fn handle_streaming_response(
                                                     args_value.as_object().cloned()
                                                 })
                                                 .unwrap_or_else(|| serde_json::Map::new());
+
+                                            // Extract tool_router_key
+                                            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                tools_array.iter().find_map(|tool| {
+                                                    if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
+                                                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                            });
+
                                             function_call = Some(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
                                                 arguments: fc_arguments.clone(),
+                                                tool_router_key,
                                             });
                                         }
                                     }
@@ -240,7 +256,7 @@ async fn handle_streaming_response(
                                     // Prepare ToolMetadata
                                     let tool_metadata = ToolMetadata {
                                         tool_name: function_call.name.clone(),
-                                        tool_router_key: None,
+                                        tool_router_key: function_call.tool_router_key.clone(),
                                         args: function_call_json
                                             .as_object()
                                             .cloned()
@@ -300,6 +316,7 @@ async fn handle_non_streaming_response(
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
@@ -374,9 +391,22 @@ async fn handle_non_streaming_response(
                                     .ok()
                                     .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
                                     .unwrap_or_else(|| serde_json::Map::new());
+
+                                // Extract tool_router_key
+                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                    tools_array.iter().find_map(|tool| {
+                                        if tool.get("name")?.as_str()? == fc.name {
+                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+
                                 FunctionCall {
                                     name: fc.name,
                                     arguments,
+                                    tool_router_key,
                                 }
                             })
                         });
@@ -397,7 +427,7 @@ async fn handle_non_streaming_response(
                                     // Prepare ToolMetadata
                                     let tool_metadata = ToolMetadata {
                                         tool_name: function_call.name.clone(),
-                                        tool_router_key: None,
+                                        tool_router_key: function_call.tool_router_key.clone(),
                                         args: function_call_json
                                             .as_object()
                                             .cloned()
