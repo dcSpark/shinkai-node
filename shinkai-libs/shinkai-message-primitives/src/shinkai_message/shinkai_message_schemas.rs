@@ -335,6 +335,7 @@ pub struct MessageMetadata {
 pub struct FunctionCallMetadata {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
+    pub tool_router_key: Option<String>,
 }
 
 fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>

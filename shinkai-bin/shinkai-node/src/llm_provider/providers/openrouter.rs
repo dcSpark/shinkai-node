@@ -94,7 +94,7 @@ impl LLMService for OpenRouter {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json);
+                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Add options to payload
@@ -124,10 +124,11 @@ impl LLMService for OpenRouter {
                         ws_manager_trait,
                         llm_stopper,
                         session_id,
+                        Some(tools_json), // Add tools parameter
                     )
                     .await
                 } else {
-                    handle_non_streaming_response(client, url, payload, key.clone(), inbox_name, llm_stopper).await
+                    handle_non_streaming_response(client, url, payload, key.clone(), inbox_name, llm_stopper, Some(tools_json)).await
                 }
             } else {
                 Err(LLMProviderError::ApiKeyNotSet)
@@ -147,6 +148,7 @@ async fn handle_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
+    tools: Option<Vec<JsonValue>>, // Add tools parameter
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
@@ -203,9 +205,22 @@ async fn handle_streaming_response(
                                                     args_value.as_object().cloned()
                                                 })
                                                 .unwrap_or_else(|| serde_json::Map::new());
+
+                                            // Extract tool_router_key
+                                            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                tools_array.iter().find_map(|tool| {
+                                                    if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
+                                                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
+                                            });
+
                                             function_call = Some(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
                                                 arguments: fc_arguments.clone(),
+                                                tool_router_key,
                                             });
                                         }
                                     }
@@ -275,6 +290,7 @@ async fn handle_non_streaming_response(
     api_key: String,
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
+    tools: Option<Vec<JsonValue>>, // Add tools parameter
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
@@ -350,9 +366,22 @@ async fn handle_non_streaming_response(
                                     .ok()
                                     .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
                                     .unwrap_or_else(|| serde_json::Map::new());
+
+                                // Extract tool_router_key
+                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                    tools_array.iter().find_map(|tool| {
+                                        if tool.get("name")?.as_str()? == fc.name {
+                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+
                                 FunctionCall {
                                     name: fc.name,
                                     arguments,
+                                    tool_router_key, // Include tool_router_key
                                 }
                             })
                         });

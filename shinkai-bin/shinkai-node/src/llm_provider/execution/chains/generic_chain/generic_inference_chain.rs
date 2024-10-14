@@ -6,19 +6,23 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::sheet_manager::SheetManager;
-use crate::managers::tool_router::ToolRouter;
+use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use async_trait::async_trait;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_db::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -125,7 +129,7 @@ impl GenericInferenceChain {
             ShinkaiLogLevel::Info,
             &format!("start_generic_inference_chain>  message: {:?}", user_message),
         );
-        let start_time = Instant::now(); 
+        let start_time = Instant::now();
 
         /*
         How it (should) work:
@@ -171,9 +175,35 @@ impl GenericInferenceChain {
             LLMProviderInterface::Ollama(model_type) => {
                 let is_supported_model = model_type.model_type.starts_with("llama3.1")
                     || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("llama-3.1")
+                    || model_type.model_type.starts_with("llama-3.2")
                     || model_type.model_type.starts_with("mistral-nemo")
                     || model_type.model_type.starts_with("mistral-small")
                     || model_type.model_type.starts_with("mistral-large");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            LLMProviderInterface::Groq(model_type) => {
+                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("llama-3.1")
+                    || model_type.model_type.starts_with("llama3.1");
+                is_supported_model
+                    && job_config
+                        .as_ref()
+                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
+            }
+            LLMProviderInterface::OpenRouter(model_type) => {
+                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
+                    || model_type.model_type.starts_with("llama3.2")
+                    || model_type.model_type.starts_with("llama-3.1")
+                    || model_type.model_type.starts_with("llama3.1")
+                    || model_type.model_type.starts_with("mistral-nemo")
+                    || model_type.model_type.starts_with("mistral-small")
+                    || model_type.model_type.starts_with("mistral-large")
+                    || model_type.model_type.starts_with("mistral-pixtral");
                 is_supported_model
                     && job_config
                         .as_ref()
@@ -219,7 +249,7 @@ impl GenericInferenceChain {
         );
 
         let mut iteration_count = 0;
-        let mut tool_calls_history = Vec::new(); 
+        let mut tool_calls_history = Vec::new();
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
@@ -287,6 +317,7 @@ impl GenericInferenceChain {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                 }
+                let shinkai_tool = shinkai_tool.unwrap();
 
                 // Note: here we can add logic to handle the case that we have network tools
 
@@ -294,7 +325,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call, &context, shinkai_tool.unwrap())
+                    .call_function(function_call, &context, &shinkai_tool)
                     .await
                 {
                     Ok(response) => response,
@@ -304,6 +335,9 @@ impl GenericInferenceChain {
                         return Err(e);
                     }
                 };
+
+                // Trigger WS update after receiving function_response
+                Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response, shinkai_tool.tool_router_key()).await;
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -334,6 +368,65 @@ impl GenericInferenceChain {
 
             // Increment the iteration count
             iteration_count += 1;
+        }
+    }
+
+    /// Triggers a WebSocket update after receiving a function response.
+    async fn trigger_ws_update(
+        ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        job_id: &Option<String>,
+        function_response: &ToolCallFunctionResponse,
+        tool_router_key: String,
+    ) {
+        if let Some(ref manager) = ws_manager_trait {
+            if let Some(job_id) = job_id {
+                // Derive inbox name from job_id
+                let inbox_name_result = InboxName::get_job_inbox_name_from_params(job_id.clone());
+                let inbox_name_string = match inbox_name_result {
+                    Ok(inbox_name) => inbox_name.to_string(),
+                    Err(e) => {
+                        // Log the error and exit the function
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to create inbox name from job_id {}: {}", job_id, e),
+                        );
+                        return;
+                    }
+                };
+
+                let m = manager.lock().await;
+
+                // Prepare ToolMetadata with result and Completed status
+                let tool_metadata = ToolMetadata {
+                    tool_name: function_response.function_call.name.clone(),
+                    tool_router_key: Some(tool_router_key),
+                    args: serde_json::to_value(&function_response.function_call)
+                        .unwrap_or_else(|_| serde_json::json!({}))
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                    result: serde_json::from_str(&function_response.response)
+                        .map(Some)
+                        .unwrap_or_else(|_| Some(serde_json::Value::String(function_response.response.clone()))),
+                    status: ToolStatus {
+                        type_: ToolStatusType::Complete,
+                        reason: None,
+                    },
+                };
+
+                let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                let _ = m
+                    .queue_message(
+                        WSTopic::Inbox,
+                        inbox_name_string,
+                        serde_json::to_string(&function_response).unwrap_or_else(|_| "{}".to_string()),
+                        ws_message_type,
+                        true,
+                    )
+                    .await;
+            }
         }
     }
 }

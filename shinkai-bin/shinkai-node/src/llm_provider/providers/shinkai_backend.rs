@@ -177,6 +177,7 @@ impl LLMService for ShinkaiBackend {
                                     FunctionCall {
                                         name: fc.name,
                                         arguments,
+                                        tool_router_key: None,
                                     }
                                 })
                             });
@@ -207,6 +208,7 @@ impl LLMService for ShinkaiBackend {
                                     FunctionCall {
                                         name: fc.name,
                                         arguments,
+                                        tool_router_key: None,
                                     }
                                 })
                             });

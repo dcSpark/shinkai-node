@@ -191,6 +191,7 @@ impl ShinkaiTool {
             "function": {
                 "name": self.name(),
                 "description": self.description(),
+                "tool_router_key": self.tool_router_key(),
                 "parameters": {
                     "type": "object",
                     "properties": properties,
