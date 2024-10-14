@@ -1988,18 +1988,9 @@ impl Node {
             } => {
                 let job_manager_clone = self.job_manager.clone().unwrap();
                 let db_clone = self.db.clone();
-                let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_fork_job_messages(
-                        db_clone,
-                        identity_manager_clone,
-                        job_manager_clone,
-                        bearer,
-                        job_id,
-                        message_id,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_fork_job_messages(db_clone, job_manager_clone, bearer, job_id, message_id, res).await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
