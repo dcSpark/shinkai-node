@@ -353,8 +353,27 @@ fn job_branchs_retries_tests() {
             }
             // Fork job messages
             {
-                let message_id = node1_last_messages
+                let last_message_id = node1_last_messages
                     .last()
+                    .unwrap()
+                    .calculate_message_hash_for_pagination();
+
+                let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiForkJobMessages {
+                        bearer: api_v2_key.clone(),
+                        job_id: job_id.clone(),
+                        message_id: last_message_id,
+                        res: res1_sender,
+                    })
+                    .await
+                    .unwrap();
+                let forked_job_id = res1_receiver.recv().await.unwrap();
+
+                assert!(forked_job_id.is_ok());
+
+                let first_message_id = node1_last_messages
+                    .first()
                     .unwrap()
                     .calculate_message_hash_for_pagination();
 
@@ -363,13 +382,14 @@ fn job_branchs_retries_tests() {
                     .send(NodeCommand::V2ApiForkJobMessages {
                         bearer: api_v2_key,
                         job_id,
-                        message_id,
+                        message_id: first_message_id,
                         res: res1_sender,
                     })
                     .await
                     .unwrap();
                 let forked_job_id = res1_receiver.recv().await.unwrap();
-                eprintln!("{:?}", forked_job_id);
+
+                assert!(forked_job_id.is_ok());
             }
             // Check the endpoints that return all the branches
             {

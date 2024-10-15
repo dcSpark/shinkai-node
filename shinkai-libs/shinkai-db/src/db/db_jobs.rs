@@ -57,7 +57,6 @@ impl ShinkaiDB {
         let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
         let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
         let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
-        let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
 
         // Content
         let conversation_inbox_prefix = format!("inbox_{}", Self::job_id_to_hash(&job_id)); // 47 characters so prefix works
@@ -94,7 +93,6 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
         batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "");
-        batch.put_cf(cf_inbox, forked_jobs_key.as_bytes(), "[]");
 
         // Serialize and put associated_ui if it exists
         if let Some(ui) = &associated_ui {
@@ -372,13 +370,7 @@ impl ShinkaiDB {
             .flatten()
             .and_then(|value| serde_json::from_slice(&value).ok());
 
-        let forked_jobs_value = self
-            .db
-            .get_cf(cf_jobs, format!("jobinbox_{}_forked_jobs", job_id).as_bytes())
-            .ok()
-            .flatten()
-            .and_then(|value| serde_json::from_slice(&value).ok())
-            .unwrap_or_default();
+        let forked_jobs = self.get_forked_jobs(job_id)?;
 
         Ok((
             scope,
@@ -392,7 +384,7 @@ impl ShinkaiDB {
             self.get_job_execution_context(job_id)?,
             associated_ui_value,
             config_value,
-            forked_jobs_value,
+            forked_jobs,
         ))
     }
 
@@ -737,16 +729,7 @@ impl ShinkaiDB {
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
 
         // Fetch the current forked jobs
-        let forked_jobs_value: Vec<u8> = self
-            .db
-            .get_cf(cf_inbox, forked_jobs_key.as_bytes())
-            .ok()
-            .flatten()
-            .and_then(|value| serde_json::from_slice(&value).ok())
-            .unwrap_or_default();
-        let mut forked_jobs: Vec<ForkedJob> = serde_json::from_slice(&forked_jobs_value)?;
-
-        // Add the new forked job
+        let mut forked_jobs = self.get_forked_jobs(job_id)?;
         forked_jobs.push(forked_job);
 
         // Serialize the forked jobs
@@ -757,5 +740,20 @@ impl ShinkaiDB {
             .put_cf(cf_inbox, forked_jobs_key.as_bytes(), &forked_jobs_value)?;
 
         Ok(())
+    }
+
+    /// Fetches all forked jobs for a specific Job from the DB
+    fn get_forked_jobs(&self, job_id: &str) -> Result<Vec<ForkedJob>, ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
+
+        match self.db.get_cf(cf_inbox, forked_jobs_key.as_bytes()) {
+            Ok(Some(value)) => {
+                let forked_jobs: Vec<ForkedJob> = serde_json::from_slice(&value)?;
+                Ok(forked_jobs)
+            }
+            Ok(None) => Ok(Vec::new()),
+            Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
+        }
     }
 }

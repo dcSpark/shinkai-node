@@ -17,7 +17,7 @@ use shinkai_message_primitives::{
         smart_inbox::{SmartInbox, V2SmartInbox},
     },
     shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiBody, ShinkaiData},
+        shinkai_message::{MessageBody, MessageData},
         shinkai_message_schemas::{
             APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
         },
@@ -1121,10 +1121,14 @@ impl Node {
 
     pub async fn v2_fork_job_messages(
         db: Arc<ShinkaiDB>,
-        job_manager: Arc<Mutex<JobManager>>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         job_id: String,
         message_id: String,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        node_signing_sk: SigningKey,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token and extract the sender identity
@@ -1132,7 +1136,21 @@ impl Node {
             return Ok(());
         }
 
-        // Retrieve the job and the messages
+        // Retrieve the message from the inbox
+        let source_message = match db.fetch_message_and_hash(&message_id) {
+            Ok(msg) => msg.0,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Message not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the job
         let source_job = match db.get_job(&job_id) {
             Ok(job) => job,
             Err(err) => {
@@ -1146,9 +1164,58 @@ impl Node {
             }
         };
 
+        // Get the main identity from the identity manager
+        let main_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(identity) => identity.clone(),
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
+            Ok(name) => name,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create sender name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let recipient = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
+            node_name.node_name,
+            "main".to_string(),
+            ShinkaiSubidentityType::Agent,
+            source_job.parent_llm_provider_id.clone(),
+        ) {
+            Ok(name) => name,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create recipient name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the messages from the inbox
         let inbox_name = source_job.conversation_inbox_name.to_string();
-        let source_messages =
-            match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX, Some(message_id.clone())) {
+        let last_messages =
+            match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, Some(message_id.clone())) {
                 Ok(messages) => messages,
                 Err(err) => {
                     let api_error = APIError {
@@ -1186,7 +1253,10 @@ impl Node {
         // Fork the messages
         let mut forked_message_map: HashMap<String, String> = HashMap::new();
 
-        for message in source_messages.iter().flatten() {
+        let mut joined_messages = last_messages.iter().flatten().collect::<Vec<_>>();
+        joined_messages.push(&source_message);
+
+        for message in joined_messages {
             if let MessageBody::Unencrypted(body) = &message.body {
                 if let MessageData::Unencrypted(data) = &body.message_data {
                     if let MessageSchemaType::JobMessageSchema = data.message_content_schema {
@@ -1211,27 +1281,43 @@ impl Node {
                                 .unwrap_or_else(|| parent.to_string())
                         });
 
-                        let mut forked_message = message.clone();
-                        forked_message.body = MessageBody::Unencrypted(ShinkaiBody {
-                            message_data: MessageData::Unencrypted(ShinkaiData {
-                                message_content_schema: MessageSchemaType::JobMessageSchema,
-                                message_raw_content: serde_json::to_string(&job_message).unwrap(),
-                            }),
-                            internal_metadata: body.internal_metadata.clone(),
-                        });
+                        let forked_message = match Self::api_v2_create_shinkai_message(
+                            sender.clone(),
+                            recipient.clone(),
+                            &serde_json::to_string(&job_message).unwrap(),
+                            MessageSchemaType::JobMessageSchema,
+                            node_encryption_sk.clone(),
+                            node_signing_sk.clone(),
+                            node_encryption_pk,
+                            Some(job_message.job_id.clone()),
+                        ) {
+                            Ok(message) => message,
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to create Shinkai message: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        };
 
                         forked_message_map.insert(
                             message.calculate_message_hash_for_pagination(),
                             forked_message.calculate_message_hash_for_pagination(),
                         );
 
-                        match Self::internal_job_message(job_manager.clone(), forked_message).await {
+                        match db
+                            .add_message_to_job_inbox(&forked_job_id, &forked_message, job_message.parent.clone(), None)
+                            .await
+                        {
                             Ok(_) => {}
                             Err(err) => {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
-                                    message: format!("{}", err),
+                                    message: format!("Failed to add message to job inbox: {}", err),
                                 };
                                 let _ = res.send(Err(api_error)).await;
                                 return Ok(());
