@@ -813,6 +813,9 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<bool, APIError>>,
     },
+    V2ApiHealthCheck {
+        res: Sender<Result<serde_json::Value, APIError>>,
+    },
     V2ApiScanOllamaModels {
         bearer: String,
         res: Sender<Result<Vec<serde_json::Value>, APIError>>,
