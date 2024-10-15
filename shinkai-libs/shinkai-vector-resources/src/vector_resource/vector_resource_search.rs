@@ -349,27 +349,70 @@ pub trait VectorResourceSearch: VectorResourceCore {
         if let VRSourceReference::Standard(SourceReference::FileRef(file_ref)) = self.source() {
             if let SourceFileType::Document(file_type) = file_ref.file_type {
                 if file_type == DocumentFileType::Csv {
-                    if let Some(first_node) = retrieved_nodes.first() {
-                        if let Some(merged_node) = self.get_all_node_content_merged() {
-                            let retrieved_node = RetrievedNode {
-                                node: merged_node,
-                                score: retrieved_nodes
-                                    .iter()
-                                    .reduce(|a, b| if a.score > b.score { a } else { b })
-                                    .unwrap()
-                                    .score,
-                                resource_header: first_node.resource_header.clone(),
-                                retrieval_path: first_node.retrieval_path.clone(),
-                            };
-
-                            return vec![retrieved_node];
-                        }
-                    }
+                    return self._merge_retrieved_nodes(retrieved_nodes);
                 }
             }
         }
 
         retrieved_nodes
+    }
+
+    /// Merges content of nodes to a single node. Used for data tables.
+    fn _merge_retrieved_nodes(&self, retrieved_nodes: Vec<RetrievedNode>) -> Vec<RetrievedNode> {
+        if retrieved_nodes.len() < 2 {
+            return retrieved_nodes;
+        }
+
+        let first_node = retrieved_nodes.first().unwrap();
+        let nodes = retrieved_nodes.iter().map(|node| &node.node).collect::<Vec<_>>();
+
+        let node_id = nodes.first().and_then(|n| Some(n.id.clone())).unwrap_or_default();
+        let mut merged_text = String::new();
+        let mut merged_data_tags = Vec::new();
+        let mut merged_metadata: Option<HashMap<String, String>> = None;
+        for node in nodes {
+            if let Ok(text) = node.get_text_content() {
+                merged_text += text;
+                merged_text += "\n";
+                merged_data_tags.extend(node.data_tag_names.clone());
+
+                if let Some(metadata) = &node.metadata {
+                    if merged_metadata.is_none() {
+                        merged_metadata = Some(metadata.clone());
+                    } else {
+                        let mut merged_metadata_unwrapped = merged_metadata.unwrap();
+                        for (key, value) in metadata {
+                            merged_metadata_unwrapped
+                                .entry(key.to_string())
+                                .or_insert(value.to_string());
+                        }
+                        merged_metadata = Some(merged_metadata_unwrapped);
+                    }
+                }
+            }
+        }
+
+        if merged_text.is_empty() {
+            return retrieved_nodes;
+        }
+
+        let merged_node = Node::from_node_content(
+            node_id,
+            NodeContent::Text(merged_text),
+            merged_metadata,
+            merged_data_tags,
+        );
+
+        vec![RetrievedNode {
+            node: merged_node,
+            score: retrieved_nodes
+                .iter()
+                .reduce(|a, b| if a.score > b.score { a } else { b })
+                .unwrap()
+                .score,
+            resource_header: first_node.resource_header.clone(),
+            retrieval_path: first_node.retrieval_path.clone(),
+        }]
     }
 
     /// Vector search customized core logic, with ability to specify root_header
