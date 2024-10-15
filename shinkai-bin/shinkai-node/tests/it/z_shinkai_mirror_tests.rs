@@ -203,6 +203,8 @@ fn mirror_sync_tests() {
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
             node1_encryption_sk,
+            None,
+            None,
             0,
             node1_commands_receiver,
             node1_db_path,
@@ -269,12 +271,16 @@ fn mirror_sync_tests() {
         tokio::time::sleep(Duration::from_secs(2)).await;
         // Setup API Server task
         let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
+        let api_https_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8083);
         let node1_commands_sender_clone = node1_commands_sender.clone();
         let api_server = tokio::spawn(async move {
             let _ = node_api_router::run_api(
                 node1_commands_sender_clone.clone(),
                 api_listen_address,
+                api_https_listen_address,
                 node1_identity_name.to_string(),
+                None,
+                None,
             )
             .await;
         });

@@ -205,6 +205,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         payload: InitialRegistrationRequest,
+        public_https_certificate: Option<String>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
         vector_fs: Arc<VectorFS>,
         first_device_needs_registration_code: bool,
@@ -243,6 +244,7 @@ impl Node {
             registration_code,
             ws_manager,
             supported_embedding_models,
+            public_https_certificate,
             res.clone(),
         )
         .await
@@ -703,6 +705,28 @@ impl Node {
 
         let has_any_profile = db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_health_check(
+        db: Arc<ShinkaiDB>,
+        public_https_certificate: Option<String>,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let public_https_certificate = match public_https_certificate {
+            Some(cert) => cert,
+            None => "".to_string(),
+        };
+
+        let version = env!("CARGO_PKG_VERSION");
+
+        let _ = res
+            .send(Ok(serde_json::json!({
+                "pristine": !db.has_any_profile().unwrap_or(false),
+                "public_https_certificate": public_https_certificate,
+                "version": version,
+            })))
+            .await;
         Ok(())
     }
 

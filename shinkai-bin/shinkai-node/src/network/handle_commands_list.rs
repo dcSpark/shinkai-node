@@ -301,6 +301,7 @@ impl Node {
                 let job_manager = self.job_manager.clone().unwrap();
                 let ws_manager_trait = self.ws_manager_trait.clone();
                 let support_embedding_models = self.supported_embedding_models.clone();
+                let public_https_certificate = self.public_https_certificate.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_handle_registration_code_usage(
                         db_clone,
@@ -315,6 +316,7 @@ impl Node {
                         identity_public_key_clone,
                         identity_secret_key_clone,
                         initial_llm_providers_clone,
+                        public_https_certificate,
                         msg,
                         ws_manager_trait,
                         support_embedding_models,
@@ -1858,13 +1860,14 @@ impl Node {
                 let job_manager = self.job_manager.clone().unwrap();
                 let ws_manager_trait = self.ws_manager_trait.clone();
                 let supported_embedding_models = self.supported_embedding_models.clone();
-
+                let public_https_certificate = self.public_https_certificate.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_handle_initial_registration(
                         db_clone,
                         identity_manager_clone,
                         node_name_clone,
                         payload,
+                        public_https_certificate,
                         res,
                         vector_fs_clone,
                         first_device_needs_registration_code,
@@ -2564,6 +2567,13 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_is_pristine(bearer, db_clone, res).await;
+                });
+            }
+            NodeCommand::V2ApiHealthCheck { res } => {
+                let db_clone = Arc::clone(&self.db);
+                let public_https_certificate_clone = self.public_https_certificate.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, res).await;
                 });
             }
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {

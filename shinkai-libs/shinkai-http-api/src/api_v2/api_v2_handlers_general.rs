@@ -270,24 +270,30 @@ pub async fn get_public_keys(sender: Sender<NodeCommand>) -> Result<impl warp::R
     )
 )]
 pub async fn health_check(sender: Sender<NodeCommand>, node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
-    let version = env!("CARGO_PKG_VERSION");
-
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
+     // Send the APIHealthCheck command to retrieve the pristine state and public HTTPS certificate
     sender
-        .send(NodeCommand::APIIsPristine { res: res_sender })
+        .send(NodeCommand::V2ApiHealthCheck { res: res_sender })
         .await
         .map_err(|_| warp::reject::reject())?;
 
-    let pristine_state = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    let health_check_state = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
-    if let Err(error) = pristine_state {
+    if let Err(error) = health_check_state {
         return Ok(warp::reply::json(&json!({ "status": "error", "error": error })));
     }
 
-    Ok(warp::reply::json(
-        &json!({ "status": "ok", "version": version, "node_name": node_name, "is_pristine": pristine_state.unwrap() }),
-    ))
+    let mut response = json!({ "status": "ok", "node_name": node_name });
+    if let Ok(state) = health_check_state {
+        if let serde_json::Value::Object(ref mut map) = response {
+            if let serde_json::Value::Object(state_map) = state {
+                map.extend(state_map);
+            }
+        }
+    }
+
+    Ok(warp::reply::json(&response))
 }
 
 #[utoipa::path(

@@ -143,10 +143,17 @@ pub async fn initialize_node() -> Result<
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
+
+    // Add the HTTPS certificates to the secret content
     let secret_content = format!(
-        "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}",
-        global_identity_name, identity_secret_key_string, encryption_secret_key_string
+        "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}\nPRIVATE_HTTPS_CERTIFICATE={}\nPUBLIC_HTTPS_CERTIFICATE={}",
+        global_identity_name,
+        identity_secret_key_string,
+        encryption_secret_key_string,
+        node_keys.private_https_certificate.clone().unwrap_or_default(),
+        node_keys.public_https_certificate.clone().unwrap_or_default()
     );
+
     if !node_env.no_secrets_file {
         std::fs::create_dir_all(Path::new(&secrets_file_path.clone()).parent().unwrap())
             .expect("Failed to create .secret dir");
@@ -160,6 +167,8 @@ pub async fn initialize_node() -> Result<
         node_env.listen_address,
         clone_signature_secret_key(&node_keys.identity_secret_key),
         node_keys.encryption_secret_key.clone(),
+        node_keys.private_https_certificate.clone(),
+        node_keys.public_https_certificate.clone(),
         node_env.ping_interval,
         node_commands_receiver,
         main_db_path.clone(),
@@ -209,11 +218,15 @@ pub async fn initialize_node() -> Result<
 
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
+    let api_https_listen_address = node_env.clone().api_https_listen_address;
     let api_server = tokio::spawn(async move {
         if let Err(e) = node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
+            api_https_listen_address,
             global_identity_name.clone().to_string(),
+            node_keys.private_https_certificate.clone(),
+            node_keys.public_https_certificate.clone(),
         )
         .await
         {
@@ -353,6 +366,7 @@ pub fn print_node_info(
 ) {
     println!("---------------------------------------------------------------");
     println!("Node API address: {}", node_env.api_listen_address);
+    println!("Node API HTTPS address: {}", node_env.api_https_listen_address);
     println!("Node TCP address: {}", node_env.listen_address);
     println!("Node WS address: {:?}", node_env.ws_address);
     println!("Node Shinkai identity: {}", node_env.global_identity_name);
