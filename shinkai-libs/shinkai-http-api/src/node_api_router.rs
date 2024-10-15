@@ -175,9 +175,27 @@ pub async fn run_api(
                 let acceptor = tls_acceptor.clone();
                 let routes = routes.clone();
                 tokio::spawn(async move {
-                    let stream = acceptor.accept(stream).await.unwrap();
-                    let service = warp::service(routes);
-                    Http::new().serve_connection(stream, service).await.unwrap();
+                    match acceptor.accept(stream).await {
+                        Ok(stream) => {
+                            let service = warp::service(routes);
+                            if let Err(e) = Http::new().serve_connection(stream, service).await {
+                                // Log the error instead of panicking
+                                shinkai_log(
+                                    ShinkaiLogOption::Api,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Error serving connection: {:?}", e),
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            // Log the TLS handshake error
+                            shinkai_log(
+                                ShinkaiLogOption::Api,
+                                ShinkaiLogLevel::Error,
+                                &format!("TLS handshake failed: {:?}", e),
+                            );
+                        }
+                    }
                 });
             }
             // This is unreachable because the server is running indefinitely
