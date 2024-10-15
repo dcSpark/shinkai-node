@@ -722,7 +722,7 @@ impl Node {
 
         let _ = res
             .send(Ok(serde_json::json!({
-                "pristine": !db.has_any_profile().unwrap_or(false),
+                "is_pristine": !db.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
             })))
