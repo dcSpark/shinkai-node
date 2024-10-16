@@ -1329,3 +1329,29 @@ async fn local_json_parsing_test() {
         .unwrap()
         .contains("Echoes the input message")));
 }
+
+#[tokio::test]
+async fn local_xlsx_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "cars.xlsx";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "Which car has 495 horsepower?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.5);
+    assert!(results[0].node.get_text_content().unwrap().contains("Corvette"));
+}

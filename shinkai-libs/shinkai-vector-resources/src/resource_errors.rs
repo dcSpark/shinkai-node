@@ -17,6 +17,7 @@ pub enum VRError {
     FailedPDFParsing,
     FailedMDParsing,
     FailedTXTParsing,
+    FailedXLSXParsing,
     InvalidVRBaseType,
     RegexError(regex::Error),
     RequestFailed(String),
@@ -62,6 +63,7 @@ impl fmt::Display for VRError {
             VRError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
             VRError::FailedMDParsing => write!(f, "Failed MD parsing."),
             VRError::FailedTXTParsing => write!(f, "Failed TXT parsing."),
+            VRError::FailedXLSXParsing => write!(f, "Failed XLSX parsing."),
             VRError::NoEmbeddingProvided => write!(f, "No embedding provided."),
             VRError::InvalidVRBaseType => {
                 write!(f, "The resource type does not match any of the VRBaseTypes.")

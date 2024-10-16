@@ -10512,6 +10512,7 @@ dependencies = [
  "keyphrases",
  "lazy_static",
  "lz4_flex",
+ "num-traits",
  "ordered-float",
  "rand 0.8.5",
  "regex",
@@ -10522,6 +10523,7 @@ dependencies = [
  "shinkai_ocr",
  "textcode",
  "tokio",
+ "umya-spreadsheet",
  "urlencoding 1.3.3",
  "utoipa",
 ]
