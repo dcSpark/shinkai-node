@@ -1258,6 +1258,7 @@ pub struct APIUseRegistrationCodeSuccessResponse {
     pub encryption_public_key: String,
     pub identity_public_key: String,
     pub api_v2_key: String,
+    pub api_v2_cert: Option<String>,
 }
 
 pub async fn use_registration_code_handler(
@@ -1282,7 +1283,8 @@ pub async fn use_registration_code_handler(
                 "node_name": success_response.node_name,
                 "encryption_public_key": success_response.encryption_public_key,
                 "identity_public_key": success_response.identity_public_key,
-                "api_v2_key": success_response.api_v2_key
+                "api_v2_key": success_response.api_v2_key,
+                "api_v2_cert": success_response.api_v2_cert,
             });
             let response = serde_json::json!({
                 "status": "success",

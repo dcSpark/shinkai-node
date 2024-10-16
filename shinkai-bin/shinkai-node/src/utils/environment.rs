@@ -13,6 +13,7 @@ pub struct NodeEnvironment {
     pub global_identity_name: String,
     pub listen_address: SocketAddr,
     pub api_listen_address: SocketAddr,
+    pub api_https_listen_address: SocketAddr,
     pub ws_address: Option<SocketAddr>,
     pub ping_interval: u64,
     pub starting_num_qr_profiles: u32,
@@ -194,6 +195,14 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     // Fetch the API_V2_KEY environment variable
     let api_v2_key: Option<String> = env::var("API_V2_KEY").ok();
 
+    // Fetch the environment variable for the HTTPS API port, or use the default value
+    let api_https_port: u16 = env::var("NODE_API_HTTPS_PORT")
+        .unwrap_or_else(|_| "9553".to_string())
+        .parse()
+        .expect("Failed to parse HTTPS port number");
+
+    let api_https_listen_address = SocketAddr::new(api_ip, api_https_port);
+
     NodeEnvironment {
         global_identity_name,
         listen_address,
@@ -212,5 +221,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         default_embedding_model,
         supported_embedding_models,
         api_v2_key,
+        api_https_listen_address,
     }
 }

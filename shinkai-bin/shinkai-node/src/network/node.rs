@@ -26,18 +26,18 @@ use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
-use shinkai_sqlite::{SqliteLogger, SqliteManager};
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
+use rcgen::Certificate;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -48,6 +48,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::{SqliteLogger, SqliteManager};
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -87,6 +88,10 @@ pub struct Node {
     pub encryption_public_key: EncryptionPublicKey,
     // The address this node is listening on.
     pub listen_address: SocketAddr,
+    // The HTTPS certificate in PEM format
+    pub private_https_certificate: Option<String>,
+    // The HTTPS private key in PEM format
+    pub public_https_certificate: Option<String>,
     // Secrets file path
     pub secrets_file_path: String,
     // A map of known peer nodes.
@@ -165,6 +170,8 @@ impl Node {
         listen_address: SocketAddr,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        private_https_certificate: Option<String>,
+        public_https_certificate: Option<String>,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
         main_db_path: String,
@@ -331,7 +338,6 @@ impl Node {
         .unwrap();
         let lance_db = Arc::new(RwLock::new(lance_db));
 
-
         // Initialize SqliteLogger
         let sqlite_manager = SqliteManager::new(main_db_path).unwrap();
         let sqlite_logger = SqliteLogger::new(Arc::new(sqlite_manager)).unwrap();
@@ -456,6 +462,8 @@ impl Node {
             identity_public_key,
             encryption_secret_key: clone_static_secret_key(&encryption_secret_key),
             encryption_public_key,
+            private_https_certificate,
+            public_https_certificate,
             peers: CHashMap::new(),
             listen_address,
             secrets_file_path,

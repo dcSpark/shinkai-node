@@ -121,6 +121,8 @@ where
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
             node1_encryption_sk.clone(),
+            None,
+            None,
             0,
             node1_commands_receiver.clone(),
             node1_db_path,

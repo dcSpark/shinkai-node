@@ -632,6 +632,7 @@ impl Node {
         identity_public_key: VerifyingKey,
         identity_secret_key: SigningKey,
         initial_llm_providers: Vec<SerializedLLMProvider>,
+        public_https_certificate: Option<String>,
         msg: ShinkaiMessage,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
@@ -727,6 +728,7 @@ impl Node {
             registration_code,
             ws_manager,
             supported_embedding_models,
+            public_https_certificate,
             res,
         )
         .await
@@ -748,6 +750,7 @@ impl Node {
         registration_code: RegistrationCode,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
+        public_https_certificate: Option<String>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("handle_registration_code_usage");
@@ -934,6 +937,7 @@ impl Node {
                                     encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
                                     api_v2_key,
+                                    api_v2_cert: public_https_certificate,
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -1074,6 +1078,7 @@ impl Node {
                                     encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
                                     api_v2_key,
+                                    api_v2_cert: public_https_certificate,
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }

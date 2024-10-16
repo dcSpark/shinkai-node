@@ -30,7 +30,7 @@ fn node_retrying_test() {
         // Node 1
         let node1_identity_name = "@@node1_test.arb-sep-shinkai";
 
-        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         // eprintln!("node1_identity_pk: {:?}", signature_public_key_to_string(node1_identity_pk.clone()));
         // eprintln!("node1_encryption_pk: {:?}", encryption_public_key_to_string(node1_encryption_pk.clone()));
@@ -44,26 +44,26 @@ fn node_retrying_test() {
         // Node 1 Profile
         let node1_profile_name = "main";
 
-        let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
-        let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
+        let (node1_profile_identity_sk, _node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
+        let (node1_profile_encryption_sk, _node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
         // let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
 
         // Node 1 Subidentity
         let node1_device_name = "node1_device";
 
-        let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(101);
-        let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(101);
+        let (_node1_subidentity_sk, _node1_subidentity_pk) = unsafe_deterministic_signature_keypair(101);
+        let (_node1_subencryption_sk, _node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(101);
 
         // let node1_subencryption_sk_clone = node1_subencryption_sk.clone();
         // let node1_subencryption_sk_clone = node1_profile_encryption_sk.clone();
 
-        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
+        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         // Node 2
         let node2_identity_name = "@@node2_test.arb-sep-shinkai";
-        let node2_profile_name = "main_profile_node2";
+        let _node2_profile_name = "main_profile_node2";
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -83,11 +83,13 @@ fn node_retrying_test() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             node1_identity_sk,
             node1_encryption_sk,
+            None,
+            None,
             0,
             node1_commands_receiver,
             node1_db_path,
@@ -105,11 +107,13 @@ fn node_retrying_test() {
         .await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new(
+        let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
             node2_identity_sk,
             node2_encryption_sk,
+            None,
+            None,
             0,
             node2_commands_receiver,
             node2_db_path,
