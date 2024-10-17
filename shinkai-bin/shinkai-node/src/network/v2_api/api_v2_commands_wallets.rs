@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde_json::Value;
+use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
@@ -400,12 +400,13 @@ impl Node {
 
             let _ = res.send(Ok(wallets_json)).await;
         } else {
-            let api_error = APIError {
-                code: StatusCode::NOT_FOUND.as_u16(),
-                error: "Not Found".to_string(),
-                message: "No wallet manager found".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
+            // Return null for payment_wallet and receiving_wallet
+            let empty_wallets_json = json!({
+                "payment_wallet": null,
+                "receiving_wallet": null
+            });
+
+            let _ = res.send(Ok(empty_wallets_json)).await;
         }
 
         Ok(())
