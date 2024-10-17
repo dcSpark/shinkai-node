@@ -314,17 +314,15 @@ impl ToolRouter {
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            let lance_db = self.lance_db.read().await;
+            let lance_db = self.lance_db.write().await;
             if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
                 if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
                     let modified_tool = ShinkaiTool::JS(js_tool, true);
-                    let lance_db = self.lance_db.write().await;
                     lance_db.set_tool(&modified_tool).await?;
                 }
             }
 
-            let lance_db = self.lance_db.read().await;
             if let Some(shinkai_tool) = lance_db
                 .get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
                 .await?
@@ -332,7 +330,6 @@ impl ToolRouter {
                 if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "youtube_transcript_with_timestamps".to_string();
                     let modified_tool = ShinkaiTool::JS(js_tool, true);
-                    let lance_db = self.lance_db.write().await;
                     lance_db.set_tool(&modified_tool).await?;
                 }
             }
