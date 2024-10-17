@@ -171,14 +171,14 @@ impl JobManager {
             }
         }
 
-        // println!(
-        //     "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
-        //     query_text
-        // );
+        println!(
+            "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
+            query_text
+        );
 
-        // for node in &final_nodes {
-        //     eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
-        // }
+        for node in &final_nodes {
+            eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
+        }
 
         Ok((final_nodes, first_intro_text))
     }
