@@ -400,10 +400,10 @@ impl Node {
 
             let _ = res.send(Ok(wallets_json)).await;
         } else {
-            // Return empty JSON for payment_wallet and receiving_wallet
+            // Return null for payment_wallet and receiving_wallet
             let empty_wallets_json = json!({
-                "payment_wallet": {},
-                "receiving_wallet": {}
+                "payment_wallet": null,
+                "receiving_wallet": null
             });
 
             let _ = res.send(Ok(empty_wallets_json)).await;
