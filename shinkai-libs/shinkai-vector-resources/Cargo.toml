@@ -28,13 +28,15 @@ urlencoding = "1.1.1"
 docx-rust = "0.1.8"
 shinkai_ocr = { path = "../shinkai-ocr", optional = true }
 utoipa = "4.2.3"
+num-traits = "0.2"
+umya-spreadsheet = { version = "2.1.1", optional = true }
 
 [build-dependencies]
 reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
 
 [features]
 default = ["desktop-only"]
-desktop-only = ["reqwest/blocking", "comrak", "shinkai_ocr"]
+desktop-only = ["reqwest/blocking", "comrak", "shinkai_ocr", "umya-spreadsheet"]
 static-pdf-parser = ["shinkai_ocr/static"]
 
 wasm-http = []

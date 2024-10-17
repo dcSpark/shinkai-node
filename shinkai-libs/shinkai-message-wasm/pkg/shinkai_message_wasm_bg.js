@@ -4036,11 +4036,6 @@ export function __wbindgen_is_null(arg0) {
     return ret;
 };
 
-export function __wbindgen_number_new(arg0) {
-    const ret = arg0;
-    return addHeapObject(ret);
-};
-
 export function __wbindgen_jsval_loose_eq(arg0, arg1) {
     const ret = getObject(arg0) == getObject(arg1);
     return ret;
@@ -4052,6 +4047,11 @@ export function __wbg_String_88810dfeb4021902(arg0, arg1) {
     const len1 = WASM_VECTOR_LEN;
     getInt32Memory0()[arg0 / 4 + 1] = len1;
     getInt32Memory0()[arg0 / 4 + 0] = ptr1;
+};
+
+export function __wbindgen_number_new(arg0) {
+    const ret = arg0;
+    return addHeapObject(ret);
 };
 
 export function __wbg_getwithrefkey_5e6d9547403deab8(arg0, arg1) {

@@ -348,7 +348,10 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         if let VRSourceReference::Standard(SourceReference::FileRef(file_ref)) = self.source() {
             if let SourceFileType::Document(file_type) = file_ref.file_type {
-                if file_type == DocumentFileType::Csv {
+                if file_type == DocumentFileType::Csv
+                    || file_type == DocumentFileType::Xlsx
+                    || file_type == DocumentFileType::Xls
+                {
                     return self._merge_retrieved_nodes(retrieved_nodes);
                 }
             }
