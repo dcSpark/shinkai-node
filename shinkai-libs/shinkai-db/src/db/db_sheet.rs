@@ -61,10 +61,18 @@ impl ShinkaiDB {
         let iterator = self.db.prefix_iterator_cf(cf_sheets, prefix_search_key.as_bytes());
 
         for item in iterator {
-            let (_, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
-            let sheet: Sheet = serde_json::from_slice(&value).map_err(ShinkaiDBError::JsonSerializationError)?;
-
-            sheets.push(sheet);
+            match item {
+                Ok((_, value)) => {
+                    if let Ok(sheet) = serde_json::from_slice::<Sheet>(&value) {
+                        sheets.push(sheet);
+                    } else {
+                        eprintln!("Failed to deserialize sheet, ignoring entry.");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error iterating over database entries: {:?}", e);
+                }
+            }
         }
 
         Ok(sheets)
