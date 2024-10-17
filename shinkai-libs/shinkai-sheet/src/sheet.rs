@@ -481,10 +481,11 @@ impl Sheet {
                                         if let Some(cell) = self.get_cell(row.clone(), col_uuid.clone()) {
                                             if let Some(value) = &cell.value {
                                                 // Assuming the value is a serialized list of file names
-                                                let file_names: Vec<String> = serde_json::from_str(value).unwrap_or_default();
-                                                for file_name in file_names {
-                                                    uploaded_files.push((file_inbox_id.clone(), file_name));
-                                                }
+                                                // TODO: eventually if we want to support multiple files, we need to change this
+                                                // let file_names: Vec<String> = serde_json::from_str(value).unwrap_or_default();
+                                                // for file_name in file_names {
+                                                    uploaded_files.push((file_inbox_id.clone(), value.clone()));
+                                                // }
                                             }
                                         }
                                     }

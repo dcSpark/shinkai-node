@@ -6,6 +6,7 @@ use shinkai_message_primitives::schemas::{
 pub struct JobPromptGenerator {}
 
 impl JobPromptGenerator {
+    // TODO: needs urgent fix
     pub fn simple_doc_description(nodes: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
