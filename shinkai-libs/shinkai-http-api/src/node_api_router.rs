@@ -147,65 +147,70 @@ pub async fn run_api(
 
     // Check if certificates are provided for HTTPS
     if let (Some(cert_string), Some(key_string)) = (public_https_certificate, private_https_certificate) {
-        // Parse TLS keys from strings
-        let certs = rustls_pemfile::certs(&mut cert_string.as_bytes())
-            .map_err(|_| "Failed to parse certificates")?
-            .into_iter()
-            .map(rustls::Certificate)
-            .collect();
+        if !cert_string.is_empty() && !key_string.is_empty() {
+            eprintln!("cert_string: {}", cert_string);
+            eprintln!("key_string: {}", key_string);
 
-        let key = rustls_pemfile::pkcs8_private_keys(&mut key_string.as_bytes())
-            .map_err(|_| "Failed to parse private key")?
-            .into_iter()
-            .next()
-            .ok_or("No private key found")
-            .map(rustls::PrivateKey)?; // Use the PrivateKey constructor
+            // Parse TLS keys from strings
+            let certs = rustls_pemfile::certs(&mut cert_string.as_bytes())
+                .map_err(|_| "Failed to parse certificates")?
+                .into_iter()
+                .map(rustls::Certificate)
+                .collect();
 
-        let config = ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)?;
+            let key = rustls_pemfile::pkcs8_private_keys(&mut key_string.as_bytes())
+                .map_err(|_| "Failed to parse private key")?
+                .into_iter()
+                .next()
+                .ok_or("No private key found")
+                .map(rustls::PrivateKey)?; // Use the PrivateKey constructor
 
-        let tls_acceptor = TlsAcceptor::from(Arc::new(config));
+            let config = ServerConfig::builder()
+                .with_safe_defaults()
+                .with_no_client_auth()
+                .with_single_cert(certs, key)?;
 
-        let listener = TcpListener::bind(&https_address).await?;
-        let https_server = async {
-            loop {
-                let (stream, _) = listener.accept().await?;
-                let acceptor = tls_acceptor.clone();
-                let routes = routes.clone();
-                tokio::spawn(async move {
-                    match acceptor.accept(stream).await {
-                        Ok(stream) => {
-                            let service = warp::service(routes);
-                            if let Err(e) = Http::new().serve_connection(stream, service).await {
-                                // Log the error instead of panicking
+            let tls_acceptor = TlsAcceptor::from(Arc::new(config));
+
+            let listener = TcpListener::bind(&https_address).await?;
+            let https_server = async {
+                loop {
+                    let (stream, _) = listener.accept().await?;
+                    let acceptor = tls_acceptor.clone();
+                    let routes = routes.clone();
+                    tokio::spawn(async move {
+                        match acceptor.accept(stream).await {
+                            Ok(stream) => {
+                                let service = warp::service(routes);
+                                if let Err(e) = Http::new().serve_connection(stream, service).await {
+                                    // Log the error instead of panicking
+                                    shinkai_log(
+                                        ShinkaiLogOption::Api,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Error serving connection: {:?}", e),
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                // Log the TLS handshake error
                                 shinkai_log(
                                     ShinkaiLogOption::Api,
                                     ShinkaiLogLevel::Error,
-                                    &format!("Error serving connection: {:?}", e),
+                                    &format!("TLS handshake failed: {:?}", e),
                                 );
                             }
                         }
-                        Err(e) => {
-                            // Log the TLS handshake error
-                            shinkai_log(
-                                ShinkaiLogOption::Api,
-                                ShinkaiLogLevel::Error,
-                                &format!("TLS handshake failed: {:?}", e),
-                            );
-                        }
-                    }
-                });
-            }
-            // This is unreachable because the server is running indefinitely
-            // But the compiler needs it to return something
-            #[allow(unreachable_code)]
-            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-        };
+                    });
+                }
+                // This is unreachable because the server is running indefinitely
+                // But the compiler needs it to return something
+                #[allow(unreachable_code)]
+                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+            };
 
-        // Run both servers concurrently
-        tokio::try_join!(http_server, https_server)?;
+            // Run both servers concurrently
+            tokio::try_join!(http_server, https_server)?;
+        }
     } else {
         // Only run HTTP server
         http_server.await?;
