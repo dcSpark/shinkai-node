@@ -37,12 +37,10 @@ pub enum ColumnBehavior {
         llm_provider_name: String, // Note: maybe we want a duality: specific model or some rules that pick a model e.g. Cheap + Private
         input_hash: Option<String>, // New parameter to store the hash of inputs (avoid recomputation)
     },
-    MultipleVRFiles {
-        files: Vec<(FilePath, FileName)>,
-    },
-    // TODO: Add support for uploaded files. Specify String
+    MultipleVRFiles, // Note: files: Vec<(FilePath, FileName)>,
     UploadedFiles {
-        files: Vec<String>, // Mocking uploaded files as strings
+        #[serde(rename = "fileInboxId")]
+        file_inbox_id: String,
     },
 }
 
