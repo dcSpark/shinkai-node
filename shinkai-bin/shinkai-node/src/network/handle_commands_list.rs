@@ -1983,6 +1983,34 @@ impl Node {
                     let _ = Node::v2_get_available_llm_providers(db_clone, node_name_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiForkJobMessages {
+                bearer,
+                job_id,
+                message_id,
+                res,
+            } => {
+                let db_clone = self.db.clone();
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_fork_job_messages(
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        bearer,
+                        job_id,
+                        message_id,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();
@@ -2962,7 +2990,11 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetToolingLogs { bearer, message_id, res } => {
+            NodeCommand::V2ApiGetToolingLogs {
+                bearer,
+                message_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_logger_clone = Arc::clone(&self.sqlite_logger);
                 tokio::spawn(async move {

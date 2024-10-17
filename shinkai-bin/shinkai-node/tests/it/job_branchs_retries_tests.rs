@@ -1,16 +1,17 @@
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider};
+use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_http_api::node_commands::NodeCommand;
 use std::time::Duration;
 use std::time::Instant;
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_llm_provider_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
 };
 use mockito::Server;
 
@@ -41,7 +42,8 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
         // eprintln!("node1_last_messages[0] hash: {:?}", node1_last_messages[0].calculate_message_hash_for_pagination());
         // eprintln!("node1_last_messages[1] hash: {:?}", node1_last_messages[1].calculate_message_hash_for_pagination());
 
-        if node1_last_messages.len() == 2 && node1_last_messages[1].calculate_message_hash_for_pagination() == msg_hash {
+        if node1_last_messages.len() == 2 && node1_last_messages[1].calculate_message_hash_for_pagination() == msg_hash
+        {
             break;
         }
 
@@ -57,8 +59,9 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
 fn job_branchs_retries_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
 
+    let api_v2_key = std::env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
     let mut server = Server::new();
-    
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -307,6 +310,7 @@ fn job_branchs_retries_tests() {
                     └── 3 (done)
                         └── 4 (done)
             */
+            let mut node1_last_messages = Vec::new();
             {
                 // Confirm that we receive 1, 2, 5, 6
                 let start = Instant::now();
@@ -321,7 +325,7 @@ fn job_branchs_retries_tests() {
                         })
                         .await
                         .unwrap();
-                    let node1_last_messages = res1_receiver.recv().await.unwrap();
+                    node1_last_messages = res1_receiver.recv().await.unwrap();
                     // eprintln!("\n\n node1_last_messages: {:?}", node1_last_messages);
 
                     if node1_last_messages.len() == 4
@@ -346,6 +350,46 @@ fn job_branchs_retries_tests() {
                     }
                     tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping
                 }
+            }
+            // Fork job messages
+            {
+                let last_message_id = node1_last_messages
+                    .last()
+                    .unwrap()
+                    .calculate_message_hash_for_pagination();
+
+                let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiForkJobMessages {
+                        bearer: api_v2_key.clone(),
+                        job_id: job_id.clone(),
+                        message_id: last_message_id,
+                        res: res1_sender,
+                    })
+                    .await
+                    .unwrap();
+                let forked_job_id = res1_receiver.recv().await.unwrap();
+
+                assert!(forked_job_id.is_ok());
+
+                let first_message_id = node1_last_messages
+                    .first()
+                    .unwrap()
+                    .calculate_message_hash_for_pagination();
+
+                let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiForkJobMessages {
+                        bearer: api_v2_key,
+                        job_id,
+                        message_id: first_message_id,
+                        res: res1_sender,
+                    })
+                    .await
+                    .unwrap();
+                let forked_job_id = res1_receiver.recv().await.unwrap();
+
+                assert!(forked_job_id.is_ok());
             }
             // Check the endpoints that return all the branches
             {

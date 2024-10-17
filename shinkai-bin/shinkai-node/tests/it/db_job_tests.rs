@@ -1,11 +1,11 @@
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::subprompts::SubPromptType::{Assistant, User};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::schemas::subprompts::SubPromptType::{Assistant, User};
 use std::{fs, path::Path};
 use tokio::time::{sleep, Duration};
 
@@ -65,9 +65,14 @@ mod tests {
 
     use shinkai_db::db::db_errors::ShinkaiDBError;
     use shinkai_message_primitives::{
-        schemas::{inbox_name::InboxName, subprompts::SubPrompt},
+        schemas::{inbox_name::InboxName, job::ForkedJob, subprompts::SubPrompt},
         shinkai_message::shinkai_message_schemas::JobMessage,
-        shinkai_utils::{encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope, shinkai_logging::init_default_tracing, shinkai_message_builder::ShinkaiMessageBuilder, signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}},
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair,
+            job_scope::JobScope,
+            shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+        },
     };
     use shinkai_vector_resources::utils::hash_string;
 
@@ -861,5 +866,113 @@ mod tests {
         let message_content_3 = last_messages_inbox[2][0].clone().get_message_content().unwrap();
         let job_message_3: JobMessage = serde_json::from_str(&message_content_3).unwrap();
         assert_eq!(job_message_3.content, "Hello World 3".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_add_forked_job() {
+        setup();
+        let job_id = "job1".to_string();
+        let agent_id = "agent1".to_string();
+        let scope = JobScope::new_default();
+        let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Create a new job
+        create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope.clone());
+
+        let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
+
+        let mut parent_message_hash: Option<String> = None;
+        let mut parent_message_hash_2: Option<String> = None;
+
+        /*
+        The tree that we are creating looks like:
+            1
+            ├── 2
+            │   ├── 4
+            └── 3
+         */
+        for i in 1..=4 {
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+                job_id.clone(),
+                format!("Hello World {}", i),
+                "".to_string(),
+                None,
+                placeholder_signature_sk.clone(),
+                "@@node1.shinkai".to_string(),
+                "@@node1.shinkai".to_string(),
+            )
+            .unwrap();
+
+            let parent_hash: Option<String> = match i {
+                2 | 3 => parent_message_hash.clone(),
+                4 => parent_message_hash_2.clone(),
+                _ => None,
+            };
+
+            // Add a message to the job
+            let _ = shinkai_db
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
+                .await;
+
+            // Update the parent message according to the tree structure
+            if i == 1 {
+                parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
+            } else if i == 2 {
+                parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
+            }
+        }
+
+        // Get the inbox name
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+        let inbox_name_value = inbox_name.to_string();
+
+        // Get the messages from the job inbox
+        let last_messages_inbox = shinkai_db
+            .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
+            .unwrap();
+
+        // Create forked jobs
+        let forked_job1_id = "forked_job1".to_string();
+        let forked_message1_id = last_messages_inbox
+            .last()
+            .unwrap()
+            .last()
+            .unwrap()
+            .calculate_message_hash_for_pagination();
+        let forked_job2_id = "forked_job2".to_string();
+        let forked_message2_id = last_messages_inbox
+            .first()
+            .unwrap()
+            .first()
+            .unwrap()
+            .calculate_message_hash_for_pagination();
+        create_new_job(&mut shinkai_db, forked_job1_id.clone(), agent_id.clone(), scope.clone());
+        create_new_job(&mut shinkai_db, forked_job2_id.clone(), agent_id.clone(), scope);
+
+        let forked_job1 = ForkedJob {
+            job_id: forked_job1_id.clone(),
+            message_id: forked_message1_id.clone(),
+        };
+        let forked_job2 = ForkedJob {
+            job_id: forked_job2_id.clone(),
+            message_id: forked_message2_id.clone(),
+        };
+        match shinkai_db.add_forked_job(&job_id, forked_job1) {
+            Ok(_) => {}
+            Err(e) => panic!("Error adding forked job: {:?}", e),
+        }
+        match shinkai_db.add_forked_job(&job_id, forked_job2) {
+            Ok(_) => {}
+            Err(e) => panic!("Error adding forked job: {:?}", e),
+        }
+
+        // Check that the forked jobs are added
+        let job = shinkai_db.get_job(&job_id).unwrap();
+        assert_eq!(job.forked_jobs.len(), 2);
+        assert_eq!(job.forked_jobs[0].job_id, forked_job1_id);
+        assert_eq!(job.forked_jobs[0].message_id, forked_message1_id);
+        assert_eq!(job.forked_jobs[1].job_id, forked_job2_id);
+        assert_eq!(job.forked_jobs[1].message_id, forked_message2_id);
     }
 }

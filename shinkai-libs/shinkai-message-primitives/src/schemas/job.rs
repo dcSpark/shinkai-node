@@ -14,6 +14,7 @@ pub trait JobLike: Send + Sync {
     fn conversation_inbox_name(&self) -> &InboxName;
     fn associated_ui(&self) -> Option<&AssociatedUI>;
     fn config(&self) -> Option<&JobConfig>;
+    fn forked_jobs(&self) -> &Vec<ForkedJob>;
 }
 
 // Todo: Add a persistent_context: String
@@ -47,6 +48,14 @@ pub struct Job {
     pub associated_ui: Option<AssociatedUI>,
     /// The job's configuration
     pub config: Option<JobConfig>,
+    /// Keep track of forked jobs
+    pub forked_jobs: Vec<ForkedJob>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ForkedJob {
+    pub job_id: String,
+    pub message_id: String,
 }
 
 impl JobLike for Job {
@@ -84,6 +93,10 @@ impl JobLike for Job {
 
     fn config(&self) -> Option<&JobConfig> {
         self.config.as_ref()
+    }
+
+    fn forked_jobs(&self) -> &Vec<ForkedJob> {
+        &self.forked_jobs
     }
 }
 
