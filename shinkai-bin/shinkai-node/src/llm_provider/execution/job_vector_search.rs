@@ -390,40 +390,4 @@ impl JobManager {
             3
         }
     }
-
-    /// If include_description is true then adds the description of the Vector Resource
-    /// that the top scored retrieved node is from, by prepending a fake RetrievedNode
-    /// with the description inside. Removes the lowest scored node to preserve list length.
-    async fn generate_description_retrieved_node(
-        include_description: bool,
-        top_node: RetrievedNode,
-        resources: &[BaseVectorResource],
-    ) -> Vec<RetrievedNode> {
-        let mut new_nodes = vec![];
-
-        if include_description {
-            let resource_header = top_node.resource_header.clone();
-
-            // Iterate through resources until we find one with a matching resource reference string
-            for resource in resources {
-                if resource.as_trait_object().generate_resource_header().reference_string()
-                    == resource_header.reference_string()
-                {
-                    if let Some(description) = resource.as_trait_object().description() {
-                        let description_node = RetrievedNode::new(
-                            Node::new_text(String::new(), description.to_string(), None, &vec![]),
-                            1.0_f32,
-                            resource_header,
-                            top_node.retrieval_path.clone(),
-                        );
-                        new_nodes.insert(0, description_node);
-                        new_nodes.pop(); // Remove the last element to maintain the same length
-                    }
-                    break;
-                }
-            }
-        }
-
-        new_nodes
-    }
 }

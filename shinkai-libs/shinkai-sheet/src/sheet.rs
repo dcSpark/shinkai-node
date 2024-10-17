@@ -44,7 +44,7 @@ pub struct CellUpdateData {
 pub struct ProcessedInput {
     pub content: String,
     pub local_files: Vec<(String, String)>, // (FilePath, FileName)
-    pub uploaded_files: Vec<String>,
+    pub uploaded_files: Vec<(String, String)>, // (FilePath, FileName)
 }
 
 /// The `Sheet` struct represents the state of a spreadsheet.
@@ -466,15 +466,27 @@ impl Sheet {
                                             result.push_str(&value);
                                         }
                                     }
-                                    ColumnBehavior::MultipleVRFiles { files } => {
-                                        local_files.extend(files.clone());
+                                    ColumnBehavior::MultipleVRFiles => {
+                                        // Retrieve file paths from the specific cell
+                                        if let Some(cell) = self.get_cell(row.clone(), col_uuid.clone()) {
+                                            if let Some(value) = &cell.value {
+                                                // Assuming the value is a serialized list of file paths
+                                                let files: Vec<(String, String)> = serde_json::from_str(value).unwrap_or_default();
+                                                local_files.extend(files);
+                                            }
+                                        }
                                     }
-                                    ColumnBehavior::UploadedFiles { files } => {
-                                        if let Some(cell_files) =
-                                            self.uploaded_files.get(&(row.clone(), col_uuid.clone()))
-                                        {
-                                            uploaded_files.extend(cell_files.clone());
-                                            result.push_str(&format!("Uploaded files: {:?}", cell_files));
+                                    ColumnBehavior::UploadedFiles { file_inbox_id } => {
+                                        // Handle UploadedFiles with files_inbox_path
+                                        if let Some(cell) = self.get_cell(row.clone(), col_uuid.clone()) {
+                                            if let Some(value) = &cell.value {
+                                                // Assuming the value is a serialized list of file names
+                                                // TODO: eventually if we want to support multiple files, we need to change this
+                                                // let file_names: Vec<String> = serde_json::from_str(value).unwrap_or_default();
+                                                // for file_name in file_names {
+                                                    uploaded_files.push((file_inbox_id.clone(), value.clone()));
+                                                // }
+                                            }
                                         }
                                     }
                                     ColumnBehavior::LLMCall { .. } => {
