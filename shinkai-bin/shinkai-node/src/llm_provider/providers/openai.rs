@@ -285,7 +285,6 @@ async fn handle_streaming_response(
                         }
                     }
                     Err(_e) => {
-                        eprintln!("Error while receiving chunk: {:?}", _e);
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,

@@ -28,17 +28,32 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
     // First check for .secret file
     if let Ok(contents) = fs::read_to_string(secrets_file_path) {
         // Parse the contents of the file
-        let lines: HashMap<_, _> = contents
-            .lines()
-            .filter_map(|line| {
+        let mut lines = contents.lines();
+        let mut map = HashMap::new();
+        let mut current_key = None;
+        let mut current_value = String::new();
+
+        while let Some(line) = lines.next() {
+            if line.contains('=') && current_key.is_none() {
+                if let Some(key) = current_key.take() {
+                    map.insert(key, current_value.trim().to_string());
+                }
                 let mut parts = line.splitn(2, '=');
-                Some((parts.next()?, parts.next()?.to_string()))
-            })
-            .collect();
+                current_key = parts.next().map(|s| s.to_string());
+                current_value = parts.next().unwrap_or("").to_string();
+            } else if let Some(_) = current_key {
+                current_value.push('\n');
+                current_value.push_str(line);
+            }
+        }
+
+        if let Some(key) = current_key {
+            map.insert(key, current_value.trim().to_string());
+        }
 
         // Use the values from the file if they exist
         if let (Some(identity_secret_key_string), Some(encryption_secret_key_string)) =
-            (lines.get("IDENTITY_SECRET_KEY"), lines.get("ENCRYPTION_SECRET_KEY"))
+            (map.get("IDENTITY_SECRET_KEY"), map.get("ENCRYPTION_SECRET_KEY"))
         {
             // Convert the strings back to secret keys
             let identity_secret_key = string_to_signature_secret_key(identity_secret_key_string).unwrap();
@@ -49,8 +64,8 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
             let encryption_public_key = x25519_dalek::PublicKey::from(&encryption_secret_key);
 
             // Read the HTTPS certificates if they exist
-            let private_https_certificate = lines.get("PRIVATE_HTTPS_CERTIFICATE").cloned();
-            let public_https_certificate = lines.get("PUBLIC_HTTPS_CERTIFICATE").cloned();
+            let private_https_certificate = map.get("PRIVATE_HTTPS_CERTIFICATE").cloned();
+            let public_https_certificate = map.get("PUBLIC_HTTPS_CERTIFICATE").cloned();
 
             return NodeKeys {
                 identity_secret_key,
@@ -127,7 +142,7 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
             let cert = params.self_signed(&key_pair).unwrap();
             let public_cert = cert.pem();
 
-            (private_key_pem, public_cert)
+            (private_key_pem.trim().to_string(), public_cert)
         }
         _ => {
             // Generate a new self-signed certificate
@@ -139,7 +154,7 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
             let cert = params.self_signed(&key_pair).unwrap();
 
             // Serialize the private key using KeyPair
-            let private_key = key_pair.serialize_pem();
+            let private_key = key_pair.serialize_pem().trim().to_string();
 
             // Serialize the certificate
             let public_cert = cert.pem();

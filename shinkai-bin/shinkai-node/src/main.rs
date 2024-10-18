@@ -10,12 +10,15 @@ mod workflows;
 mod wallet;
 
 use runner::{initialize_node, run_node_tasks};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 
 #[cfg(feature = "console")]
 use console_subscriber;
 
+
 #[tokio::main]
 pub async fn main() {
+    init_default_tracing();
     #[cfg(feature = "console")]
     {
         console_subscriber::init();

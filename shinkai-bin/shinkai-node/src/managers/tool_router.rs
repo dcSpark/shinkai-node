@@ -539,11 +539,12 @@ impl ToolRouter {
 
                     // Send a Network Request Invoice
                     let invoice_request = match my_agent_payments_manager
-                        .request_invoice(network_tool.clone(), UsageTypeInquiry::PerUse)
+                        .network_request_invoice(network_tool.clone(), UsageTypeInquiry::PerUse)
                         .await
                     {
                         Ok(request) => request,
                         Err(e) => {
+                            eprintln!("Failed to request invoice: {}", e);
                             return Err(LLMProviderError::FunctionExecutionError(format!(
                                 "Failed to request invoice: {}",
                                 e

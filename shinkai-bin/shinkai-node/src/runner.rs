@@ -335,15 +335,29 @@ fn get_secrets_file_path(secrets_file: &str, node_storage_path: Option<String>) 
 /// This file holds the user's keys.
 fn parse_secrets_file(secrets_file_path: &str) -> HashMap<String, String> {
     let contents = fs::read_to_string(secrets_file_path).unwrap_or_default();
-    contents
-        .lines()
-        .map(|line| {
-            let mut parts = line.splitn(2, '=');
-            let key = parts.next().unwrap_or_default().to_string();
-            let value = parts.next().unwrap_or_default().to_string();
-            (key, value)
-        })
-        .collect()
+
+    let mut map = HashMap::new();
+    let mut current_key = String::new();
+    let mut current_value = String::new();
+
+    for line in contents.lines() {
+        if let Some((key, value)) = line.split_once('=') {
+            if !current_key.is_empty() {
+                map.insert(current_key.clone(), current_value.trim_end().to_string());
+            }
+            current_key = key.to_string();
+            current_value = value.to_string();
+        } else {
+            current_value.push_str("\n");
+            current_value.push_str(line);
+        }
+    }
+
+    if !current_key.is_empty() {
+        map.insert(current_key, current_value.trim_end().to_string());
+    }
+
+    map
 }
 
 /// Initializes RemoteEmbeddingGenerator struct using node environment/default embedding model for now
