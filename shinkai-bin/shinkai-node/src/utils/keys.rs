@@ -28,28 +28,14 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
     // First check for .secret file
     if let Ok(contents) = fs::read_to_string(secrets_file_path) {
         // Parse the contents of the file
-        let mut lines = contents.lines();
         let mut map = HashMap::new();
-        let mut current_key = None;
-        let mut current_value = String::new();
 
-        while let Some(line) = lines.next() {
-            if line.contains('=') && current_key.is_none() {
-                if let Some(key) = current_key.take() {
-                    map.insert(key, current_value.trim().to_string());
-                }
-                let mut parts = line.splitn(2, '=');
-                current_key = parts.next().map(|s| s.to_string());
-                current_value = parts.next().unwrap_or("").to_string();
-            } else if let Some(_) = current_key {
-                current_value.push('\n');
-                current_value.push_str(line);
+        for line in contents.lines() {
+            if let Some((key, value)) = line.split_once('=') {
+                map.insert(key.trim().to_string(), value.trim().to_string());
             }
         }
 
-        if let Some(key) = current_key {
-            map.insert(key, current_value.trim().to_string());
-        }
 
         // Use the values from the file if they exist
         if let (Some(identity_secret_key_string), Some(encryption_secret_key_string)) =
@@ -64,8 +50,18 @@ pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
             let encryption_public_key = x25519_dalek::PublicKey::from(&encryption_secret_key);
 
             // Read the HTTPS certificates if they exist
-            let private_https_certificate = map.get("PRIVATE_HTTPS_CERTIFICATE").cloned();
-            let public_https_certificate = map.get("PUBLIC_HTTPS_CERTIFICATE").cloned();
+            let private_https_certificate = match map.get("PRIVATE_HTTPS_CERTIFICATE").cloned() {
+                Some(certificate) if certificate.trim().len() > 0 => {
+                    Some(certificate.replace("\\n", "\n"))
+                },
+                _ => None,
+            };
+            let public_https_certificate = match map.get("PUBLIC_HTTPS_CERTIFICATE").cloned() {
+                Some(certificate) if certificate.trim().len() > 0 => {
+                    Some(certificate.replace("\\n", "\n"))
+                },
+                _ => None,
+            };
 
             return NodeKeys {
                 identity_secret_key,
