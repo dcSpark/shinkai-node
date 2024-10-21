@@ -145,13 +145,25 @@ pub async fn initialize_node() -> Result<
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
 
     // Add the HTTPS certificates to the secret content
+    let private_cert = node_keys
+        .private_https_certificate
+        .clone()
+        .unwrap_or_default()
+        .replace('\n', "\\n");
+
+    let public_cert = node_keys
+        .public_https_certificate
+        .clone()
+        .unwrap_or_default()
+        .replace('\n', "\\n");
+
     let secret_content = format!(
         "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}\nPRIVATE_HTTPS_CERTIFICATE={}\nPUBLIC_HTTPS_CERTIFICATE={}",
         global_identity_name,
         identity_secret_key_string,
         encryption_secret_key_string,
-        node_keys.private_https_certificate.clone().unwrap_or_default(),
-        node_keys.public_https_certificate.clone().unwrap_or_default()
+        private_cert,
+        public_cert
     );
 
     if !node_env.no_secrets_file {
@@ -337,24 +349,11 @@ fn parse_secrets_file(secrets_file_path: &str) -> HashMap<String, String> {
     let contents = fs::read_to_string(secrets_file_path).unwrap_or_default();
 
     let mut map = HashMap::new();
-    let mut current_key = String::new();
-    let mut current_value = String::new();
 
     for line in contents.lines() {
         if let Some((key, value)) = line.split_once('=') {
-            if !current_key.is_empty() {
-                map.insert(current_key.clone(), current_value.trim_end().to_string());
-            }
-            current_key = key.to_string();
-            current_value = value.to_string();
-        } else {
-            current_value.push_str("\n");
-            current_value.push_str(line);
+            map.insert(key.to_string(), value.to_string());
         }
-    }
-
-    if !current_key.is_empty() {
-        map.insert(current_key, current_value.trim_end().to_string());
     }
 
     map
