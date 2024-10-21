@@ -1186,3 +1186,9 @@ impl<'de> Deserialize<'de> for VRPath {
         VRPath::from_string(&s).map_err(serde::de::Error::custom)
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
+pub enum VectorSearchMode {
+    Default,
+    SmartContext,
+}

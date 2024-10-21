@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{
     deep_search_scores_average_out, BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode,
-    ScoringMode, TraversalMethod, TraversalOption, VRKai, VRPath, VRSourceReference,
+    ScoringMode, TraversalMethod, TraversalOption, VRKai, VRPath, VRSourceReference, VectorSearchMode,
 };
 #[cfg(feature = "desktop-only")]
 use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -381,8 +381,15 @@ impl VRPack {
     /// Performs a standard vector search within the VRPack and returns the most similar VRKais based on the input query String.
     /// Requires that there is only 1 single Embedding Model Used within the VRPack or errors.
     pub async fn vector_search_vrkai(&self, query: Embedding, num_of_results: u64) -> Result<Vec<VRKai>, VRError> {
-        self.vector_search_vrkai_customized(query, num_of_results, TraversalMethod::Exhaustive, &vec![], None)
-            .await
+        self.vector_search_vrkai_customized(
+            query,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &vec![],
+            None,
+            VectorSearchMode::Default,
+        )
+        .await
     }
 
     /// Performs a standard vector search within the VRPack and returns the most similar VRKais based on the input query String.
@@ -395,6 +402,7 @@ impl VRPack {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<VRKai>, VRError> {
         let results = self
             .vector_search_vrkai_with_score_customized(
@@ -403,6 +411,7 @@ impl VRPack {
                 traversal_method,
                 traversal_options,
                 starting_path,
+                vector_search_mode,
             )
             .await?;
         let vrkais: Vec<VRKai> = results.into_iter().map(|(vrkai, _)| vrkai).collect();
@@ -419,6 +428,7 @@ impl VRPack {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<(VRKai, f32)>, VRError> {
         if self.embedding_models_used.keys().len() != 1 {
             return Err(VRError::VRPackEmbeddingModelError(
@@ -433,6 +443,7 @@ impl VRPack {
             traversal_method,
             traversal_options,
             starting_path,
+            vector_search_mode,
         );
 
         // Process the vrkais and the score
@@ -458,6 +469,7 @@ impl VRPack {
         query: Embedding,
         num_of_vrkais_to_search_into: u64,
         num_of_results: u64,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.deep_vector_search_customized(
             query,
@@ -469,6 +481,7 @@ impl VRPack {
             TraversalMethod::Exhaustive,
             &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
             true,
+            vector_search_mode,
         )
         .await
     }
@@ -488,6 +501,7 @@ impl VRPack {
         deep_traversal_method: TraversalMethod,
         deep_traversal_options: &Vec<TraversalOption>,
         average_out_deep_search_scores: bool,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         if self.embedding_models_used.keys().len() != 1 {
             return Err(VRError::VRPackEmbeddingModelError(
@@ -503,6 +517,7 @@ impl VRPack {
                 traversal_method,
                 traversal_options,
                 vr_pack_starting_path,
+                vector_search_mode.clone(),
             )
             .await?;
 
@@ -515,6 +530,7 @@ impl VRPack {
                 deep_traversal_method.clone(),
                 deep_traversal_options,
                 None,
+                vector_search_mode.clone(),
             );
 
             // If the average out deep search scores flag is set, we average the scores of the retrieved nodes
@@ -552,8 +568,15 @@ impl VRPack {
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<VRKai>, VRError> {
-        self.dynamic_vector_search_vrkai_customized(input_query, num_of_results, &vec![], None, embedding_generator)
-            .await
+        self.dynamic_vector_search_vrkai_customized(
+            input_query,
+            num_of_results,
+            &vec![],
+            None,
+            embedding_generator,
+            VectorSearchMode::Default,
+        )
+        .await
     }
 
     #[cfg(feature = "desktop-only")]
@@ -567,6 +590,7 @@ impl VRPack {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<VRKai>, VRError> {
         let results = self
             .dynamic_vector_search_vrkai_with_score_and_path_customized(
@@ -575,6 +599,7 @@ impl VRPack {
                 traversal_options,
                 starting_path,
                 embedding_generator,
+                vector_search_mode,
             )
             .await?;
         let vrkais: Vec<VRKai> = results.into_iter().map(|(vrkai, _, _)| vrkai).collect();
@@ -592,6 +617,7 @@ impl VRPack {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<(VRKai, f32, VRPath)>, VRError> {
         let retrieved_nodes = self
             .resource
@@ -602,6 +628,7 @@ impl VRPack {
                 traversal_options,
                 starting_path,
                 embedding_generator,
+                vector_search_mode,
             )
             .await?;
 
@@ -631,6 +658,7 @@ impl VRPack {
         num_of_vrkais_to_search_into: u64,
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.dynamic_deep_vector_search_customized(
             input_query,
@@ -642,6 +670,7 @@ impl VRPack {
             &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
             embedding_generator,
             true,
+            vector_search_mode,
         )
         .await
     }
@@ -662,6 +691,7 @@ impl VRPack {
         deep_traversal_options: &Vec<TraversalOption>,
         embedding_generator: RemoteEmbeddingGenerator,
         average_out_deep_search_scores: bool,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.dynamic_deep_vector_search_with_vrkai_path_customized(
             input_query,
@@ -673,6 +703,7 @@ impl VRPack {
             deep_traversal_options,
             embedding_generator,
             average_out_deep_search_scores,
+            vector_search_mode,
         )
         .await
         .map(|retrieved_nodes| retrieved_nodes.into_iter().map(|(ret_node, _)| ret_node).collect())
@@ -694,6 +725,7 @@ impl VRPack {
         deep_traversal_options: &Vec<TraversalOption>,
         embedding_generator: RemoteEmbeddingGenerator,
         average_out_deep_search_scores: bool,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<(RetrievedNode, VRPath)>, VRError> {
         let mut path_hashmap: HashMap<String, VRPath> = HashMap::new();
 
@@ -704,6 +736,7 @@ impl VRPack {
                 traversal_options,
                 vr_pack_starting_path.clone(),
                 embedding_generator.clone(),
+                vector_search_mode.clone(),
             )
             .await?;
 
@@ -717,6 +750,7 @@ impl VRPack {
                 deep_traversal_method.clone(),
                 &deep_traversal_options,
                 None,
+                vector_search_mode.clone(),
             );
 
             // Populate the path hashmap with the VRKai header string as the key and the VRPath as the value

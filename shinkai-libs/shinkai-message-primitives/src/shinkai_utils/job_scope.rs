@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use shinkai_vector_resources::vector_resource::VectorResourceCore;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
+use shinkai_vector_resources::vector_resource::{VectorResourceCore, VectorSearchMode};
 use shinkai_vector_resources::{source::VRSourceReference, vector_resource::BaseVectorResource};
 use std::fmt;
 use utoipa::ToSchema;
@@ -16,6 +16,7 @@ pub struct JobScope {
     pub vector_fs_items: Vec<VectorFSItemScopeEntry>,
     pub vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
     pub network_folders: Vec<NetworkFolderScopeEntry>,
+    pub vector_search_mode: Option<VectorSearchMode>,
 }
 
 impl JobScope {}
@@ -27,6 +28,7 @@ impl JobScope {
         vector_fs_items: Vec<VectorFSItemScopeEntry>,
         vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
         network_folders: Vec<NetworkFolderScopeEntry>,
+        vector_search_mode: Option<VectorSearchMode>,
     ) -> Self {
         Self {
             local_vrkai,
@@ -34,6 +36,7 @@ impl JobScope {
             vector_fs_items,
             vector_fs_folders,
             network_folders,
+            vector_search_mode,
         }
     }
 
@@ -45,6 +48,7 @@ impl JobScope {
             vector_fs_items: Vec::new(),
             vector_fs_folders: Vec::new(),
             network_folders: Vec::new(),
+            vector_search_mode: None,
         }
     }
 

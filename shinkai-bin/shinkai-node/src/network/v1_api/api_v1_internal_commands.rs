@@ -436,6 +436,7 @@ impl Node {
                                 vector_fs_items: vec![],
                                 vector_fs_folders: vec![shinkai_folder_fs],
                                 network_folders: vec![],
+                                vector_search_mode: None,
                             };
                             let job_creation = JobCreationInfo {
                                 scope: job_scope,

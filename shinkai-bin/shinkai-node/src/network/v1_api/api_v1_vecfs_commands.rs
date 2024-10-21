@@ -28,7 +28,7 @@ use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
     source::DistributionInfo,
-    vector_resource::{VRPack, VRPath},
+    vector_resource::{VRPack, VRPath, VectorSearchMode},
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -403,6 +403,7 @@ impl Node {
                 input_payload.search.clone(),
                 max_resources_to_search,
                 max_results,
+                VectorSearchMode::Default,
             )
             .await
         {

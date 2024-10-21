@@ -4,6 +4,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "desktop-only")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
+use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 pub use crate::source::VRSourceReference;
@@ -69,6 +70,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             TraversalMethod::UnscoredAllNodes,
             &vec![],
             starting_path,
+            VectorSearchMode::Default,
         )
     }
 
@@ -198,6 +200,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         input_query: String,
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.dynamic_vector_search_customized(
             input_query,
@@ -205,6 +208,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
             None,
             embedding_generator,
+            vector_search_mode,
         )
         .await
     }
@@ -221,6 +225,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
+        vector_search_mode: VectorSearchMode,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
         let root_vr_header = self.generate_resource_header();
@@ -253,6 +258,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             TraversalMethod::Exhaustive,
             &traversal_options,
             starting_path.clone(),
+            vector_search_mode.clone(),
         );
 
         // Keep looping until we go through all nodes in the Vector Resource while carrying forward the score weighting
@@ -285,6 +291,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                         &traversal_options,
                         starting_path.clone(),
                         Some(root_vr_header.clone()),
+                        vector_search_mode.clone(),
                     );
                     // Take into account current resource score, then push the new results to latest_returned_results to be further processed
                     if let Some(ScoringMode::HierarchicalAverageScoring) =
@@ -321,6 +328,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             TraversalMethod::Exhaustive,
             &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
             None,
+            VectorSearchMode::Default,
         )
     }
 
@@ -335,6 +343,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
+        vector_search_mode: VectorSearchMode,
     ) -> Vec<RetrievedNode> {
         // Call the new method, passing None for the root_header parameter
         let retrieved_nodes = self._vector_search_customized_with_root_header(
@@ -344,6 +353,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             starting_path,
             None,
+            vector_search_mode,
         );
 
         if let VRSourceReference::Standard(SourceReference::FileRef(file_ref)) = self.source() {
@@ -427,6 +437,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         root_header: Option<VRHeader>,
+        vector_search_mode: VectorSearchMode,
     ) -> Vec<RetrievedNode> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
         let root_vr_header = root_header.unwrap_or_else(|| self.generate_resource_header());
@@ -445,6 +456,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                                 vec![],
                                 path,
                                 root_vr_header.clone(),
+                                vector_search_mode,
                             );
                         }
                     }
@@ -461,6 +473,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             vec![],
             VRPath::new(),
             root_vr_header.clone(),
+            vector_search_mode,
         );
 
         // After getting all results from the vector search, perform final filtering
@@ -563,6 +576,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
         root_vr_header: VRHeader,
+        vector_search_mode: VectorSearchMode,
     ) -> Vec<RetrievedNode> {
         // First we fetch the embeddings we want to score
         let mut embeddings_to_score = vec![];
@@ -612,6 +626,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             hierarchical_scores,
             traversal_path,
             root_vr_header,
+            vector_search_mode,
         )
     }
 
@@ -627,6 +642,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
         root_vr_header: VRHeader,
+        vector_search_mode: VectorSearchMode,
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
@@ -699,9 +715,14 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     hierarchical_scores.clone(),
                     traversal_path.clone(),
                     root_vr_header.clone(),
+                    vector_search_mode.clone(),
                 );
                 current_level_results.extend(results);
             }
+        }
+
+        if vector_search_mode == VectorSearchMode::SmartContext {
+            self._prioritize_document_first_page(&mut current_level_results);
         }
 
         // If at least one vector resource exists in the Nodes then re-sort
@@ -726,6 +747,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
         root_vr_header: VRHeader,
+        vector_search_mode: VectorSearchMode,
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
@@ -744,6 +766,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     new_hierarchical_scores,
                     new_traversal_path.clone(),
                     root_vr_header.clone(),
+                    vector_search_mode.clone(),
                 );
 
                 // If traversing with UnscoredAllNodes, include the Vector Resource
@@ -808,6 +831,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tag_names.to_owned())),
             ],
             None,
+            VectorSearchMode::Default,
         )
     }
 
@@ -842,6 +866,33 @@ pub trait VectorResourceSearch: VectorResourceCore {
             }
         }
         ids
+    }
+
+    /// Prioritize the first page of a PDF document and fill up the rest of the results with the remaining nodes.
+    fn _prioritize_document_first_page(&self, nodes: &mut Vec<RetrievedNode>) {
+        for node in nodes {
+            if let VRSourceReference::Standard(SourceReference::FileRef(file_ref)) =
+                &node.resource_header.resource_source
+            {
+                if let SourceFileType::Document(file_type) = &file_ref.file_type {
+                    if *file_type == DocumentFileType::Pdf {
+                        if let Some(metadata) = &node.node.metadata {
+                            if let Some(pg_nums) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
+                                let pg_nums = pg_nums
+                                    .trim_matches(|c| c == '[' || c == ']')
+                                    .split(",")
+                                    .collect::<Vec<&str>>();
+                                let has_first_page = pg_nums.contains(&"1");
+
+                                if has_first_page {
+                                    node.score = 1.0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
