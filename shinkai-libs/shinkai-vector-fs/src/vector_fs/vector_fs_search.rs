@@ -88,7 +88,7 @@ impl VectorFS {
         query_text: String,
         num_of_resources_to_search_into: u64,
         num_of_results: u64,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
         self.deep_vector_search_customized(
             reader,
@@ -115,7 +115,7 @@ impl VectorFS {
         num_of_results: u64,
         deep_traversal_options: Vec<TraversalOption>,
         average_out_deep_search_scores: bool,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
         let query = self
             .generate_query_embedding_using_reader(query_text.clone(), reader)
@@ -205,7 +205,7 @@ impl VectorFS {
                 num_of_results,
                 TraversalMethod::Exhaustive,
                 &vec![],
-                VectorSearchMode::Default,
+                vec![],
             )
             .await?;
         let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
@@ -308,7 +308,7 @@ impl VectorFS {
                 num_of_results,
                 TraversalMethod::Exhaustive,
                 &vec![],
-                VectorSearchMode::Default,
+                vec![],
             )
             .await?;
         let mut vr_headers = Vec::new();
@@ -333,7 +333,7 @@ impl VectorFS {
         num_of_results: u64,
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let mut traversal_options = traversal_options.clone();
         let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;

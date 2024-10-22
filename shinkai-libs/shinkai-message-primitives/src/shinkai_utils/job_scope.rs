@@ -16,7 +16,8 @@ pub struct JobScope {
     pub vector_fs_items: Vec<VectorFSItemScopeEntry>,
     pub vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
     pub network_folders: Vec<NetworkFolderScopeEntry>,
-    pub vector_search_mode: Option<VectorSearchMode>,
+    #[serde(default, deserialize_with = "deserialize_vec")]
+    pub vector_search_mode: Vec<VectorSearchMode>,
 }
 
 impl JobScope {}
@@ -28,7 +29,7 @@ impl JobScope {
         vector_fs_items: Vec<VectorFSItemScopeEntry>,
         vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
         network_folders: Vec<NetworkFolderScopeEntry>,
-        vector_search_mode: Option<VectorSearchMode>,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Self {
         Self {
             local_vrkai,
@@ -48,7 +49,7 @@ impl JobScope {
             vector_fs_items: Vec::new(),
             vector_fs_folders: Vec::new(),
             network_folders: Vec::new(),
-            vector_search_mode: None,
+            vector_search_mode: Vec::new(),
         }
     }
 
@@ -166,6 +167,14 @@ impl fmt::Debug for JobScope {
             .field("vector_fs_folders", &format_args!("{:?}", vector_fs_folder_paths))
             .finish()
     }
+}
+
+// Convert null values to empty vectors
+fn deserialize_vec<'de, D>(deserializer: D) -> Result<Vec<VectorSearchMode>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::deserialize(deserializer).map(|opt| opt.unwrap_or_else(Vec::new))
 }
 
 /// Enum holding both Local and VectorFS scope entries

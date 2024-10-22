@@ -403,7 +403,7 @@ impl Node {
                 input_payload.search.clone(),
                 max_resources_to_search,
                 max_results,
-                VectorSearchMode::Default,
+                vec![],
             )
             .await
         {

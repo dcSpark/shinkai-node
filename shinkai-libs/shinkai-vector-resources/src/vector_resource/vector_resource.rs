@@ -21,7 +21,6 @@ pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::any::Any;
-use std::collections::HashMap;
 
 #[async_trait]
 pub trait VectorResource: Send + Sync + VectorResourceCore + VectorResourceSearch {}

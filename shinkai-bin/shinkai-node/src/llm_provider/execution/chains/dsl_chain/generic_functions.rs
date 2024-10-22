@@ -638,7 +638,7 @@ mod tests {
                 name: "/".to_string(),
             }],
             network_folders: Vec::new(),
-            vector_search_mode: None,
+            vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
             .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
@@ -774,7 +774,7 @@ mod tests {
                 name: "/".to_string(),
             }],
             network_folders: Vec::new(),
-            vector_search_mode: None,
+            vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
             .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
@@ -925,7 +925,7 @@ mod tests {
                 name: "/".to_string(),
             }],
             network_folders: Vec::new(),
-            vector_search_mode: None,
+            vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
             .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)

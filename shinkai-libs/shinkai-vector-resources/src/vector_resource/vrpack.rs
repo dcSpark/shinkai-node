@@ -387,7 +387,7 @@ impl VRPack {
             TraversalMethod::Exhaustive,
             &vec![],
             None,
-            VectorSearchMode::Default,
+            vec![],
         )
         .await
     }
@@ -402,7 +402,7 @@ impl VRPack {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<VRKai>, VRError> {
         let results = self
             .vector_search_vrkai_with_score_customized(
@@ -428,7 +428,7 @@ impl VRPack {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<(VRKai, f32)>, VRError> {
         if self.embedding_models_used.keys().len() != 1 {
             return Err(VRError::VRPackEmbeddingModelError(
@@ -469,7 +469,7 @@ impl VRPack {
         query: Embedding,
         num_of_vrkais_to_search_into: u64,
         num_of_results: u64,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.deep_vector_search_customized(
             query,
@@ -501,7 +501,7 @@ impl VRPack {
         deep_traversal_method: TraversalMethod,
         deep_traversal_options: &Vec<TraversalOption>,
         average_out_deep_search_scores: bool,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         if self.embedding_models_used.keys().len() != 1 {
             return Err(VRError::VRPackEmbeddingModelError(
@@ -567,6 +567,7 @@ impl VRPack {
         input_query: String,
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<VRKai>, VRError> {
         self.dynamic_vector_search_vrkai_customized(
             input_query,
@@ -574,7 +575,7 @@ impl VRPack {
             &vec![],
             None,
             embedding_generator,
-            VectorSearchMode::Default,
+            vector_search_mode,
         )
         .await
     }
@@ -590,7 +591,7 @@ impl VRPack {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<VRKai>, VRError> {
         let results = self
             .dynamic_vector_search_vrkai_with_score_and_path_customized(
@@ -617,7 +618,7 @@ impl VRPack {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<(VRKai, f32, VRPath)>, VRError> {
         let retrieved_nodes = self
             .resource
@@ -658,7 +659,7 @@ impl VRPack {
         num_of_vrkais_to_search_into: u64,
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.dynamic_deep_vector_search_customized(
             input_query,
@@ -691,7 +692,7 @@ impl VRPack {
         deep_traversal_options: &Vec<TraversalOption>,
         embedding_generator: RemoteEmbeddingGenerator,
         average_out_deep_search_scores: bool,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.dynamic_deep_vector_search_with_vrkai_path_customized(
             input_query,
@@ -725,7 +726,7 @@ impl VRPack {
         deep_traversal_options: &Vec<TraversalOption>,
         embedding_generator: RemoteEmbeddingGenerator,
         average_out_deep_search_scores: bool,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<(RetrievedNode, VRPath)>, VRError> {
         let mut path_hashmap: HashMap<String, VRPath> = HashMap::new();
 

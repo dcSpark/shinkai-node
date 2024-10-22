@@ -1187,8 +1187,12 @@ impl<'de> Deserialize<'de> for VRPath {
     }
 }
 
+/// Alters default vector search behavior that modifies the result context. Each mode can be enabled separately or together.
+/// Default: fill context window up to maximum tokens.
+/// FillUpTo25k: fill context window up to 25k tokens.
+/// MergeSiblings: add previous 3 and next 3 nodes to each found node and merge them together.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum VectorSearchMode {
-    Default,
-    SmartContext,
+    FillUpTo25k,
+    MergeSiblings,
 }

@@ -289,7 +289,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Efficient,
         &vec![TraversalOption::UntilDepth(0)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_ne!(fact1, res[0].node.get_text_content().unwrap().to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
@@ -300,7 +300,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::UntilDepth(1)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(
         "3 Animal Facts",
@@ -318,7 +318,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::UntilDepth(2)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
     // Perform MinimumScore option with impossible score to ensure it is working properly
@@ -328,7 +328,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::MinimumScore(0.99)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 0);
 
@@ -339,7 +339,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::MinimumScore(0.01)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert!(!res.is_empty());
 
@@ -355,7 +355,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
     let res = fruit_doc.vector_search_customized(
@@ -364,7 +364,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Efficient,
         &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_ne!(NodeContent::Text(fact1.to_string()), res[0].node.content);
 
@@ -377,7 +377,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 6);
     let path = VRPath::from_string("/3/").unwrap();
@@ -387,7 +387,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
         Some(path),
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 4);
     let path = VRPath::from_string("/3/doc_key/").unwrap();
@@ -397,7 +397,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
         Some(path),
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 3);
 
@@ -413,7 +413,7 @@ fn test_manual_resource_vector_search() {
             ]),
         )],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 0);
 
@@ -428,7 +428,7 @@ fn test_manual_resource_vector_search() {
             ]),
         )],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 0);
 
@@ -456,7 +456,7 @@ fn test_manual_resource_vector_search() {
             ]),
         )],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 2);
 
@@ -472,7 +472,7 @@ fn test_manual_resource_vector_search() {
             ]),
         )],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 1);
 
@@ -483,7 +483,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1))],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     assert_eq!(res.len(), 2);
@@ -493,7 +493,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1))],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     assert_eq!(res.len(), 3);
@@ -505,7 +505,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(2, 1))],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 3);
 
@@ -525,7 +525,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 2))],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
     assert_eq!(res.len(), 5);
 
@@ -535,7 +535,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(2, 2))],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
 
     assert_eq!(res.len(), 6);
@@ -547,7 +547,7 @@ fn test_manual_resource_vector_search() {
         TraversalMethod::Exhaustive,
         &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 2))],
         None,
-        VectorSearchMode::Default,
+        vec![],
     );
 
     let grouped_results = RetrievedNode::group_proximity_results(&res).unwrap();

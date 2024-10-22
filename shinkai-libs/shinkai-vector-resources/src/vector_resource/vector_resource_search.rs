@@ -15,6 +15,7 @@ use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::vec;
 
 #[async_trait]
 pub trait VectorResourceSearch: VectorResourceCore {
@@ -70,7 +71,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             TraversalMethod::UnscoredAllNodes,
             &vec![],
             starting_path,
-            VectorSearchMode::Default,
+            vec![],
         )
     }
 
@@ -200,7 +201,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         input_query: String,
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self.dynamic_vector_search_customized(
             input_query,
@@ -225,7 +226,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
         let root_vr_header = self.generate_resource_header();
@@ -328,7 +329,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             TraversalMethod::Exhaustive,
             &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
             None,
-            VectorSearchMode::Default,
+            vec![],
         )
     }
 
@@ -343,7 +344,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Vec<RetrievedNode> {
         // Call the new method, passing None for the root_header parameter
         let retrieved_nodes = self._vector_search_customized_with_root_header(
@@ -353,7 +354,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             starting_path,
             None,
-            vector_search_mode,
+            vector_search_mode.clone(),
         );
 
         if let VRSourceReference::Standard(SourceReference::FileRef(file_ref)) = self.source() {
@@ -364,17 +365,31 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 {
                     return self._merge_retrieved_nodes(retrieved_nodes);
                 }
+
+                if file_type == DocumentFileType::Pdf && vector_search_mode.contains(&VectorSearchMode::MergeSiblings) {
+                    return self
+                        ._add_and_merge_node_siblings(&retrieved_nodes)
+                        .unwrap_or(retrieved_nodes);
+                }
             }
         }
 
         retrieved_nodes
     }
 
-    /// Merges content of nodes to a single node. Used for data tables.
-    fn _merge_retrieved_nodes(&self, retrieved_nodes: Vec<RetrievedNode>) -> Vec<RetrievedNode> {
+    /// Merges content of nodes to a single node. Used for data tables and merging sibling nodes vector search mode.
+    fn _merge_retrieved_nodes(&self, mut retrieved_nodes: Vec<RetrievedNode>) -> Vec<RetrievedNode> {
         if retrieved_nodes.len() < 2 {
             return retrieved_nodes;
         }
+
+        retrieved_nodes.sort_by(|a, b| {
+            a.node
+                .id
+                .parse::<u64>()
+                .unwrap_or_default()
+                .cmp(&b.node.id.parse::<u64>().unwrap_or_default())
+        });
 
         let first_node = retrieved_nodes.first().unwrap();
         let nodes = retrieved_nodes.iter().map(|node| &node.node).collect::<Vec<_>>();
@@ -428,6 +443,61 @@ pub trait VectorResourceSearch: VectorResourceCore {
         }]
     }
 
+    /// Adds previous 3 and next 3 nodes to each found node and merges them together.
+    fn _add_and_merge_node_siblings(
+        &self,
+        retrieved_nodes: &Vec<RetrievedNode>,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        let mut merged_nodes = Vec::new();
+        let mut processed_ids = Vec::new();
+
+        let num_nodes = self.get_root_nodes_ref().len();
+
+        for node in retrieved_nodes.iter() {
+            let node_id = node
+                .node
+                .id
+                .parse::<u64>()
+                .map_err(|err| VRError::InvalidNodeId(err.to_string()))?;
+            let first_previous_id = node_id.checked_sub(4).unwrap_or(0) + 1;
+            let last_next_id = (node_id + 3).min(num_nodes as u64);
+
+            if processed_ids.contains(&node_id) {
+                continue;
+            }
+
+            let mut current_id = first_previous_id;
+            let mut node_siblings = Vec::new();
+
+            while current_id <= last_next_id {
+                let current_retrieved_node = if current_id == node_id {
+                    node.clone()
+                } else {
+                    let current_node = self.get_root_node(current_id.to_string())?;
+
+                    RetrievedNode {
+                        node: current_node,
+                        score: node.score,
+                        resource_header: node.resource_header.clone(),
+                        retrieval_path: node.retrieval_path.clone(),
+                    }
+                };
+
+                if !processed_ids.contains(&current_id) {
+                    node_siblings.push(current_retrieved_node);
+                    processed_ids.push(current_id);
+                }
+
+                current_id += 1;
+            }
+
+            let merged_node = self._merge_retrieved_nodes(node_siblings);
+            merged_nodes.extend(merged_node);
+        }
+
+        Ok(merged_nodes)
+    }
+
     /// Vector search customized core logic, with ability to specify root_header
     fn _vector_search_customized_with_root_header(
         &self,
@@ -437,7 +507,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         root_header: Option<VRHeader>,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Vec<RetrievedNode> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
         let root_vr_header = root_header.unwrap_or_else(|| self.generate_resource_header());
@@ -576,7 +646,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
         root_vr_header: VRHeader,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Vec<RetrievedNode> {
         // First we fetch the embeddings we want to score
         let mut embeddings_to_score = vec![];
@@ -642,7 +712,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
         root_vr_header: VRHeader,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
@@ -721,7 +791,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             }
         }
 
-        if vector_search_mode == VectorSearchMode::SmartContext {
+        if vector_search_mode.contains(&VectorSearchMode::FillUpTo25k) {
             self._prioritize_document_first_page(&mut current_level_results);
         }
 
@@ -747,7 +817,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
         root_vr_header: VRHeader,
-        vector_search_mode: VectorSearchMode,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
@@ -831,7 +901,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tag_names.to_owned())),
             ],
             None,
-            VectorSearchMode::Default,
+            vec![],
         )
     }
 
