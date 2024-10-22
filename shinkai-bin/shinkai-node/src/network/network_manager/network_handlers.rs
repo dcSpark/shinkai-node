@@ -13,7 +13,9 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{Invoice, InvoiceRequest}, shinkai_name::{ShinkaiName, ShinkaiNameError}, shinkai_subscription::SubscriptionId
+        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError},
+        shinkai_name::{ShinkaiName, ShinkaiNameError},
+        shinkai_subscription::SubscriptionId,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -31,13 +33,18 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
-use shinkai_subscription_manager::subscription_manager::{fs_entry_tree::FSEntryTree, shared_folder_info::SharedFolderInfo};
+use shinkai_subscription_manager::subscription_manager::{
+    fs_entry_tree::FSEntryTree, shared_folder_info::SharedFolderInfo,
+};
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::{external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager, network_job_manager_error::NetworkJobQueueError};
+use super::{
+    external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
+    network_job_manager_error::NetworkJobQueueError,
+};
 
 pub enum PingPong {
     Ping,
@@ -1053,7 +1060,7 @@ pub async fn handle_network_message_cases(
                     let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
+                        ShinkaiLogLevel::Info,
                         &format!(
                             "{} > InvoiceRequest from: {:?} to: {:?}",
                             receiver_address, requester, receiver
@@ -1091,6 +1098,38 @@ pub async fn handle_network_message_cases(
                         }
                     }
                 }
+                MessageSchemaType::InvoiceRequestNetworkError => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "InvoiceRequestNetworkError Received from: {:?} to {:?}",
+                            requester, receiver
+                        ),
+                    );
+
+                    let content = message.get_message_content().unwrap_or("".to_string());
+                    match serde_json::from_str::<InvoiceRequestNetworkError>(&content) {
+                        Ok(invoice_request_network_error) => {
+                            if let Err(e) = maybe_db.set_invoice_network_error(&invoice_request_network_error) {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to store InvoiceRequestNetworkError in DB: {:?}", e),
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to deserialize JSON to InvoiceRequestNetworkError: {}", e),
+                            );
+                        }
+                    }
+                }
                 MessageSchemaType::Invoice => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
@@ -1120,13 +1159,6 @@ pub async fn handle_network_message_cases(
                         Ok(invoice) => {
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
                             my_agent_offering_manager.store_invoice(&invoice).await?;
-                            // Process the invoice:
-                            // - verify the invoice
-                            // - pay the invoice
-                            // - wait for the payment confirmation
-                            // - send the receipt to the provider
-                            // Note: Only for testing purposes
-                            // my_agent_offering_manager.auto_pay_invoice(invoice).await?;
                         }
                         Err(e) => {
                             shinkai_log(

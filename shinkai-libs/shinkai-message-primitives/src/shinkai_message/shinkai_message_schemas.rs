@@ -95,6 +95,7 @@ pub enum MessageSchemaType {
     Invoice,
     PaidInvoice,
     InvoiceResult,
+    InvoiceRequestNetworkError,
 }
 
 impl MessageSchemaType {
@@ -183,6 +184,7 @@ impl MessageSchemaType {
             "Invoice" => Some(Self::Invoice),
             "PaidInvoice" => Some(Self::PaidInvoice),
             "InvoiceResult" => Some(Self::InvoiceResult),
+            "InvoiceRequestNetworkError" => Some(Self::InvoiceRequestNetworkError),
             _ => None,
         }
     }
@@ -271,6 +273,7 @@ impl MessageSchemaType {
             Self::Invoice => "Invoice",
             Self::PaidInvoice => "PaidInvoice",
             Self::InvoiceResult => "InvoiceResult",
+            Self::InvoiceRequestNetworkError => "InvoiceRequestNetworkError",
             Self::Empty => "",
         }
     }

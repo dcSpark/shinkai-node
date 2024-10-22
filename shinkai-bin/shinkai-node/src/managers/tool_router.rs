@@ -23,6 +23,7 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
 };
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
@@ -526,6 +527,12 @@ impl ToolRouter {
                     let my_agent_payments_manager = match &agent_payments_manager {
                         Some(manager) => manager.lock().await,
                         None => {
+                            eprintln!("call_function> Agent payments manager is not available");
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                "Agent payments manager is not available",
+                            );
                             return Err(LLMProviderError::FunctionExecutionError(
                                 "Agent payments manager is not available".to_string(),
                             ));
@@ -533,9 +540,22 @@ impl ToolRouter {
                     };
 
                     // Get wallet balances
-                    let balances = my_agent_payments_manager.get_balances().await.map_err(|e| {
-                        LLMProviderError::FunctionExecutionError(format!("Failed to get balances: {}", e))
-                    })?;
+                    // Get wallet balances
+                    let balances = match my_agent_payments_manager.get_balances().await {
+                        Ok(balances) => balances,
+                        Err(e) => {
+                            eprintln!("Failed to get balances: {}", e);
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                format!("Failed to get balances: {}", e).as_str(),
+                            );
+                            return Err(LLMProviderError::FunctionExecutionError(format!(
+                                "Failed to get balances: {}",
+                                e
+                            )));
+                        }
+                    };
 
                     // Send a Network Request Invoice
                     let invoice_request = match my_agent_payments_manager
@@ -545,6 +565,11 @@ impl ToolRouter {
                         Ok(request) => request,
                         Err(e) => {
                             eprintln!("Failed to request invoice: {}", e);
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                format!("Failed to request invoice: {}", e).as_str(),
+                            );
                             return Err(LLMProviderError::FunctionExecutionError(format!(
                                 "Failed to request invoice: {}",
                                 e
@@ -554,10 +579,25 @@ impl ToolRouter {
                     (invoice_request, balances)
                 };
 
+                eprintln!("call_function> internal_invoice_request: {:?}", internal_invoice_request);
+
+                // TODO: Send ws_message to the frontend saying requesting invoice to X and more context
+
                 // Convert balances to Value
-                let balances_value = serde_json::to_value(&wallet_balances).map_err(|e| {
-                    LLMProviderError::FunctionExecutionError(format!("Failed to convert balances to Value: {}", e))
-                })?;
+                let balances_value = match serde_json::to_value(&wallet_balances) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            format!("Failed to convert balances to Value: {}", e).as_str(),
+                        );
+                        return Err(LLMProviderError::FunctionExecutionError(format!(
+                            "Failed to convert balances to Value: {}",
+                            e
+                        )));
+                    }
+                };
 
                 // Note: there must be a better way to do this
                 // Loop to check for the invoice unique_id
@@ -585,19 +625,43 @@ impl ToolRouter {
                             }
                         }
                         Err(_e) => {
-                            // Nothing to do here
+                            // If invoice is not found, check for InvoiceNetworkError
+                            match context.db().get_invoice_network_error(&internal_invoice_request.unique_id.clone()) {
+                                Ok(network_error) => {
+                                    eprintln!("InvoiceNetworkError found: {:?}", network_error);
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("InvoiceNetworkError details: {:?}", network_error),
+                                    );
+                                    // Return the user_error_message if available, otherwise a default message
+                                    let error_message = network_error.user_error_message.unwrap_or_else(|| "Invoice network error encountered".to_string());
+                                    return Err(LLMProviderError::FunctionExecutionError(error_message));
+                                }
+                                Err(_) => {
+                                    // Continue waiting if neither invoice nor network error is found
+                                }
+                            }
                         }
                     }
                     tokio::time::sleep(interval).await;
                 }
 
                 // Convert notification_content to Value
-                let notification_content_value = serde_json::to_value(&notification_content).map_err(|e| {
-                    LLMProviderError::FunctionExecutionError(format!(
-                        "Failed to convert notification_content to Value: {}",
-                        e
-                    ))
-                })?;
+                let notification_content_value = match serde_json::to_value(&notification_content) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            format!("Failed to convert notification_content to Value: {}", e).as_str(),
+                        );
+                        return Err(LLMProviderError::FunctionExecutionError(format!(
+                            "Failed to convert notification_content to Value: {}",
+                            e
+                        )));
+                    }
+                };
 
                 // Get the ws from the context
                 {
@@ -739,6 +803,7 @@ impl ToolRouter {
 
 #[cfg(test)]
 mod tests {
+    use regex::Regex;
     use serde_json::json;
     use shinkai_baml::baml_builder::BamlConfig;
     use shinkai_baml::baml_builder::ClientConfig;
@@ -746,7 +811,6 @@ mod tests {
     use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
     use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
     use tokio::task;
-    use regex::Regex;
 
     use super::*;
     use std::env;
@@ -868,7 +932,7 @@ mod tests {
                 mut_tool.embedding = None;
                 mut_tool.js_code = "".to_string();
                 let shinkai_tool = ShinkaiTool::JS(mut_tool, true);
-                
+
                 tools_json.push(json!(shinkai_tool));
 
                 let tool_content = serde_json::to_string(&shinkai_tool)
@@ -996,3 +1060,4 @@ mod tests {
         writeln!(file, "{}", json_data).expect("Failed to write to file");
     }
 }
+

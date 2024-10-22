@@ -1,5 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
@@ -675,13 +676,54 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Failed to pay invoice: {:?}", e),
                 }
             }
+            // Optional but it could help to debug in between issues
             // TODO?: I need another loop command to check if the result was processed by node1?
-            // Note: do I need to store that?
-
             // TODO: Check in node2 if it received the response from node1 of the tool execution
 
-            // add sleep 5 seconds
-            tokio::time::sleep(Duration::from_secs(10000)).await;
+            // Check if the invoice is processed and has a result on node2
+            {
+                eprintln!("Waiting for invoice to be processed and have a result on node2");
+
+                let mut found_processed_invoice = false;
+                for _ in 0..20 {
+                    let (sender, receiver) = async_channel::bounded(1);
+                    node2_commands_sender
+                        .send(NodeCommand::V2ApiListInvoices {
+                            bearer: api_v2_key.to_string(),
+                            res: sender,
+                        })
+                        .await
+                        .unwrap();
+                    let resp = receiver.recv().await.unwrap();
+                    eprintln!("resp list invoices on node2: {:?}", resp);
+
+                    if let Ok(invoices) = resp {
+                        if let Some(invoices_array) = invoices.as_array() {
+                            for inv in invoices_array {
+                                if let Ok(invoice) = serde_json::from_value::<Invoice>(inv.clone()) {
+                                    if invoice.invoice_id == invoice_id
+                                        && invoice.status == InvoiceStatusEnum::Processed
+                                        && invoice.result_str.is_some()
+                                    {
+                                        found_processed_invoice = true;
+                                        eprintln!("Found processed invoice: {:?}", invoice);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if found_processed_invoice {
+                        break;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+
+                if !found_processed_invoice {
+                    panic!("Processed invoice with result not found after waiting");
+                }
+            }
 
             node1_abort_handler.abort();
             node2_abort_handler.abort();
