@@ -10,7 +10,7 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
-use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -623,7 +623,69 @@ impl ExtAgentOfferingsManager {
         // Call request_invoice to generate an invoice
         let invoice = self
             .request_invoice(requester_node_name.clone(), invoice_request.clone())
-            .await?;
+            .await;
+
+        let invoice = match invoice {
+            Ok(inv) => inv,
+            Err(e) => {
+                // Handle the error manually
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to request invoice: {:?}", e),
+                );
+
+                // Create an InvoiceNetworkError
+                let network_error = InvoiceRequestNetworkError {
+                    invoice_id: invoice_request.unique_id.clone(),
+                    provider_name: self.node_name.clone(),
+                    requester_name: invoice_request.requester_name.clone(),
+                    request_date_time: invoice_request.request_date_time,
+                    response_date_time: Utc::now(),
+                    user_error_message: Some(format!("{:?}", e)),
+                    error_message: format!("{:?}", e),
+                };
+
+                // Send the InvoiceRequestNetworkError back to the requester
+                if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+                    let identity_manager = identity_manager_arc.lock().await;
+                    let standard_identity = identity_manager
+                        .external_profile_to_global_identity(&invoice_request.requester_name.to_string())
+                        .await
+                        .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+                    drop(identity_manager);
+                    let receiver_public_key = standard_identity.node_encryption_public_key;
+                    let proxy_builder_info =
+                        get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+
+                    let error_message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                        network_error.clone(),
+                        MessageSchemaType::InvoiceRequestNetworkError,
+                        clone_static_secret_key(&self.my_encryption_secret_key),
+                        clone_signature_secret_key(&self.my_signature_secret_key),
+                        receiver_public_key,
+                        self.node_name.to_string(),
+                        "".to_string(),
+                        invoice_request.requester_name.to_string(),
+                        "main".to_string(),
+                        proxy_builder_info,
+                    )
+                    .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+                    send_message_to_peer(
+                        error_message,
+                        self.db.clone(),
+                        standard_identity,
+                        self.my_encryption_secret_key.clone(),
+                        self.identity_manager.clone(),
+                        self.proxy_connection_info.clone(),
+                    )
+                    .await?;
+                }
+
+                return Err(e);
+            }
+        };
 
         // Continue
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
