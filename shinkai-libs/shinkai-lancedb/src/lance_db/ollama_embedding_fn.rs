@@ -36,9 +36,19 @@ impl OllamaEmbeddingFunction {
             }
         };
 
+        // Get the maximum token count for the model
+        let max_tokens = self.model_type.max_input_token_count();
+
+        // Truncate the prompt if it exceeds the maximum token count
+        let truncated_prompt = if prompt.len() > max_tokens {
+            &prompt[..max_tokens]
+        } else {
+            prompt
+        };
+
         let request_body = serde_json::json!({
             "model": model_str,
-            "prompt": prompt
+            "prompt": truncated_prompt // Use the truncated prompt
         });
 
         let full_url = if self.api_url.ends_with('/') {
