@@ -246,17 +246,17 @@ impl LocalEthersWallet {
 
     pub async fn internal_sign_transaction(
         &self,
-        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
+        tx: TypedTransaction,
     ) -> Result<Signature, WalletError> {
-        unimplemented!("after refactor");
-        // let typed_tx = Self::convert_to_typed_transaction(tx)?;
-        // let signature = self
-        //     .wallet
-        //     .sign_transaction(&typed_tx)
-        //     .map_err(|e| WalletError::SigningError(e.to_string()))
-        //     .await?;
+        // unimplemented!("after refactor");
+        // let typed_tx = Self::convert_to_typed_transaction(tx);
+        let signature = self
+            .wallet
+            .sign_transaction(&tx)
+            .map_err(|e| WalletError::SigningError(e.to_string()))
+            .await?;
 
-        // Ok(signature)
+        Ok(signature)
     }
 
     pub async fn internal_send_transaction(
@@ -277,6 +277,8 @@ impl LocalEthersWallet {
         .await?;
 
         let signer = SignerMiddleware::new(self.provider.clone(), self.wallet.clone());
+
+        eprintln!("tx_request: {:?}", tx_request);
 
         let pending_tx = signer
             .send_transaction(tx_request, None)
@@ -301,43 +303,27 @@ impl LocalEthersWallet {
         }
     }
 
-    pub fn convert_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
-        unimplemented!("after refactor");
-
-        // Code from LLM. It doesn't seem correct
-        // let to_address = EthersAddress::from_str(&tx.to_address_id.unwrap_or_default())
-        //     .map_err(|e| WalletError::InvalidAddress(e.to_string()))?;
-
-        // let value = U256::from_dec_str(&tx.value.unwrap_or_default())
-        //     .map_err(|e| WalletError::ConversionError(e.to_string()))?;
-
-        // let data = tx.unsigned_payload.into_bytes();
-
-        // let mut eip1559_request = Eip1559TransactionRequest::new().to(to_address).value(value).data(data);
-
-        // if let Some(chain_id) = tx.chain_id {
-        //     eip1559_request = eip1559_request.chain_id(chain_id);
-        // }
-
-        // if let Some(nonce) = tx.nonce {
-        //     eip1559_request = eip1559_request.nonce(nonce);
-        // }
-
-        // if let Some(gas_limit) = tx.gas_limit {
-        //     eip1559_request = eip1559_request.gas(U256::from(gas_limit));
-        // }
-
-        // if let Some(max_fee_per_gas) = tx.max_fee_per_gas {
-        //     eip1559_request = eip1559_request.max_fee_per_gas(U256::from(max_fee_per_gas));
-        // }
-
-        // if let Some(max_priority_fee_per_gas) = tx.max_priority_fee_per_gas {
-        //     eip1559_request = eip1559_request.max_priority_fee_per_gas(U256::from(max_priority_fee_per_gas));
-        // }
-
-        // Ok(TypedTransaction::Eip1559(eip1559_request))
+    pub fn convert_to_typed_transaction(tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction) -> TypedTransaction {
+        let mut typed_tx = TypedTransaction::default();
+        typed_tx.set_to(NameOrAddress::Address(
+            EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
+        ));
+        typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
+        typed_tx
     }
 }
+
+// // Implement conversion from mixed::Transaction to TypedTransaction
+// impl From<shinkai_message_primitives::schemas::wallet_mixed::Transaction> for TypedTransaction {
+//     fn from(tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction) -> Self {
+//         let mut typed_tx = TypedTransaction::default();
+//         typed_tx.set_to(NameOrAddress::Address(
+//             EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
+//         ));
+//         typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
+//         typed_tx
+//     }
+// }
 
 impl IsWallet for LocalEthersWallet {}
 
@@ -382,15 +368,14 @@ impl SendActions for LocalEthersWallet {
         &self,
         tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
-        unimplemented!("after refactor");
-        // let self_clone = self.clone();
-        // let fut = async move {
-        //     let typed_tx = Self::convert_to_typed_transaction(tx)?;
-        //     let signature = self_clone.internal_sign_transaction(typed_tx).await?;
-        //     Ok(signature.to_string())
-        // };
+        let self_clone = self.clone();
+        let fut = async move {
+            let typed_tx = Self::convert_to_typed_transaction(tx);
+            let signature = self_clone.internal_sign_transaction(typed_tx).await?;
+            Ok(signature.to_string())
+        };
 
-        // Box::pin(fut)
+        Box::pin(fut)
     }
 }
 
