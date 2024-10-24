@@ -724,6 +724,94 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    /// Removes a job from the DB
+    pub fn remove_job(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox)?;
+
+        // Construct keys with job_id as part of the key
+        let job_scope_key = format!("jobinbox_{}_scope", job_id);
+        let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
+        let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
+        let job_parent_providerid = format!("jobinbox_{}_agentid", job_id);
+        let job_parent_llm_provider_id_key =
+            format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(&job_id), job_id);
+        let job_inbox_name = format!("jobinbox_{}_inboxname", job_id);
+        let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
+        let all_jobs_time_keyed = format!("all_jobs_time_keyed_placeholder_to_fit_prefix__{}", job_id);
+        let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
+        let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
+        let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
+        let job_config_key = format!("jobinbox_{}_config", job_id);
+        let job_associated_ui_key = format!("jobinbox_{}_associated_ui", job_id);
+
+        // Start a write batch
+        let mut batch = rocksdb::WriteBatch::default();
+
+        // Delete the job attributes from the database
+        batch.delete_cf(cf_inbox, job_scope_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_is_finished_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_datetime_created_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_parent_providerid.as_bytes());
+        batch.delete_cf(cf_inbox, job_parent_llm_provider_id_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_inbox_name.as_bytes());
+        batch.delete_cf(cf_inbox, job_conversation_inbox_name_key.as_bytes());
+        batch.delete_cf(cf_inbox, all_jobs_time_keyed.as_bytes());
+        batch.delete_cf(cf_inbox, job_smart_inbox_name_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_is_hidden_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_read_list_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_config_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_associated_ui_key.as_bytes());
+
+        // Remove step history
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+        let mut until_offset_key: Option<String> = None;
+        loop {
+            let messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
+            if messages.is_empty() {
+                break;
+            }
+
+            for message_path in &messages {
+                if let Some(message) = message_path.first() {
+                    let message_key = message.calculate_message_hash_for_pagination();
+                    let hash_message_key = Self::message_key_to_hash(message_key);
+                    let prefix = format!("step_history__{}_", hash_message_key);
+                    let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+                    for item in iter {
+                        if let Ok((key, _)) = item {
+                            batch.delete_cf(cf_inbox, &key);
+                        }
+                    }
+                }
+            }
+
+            if let Some(last_message_path) = messages.last() {
+                if let Some(last_message) = last_message_path.first() {
+                    until_offset_key = Some(last_message.calculate_message_hash_for_pagination());
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Remove unprocessed messages
+        let job_hash = Self::job_id_to_hash(job_id);
+        let prefix = format!("job_unprocess_{}_", job_hash);
+        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+        for item in iter {
+            if let Ok((key, _)) = item {
+                batch.delete_cf(cf_inbox, &key);
+            }
+        }
+
+        // Commit the write batch
+        self.db.write(batch)?;
+
+        Ok(())
+    }
+
     pub fn add_forked_job(&self, job_id: &str, forked_job: ForkedJob) -> Result<(), ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
