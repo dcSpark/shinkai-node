@@ -20,14 +20,14 @@ impl PyJobScope {
     pub fn new() -> Self {
         // TODO: Someday add args
         Self {
-            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
         }
     }
 
     #[staticmethod]
     pub fn new_empty() -> Self {
         Self {
-            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
         }
     }
 
