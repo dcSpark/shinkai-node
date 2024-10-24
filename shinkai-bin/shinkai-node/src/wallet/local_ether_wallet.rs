@@ -94,6 +94,14 @@ impl LocalEthersWallet {
         let wallet = EthersLocalWallet::new(&mut rand::thread_rng()).with_chain_id(network.chain_id);
         let address = format!("0x{:x}", wallet.address());
 
+        // Print the private key
+        let private_key_bytes = wallet.signer().to_bytes();
+        println!(
+            "Generated private key: {} for address: {}",
+            hex::encode(private_key_bytes),
+            address
+        );
+
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
 
@@ -125,6 +133,12 @@ impl LocalEthersWallet {
                     .fold(Ok(xprv), |acc, child| acc.and_then(|key| key.derive_child(child)))
                     .map_err(|e| WalletError::Bip39Error(e.to_string()))?;
                 let secret_key = SecretKey::from_slice(child_xprv.private_key().to_bytes().as_slice())?;
+
+                // Print the private key
+                println!(
+                    "Recovered private key from mnemonic: {}",
+                    hex::encode(secret_key.to_bytes())
+                );
 
                 EthersLocalWallet::from(secret_key).with_chain_id(network.chain_id)
             }
@@ -233,23 +247,7 @@ impl LocalEthersWallet {
         Ok(tx.into())
     }
 
-    // pub async fn internal_sign_transaction(&self, tx_request: TypedTransaction) -> Result<Signature, WalletError> {
-    //     let typed_tx: TypedTransaction = tx_request.into();
-    //     let signature = self
-    //         .wallet
-    //         .sign_transaction(&typed_tx)
-    //         .map_err(|e| WalletError::SigningError(e.to_string()))
-    //         .await?;
-
-    //     Ok(signature)
-    // }
-
-    pub async fn internal_sign_transaction(
-        &self,
-        tx: TypedTransaction,
-    ) -> Result<Signature, WalletError> {
-        // unimplemented!("after refactor");
-        // let typed_tx = Self::convert_to_typed_transaction(tx);
+    pub async fn internal_sign_transaction(&self, tx: TypedTransaction) -> Result<Signature, WalletError> {
         let signature = self
             .wallet
             .sign_transaction(&tx)
@@ -266,6 +264,14 @@ impl LocalEthersWallet {
         send_amount: U256,
         invoice_id: String,
     ) -> Result<H256, WalletError> {
+        // Add detailed logging here
+        eprintln!("Preparing ERC20 transfer transaction:");
+        eprintln!("Contract Address: {:?}", to_wallet.address_id);
+        eprintln!("Token: {:?}", token);
+        eprintln!("Send Amount: {:?}", send_amount);
+        eprintln!("Provider URL: {:?}", self.provider.url());
+        eprintln!("Invoice ID: {:?}", invoice_id);
+
         let tx_request = Self::prepare_transaction_request(
             self,
             to_wallet,
@@ -277,7 +283,6 @@ impl LocalEthersWallet {
         .await?;
 
         let signer = SignerMiddleware::new(self.provider.clone(), self.wallet.clone());
-
         eprintln!("tx_request: {:?}", tx_request);
 
         let pending_tx = signer
@@ -303,7 +308,9 @@ impl LocalEthersWallet {
         }
     }
 
-    pub fn convert_to_typed_transaction(tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction) -> TypedTransaction {
+    pub fn convert_to_typed_transaction(
+        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
+    ) -> TypedTransaction {
         let mut typed_tx = TypedTransaction::default();
         typed_tx.set_to(NameOrAddress::Address(
             EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
@@ -371,6 +378,7 @@ impl SendActions for LocalEthersWallet {
         let self_clone = self.clone();
         let fut = async move {
             let typed_tx = Self::convert_to_typed_transaction(tx);
+            eprintln!("typed_tx: {:?}", typed_tx);
             let signature = self_clone.internal_sign_transaction(typed_tx).await?;
             Ok(signature.to_string())
         };
@@ -712,7 +720,7 @@ mod tests {
     }
 
     // Note: not working in the CI/CD pipeline
-    // #[tokio::test]
+    #[tokio::test]
     async fn test_anvil_current_block() {
         eprintln!("Starting test_anvil_current_block");
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
