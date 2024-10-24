@@ -206,6 +206,16 @@ impl Node {
             return Ok(());
         }
 
+        // Note: for some reason, the private key is not unescaped for some requests and we get \\n instead of \n
+        // This happens if you use --data-binary and you escape the content (you shouldn't do that)
+        let config = config.map(|cfg| {
+            let unescaped_private_key = cfg.private_key.replace("\\n", "\n");
+            CoinbaseMPCWalletConfig {
+                private_key: unescaped_private_key,
+                ..cfg
+            }
+        });
+        
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to restore Coinbase MPC wallet

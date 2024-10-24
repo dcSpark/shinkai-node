@@ -169,6 +169,11 @@ impl GenericInferenceChain {
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         let job_config = full_job.config();
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("job_config: {:?}", job_config),
+        );
         let mut tools = vec![];
         let use_tools = match &llm_provider.model {
             LLMProviderInterface::OpenAI(_) => true,
@@ -223,11 +228,30 @@ impl GenericInferenceChain {
                 // Search in JS Tools
                 let results = tool_router
                     .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
-                    .await
-                    .unwrap();
-                for result in results {
-                    if let Some(tool) = tool_router.get_tool_by_name(&result.tool_router_key).await.unwrap() {
-                        tools.push(tool);
+                    .await;
+
+                match results {
+                    Ok(results) => {
+                        for result in results {
+                            match tool_router.get_tool_by_name(&result.tool_router_key).await {
+                                Ok(Some(tool)) => tools.push(tool),
+                                Ok(None) => {
+                                    return Err(LLMProviderError::ToolNotFound(
+                                        format!("Tool not found for key: {}", result.tool_router_key),
+                                    ));
+                                }
+                                Err(e) => {
+                                    return Err(LLMProviderError::ToolRetrievalError(
+                                        format!("Error retrieving tool: {:?}", e),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        return Err(LLMProviderError::ToolSearchError(
+                            format!("Error during tool search: {:?}", e),
+                        ));
                     }
                 }
             }

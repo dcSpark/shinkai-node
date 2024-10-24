@@ -214,3 +214,14 @@ impl Payment {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
+pub struct InvoiceRequestNetworkError {
+    pub invoice_id: String,
+    pub provider_name: ShinkaiName,
+    pub requester_name: ShinkaiName,
+    pub request_date_time: DateTime<Utc>,
+    pub response_date_time: DateTime<Utc>,
+    pub user_error_message: Option<String>,
+    pub error_message: String,
+}
