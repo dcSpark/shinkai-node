@@ -2011,6 +2011,12 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiRemoveJob { bearer, job_id, res } => {
+                let db_clone = self.db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_remove_job(db_clone, bearer, job_id, res).await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let vector_fs_clone = self.vector_fs.clone();

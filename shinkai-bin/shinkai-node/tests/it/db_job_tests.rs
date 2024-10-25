@@ -975,4 +975,33 @@ mod tests {
         assert_eq!(job.forked_jobs[1].job_id, forked_job2_id);
         assert_eq!(job.forked_jobs[1].message_id, forked_message2_id);
     }
+
+    #[test]
+    fn test_remove_job() {
+        setup();
+        let job_id = "job1".to_string();
+        let agent_id = "agent1".to_string();
+        let scope = JobScope::new_default();
+        let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Create a new job
+        create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
+
+        // Retrieve all jobs
+        let jobs = shinkai_db.get_all_jobs().unwrap();
+
+        // Check if the job exists
+        let job_ids: Vec<String> = jobs.iter().map(|job| job.job_id().to_string()).collect();
+        assert!(job_ids.contains(&job_id));
+
+        // Remove the job
+        shinkai_db.remove_job(&job_id).unwrap();
+
+        // Check if the job is removed
+        match shinkai_db.get_job(&job_id) {
+            Ok(_) => panic!("Expected an error when getting a removed job"),
+            Err(e) => assert_eq!(e, ShinkaiDBError::DataNotFound),
+        }
+    }
 }

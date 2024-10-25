@@ -1348,4 +1348,33 @@ impl Node {
         let _ = res.send(Ok(forked_job_id)).await;
         Ok(())
     }
+
+    pub async fn v2_remove_job(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Remove the job
+        match db.remove_job(&job_id) {
+            Ok(_) => {
+                let _ = res.send(Ok(())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove job: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
 }
