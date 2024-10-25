@@ -45,7 +45,10 @@ impl IdentityNetworkManager {
 
         // Check if any of the address_or_proxy_nodes ends with .sepolia-shinkai
         if record.address_or_proxy_nodes.iter().any(|node| {
-            node.ends_with(".sepolia-shinkai") || node.ends_with(".shinkai") || node.ends_with(".arb-sep-shinkai")
+            let node_base = node.split(':').next().unwrap_or(node);
+            node_base.ends_with(".sepolia-shinkai") || 
+            node_base.ends_with(".shinkai") || 
+            node_base.ends_with(".arb-sep-shinkai")
         }) {
             // Call the proxy node to get the actual data
             let proxy_identity = record.address_or_proxy_nodes.clone();

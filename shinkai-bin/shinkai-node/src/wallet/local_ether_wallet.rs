@@ -94,6 +94,8 @@ impl LocalEthersWallet {
         let wallet = EthersLocalWallet::new(&mut rand::thread_rng()).with_chain_id(network.chain_id);
         let address = format!("0x{:x}", wallet.address());
 
+        // Print the private key
+        let private_key_bytes = wallet.signer().to_bytes();
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
 
@@ -136,7 +138,6 @@ impl LocalEthersWallet {
         };
 
         let address = to_checksum(&wallet.address(), None);
-        println!("recovered wallet's address: {}", address);
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
 
@@ -155,7 +156,7 @@ impl LocalEthersWallet {
     }
 
     pub async fn prepare_transaction_request(
-        _from_wallet: &LocalEthersWallet,
+        from_wallet: &LocalEthersWallet,
         to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: U256,
@@ -169,13 +170,12 @@ impl LocalEthersWallet {
             .await
             .map_err(|e| WalletError::ProviderError(e.to_string()))?
             .low_u64();
-        println!("chain_id: {:?}", chain_id);
-        println!("provider: {:?}", provider);
 
-        let mut tx = Eip1559TransactionRequest::new().chain_id(chain_id);
+        let mut tx = Eip1559TransactionRequest::new()
+            .chain_id(chain_id)
+            .from(from_wallet.wallet.address());
 
         if let Some(token) = token {
-            println!("token: {:?}", token);
             let contract_address = token
                 .contract_address
                 .ok_or_else(|| WalletError::MissingContractAddress(token.asset_id.clone()))?
@@ -226,37 +226,17 @@ impl LocalEthersWallet {
             .max_fee_per_gas(adjusted_max_fee_per_gas)
             .max_priority_fee_per_gas(max_priority_fee_per_gas);
 
-        // Debug prints
-        println!("Max Fee Per Gas: {:?}", tx.max_fee_per_gas);
-        println!("Max Priority Fee Per Gas: {:?}", tx.max_priority_fee_per_gas);
-
         Ok(tx.into())
     }
 
-    // pub async fn internal_sign_transaction(&self, tx_request: TypedTransaction) -> Result<Signature, WalletError> {
-    //     let typed_tx: TypedTransaction = tx_request.into();
-    //     let signature = self
-    //         .wallet
-    //         .sign_transaction(&typed_tx)
-    //         .map_err(|e| WalletError::SigningError(e.to_string()))
-    //         .await?;
+    pub async fn internal_sign_transaction(&self, tx: TypedTransaction) -> Result<Signature, WalletError> {
+        let signature = self
+            .wallet
+            .sign_transaction(&tx)
+            .map_err(|e| WalletError::SigningError(e.to_string()))
+            .await?;
 
-    //     Ok(signature)
-    // }
-
-    pub async fn internal_sign_transaction(
-        &self,
-        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
-    ) -> Result<Signature, WalletError> {
-        unimplemented!("after refactor");
-        // let typed_tx = Self::convert_to_typed_transaction(tx)?;
-        // let signature = self
-        //     .wallet
-        //     .sign_transaction(&typed_tx)
-        //     .map_err(|e| WalletError::SigningError(e.to_string()))
-        //     .await?;
-
-        // Ok(signature)
+        Ok(signature)
     }
 
     pub async fn internal_send_transaction(
@@ -277,15 +257,16 @@ impl LocalEthersWallet {
         .await?;
 
         let signer = SignerMiddleware::new(self.provider.clone(), self.wallet.clone());
+        eprintln!("tx_request: {:?}", tx_request);
 
         let pending_tx = signer
             .send_transaction(tx_request, None)
             .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+            .map_err(|e| WalletError::ProviderError(format!("SignerMiddleware error: {:?}", e)))?;
 
         let receipt = pending_tx
             .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+            .map_err(|e| WalletError::ProviderError(format!("Pending transaction error: {:?}", e)))?;
 
         if let Some(receipt) = receipt {
             let tx_hash = receipt.transaction_hash;
@@ -301,41 +282,15 @@ impl LocalEthersWallet {
         }
     }
 
-    pub fn convert_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
-        unimplemented!("after refactor");
-
-        // Code from LLM. It doesn't seem correct
-        // let to_address = EthersAddress::from_str(&tx.to_address_id.unwrap_or_default())
-        //     .map_err(|e| WalletError::InvalidAddress(e.to_string()))?;
-
-        // let value = U256::from_dec_str(&tx.value.unwrap_or_default())
-        //     .map_err(|e| WalletError::ConversionError(e.to_string()))?;
-
-        // let data = tx.unsigned_payload.into_bytes();
-
-        // let mut eip1559_request = Eip1559TransactionRequest::new().to(to_address).value(value).data(data);
-
-        // if let Some(chain_id) = tx.chain_id {
-        //     eip1559_request = eip1559_request.chain_id(chain_id);
-        // }
-
-        // if let Some(nonce) = tx.nonce {
-        //     eip1559_request = eip1559_request.nonce(nonce);
-        // }
-
-        // if let Some(gas_limit) = tx.gas_limit {
-        //     eip1559_request = eip1559_request.gas(U256::from(gas_limit));
-        // }
-
-        // if let Some(max_fee_per_gas) = tx.max_fee_per_gas {
-        //     eip1559_request = eip1559_request.max_fee_per_gas(U256::from(max_fee_per_gas));
-        // }
-
-        // if let Some(max_priority_fee_per_gas) = tx.max_priority_fee_per_gas {
-        //     eip1559_request = eip1559_request.max_priority_fee_per_gas(U256::from(max_priority_fee_per_gas));
-        // }
-
-        // Ok(TypedTransaction::Eip1559(eip1559_request))
+    pub fn convert_to_typed_transaction(
+        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
+    ) -> TypedTransaction {
+        let mut typed_tx = TypedTransaction::default();
+        typed_tx.set_to(NameOrAddress::Address(
+            EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
+        ));
+        typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
+        typed_tx
     }
 }
 
@@ -382,39 +337,17 @@ impl SendActions for LocalEthersWallet {
         &self,
         tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
-        unimplemented!("after refactor");
-        // let self_clone = self.clone();
-        // let fut = async move {
-        //     let typed_tx = Self::convert_to_typed_transaction(tx)?;
-        //     let signature = self_clone.internal_sign_transaction(typed_tx).await?;
-        //     Ok(signature.to_string())
-        // };
+        let self_clone = self.clone();
+        let fut = async move {
+            let typed_tx = Self::convert_to_typed_transaction(tx);
+            eprintln!("typed_tx: {:?}", typed_tx);
+            let signature = self_clone.internal_sign_transaction(typed_tx).await?;
+            Ok(signature.to_string())
+        };
 
-        // Box::pin(fut)
+        Box::pin(fut)
     }
 }
-
-// Implement conversion from mixed::Transaction to TypedTransaction
-// impl From<Transaction> for TypedTransaction {
-//     fn from(tx: Transaction) -> Self {
-//         let mut typed_tx = TypedTransaction::default();
-//         typed_tx.set_to(NameOrAddress::Address(
-//             EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
-//         ));
-//         typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-//         typed_tx
-//     }
-// }
-
-// fn transaction_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
-//     let mut typed_tx = TypedTransaction::default();
-//     typed_tx.set_to(NameOrAddress::Address(
-//         EthersAddress::from_str(&tx.to_address_id.ok_or(WalletError::MissingToAddress)?)
-//             .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-//     ));
-//     typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-//     Ok(typed_tx)
-// }
 
 impl CommonActions for LocalEthersWallet {
     fn get_payment_address(&self) -> PublicAddress {
