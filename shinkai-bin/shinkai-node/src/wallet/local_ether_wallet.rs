@@ -169,7 +169,7 @@ impl LocalEthersWallet {
     }
 
     pub async fn prepare_transaction_request(
-        _from_wallet: &LocalEthersWallet,
+        from_wallet: &LocalEthersWallet,
         to_wallet: PublicAddress,
         token: Option<Asset>,
         send_amount: U256,
@@ -186,7 +186,9 @@ impl LocalEthersWallet {
         println!("chain_id: {:?}", chain_id);
         println!("provider: {:?}", provider);
 
-        let mut tx = Eip1559TransactionRequest::new().chain_id(chain_id);
+        let mut tx = Eip1559TransactionRequest::new()
+            .chain_id(chain_id)
+            .from(from_wallet.wallet.address());
 
         if let Some(token) = token {
             println!("token: {:?}", token);
@@ -264,14 +266,6 @@ impl LocalEthersWallet {
         send_amount: U256,
         invoice_id: String,
     ) -> Result<H256, WalletError> {
-        // Add detailed logging here
-        eprintln!("Preparing ERC20 transfer transaction:");
-        eprintln!("Contract Address: {:?}", to_wallet.address_id);
-        eprintln!("Token: {:?}", token);
-        eprintln!("Send Amount: {:?}", send_amount);
-        eprintln!("Provider URL: {:?}", self.provider.url());
-        eprintln!("Invoice ID: {:?}", invoice_id);
-
         let tx_request = Self::prepare_transaction_request(
             self,
             to_wallet,
@@ -288,11 +282,11 @@ impl LocalEthersWallet {
         let pending_tx = signer
             .send_transaction(tx_request, None)
             .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+            .map_err(|e| WalletError::ProviderError(format!("SignerMiddleware error: {:?}", e)))?;
 
         let receipt = pending_tx
             .await
-            .map_err(|e| WalletError::ProviderError(e.to_string()))?;
+            .map_err(|e| WalletError::ProviderError(format!("Pending transaction error: {:?}", e)))?;
 
         if let Some(receipt) = receipt {
             let tx_hash = receipt.transaction_hash;
