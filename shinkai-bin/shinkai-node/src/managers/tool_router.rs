@@ -540,7 +540,6 @@ impl ToolRouter {
                     };
 
                     // Get wallet balances
-                    // Get wallet balances
                     let balances = match my_agent_payments_manager.get_balances().await {
                         Ok(balances) => balances,
                         Err(e) => {
@@ -679,9 +678,10 @@ impl ToolRouter {
                             description: network_tool.description.clone(),
                             usage_type: network_tool.usage_type.clone(),
                             invoice_id: internal_invoice_request.unique_id.clone(),
-                            invoice: notification_content_value,
+                            invoice: notification_content_value.clone(),
                             function_args: function_args.clone(),
-                            wallet_balances: balances_value,
+                            wallet_balances: balances_value.clone(),
+                            error_message: None,
                         };
 
                         let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));
@@ -701,6 +701,33 @@ impl ToolRouter {
 
                 loop {
                     if start_time.elapsed() > timeout {
+                        // Send a timeout notification via WebSocket
+                        {
+                            let ws_manager = context.ws_manager_trait();
+
+                            if let Some(ws_manager) = &ws_manager {
+                                let ws_manager = ws_manager.lock().await;
+                                let job = context.full_job();
+
+                                let topic = WSTopic::Widget;
+                                let subtopic = job.conversation_inbox_name.to_string();
+                                let update = "Timeout while waiting for invoice payment".to_string();
+                                let payment_metadata = PaymentMetadata {
+                                    tool_key: network_tool.name.clone(),
+                                    description: network_tool.description.clone(),
+                                    usage_type: network_tool.usage_type.clone(),
+                                    invoice_id: internal_invoice_request.unique_id.clone(),
+                                    invoice: notification_content_value.clone(),
+                                    function_args: function_args.clone(),
+                                    wallet_balances: balances_value.clone(),
+                                    error_message: Some(update.clone()),
+                                };
+
+                                let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));
+                                ws_manager.queue_message(topic, subtopic, update, widget, false).await;
+                            }
+                        }
+
                         return Err(LLMProviderError::FunctionExecutionError(
                             "Timeout while waiting for invoice payment".to_string(),
                         ));
