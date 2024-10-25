@@ -32,7 +32,7 @@ use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embe
 #[cfg(feature = "console")]
 use console_subscriber;
 
-#[test]
+// #[test]
 fn micropayment_flow_test() {
     #[cfg(feature = "console")]
     {

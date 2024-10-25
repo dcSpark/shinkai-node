@@ -396,11 +396,11 @@ impl IdentityManagerTrait for IdentityManager {
                         IdentityPermissions::None,
                     ))
                 }
-                Err(_) => Err("Failed to get first address".to_string()),
+                Err(e) => Err(format!("Failed to get first address: {}", e)),
             },
-            Err(_) => Err(format!(
-                "Failed to get identity network manager for profile name: {}",
-                full_profile_name
+            Err(e) => Err(format!(
+                "Failed to get identity network manager for profile name: {} with error: {}",
+                full_profile_name, e
             )),
         }
     }
