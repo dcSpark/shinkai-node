@@ -96,12 +96,6 @@ impl LocalEthersWallet {
 
         // Print the private key
         let private_key_bytes = wallet.signer().to_bytes();
-        println!(
-            "Generated private key: {} for address: {}",
-            hex::encode(private_key_bytes),
-            address
-        );
-
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
 
@@ -134,12 +128,6 @@ impl LocalEthersWallet {
                     .map_err(|e| WalletError::Bip39Error(e.to_string()))?;
                 let secret_key = SecretKey::from_slice(child_xprv.private_key().to_bytes().as_slice())?;
 
-                // Print the private key
-                println!(
-                    "Recovered private key from mnemonic: {}",
-                    hex::encode(secret_key.to_bytes())
-                );
-
                 EthersLocalWallet::from(secret_key).with_chain_id(network.chain_id)
             }
             WalletSource::PrivateKey(private_key) => {
@@ -150,7 +138,6 @@ impl LocalEthersWallet {
         };
 
         let address = to_checksum(&wallet.address(), None);
-        println!("recovered wallet's address: {}", address);
         let provider =
             Provider::<Http>::try_from(network.default_rpc()).map_err(|e| WalletError::InvalidRpcUrl(e.to_string()))?;
 
@@ -183,15 +170,12 @@ impl LocalEthersWallet {
             .await
             .map_err(|e| WalletError::ProviderError(e.to_string()))?
             .low_u64();
-        println!("chain_id: {:?}", chain_id);
-        println!("provider: {:?}", provider);
 
         let mut tx = Eip1559TransactionRequest::new()
             .chain_id(chain_id)
             .from(from_wallet.wallet.address());
 
         if let Some(token) = token {
-            println!("token: {:?}", token);
             let contract_address = token
                 .contract_address
                 .ok_or_else(|| WalletError::MissingContractAddress(token.asset_id.clone()))?
@@ -241,10 +225,6 @@ impl LocalEthersWallet {
         tx = tx
             .max_fee_per_gas(adjusted_max_fee_per_gas)
             .max_priority_fee_per_gas(max_priority_fee_per_gas);
-
-        // Debug prints
-        println!("Max Fee Per Gas: {:?}", tx.max_fee_per_gas);
-        println!("Max Priority Fee Per Gas: {:?}", tx.max_priority_fee_per_gas);
 
         Ok(tx.into())
     }
@@ -314,18 +294,6 @@ impl LocalEthersWallet {
     }
 }
 
-// // Implement conversion from mixed::Transaction to TypedTransaction
-// impl From<shinkai_message_primitives::schemas::wallet_mixed::Transaction> for TypedTransaction {
-//     fn from(tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction) -> Self {
-//         let mut typed_tx = TypedTransaction::default();
-//         typed_tx.set_to(NameOrAddress::Address(
-//             EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
-//         ));
-//         typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-//         typed_tx
-//     }
-// }
-
 impl IsWallet for LocalEthersWallet {}
 
 impl PaymentWallet for LocalEthersWallet {
@@ -380,28 +348,6 @@ impl SendActions for LocalEthersWallet {
         Box::pin(fut)
     }
 }
-
-// Implement conversion from mixed::Transaction to TypedTransaction
-// impl From<Transaction> for TypedTransaction {
-//     fn from(tx: Transaction) -> Self {
-//         let mut typed_tx = TypedTransaction::default();
-//         typed_tx.set_to(NameOrAddress::Address(
-//             EthersAddress::from_str(&tx.to_address_id.unwrap()).unwrap(),
-//         ));
-//         typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-//         typed_tx
-//     }
-// }
-
-// fn transaction_to_typed_transaction(tx: Transaction) -> Result<TypedTransaction, WalletError> {
-//     let mut typed_tx = TypedTransaction::default();
-//     typed_tx.set_to(NameOrAddress::Address(
-//         EthersAddress::from_str(&tx.to_address_id.ok_or(WalletError::MissingToAddress)?)
-//             .map_err(|e| WalletError::InvalidAddress(e.to_string()))?,
-//     ));
-//     typed_tx.set_data(tx.unsigned_payload.into_bytes().into());
-//     Ok(typed_tx)
-// }
 
 impl CommonActions for LocalEthersWallet {
     fn get_payment_address(&self) -> PublicAddress {
