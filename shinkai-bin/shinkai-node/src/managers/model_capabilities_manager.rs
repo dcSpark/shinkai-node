@@ -195,7 +195,6 @@ impl ModelCapabilitiesManager {
                 "gpt-4o-mini" => ModelCost::VeryCheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
-                "gpt-4o" => ModelCost::GoodValue,
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -427,6 +426,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("wizardlm2") => 8_000,
             model_type if model_type.starts_with("phi2") => 4_000,
             model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
+            model_type if model_type.starts_with("llama-3.2") => 128_000,
+            model_type if model_type.starts_with("llama-3.1") => 128_000,
+            model_type if model_type.starts_with("llama3.2") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
             _ => 4096, // Default token count if no specific model type matches
