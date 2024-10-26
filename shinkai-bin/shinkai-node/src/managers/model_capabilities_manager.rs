@@ -41,7 +41,8 @@ impl std::error::Error for ModelCapabilitiesManagerError {}
 pub struct PromptResult {
     pub messages: PromptResultEnum,
     pub functions: Option<Vec<serde_json::Value>>,
-    pub remaining_tokens: usize,
+    pub remaining_output_tokens: usize,
+    pub tokens_used: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
