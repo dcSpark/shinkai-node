@@ -1,4 +1,4 @@
-use super::{BaseVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath};
+use super::{BaseVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorSearchMode};
 use crate::{embeddings::Embedding, resource_errors::VRError, source::SourceFileMap};
 use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
@@ -172,6 +172,7 @@ impl VRKai {
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Vec<RetrievedNode> {
         self.resource.as_trait_object().vector_search_customized(
             query,
@@ -179,6 +180,7 @@ impl VRKai {
             traversal_method,
             traversal_options,
             starting_path,
+            vector_search_mode,
         )
     }
 

@@ -10,8 +10,8 @@ use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{
-    deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
-    TraversalOption,
+    deep_search_scores_average_out, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod, TraversalOption,
+    VectorSearchMode,
 };
 use std::collections::HashMap;
 use std::result::Result::Ok;
@@ -224,6 +224,17 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), ShinkaiDBError> {
+        // Determine the vector search mode configured in the job scope.
+        // Limit the maximum tokens to 25k (~ 10 pages of PDF) if the context window is greater than that.
+        // If the length is < 25k, pass the entire context.
+        // If the length is > 25k, pass the first page of the document and fill up to 25k tokens of context window.
+        let max_tokens_in_prompt =
+            if job_scope.vector_search_mode.contains(&VectorSearchMode::FillUpTo25k) && max_tokens_in_prompt > 25000 {
+                25000
+            } else {
+                max_tokens_in_prompt
+            };
+
         let average_out_deep_search_scores = true;
         let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
@@ -252,6 +263,7 @@ impl JobManager {
                     &deep_traversal_options,
                     generator.clone(),
                     average_out_deep_search_scores,
+                    job_scope.vector_search_mode.clone(),
                 )
                 .await?;
 
@@ -287,6 +299,7 @@ impl JobManager {
                         total_num_of_results,
                         deep_traversal_options.clone(),
                         average_out_deep_search_scores,
+                        job_scope.vector_search_mode.clone(),
                     )
                     .await
                     .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
@@ -336,6 +349,7 @@ impl JobManager {
                 TraversalMethod::Exhaustive,
                 &deep_traversal_options,
                 None,
+                job_scope.vector_search_mode.clone(),
             );
 
             // Average out the node scores together with the resource_score
