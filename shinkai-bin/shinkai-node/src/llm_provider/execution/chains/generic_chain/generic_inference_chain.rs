@@ -309,7 +309,6 @@ impl GenericInferenceChain {
 
             // 5) Check response if it requires a function call
             if let Some(function_call) = response.function_call {
-                tool_calls_history.push(function_call.clone());
                 let parsed_message = ParsedUserMessage::new(user_message.clone());
                 let image_files = HashMap::new();
                 let context = InferenceChainContext::new(
@@ -349,7 +348,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call, &context, &shinkai_tool)
+                    .call_function(function_call.clone(), &context, &shinkai_tool)
                     .await
                 {
                     Ok(response) => response,
@@ -359,6 +358,10 @@ impl GenericInferenceChain {
                         return Err(e);
                     }
                 };
+
+                let mut function_call_with_router_key = function_call.clone();
+                function_call_with_router_key.tool_router_key = Some(shinkai_tool.tool_router_key());
+                tool_calls_history.push(function_call_with_router_key);
 
                 // Trigger WS update after receiving function_response
                 Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response, shinkai_tool.tool_router_key()).await;
