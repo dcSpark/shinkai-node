@@ -7,6 +7,7 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::openai_api::FunctionCall;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -175,47 +176,8 @@ impl GenericInferenceChain {
             &format!("job_config: {:?}", job_config),
         );
         let mut tools = vec![];
-        let use_tools = match &llm_provider.model {
-            LLMProviderInterface::OpenAI(_) => true,
-            LLMProviderInterface::Ollama(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama3.1")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("mistral-nemo")
-                    || model_type.model_type.starts_with("mistral-small")
-                    || model_type.model_type.starts_with("mistral-large");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            LLMProviderInterface::Groq(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama3.1");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            LLMProviderInterface::OpenRouter(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama3.1")
-                    || model_type.model_type.starts_with("mistral-nemo")
-                    || model_type.model_type.starts_with("mistral-small")
-                    || model_type.model_type.starts_with("mistral-large")
-                    || model_type.model_type.starts_with("mistral-pixtral");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            _ => false,
-        };
+        let stream = job_config.as_ref().and_then(|config| config.stream);
+        let use_tools = ModelCapabilitiesManager::has_tool_capabilities(&llm_provider.model, stream);
 
         if use_tools {
             if let Some(tool_router) = &tool_router {

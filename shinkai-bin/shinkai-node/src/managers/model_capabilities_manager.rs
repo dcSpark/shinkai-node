@@ -600,6 +600,42 @@ impl ModelCapabilitiesManager {
 
         (num as f32 * 1.04) as usize
     }
+
+    /// Returns whether the given model supports tool/function calling capabilities
+    pub fn has_tool_capabilities(model: &LLMProviderInterface, stream: Option<bool>) -> bool {
+        eprintln!("has tool capabilities model: {:?}", model);
+        match model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model) => {
+                // For Ollama, check model type and respect the passed stream parameter
+                (model.model_type.starts_with("llama3.1") ||
+                model.model_type.starts_with("llama3.2") ||
+                model.model_type.starts_with("llama-3.1") ||
+                model.model_type.starts_with("llama-3.2") ||
+                model.model_type.starts_with("mistral-nemo") ||
+                model.model_type.starts_with("mistral-small") ||
+                model.model_type.starts_with("mistral-large")) &&
+                stream.map_or(true, |s| !s)
+            },
+            LLMProviderInterface::Groq(model) => {
+                model.model_type.starts_with("llama-3.2") ||
+                model.model_type.starts_with("llama3.2") ||
+                model.model_type.starts_with("llama-3.1") ||
+                model.model_type.starts_with("llama3.1")
+            },
+            LLMProviderInterface::OpenRouter(model) => {
+                model.model_type.starts_with("llama-3.2") ||
+                model.model_type.starts_with("llama3.2") ||
+                model.model_type.starts_with("llama-3.1") ||
+                model.model_type.starts_with("llama3.1") ||
+                model.model_type.starts_with("mistral-nemo") ||
+                model.model_type.starts_with("mistral-small") ||
+                model.model_type.starts_with("mistral-large") ||
+                model.model_type.starts_with("mistral-pixtral")
+            },
+            _ => false,
+        }
+    }
 }
 
 // TODO: add a tokenizer library only in the dev env and test that the estimations are always above it and in a specific margin (% wise)
