@@ -42,6 +42,8 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
+use crate::node_api_router::SendResponseBody;
+
 use super::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
@@ -566,7 +568,7 @@ pub enum NodeCommand {
     V2ApiRemoveJob {
         bearer: String,
         job_id: String,
-        res: Sender<Result<(), APIError>>,
+        res: Sender<Result<SendResponseBody, APIError>>,
     },
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,

@@ -1048,7 +1048,7 @@ pub async fn fork_job_messages_handler(
     path = "/v2/remove_job",
     request_body = RemoveJobRequest,
     responses(
-        (status = 200, description = "Successfully removed job", body = Value),
+        (status = 200, description = "Successfully removed job", body = SendResponseBody),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
