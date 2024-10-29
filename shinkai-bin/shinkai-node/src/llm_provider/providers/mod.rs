@@ -8,19 +8,21 @@ use super::{
 use async_trait::async_trait;
 use reqwest::Client;
 use shinkai_message_primitives::schemas::{
-    inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt
+    inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::LLMProviderInterface,
+    prompts::Prompt,
 };
 use tokio::sync::Mutex;
 
+pub mod claude;
 pub mod exo;
 pub mod gemini;
-pub mod togetherai;
 pub mod groq;
 pub mod ollama;
 pub mod openai;
+pub mod openrouter;
 pub mod shared;
 pub mod shinkai_backend;
-pub mod openrouter;
+pub mod togetherai;
 
 #[async_trait]
 pub trait LLMService {
