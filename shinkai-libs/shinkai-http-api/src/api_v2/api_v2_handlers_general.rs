@@ -2,6 +2,7 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
+use shinkai_message_primitives::schemas::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
 };
@@ -143,6 +144,27 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(stop_llm_handler);
 
+    let add_agent_route = warp::path("add_agent")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_agent_handler);
+
+    let remove_agent_route = warp::path("remove_agent")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(remove_agent_handler);
+
+    let update_agent_route = warp::path("update_agent")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_agent_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -160,6 +182,9 @@ pub fn general_routes(
         .or(download_file_from_inbox_route)
         .or(list_files_in_inbox_route)
         .or(stop_llm_route)
+        .or(add_agent_route)
+        .or(remove_agent_route)
+        .or(update_agent_route)
 }
 
 #[derive(Deserialize)]
@@ -723,6 +748,107 @@ pub async fn stop_llm_handler(
     }
 }
 
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_agent",
+    request_body = Agent,
+    responses(
+        (status = 200, description = "Successfully added agent", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    agent: Agent,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiAddAgent {
+            bearer,
+            agent,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/remove_agent",
+    request_body = HashMap<String, String>,
+    responses(
+        (status = 200, description = "Successfully removed agent", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn remove_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let agent_id = payload.get("agent_id").cloned().unwrap_or_default();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRemoveAgent {
+            bearer,
+            agent_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/update_agent",
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Successfully updated agent", body = Agent),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    update_data: serde_json::Value,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiUpdateAgent {
+            bearer,
+            partial_agent: update_data,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(updated_agent) => Ok(warp::reply::json(&updated_agent)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -743,6 +869,9 @@ pub async fn stop_llm_handler(
         scan_ollama_models_handler,
         add_ollama_models_handler,
         stop_llm_handler,
+        add_agent_handler,
+        remove_agent_handler,
+        update_agent_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,

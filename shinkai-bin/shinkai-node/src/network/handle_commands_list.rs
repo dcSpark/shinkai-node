@@ -2952,6 +2952,25 @@ impl Node {
                     let _ = Node::v2_api_stop_llm(db_clone, stopper_clone, bearer, inbox_name, res).await;
                 });
             }
+            NodeCommand::V2ApiAddAgent { bearer, agent, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_agent(db_clone, identity_manager_clone, bearer, agent, res).await;
+                });
+            }
+            NodeCommand::V2ApiRemoveAgent { bearer, agent_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_remove_agent(db_clone, bearer, agent_id, res).await;
+                });
+            }
+            NodeCommand::V2ApiUpdateAgent { bearer, partial_agent, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_agent(db_clone, bearer, partial_agent, res).await;
+                });
+            }
             NodeCommand::V2ApiRetryMessage {
                 bearer,
                 inbox_name,

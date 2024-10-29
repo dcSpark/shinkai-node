@@ -6,17 +6,7 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig,
-        custom_prompt::CustomPrompt,
-        identity::{Identity, StandardIdentity},
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::ShinkaiName,
-        shinkai_subscription::ShinkaiSubscription,
-        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-        wallet_complementary::{WalletRole, WalletSource},
-        wallet_mixed::NetworkIdentifier,
+        agent::Agent, coinbase_mpc_config::CoinbaseMPCWalletConfig, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
@@ -938,6 +928,21 @@ pub enum NodeCommand {
         bearer: String,
         inbox_name: String,
         res: Sender<Result<(), APIError>>,
+    },
+    V2ApiAddAgent {
+        bearer: String,
+        agent: Agent,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiRemoveAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateAgent {
+        bearer: String,
+        partial_agent: serde_json::Value,
+        res: Sender<Result<Agent, APIError>>,
     },
     V2ApiRetryMessage {
         bearer: String,
