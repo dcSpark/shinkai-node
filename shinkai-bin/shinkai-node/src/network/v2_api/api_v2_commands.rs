@@ -979,16 +979,58 @@ impl Node {
             }
         };
 
-        // Add the agent to the database
-        match db.add_agent(agent, &requester_name) {
-            Ok(_) => {
-                let _ = res.send(Ok("Agent added successfully".to_string())).await;
+        // Check if the llm_provider_id exists
+        match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
+            Ok(Some(_)) => {
+                // Check if the agent_id already exists
+                match db.get_agent(&agent.agent_id) {
+                    Ok(Some(_)) => {
+                        let api_error = APIError {
+                            code: StatusCode::CONFLICT.as_u16(),
+                            error: "Conflict".to_string(),
+                            message: "agent_id already exists".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                    Ok(None) => {
+                        // Add the agent to the database
+                        match db.add_agent(agent, &requester_name) {
+                            Ok(_) => {
+                                let _ = res.send(Ok("Agent added successfully".to_string())).await;
+                            }
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to add agent: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to check agent_id: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "llm_provider_id does not exist".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
             }
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add agent: {}", err),
+                    message: format!("Failed to check llm_provider_id: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
@@ -1139,6 +1181,71 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_agent(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Agent, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the agent from the database
+        match db.get_agent(&agent_id) {
+            Ok(Some(agent)) => {
+                let _ = res.send(Ok(agent)).await;
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Agent not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_all_agents(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Vec<Agent>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve all agents from the database
+        match db.get_all_agents() {
+            Ok(agents) => {
+                let _ = res.send(Ok(agents)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve agents: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }

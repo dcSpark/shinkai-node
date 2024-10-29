@@ -944,6 +944,15 @@ pub enum NodeCommand {
         partial_agent: serde_json::Value,
         res: Sender<Result<Agent, APIError>>,
     },
+    V2ApiGetAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Agent, APIError>>,
+    },
+    V2ApiGetAllAgents {
+        bearer: String,
+        res: Sender<Result<Vec<Agent>, APIError>>,
+    },
     V2ApiRetryMessage {
         bearer: String,
         inbox_name: String,

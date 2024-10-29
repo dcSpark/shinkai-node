@@ -4,16 +4,9 @@ use serde_json::{from_slice, to_vec};
 use shinkai_message_primitives::schemas::{agent::Agent, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
-    /// Returns the first half of the blake3 hash of the agent id value
-    pub fn agent_id_to_hash(agent_id: &str) -> String {
-        let full_hash = blake3::hash(agent_id.as_bytes()).to_hex().to_string();
-        full_hash[..full_hash.len() / 2].to_string()
-    }
-
     pub fn add_agent(&self, agent: Agent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Construct the database key for the agent
         let agent_id_for_db = Self::db_llm_provider_id(&agent.agent_id, profile)?;
-        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
 
         // Validate the new ShinkaiName
         let agent_name_str = format!(
@@ -39,7 +32,7 @@ impl ShinkaiDB {
 
         // Serialize the agent to bytes
         let bytes = to_vec(&agent).unwrap();
-        let agent_key = format!("new_agentic_placeholder_values_to_match_prefix_{}", agent_id_for_db_hash);
+        let agent_key = format!("new_agentic_placeholder_values_to_match_prefix_{}", agent.agent_id);
 
         // Add the agent to the database under NodeAndUsers
         self.db.put_cf(cf_node_and_users, agent_key.as_bytes(), bytes)?;
@@ -91,7 +84,7 @@ impl ShinkaiDB {
             let agent: Agent = from_slice(&bytes)?;
             Ok(Some(agent))
         } else {
-            Err(ShinkaiDBError::DataNotFound)
+            Ok(None)
         }
     }
 

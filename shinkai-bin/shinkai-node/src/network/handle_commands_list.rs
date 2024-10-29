@@ -2971,6 +2971,18 @@ impl Node {
                     let _ = Node::v2_api_update_agent(db_clone, bearer, partial_agent, res).await;
                 });
             }
+            NodeCommand::V2ApiGetAgent { bearer, agent_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_agent(db_clone, bearer, agent_id, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetAllAgents { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_all_agents(db_clone, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiRetryMessage {
                 bearer,
                 inbox_name,
