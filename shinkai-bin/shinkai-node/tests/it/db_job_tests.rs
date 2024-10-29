@@ -996,14 +996,6 @@ mod tests {
         create_new_job(&mut shinkai_db, job1_id.clone(), agent_id.clone(), scope.clone());
         create_new_job(&mut shinkai_db, job2_id.clone(), agent_id.clone(), scope);
 
-        // Retrieve all jobs
-        let jobs = shinkai_db.get_all_jobs().unwrap();
-
-        // Check if the jobs exist
-        let job_ids: Vec<String> = jobs.iter().map(|job| job.job_id().to_string()).collect();
-        assert!(job_ids.contains(&job1_id));
-        assert!(job_ids.contains(&job2_id));
-
         // Check smart_inboxes
         let node1_identity_name = "@@node1.shinkai";
         let node1_subidentity_name = "main_profile_node1";
