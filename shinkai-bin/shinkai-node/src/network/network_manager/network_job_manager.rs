@@ -110,11 +110,6 @@ impl NetworkJobManager {
         {
             let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
 
-            let is_clean_up_jobs = std::env::var("CLEAN_UP_JOBS").is_ok();
-            if is_clean_up_jobs {
-                shinkai_db.clean_up_removed_jobs().unwrap();
-            }
-
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {

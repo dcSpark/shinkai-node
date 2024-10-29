@@ -830,35 +830,6 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Clean up dangling properties of removed jobs
-    pub fn clean_up_removed_jobs(&self) -> Result<(), ShinkaiDBError> {
-        let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
-
-        // Create a prefix iterator for keys starting with "all_jobs_time_keyed_"
-        let prefix = b"all_jobs_time_keyed_placeholder_to_fit_prefix__";
-        let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
-        for item in iter {
-            let (key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
-            // The value is the job ID
-            let job_id = std::str::from_utf8(&value)?.to_string();
-            // Delete dangling properties
-            match self.get_job_like(&job_id) {
-                Ok(_) => (),
-                Err(_) => {
-                    let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
-                    let inbox_searchable = format!(
-                        "inbox_placeholder_value_to_match_prefix_abcdef_{}",
-                        job_inbox_name_content
-                    );
-
-                    self.db.delete_cf(cf_jobs, key)?;
-                    self.db.delete_cf(cf_jobs, inbox_searchable)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub fn add_forked_job(&self, job_id: &str, forked_job: ForkedJob) -> Result<(), ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
