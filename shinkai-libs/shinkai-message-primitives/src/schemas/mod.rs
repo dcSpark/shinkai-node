@@ -22,3 +22,4 @@ pub mod smart_inbox;
 pub mod coinbase_mpc_config;
 pub mod custom_prompt;
 pub mod wallet_complementary;
+pub mod agent;
