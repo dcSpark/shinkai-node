@@ -22,7 +22,8 @@ pub fn llama_prepare_messages(
     Ok(PromptResult {
         messages: PromptResultEnum::Text(messages_string.clone()),
         functions: None,
-        remaining_tokens: total_tokens - used_tokens,
+        remaining_output_tokens: total_tokens - used_tokens,
+        tokens_used: used_tokens,
     })
 }
 

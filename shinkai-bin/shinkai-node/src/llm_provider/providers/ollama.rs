@@ -3,7 +3,7 @@ use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::shared::ollama_api::{
     ollama_conversation_prepare_messages_with_tooling, ollama_prepare_messages, OllamaAPIStreamingResponse,
 };
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::error::LLMProviderError;
 use super::LLMService;
@@ -71,6 +71,7 @@ impl LLMService for Ollama {
             } else {
                 ollama_conversation_prepare_messages_with_tooling(&model, prompt)?
             };
+            eprintln!("messages_result: {:?}", messages_result);
 
             let messages_json = match messages_result.messages {
                 PromptResultEnum::Value(v) => v,
@@ -98,7 +99,7 @@ impl LLMService for Ollama {
             });
 
             // Modify payload to add options if needed
-            add_options_to_payload(&mut payload, config.as_ref());
+            add_options_to_payload(&mut payload, config.as_ref(), &model, messages_result.tokens_used);
 
             // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true, then we need to remove to remove it
             if is_stream {
@@ -475,7 +476,7 @@ async fn handle_non_streaming_response(
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &LLMProviderInterface, used_tokens: usize) {
     eprintln!("config: {:?}", config);
     let mut options = serde_json::Map::new();
 
@@ -509,6 +510,23 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     // Handle streaming option
     let streaming = get_value("LLM_STREAMING", config.and_then(|c| c.stream.as_ref())).unwrap_or(true); // Default to true if not specified
     payload["stream"] = serde_json::json!(streaming);
+
+    // Handle num_ctx setting
+    let num_ctx_from_config = config
+        .and_then(|c| c.other_model_params.as_ref())
+        .and_then(|params| params.get("num_ctx"));
+
+    if num_ctx_from_config.is_none() {
+        // If num_ctx is not defined in config, set it using get_max_tokens or used_tokens
+        let max_tokens = ModelCapabilitiesManager::get_max_tokens(model);
+        let ctx_size = if used_tokens > 0 && used_tokens < max_tokens {
+            used_tokens
+        } else {
+            max_tokens
+        };
+        eprintln!("updating num_ctx to: {:?}", ctx_size);
+        options.insert("num_ctx".to_string(), serde_json::json!(ctx_size));
+    }
 
     // Handle other model params
     if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {

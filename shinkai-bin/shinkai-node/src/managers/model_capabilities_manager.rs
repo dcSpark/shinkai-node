@@ -41,7 +41,8 @@ impl std::error::Error for ModelCapabilitiesManagerError {}
 pub struct PromptResult {
     pub messages: PromptResultEnum,
     pub functions: Option<Vec<serde_json::Value>>,
-    pub remaining_tokens: usize,
+    pub remaining_output_tokens: usize,
+    pub tokens_used: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -195,7 +196,6 @@ impl ModelCapabilitiesManager {
                 "gpt-4o-mini" => ModelCost::VeryCheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
-                "gpt-4o" => ModelCost::GoodValue,
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -427,6 +427,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("wizardlm2") => 8_000,
             model_type if model_type.starts_with("phi2") => 4_000,
             model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
+            model_type if model_type.starts_with("llama-3.2") => 128_000,
+            model_type if model_type.starts_with("llama-3.1") => 128_000,
+            model_type if model_type.starts_with("llama3.2") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
             _ => 4096, // Default token count if no specific model type matches
@@ -599,6 +602,42 @@ impl ModelCapabilitiesManager {
             .sum();
 
         (num as f32 * 1.04) as usize
+    }
+
+    /// Returns whether the given model supports tool/function calling capabilities
+    pub fn has_tool_capabilities(model: &LLMProviderInterface, stream: Option<bool>) -> bool {
+        eprintln!("has tool capabilities model: {:?}", model);
+        match model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model) => {
+                // For Ollama, check model type and respect the passed stream parameter
+                (model.model_type.starts_with("llama3.1") ||
+                model.model_type.starts_with("llama3.2") ||
+                model.model_type.starts_with("llama-3.1") ||
+                model.model_type.starts_with("llama-3.2") ||
+                model.model_type.starts_with("mistral-nemo") ||
+                model.model_type.starts_with("mistral-small") ||
+                model.model_type.starts_with("mistral-large")) &&
+                stream.map_or(true, |s| !s)
+            },
+            LLMProviderInterface::Groq(model) => {
+                model.model_type.starts_with("llama-3.2") ||
+                model.model_type.starts_with("llama3.2") ||
+                model.model_type.starts_with("llama-3.1") ||
+                model.model_type.starts_with("llama3.1")
+            },
+            LLMProviderInterface::OpenRouter(model) => {
+                model.model_type.starts_with("llama-3.2") ||
+                model.model_type.starts_with("llama3.2") ||
+                model.model_type.starts_with("llama-3.1") ||
+                model.model_type.starts_with("llama3.1") ||
+                model.model_type.starts_with("mistral-nemo") ||
+                model.model_type.starts_with("mistral-small") ||
+                model.model_type.starts_with("mistral-large") ||
+                model.model_type.starts_with("mistral-pixtral")
+            },
+            _ => false,
+        }
     }
 }
 
