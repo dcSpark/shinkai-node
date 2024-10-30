@@ -300,6 +300,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openrouter" => Ok(LLMProviderInterface::OpenRouter(OpenRouter {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "claude" => Ok(LLMProviderInterface::Claude(Claude {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
@@ -313,6 +316,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "exo",
                     "gemini",
                     "openrouter",
+                    "claude",
                 ],
             )),
         }
