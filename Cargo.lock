@@ -10200,7 +10200,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "0.8.12"
+version = "0.8.13"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -10302,7 +10302,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.8.12"
+version = "0.8.13"
 dependencies = [
  "aes-gcm",
  "anyhow",
