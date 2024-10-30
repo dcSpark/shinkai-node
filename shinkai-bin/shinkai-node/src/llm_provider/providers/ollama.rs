@@ -516,17 +516,23 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
         .and_then(|c| c.other_model_params.as_ref())
         .and_then(|params| params.get("num_ctx"));
 
-    if num_ctx_from_config.is_none() {
+    let mut num_ctx = if num_ctx_from_config.is_none() {
         // If num_ctx is not defined in config, set it using get_max_tokens or used_tokens
         let max_tokens = ModelCapabilitiesManager::get_max_tokens(model);
-        let ctx_size = if used_tokens > 0 && used_tokens < max_tokens {
+        if used_tokens > 0 && used_tokens < max_tokens {
             used_tokens
         } else {
             max_tokens
-        };
-        eprintln!("updating num_ctx to: {:?}", ctx_size);
-        options.insert("num_ctx".to_string(), serde_json::json!(ctx_size));
+        }
+    } else {
+        num_ctx_from_config.unwrap().as_u64().unwrap_or(0) as usize
+    };
+
+    // Ensure num_ctx is at least 2048
+    if num_ctx < 2048 {
+        num_ctx = 2048;
     }
+    options.insert("num_ctx".to_string(), serde_json::json!(num_ctx));
 
     // Handle other model params
     if let Some(other_params) = config.and_then(|c| c.other_model_params.as_ref()) {
