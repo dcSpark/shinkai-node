@@ -11,7 +11,7 @@ use serde_json::Value as JsonValue;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job::Job;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
 use shinkai_sqlite::SqliteLogger;
@@ -63,7 +63,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn user_message(&self) -> &ParsedUserMessage;
     fn message_hash_id(&self) -> Option<String>;
     fn image_files(&self) -> &HashMap<String, String>;
-    fn agent(&self) -> &SerializedLLMProvider;
+    fn agent(&self) -> &ProviderOrAgent;
     fn execution_context(&self) -> &HashMap<String, String>;
     fn generator(&self) -> &RemoteEmbeddingGenerator;
     fn user_profile(&self) -> &ShinkaiName;
@@ -129,7 +129,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         &self.image_files
     }
 
-    fn agent(&self) -> &SerializedLLMProvider {
+    fn agent(&self) -> &ProviderOrAgent {
         &self.llm_provider
     }
 
@@ -204,7 +204,7 @@ pub struct InferenceChainContext {
     pub user_message: ParsedUserMessage,
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
-    pub llm_provider: SerializedLLMProvider,
+    pub llm_provider: ProviderOrAgent,
     /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
@@ -231,7 +231,7 @@ impl InferenceChainContext {
         user_message: ParsedUserMessage,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
-        agent: SerializedLLMProvider,
+        llm_provider: ProviderOrAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -252,7 +252,7 @@ impl InferenceChainContext {
             user_message,
             message_hash_id,
             image_files,
-            llm_provider: agent,
+            llm_provider,
             execution_context,
             generator,
             user_profile,
@@ -443,7 +443,7 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).image_files()
     }
 
-    fn agent(&self) -> &SerializedLLMProvider {
+    fn agent(&self) -> &ProviderOrAgent {
         (**self).agent()
     }
 
@@ -626,7 +626,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         &self.image_files
     }
 
-    fn agent(&self) -> &SerializedLLMProvider {
+    fn agent(&self) -> &ProviderOrAgent {
         unimplemented!()
     }
 

@@ -6,9 +6,12 @@ use super::llm_stopper::LLMStopper;
 use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
+use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
+use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
@@ -25,9 +28,8 @@ pub struct LLMProvider {
     pub external_url: Option<String>, // external API URL
     pub api_key: Option<String>,
     pub model: LLMProviderInterface,
-    pub toolkit_permissions: Vec<String>,        // Todo: remove as not used
-    pub storage_bucket_permissions: Vec<String>, // Todo: remove as not used
-    pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the llm provider
+    pub agent: Option<Agent>,
+    pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the llm provider
 }
 
 impl LLMProvider {
@@ -39,9 +41,8 @@ impl LLMProvider {
         external_url: Option<String>,
         api_key: Option<String>,
         model: LLMProviderInterface,
-        toolkit_permissions: Vec<String>,
-        storage_bucket_permissions: Vec<String>,
         allowed_message_senders: Vec<String>,
+        agent: Option<Agent>,
     ) -> Self {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300)) // 5 min TTFT
@@ -55,9 +56,8 @@ impl LLMProvider {
             external_url,
             api_key,
             model,
-            toolkit_permissions,
-            storage_bucket_permissions,
             allowed_message_senders,
+            agent,
         }
     }
 
@@ -225,8 +225,33 @@ impl LLMProvider {
             serialized_llm_provider.api_key,
             serialized_llm_provider.model,
             serialized_llm_provider.toolkit_permissions,
-            serialized_llm_provider.storage_bucket_permissions,
-            serialized_llm_provider.allowed_message_senders,
+            None,
         )
+    }
+
+    pub fn from_provider_or_agent(provider_or_agent: ProviderOrAgent, db: Arc<ShinkaiDB>) -> Option<Self> {
+        match provider_or_agent {
+            ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
+                Some(Self::from_serialized_llm_provider(serialized_llm_provider))
+            }
+            ProviderOrAgent::Agent(agent) => {
+                let llm_id = &agent.llm_provider_id;
+                // TODO: add identity to agent
+                let llm_provider = db
+                    .get_llm_provider(llm_id, &agent.full_identity_name)?
+                    .ok_or(LLMProviderError::LLMProviderNotFound)?;
+
+                Some(Self::new(
+                    llm_provider.id,
+                    llm_provider.full_identity_name,
+                    llm_provider.perform_locally,
+                    llm_provider.external_url,
+                    llm_provider.api_key,
+                    llm_provider.model,
+                    llm_provider.toolkit_permissions,
+                    Some(agent),
+                ))
+            }
+        }
     }
 }

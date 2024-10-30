@@ -16,6 +16,7 @@ use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata, WSTopic};
@@ -258,7 +259,7 @@ impl JobManager {
         job_message: JobMessage,
         message_hash_id: Option<String>,
         full_job: Job,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -394,7 +395,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -548,7 +549,7 @@ impl JobManager {
         job_message: &JobMessage,
         message_hash_id: Option<String>,
         message_content: String,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -562,7 +563,19 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
-        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+        let model = {
+            if let ProviderOrAgent::LLMProvider(llm_provider) = llm_provider.clone() {
+                &llm_provider.model.clone()
+            } else {
+                // If it's an agent, we need to get the LLM provider from the agent
+                let llm_id = llm_provider.get_llm_provider_id();
+                let llm_provider = db
+                    .get_llm_provider(llm_id, &user_profile)?
+                    .ok_or(LLMProviderError::LLMProviderNotFound)?;
+                &llm_provider.model.clone()
+            }
+        };
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&model);
         let parsed_user_message = ParsedUserMessage::new(message_content);
         let full_execution_context = full_job.execution_context.clone();
         let empty_files = HashMap::new();
@@ -574,7 +587,7 @@ impl JobManager {
             parsed_user_message,
             message_hash_id,
             empty_files,
-            llm_provider,
+            llm_provider.clone(),
             full_execution_context,
             generator,
             user_profile.clone(),
@@ -648,7 +661,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
@@ -821,7 +834,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         files: Vec<(String, Vec<u8>)>,
-        agent_found: Option<SerializedLLMProvider>,
+        agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
@@ -981,7 +994,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedLLMProvider>,
+        agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
@@ -1032,7 +1045,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         files_inbox: String,
         file_names: Vec<String>,
-        agent_found: Option<SerializedLLMProvider>,
+        agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
@@ -1132,7 +1145,7 @@ impl JobManager {
     pub async fn process_files_inbox(
         _db: Arc<ShinkaiDB>,
         _vector_fs: Arc<VectorFS>,
-        agent: Option<SerializedLLMProvider>,
+        agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,
         _profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,

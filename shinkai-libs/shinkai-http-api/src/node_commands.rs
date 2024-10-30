@@ -6,7 +6,7 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        agent::Agent, coinbase_mpc_config::CoinbaseMPCWalletConfig, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, coinbase_mpc_config::CoinbaseMPCWalletConfig, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,

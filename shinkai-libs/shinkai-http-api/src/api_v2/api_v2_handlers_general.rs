@@ -2,7 +2,7 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
-use shinkai_message_primitives::schemas::agent::Agent;
+use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
 };

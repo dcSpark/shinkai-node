@@ -11,10 +11,9 @@ use shinkai_http_api::{
 };
 use shinkai_message_primitives::{
     schemas::{
-        agent::Agent,
         identity::{Identity, IdentityType, RegistrationCode},
         inbox_name::InboxName,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::{

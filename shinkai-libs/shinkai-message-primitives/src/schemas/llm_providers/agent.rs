@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::job_config::JobConfig;
+use crate::schemas::{job_config::JobConfig, shinkai_name::ShinkaiName};
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Agent {
     pub name: String,
     pub agent_id: String,
+    pub full_identity_name: ShinkaiName,
     pub llm_provider_id: String,
     pub instructions: String,
     pub ui_description: String,

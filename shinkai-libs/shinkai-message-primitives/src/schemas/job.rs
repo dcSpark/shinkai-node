@@ -29,7 +29,7 @@ pub struct Job {
     /// Marks if the job is finished or not
     pub is_finished: bool,
     /// Identity of the parent agent. We just use a full identity name for simplicity
-    pub parent_llm_provider_id: String,
+    pub parent_agent_or_llm_provider_id: String,
     /// What VectorResources the Job has access to when performing vector searches
     pub scope: JobScope,
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
@@ -76,7 +76,7 @@ impl JobLike for Job {
     }
 
     fn parent_llm_provider_id(&self) -> &str {
-        &self.parent_llm_provider_id
+        &self.parent_agent_or_llm_provider_id
     }
 
     fn scope(&self) -> &JobScope {

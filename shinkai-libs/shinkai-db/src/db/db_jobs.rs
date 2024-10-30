@@ -215,7 +215,7 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             is_finished,
-            parent_llm_provider_id: parent_agent_id,
+            parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
@@ -262,7 +262,7 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             is_finished,
-            parent_llm_provider_id: parent_agent_id,
+            parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
             conversation_inbox_name: conversation_inbox,
             step_history: Vec::new(), // Empty step history for JobLike

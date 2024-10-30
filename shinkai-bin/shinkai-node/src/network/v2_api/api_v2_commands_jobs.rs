@@ -200,7 +200,7 @@ impl Node {
 
         // Retrieve the job to get the llm_provider
         let llm_provider = match db.get_job(&job_message.job_id) {
-            Ok(job) => job.parent_llm_provider_id.clone(),
+            Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1198,7 +1198,7 @@ impl Node {
             node_name.node_name,
             "main".to_string(),
             ShinkaiSubidentityType::Agent,
-            source_job.parent_llm_provider_id.clone(),
+            source_job.parent_agent_or_llm_provider_id.clone(),
         ) {
             Ok(name) => name,
             Err(err) => {
@@ -1232,7 +1232,7 @@ impl Node {
         let forked_job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         match db.create_new_job(
             forked_job_id.clone(),
-            source_job.parent_llm_provider_id,
+            source_job.parent_agent_or_llm_provider_id,
             source_job.scope,
             source_job.is_hidden,
             source_job.associated_ui,

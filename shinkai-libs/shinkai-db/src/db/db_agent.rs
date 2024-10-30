@@ -1,7 +1,7 @@
 use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 use serde_json::{from_slice, to_vec};
-use shinkai_message_primitives::schemas::{agent::Agent, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{llm_providers::agent::Agent, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
     pub fn add_agent(&self, agent: Agent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
