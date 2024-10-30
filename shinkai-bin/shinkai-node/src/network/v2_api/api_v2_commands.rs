@@ -996,6 +996,8 @@ impl Node {
             let _ = res.send(Err(api_error)).await;
             return Ok(());
         }
+        // TODO: validate tools
+        // TODO: validate knowledge
 
         // Check if the llm_provider_id exists
         match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
