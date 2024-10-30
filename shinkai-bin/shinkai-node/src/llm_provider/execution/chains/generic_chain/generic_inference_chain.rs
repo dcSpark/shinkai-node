@@ -224,7 +224,15 @@ impl GenericInferenceChain {
         }
 
         // 3) Generate Prompt
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+        // First, attempt to use the custom_prompt from the job's config.
+        // If it doesn't exist, fall back to the agent's custom_prompt if the llm_provider is an Agent.
+        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
+            if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
+            } else {
+                None
+            }
+        });
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_prompt,

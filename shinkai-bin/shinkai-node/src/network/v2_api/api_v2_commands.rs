@@ -1165,11 +1165,12 @@ impl Node {
                 .and_then(|v| v.as_str())
                 .unwrap_or(&existing_agent.llm_provider_id)
                 .to_string(),
-            instructions: partial_agent
-                .get("instructions")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&existing_agent.instructions)
-                .to_string(),
+                // TODO: decide if we keep this
+            // instructions: partial_agent
+            //     .get("instructions")
+            //     .and_then(|v| v.as_str())
+            //     .unwrap_or(&existing_agent.instructions)
+            //     .to_string(),
             ui_description: partial_agent
                 .get("ui_description")
                 .and_then(|v| v.as_str())

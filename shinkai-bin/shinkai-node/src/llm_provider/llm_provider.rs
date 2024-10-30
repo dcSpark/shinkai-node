@@ -82,6 +82,20 @@ impl LLMProvider {
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
+        // Merge config with agent's config, preferring the provided config
+        let merged_config = if let Some(agent) = &self.agent {
+            if let Some(agent_config) = &agent.config {
+                // Prefer `config` over `agent_config`
+                Some(config.unwrap_or_else(JobConfig::empty).merge(agent_config))
+            } else {
+                // Use provided config or create an empty one if none is provided
+                config.or_else(|| Some(JobConfig::empty()))
+            }
+        } else {
+            // Use provided config if no agent is present
+            config
+        };
+
         let response = match &self.model {
             LLMProviderInterface::OpenAI(openai) => {
                 openai
@@ -93,7 +107,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        config,
+                        merged_config,
                         llm_stopper,
                     )
                     .await
@@ -108,7 +122,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        config,
+                        merged_config,
                         llm_stopper,
                     )
                     .await
@@ -123,7 +137,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        config,
+                        merged_config,
                         llm_stopper,
                     )
                     .await
@@ -137,7 +151,7 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
-                    config,
+                    merged_config,
                     llm_stopper,
                 )
                 .await
@@ -152,7 +166,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        config,
+                        merged_config,
                         llm_stopper,
                     )
                     .await
@@ -166,7 +180,7 @@ impl LLMProvider {
                     self.model.clone(),
                     inbox_name,
                     ws_manager_trait,
-                    config,
+                    merged_config,
                     llm_stopper,
                 )
                 .await
@@ -181,7 +195,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        config,
+                        merged_config,
                         llm_stopper,
                     )
                     .await
@@ -196,7 +210,7 @@ impl LLMProvider {
                         self.model.clone(),
                         inbox_name,
                         ws_manager_trait,
-                        config,
+                        merged_config,
                         llm_stopper,
                     )
                     .await
@@ -231,7 +245,8 @@ impl LLMProvider {
             }
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
-                let llm_provider = db.get_llm_provider(llm_id, &agent.full_identity_name)
+                let llm_provider = db
+                    .get_llm_provider(llm_id, &agent.full_identity_name)
                     .map_err(|_e| LLMProviderError::AgentNotFound(llm_id.clone()))?;
                 if let Some(llm_provider) = llm_provider {
                     Ok(Self::from_serialized_llm_provider(llm_provider))
