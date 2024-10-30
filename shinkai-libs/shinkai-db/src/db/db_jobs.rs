@@ -737,12 +737,17 @@ impl ShinkaiDB {
             format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(&job_id), job_id);
         let job_inbox_name = format!("jobinbox_{}_inboxname", job_id);
         let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
-        let all_jobs_time_keyed = format!("all_jobs_time_keyed_placeholder_to_fit_prefix__{}", job_id);
         let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
         let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
         let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
         let job_config_key = format!("jobinbox_{}_config", job_id);
         let job_associated_ui_key = format!("jobinbox_{}_associated_ui", job_id);
+
+        let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
+        let inbox_searchable = format!(
+            "inbox_placeholder_value_to_match_prefix_abcdef_{}",
+            job_inbox_name_content
+        );
 
         // Start a write batch
         let mut batch = rocksdb::WriteBatch::default();
@@ -755,12 +760,25 @@ impl ShinkaiDB {
         batch.delete_cf(cf_inbox, job_parent_llm_provider_id_key.as_bytes());
         batch.delete_cf(cf_inbox, job_inbox_name.as_bytes());
         batch.delete_cf(cf_inbox, job_conversation_inbox_name_key.as_bytes());
-        batch.delete_cf(cf_inbox, all_jobs_time_keyed.as_bytes());
         batch.delete_cf(cf_inbox, job_smart_inbox_name_key.as_bytes());
         batch.delete_cf(cf_inbox, job_is_hidden_key.as_bytes());
         batch.delete_cf(cf_inbox, job_read_list_key.as_bytes());
         batch.delete_cf(cf_inbox, job_config_key.as_bytes());
         batch.delete_cf(cf_inbox, job_associated_ui_key.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_searchable.as_bytes());
+
+        let all_jobs_time_keyed_prefix = b"all_jobs_time_keyed_placeholder_to_fit_prefix__";
+        let iter = self.db.prefix_iterator_cf(cf_inbox, all_jobs_time_keyed_prefix);
+        for item in iter {
+            let (key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
+            // The value is the job ID
+            let item_job_id = std::str::from_utf8(&value)?.to_string();
+
+            if item_job_id == job_id {
+                batch.delete_cf(cf_inbox, key);
+                break;
+            }
+        }
 
         // Remove step history
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
