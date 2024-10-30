@@ -669,15 +669,11 @@ impl Node {
                         requester_profile.full_name, sanitized_model
                     ))
                     .expect("Failed to create ShinkaiName"),
-                    perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(Ollama {
                         model_type: model.clone(),
                     }),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 }
             })
             .collect();

@@ -111,13 +111,9 @@ fn create_a_sheet_and_check_workflows() {
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
-                    perform_locally: false,
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
                     model: LLMProviderInterface::OpenAI(open_ai),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 };
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),
@@ -300,13 +296,9 @@ fn import_export_sheet_tests() {
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
-                    perform_locally: false,
                     api_key: Some("".to_string()),
                     external_url: Some(server.url()),
                     model: LLMProviderInterface::Ollama(ollama),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 };
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),

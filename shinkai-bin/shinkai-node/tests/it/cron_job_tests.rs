@@ -81,13 +81,9 @@
 //     //         let agent = SerializedLLMProvider {
 //     //             id: agent_id.clone(),
 //     //             full_identity_name: agent_name.clone(),
-//     //             perform_locally: false,
 //     //             external_url: Some("https://api.openai.com".to_string()),
 //     //             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
 //     //             model: LLMProviderInterface::OpenAI(open_ai),
-//     //             toolkit_permissions: vec![],
-//     //             storage_bucket_permissions: vec![],
-//     //             allowed_message_senders: vec![],
 //     //         };
 
 //     //         let profile = agent_name.clone().extract_profile().unwrap();

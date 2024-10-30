@@ -7,6 +7,7 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -17,7 +18,6 @@ use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteLogger;
@@ -213,33 +213,13 @@ impl SheetUIInferenceChain {
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         let job_config = full_job.config();
         let mut tools = vec![];
-        let use_tools = match &llm_provider.model {
-            LLMProviderInterface::OpenAI(_) => true,
-            LLMProviderInterface::Ollama(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama3.1")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("mistral-nemo")
-                    || model_type.model_type.starts_with("mistral-small")
-                    || model_type.model_type.starts_with("mistral-large");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            LLMProviderInterface::Groq(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama3.1");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            _ => false,
-        };
+        let stream = job_config.as_ref().and_then(|config| config.stream);
+        let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
+            llm_provider.clone(),
+            db.clone(),
+            stream,
+        );
+
         if use_tools {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
@@ -326,6 +306,7 @@ impl SheetUIInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
+                db.clone(),
             )
             .await;
 

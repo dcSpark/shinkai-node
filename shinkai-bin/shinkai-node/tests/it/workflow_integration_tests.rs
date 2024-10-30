@@ -110,13 +110,9 @@ fn workflow_integration_test() {
         let agent = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
 
         // Create node1 and node2
@@ -373,13 +369,9 @@ fn workflow_complex_integration_test() {
         let agent = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some(openai_api_key),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
 
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);

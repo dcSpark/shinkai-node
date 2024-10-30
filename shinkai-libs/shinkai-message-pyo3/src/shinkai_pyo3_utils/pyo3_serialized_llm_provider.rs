@@ -31,10 +31,6 @@ impl PySerializedLLMProvider {
             .and_then(|k| k.get_item("id").ok().flatten())
             .and_then(|v| v.extract::<String>().ok())
             .unwrap_or_else(|| String::new());
-        let perform_locally = kwargs
-            .and_then(|k| k.get_item("perform_locally").ok().flatten())
-            .and_then(|v| v.extract::<bool>().ok())
-            .unwrap_or_else(|| false);
         let external_url = kwargs
             .and_then(|k| k.get_item("external_url").ok().flatten())
             .and_then(|v| v.extract::<String>().ok());
@@ -46,30 +42,14 @@ impl PySerializedLLMProvider {
             .and_then(|v| v.extract::<PyLLMProviderInterface>().ok())
             .map(|py_model| py_model.inner)
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("model is required"))?;
-        let toolkit_permissions = kwargs
-            .and_then(|k| k.get_item("toolkit_permissions").ok().flatten())
-            .and_then(|v| v.extract::<Vec<String>>().ok())
-            .unwrap_or_else(|| Vec::new());
-        let storage_bucket_permissions = kwargs
-            .and_then(|k| k.get_item("storage_bucket_permissions").ok().flatten())
-            .and_then(|v| v.extract::<Vec<String>>().ok())
-            .unwrap_or_else(|| Vec::new());
-        let allowed_message_senders = kwargs
-            .and_then(|k| k.get_item("allowed_message_senders").ok().flatten())
-            .and_then(|v| v.extract::<Vec<String>>().ok())
-            .unwrap_or_else(|| Vec::new());
 
         Ok(Self {
             inner: SerializedLLMProvider {
                 id,
                 full_identity_name,
-                perform_locally,
                 external_url,
                 api_key,
                 model,
-                toolkit_permissions,
-                storage_bucket_permissions,
-                allowed_message_senders,
             },
         })
     }
@@ -91,13 +71,9 @@ impl PySerializedLLMProvider {
             inner: SerializedLLMProvider {
                 id,
                 full_identity_name,
-                perform_locally: false,
                 external_url: Some(external_url),
                 api_key,
                 model,
-                toolkit_permissions: Vec::new(),
-                storage_bucket_permissions: Vec::new(),
-                allowed_message_senders: Vec::new(),
             },
         })
     }

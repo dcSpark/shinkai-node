@@ -63,17 +63,6 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_node_and_users, profile_key.as_bytes(), []);
 
-        // Additionally, for each allowed message sender and toolkit permission,
-        // you can store them with a specific prefix to indicate their relationship to the llm provider.
-        for profile in &llm_provider.allowed_message_senders {
-            let profile_key = format!("agent_{}_profile_{}", &llm_provider_id_for_db_hash, profile);
-            batch.put_cf(cf_node_and_users, profile_key.as_bytes(), []);
-        }
-        for toolkit in &llm_provider.toolkit_permissions {
-            let toolkit_key = format!("agent_{}_toolkit_{}", &llm_provider_id_for_db_hash, toolkit);
-            batch.put_cf(cf_node_and_users, toolkit_key.as_bytes(), []);
-        }
-
         // Write the batch
         self.db.write(batch)?;
 

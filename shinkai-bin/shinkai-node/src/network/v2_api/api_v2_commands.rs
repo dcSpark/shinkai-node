@@ -978,6 +978,25 @@ impl Node {
             }
         };
 
+        // Construct the expected full identity name
+        let expected_full_identity_name = ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            requester_name.get_node_name_string(),
+            agent.agent_id
+        ))
+        .unwrap();
+
+        // Check if the full identity name matches
+        if agent.full_identity_name != expected_full_identity_name {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid full identity name.".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
         // Check if the llm_provider_id exists
         match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
             Ok(Some(_)) => {
@@ -1115,6 +1134,24 @@ impl Node {
             }
         };
 
+        // Construct the full identity name
+        let full_identity_name = match ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            existing_agent.full_identity_name.get_node_name_string(),
+            agent_id
+        )) {
+            Ok(name) => name,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Failed to construct full identity name.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Manually merge fields from partial_agent with existing_agent
         let updated_agent = Agent {
             name: partial_agent
@@ -1142,9 +1179,7 @@ impl Node {
                 .get("knowledge")
                 .and_then(|v| v.as_array())
                 .map_or(existing_agent.knowledge.clone(), |v| {
-                    v.iter()
-                        .filter_map(|s| s.as_str().map(String::from))
-                        .collect()
+                    v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
                 }),
             storage_path: partial_agent
                 .get("storage_path")
@@ -1155,19 +1190,16 @@ impl Node {
                 .get("tools")
                 .and_then(|v| v.as_array())
                 .map_or(existing_agent.tools.clone(), |v| {
-                    v.iter()
-                        .filter_map(|s| s.as_str().map(String::from))
-                        .collect()
+                    v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
                 }),
             debug_mode: partial_agent
                 .get("debug_mode")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(existing_agent.debug_mode),
-            config: partial_agent
-                .get("config")
-                .map_or(existing_agent.config.clone(), |v| {
-                    serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
-                }),
+            config: partial_agent.get("config").map_or(existing_agent.config.clone(), |v| {
+                serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
+            }),
+            full_identity_name, // Set the constructed full identity name
         };
 
         // Update the agent in the database

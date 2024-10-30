@@ -37,13 +37,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -108,13 +104,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -158,13 +150,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -197,13 +185,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent

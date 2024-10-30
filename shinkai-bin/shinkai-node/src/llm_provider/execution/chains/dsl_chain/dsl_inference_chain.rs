@@ -15,7 +15,7 @@ use regex::Regex;
 use shinkai_baml::baml_builder::{BamlConfig, ClientConfig, GeneratorConfig};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, job::JobLike},
+    schemas::{inbox_name::InboxName, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_sqlite::logger::{WorkflowLogEntry, WorkflowLogEntryStatus};
@@ -357,6 +357,7 @@ impl AsyncFunction for InferenceFunction {
             },
             None, // this is the config
             self.context.llm_stopper().clone(),
+            self.context.db().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -460,6 +461,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             },
             None, // this is the config
             self.context.llm_stopper().clone(),
+            self.context.db().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -507,11 +509,26 @@ impl AsyncFunction for BamlInference {
 
         // TODO: do we need the job for something?
         // let full_job = self.context.full_job();
-        let llm_provider = self.context.agent();
+        let llm_or_agent_provider = self.context.agent();
 
         let generator_config = GeneratorConfig::default();
 
-        // TODO: add support for other providers
+        let llm_provider = match llm_or_agent_provider {
+            ProviderOrAgent::LLMProvider(provider) => provider,
+            ProviderOrAgent::Agent(agent) => {
+                let llm_provider_id = agent.llm_provider_id.clone();
+                let profile = agent.full_identity_name.clone();
+                let provider = self.context
+                    .db()
+                    .get_llm_provider(&llm_provider_id, &profile)
+                    .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+                &provider
+                    .as_ref()
+                    .ok_or_else(|| WorkflowError::ExecutionError("LLM provider not found".to_string()))?
+                    .clone()
+            }
+        };
+
         let base_url = llm_provider.external_url.clone().unwrap_or_default();
         let base_url = if base_url == "http://localhost:11434" || base_url == "http://localhost:11435" {
             format!("{}/v1", base_url)
@@ -619,7 +636,15 @@ impl AsyncFunction for MultiInferenceFunction {
 
         let mut responses = Vec::new();
         let agent = self.context.agent();
-        let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+        let max_tokens = ModelCapabilitiesManager::get_max_input_tokens_for_provider_or_agent(
+            agent.clone(),
+            self.context.db().clone(),
+        );
+
+        let max_tokens = match max_tokens {
+            Some(tokens) => tokens,
+            None => return Err(WorkflowError::ExecutionError("Max tokens not found".to_string())),
+        };
 
         for text in split_texts.iter() {
             let inference_args = vec![

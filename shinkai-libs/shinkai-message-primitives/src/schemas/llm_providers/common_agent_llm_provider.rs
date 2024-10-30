@@ -1,3 +1,5 @@
+use crate::schemas::shinkai_name::ShinkaiName;
+
 use super::{agent::Agent, serialized_llm_provider::SerializedLLMProvider};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,6 +20,13 @@ impl ProviderOrAgent {
         match self {
             ProviderOrAgent::LLMProvider(provider) => &provider.id,
             ProviderOrAgent::Agent(agent) => &agent.llm_provider_id,
+        }
+    }
+
+    pub fn get_full_identity_name(&self) -> &ShinkaiName {
+        match self {
+            ProviderOrAgent::LLMProvider(provider) => &provider.full_identity_name,
+            ProviderOrAgent::Agent(agent) => &agent.full_identity_name,
         }
     }
 }

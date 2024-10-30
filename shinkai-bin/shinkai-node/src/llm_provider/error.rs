@@ -87,6 +87,7 @@ pub enum LLMProviderError {
     ToolNotFound(String),
     ToolRetrievalError(String),
     ToolSearchError(String),
+    AgentNotFound(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -176,6 +177,7 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::ToolNotFound(s) => write!(f, "Tool not found: {}", s),
             LLMProviderError::ToolRetrievalError(s) => write!(f, "Tool retrieval error: {}", s),
             LLMProviderError::ToolSearchError(s) => write!(f, "Tool search error: {}", s),
+            LLMProviderError::AgentNotFound(s) => write!(f, "Agent not found: {}", s),
         }
     }
 }
@@ -255,6 +257,7 @@ impl LLMProviderError {
             LLMProviderError::ToolNotFound(_) => "ToolNotFound",
             LLMProviderError::ToolRetrievalError(_) => "ToolRetrievalError",
             LLMProviderError::ToolSearchError(_) => "ToolSearchError",
+            LLMProviderError::AgentNotFound(_) => "AgentNotFound",
         };
 
         let error_message = format!("{}", self);

@@ -1417,16 +1417,8 @@ components:
       required:
       - id
       - full_identity_name
-      - perform_locally
       - model
-      - toolkit_permissions
-      - storage_bucket_permissions
-      - allowed_message_senders
       properties:
-        allowed_message_senders:
-          type: array
-          items:
-            type: string
         api_key:
           type: string
           nullable: true
@@ -1439,16 +1431,6 @@ components:
           type: string
         model:
           $ref: '#/components/schemas/LLMProviderInterface'
-        perform_locally:
-          type: boolean
-        storage_bucket_permissions:
-          type: array
-          items:
-            type: string
-        toolkit_permissions:
-          type: array
-          items:
-            type: string
     SheetJobAction:
       type: object
       required:

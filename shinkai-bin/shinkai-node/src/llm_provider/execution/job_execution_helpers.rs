@@ -26,12 +26,13 @@ impl JobManager {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
+        db: Arc<ShinkaiDB>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let llm_provider_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
 
         let task_response = tokio::spawn(async move {
-            let llm_provider = LLMProvider::from_serialized_llm_provider(llm_provider_cloned);
+            let llm_provider = LLMProvider::from_provider_or_agent(llm_provider_cloned, db.clone())?;
             llm_provider.inference(prompt_cloned, inbox_name, ws_manager_trait, config, llm_stopper).await
         })
         .await;

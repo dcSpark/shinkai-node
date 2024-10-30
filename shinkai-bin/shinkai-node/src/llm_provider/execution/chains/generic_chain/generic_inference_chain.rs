@@ -6,7 +6,6 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::openai_api::FunctionCall;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
@@ -19,9 +18,7 @@ use shinkai_db::schemas::ws_types::{
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider,
-};
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -111,7 +108,7 @@ impl GenericInferenceChain {
         user_message: String,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
-        llm_provider: SerializedLLMProvider,
+        llm_provider: ProviderOrAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -177,7 +174,11 @@ impl GenericInferenceChain {
         );
         let mut tools = vec![];
         let stream = job_config.as_ref().and_then(|config| config.stream);
-        let use_tools = ModelCapabilitiesManager::has_tool_capabilities(&llm_provider.model, stream);
+        let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
+            llm_provider.clone(),
+            db.clone(),
+            stream,
+        );
 
         if use_tools {
             if let Some(tool_router) = &tool_router {
@@ -198,22 +199,25 @@ impl GenericInferenceChain {
                             match tool_router.get_tool_by_name(&result.tool_router_key).await {
                                 Ok(Some(tool)) => tools.push(tool),
                                 Ok(None) => {
-                                    return Err(LLMProviderError::ToolNotFound(
-                                        format!("Tool not found for key: {}", result.tool_router_key),
-                                    ));
+                                    return Err(LLMProviderError::ToolNotFound(format!(
+                                        "Tool not found for key: {}",
+                                        result.tool_router_key
+                                    )));
                                 }
                                 Err(e) => {
-                                    return Err(LLMProviderError::ToolRetrievalError(
-                                        format!("Error retrieving tool: {:?}", e),
-                                    ));
+                                    return Err(LLMProviderError::ToolRetrievalError(format!(
+                                        "Error retrieving tool: {:?}",
+                                        e
+                                    )));
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        return Err(LLMProviderError::ToolSearchError(
-                            format!("Error during tool search: {:?}", e),
-                        ));
+                        return Err(LLMProviderError::ToolSearchError(format!(
+                            "Error during tool search: {:?}",
+                            e
+                        )));
                     }
                 }
             }
@@ -257,6 +261,7 @@ impl GenericInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
+                db.clone(),
             )
             .await;
 
@@ -326,7 +331,13 @@ impl GenericInferenceChain {
                 tool_calls_history.push(function_call_with_router_key);
 
                 // Trigger WS update after receiving function_response
-                Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response, shinkai_tool.tool_router_key()).await;
+                Self::trigger_ws_update(
+                    &ws_manager_trait,
+                    &Some(full_job.job_id.clone()),
+                    &function_response,
+                    shinkai_tool.tool_router_key(),
+                )
+                .await;
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(

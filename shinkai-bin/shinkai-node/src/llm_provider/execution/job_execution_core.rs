@@ -1143,7 +1143,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        _db: Arc<ShinkaiDB>,
+        db: Arc<ShinkaiDB>,
         _vector_fs: Arc<VectorFS>,
         agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,
@@ -1180,7 +1180,7 @@ impl JobManager {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
-        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone()).await?;
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), db.clone()).await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

@@ -10,13 +10,9 @@ use utoipa::ToSchema;
 pub struct SerializedLLMProvider {
     pub id: String,
     pub full_identity_name: ShinkaiName,
-    pub perform_locally: bool, // TODO: Remove this and update libs
     pub external_url: Option<String>,
     pub api_key: Option<String>,
     pub model: LLMProviderInterface,
-    pub toolkit_permissions: Vec<String>,
-    pub storage_bucket_permissions: Vec<String>,
-    pub allowed_message_senders: Vec<String>,
 }
 
 impl SerializedLLMProvider {
@@ -53,15 +49,11 @@ impl SerializedLLMProvider {
         SerializedLLMProvider {
             id: "mock_agent".to_string(),
             full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent".to_string()).unwrap(),
-            perform_locally: false,
             external_url: Some("https://api.example.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-4o-mini".to_string(),
             }),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         }
     }
 }
