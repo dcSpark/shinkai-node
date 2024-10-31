@@ -96,3 +96,4 @@ shinkai-bin/shinkai-node/ocrs/text-recognition.rten
 logs.json
 example.db-shm
 example.db-wal
+libpdfium.dylib

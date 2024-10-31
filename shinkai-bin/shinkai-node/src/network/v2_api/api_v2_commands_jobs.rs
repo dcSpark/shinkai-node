@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{collections::HashMap, sync::Arc, time::Instant, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -199,7 +199,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job(&job_message.job_id) {
+        let llm_provider = match db.get_job_with_options(&job_message.job_id, false, false) {
             Ok(job) => job.parent_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -444,6 +444,8 @@ impl Node {
             }
         };
 
+        // Start the timer
+        let start = Instant::now();
         // Retrieve all smart inboxes for the profile
         let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
             Ok(inboxes) => inboxes,
@@ -458,11 +460,20 @@ impl Node {
             }
         };
 
+        // Measure the elapsed time
+        let duration = start.elapsed();
+        println!("Time taken to get all inboxes: {:?}", duration);
+
+        let start = Instant::now();
         // Convert SmartInbox to V2SmartInbox
         let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
+
+        // Measure the elapsed time
+        let duration = start.elapsed();
+        println!("Time taken to convert smart inboxes: {:?}", duration);
 
         match v2_smart_inboxes {
             Ok(inboxes) => {
@@ -655,7 +666,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the config
                 match db.update_job_config(&job_id, config) {
@@ -701,7 +712,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_prompt: None,
@@ -991,7 +1002,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
                 match db.update_job_scope(job_id.clone(), job_scope.clone()) {
@@ -1046,7 +1057,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1151,7 +1162,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.get_job(&job_id) {
+        let source_job = match db.get_job_with_options(&job_id, false, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1233,7 +1244,7 @@ impl Node {
         match db.create_new_job(
             forked_job_id.clone(),
             source_job.parent_llm_provider_id,
-            source_job.scope,
+            source_job.scope_with_files.clone().unwrap(),
             source_job.is_hidden,
             source_job.associated_ui,
             source_job.config,
