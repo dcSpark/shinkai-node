@@ -44,7 +44,7 @@ impl LLMProvider {
         allowed_message_senders: Vec<String>,
     ) -> Self {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_secs(300)) // 5 min TTFT
             .build()
             .unwrap();
         Self {

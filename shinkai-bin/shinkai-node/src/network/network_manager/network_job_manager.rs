@@ -4,8 +4,6 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::node::ProxyConnectionInfo;
 
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use shinkai_db::db::{ShinkaiDB, Topic};
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
@@ -14,6 +12,8 @@ use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
+use shinkai_db::db::{ShinkaiDB, Topic};
+use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -109,6 +109,7 @@ impl NetworkJobManager {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
             let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {

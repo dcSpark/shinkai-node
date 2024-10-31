@@ -118,6 +118,7 @@ impl JobManager {
             user_profile.clone(),
             None,
             generator.clone(),
+            ws_manager.clone(),
         )
         .await;
         if let Err(e) = process_files_result {
@@ -694,6 +695,7 @@ impl JobManager {
                     user_profile.clone(),
                     None,
                     generator.clone(),
+                    ws_manager.clone(),
                 )
                 .await?;
             }
@@ -824,23 +826,83 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
+        // TODO: sync with Paul about format
+        // // Send WS message indicating file processing is starting
+        // if let Some(ref manager) = ws_manager {
+        //     let m = manager.lock().await;
+        //     let metadata = WSMetadata {
+        //         id: Some(full_job.job_id().to_string()),
+        //         is_done: false,
+        //         done_reason: Some("Starting file processing".to_string()),
+        //         total_duration: None,
+        //         eval_count: None,
+        //     };
+
+        //     let ws_message_type = WSMessageType::Metadata(metadata);
+        //     let _ = m
+        //         .queue_message(
+        //             WSTopic::Inbox,
+        //             full_job.job_id().to_string(),
+        //             "Processing files...".to_string(),
+        //             ws_message_type,
+        //             false,
+        //         )
+        //         .await;
+        // }
+
+        // Start timing the file processing
+        let start_time = Instant::now();
+
         // Process the files
         let new_scope_entries_result = JobManager::process_files_inbox(
             db.clone(),
             vector_fs.clone(),
             agent_found,
-            files,
+            files.clone(),
             profile,
             save_to_vector_fs_folder,
             generator,
         )
         .await;
 
+        // Calculate processing duration
+        let processing_duration = start_time.elapsed();
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("File processing took: {:?}", processing_duration),
+        );
+
+        // // Send WS message indicating file processing is complete
+        // if let Some(ref manager) = ws_manager {
+        //     let m = manager.lock().await;
+        //     let metadata = WSMetadata {
+        //         id: Some(full_job.job_id().to_string()),
+        //         is_done: false,
+        //         done_reason: Some("File processing complete".to_string()),
+        //         total_duration: None,
+        //         eval_count: None,
+        //     };
+
+        //     let ws_message_type = WSMessageType::Metadata(metadata);
+        //     let _ = m
+        //         .queue_message(
+        //             WSTopic::Inbox,
+        //             full_job.job_id().to_string(),
+        //             "Files processed successfully".to_string(),
+        //             ws_message_type,
+        //             true,
+        //         )
+        //         .await;
+        // }
+
         match new_scope_entries_result {
             Ok(new_scope_entries) => {
-                for (_, value) in new_scope_entries {
-                    match value {
+                // Update the job scope with new entries
+                for (_filename, scope_entry) in new_scope_entries {
+                    match scope_entry {
                         ScopeEntry::LocalScopeVRKai(local_entry) => {
                             if !full_job.scope.local_vrkai.contains(&local_entry) {
                                 full_job.scope.local_vrkai.push(local_entry);
@@ -924,6 +986,7 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         eprintln!("full_job: {:?}", full_job);
         eprintln!("job_message: {:?}", job_message);
@@ -954,6 +1017,7 @@ impl JobManager {
                 profile,
                 save_to_vector_fs_folder,
                 generator,
+                ws_manager,
             )
             .await?;
         }
@@ -973,6 +1037,7 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         eprintln!("full_job: {:?}", full_job);
         eprintln!("files_inbox: {:?}", files_inbox);
@@ -1010,6 +1075,7 @@ impl JobManager {
                 profile,
                 save_to_vector_fs_folder,
                 generator,
+                ws_manager,
             )
             .await?;
         }

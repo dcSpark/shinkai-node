@@ -5,7 +5,7 @@ use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
         identity::Identity,
@@ -1353,7 +1353,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         bearer: String,
         job_id: String,
-        res: Sender<Result<(), APIError>>,
+        res: Sender<Result<SendResponseBody, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -1363,7 +1363,13 @@ impl Node {
         // Remove the job
         match db.remove_job(&job_id) {
             Ok(_) => {
-                let _ = res.send(Ok(())).await;
+                let _ = res
+                    .send(Ok(SendResponseBody {
+                        status: "success".to_string(),
+                        message: "Job removed successfully".to_string(),
+                        data: None,
+                    }))
+                    .await;
                 Ok(())
             }
             Err(err) => {

@@ -838,8 +838,25 @@ impl Node {
             return Ok(());
         }
 
+        // Try to decode the filename first to check if it's already encoded
+        let decoded_filename = match urlencoding::decode(&filename) {
+            Ok(decoded) => {
+                // If the decoded string is different from the original, it was encoded
+                if decoded.as_ref() != filename {
+                    decoded.into_owned()
+                } else {
+                    // If they're the same, encode the original
+                    urlencoding::encode(&filename).into_owned()
+                }
+            }
+            Err(_) => {
+                // If decoding fails, assume it needs to be encoded
+                urlencoding::encode(&filename).into_owned()
+            }
+        };
+
         // Retrieve the file from the inbox
-        match vector_fs.db.get_file_from_inbox(inbox_name, filename) {
+        match vector_fs.db.get_file_from_inbox(inbox_name, decoded_filename) {
             Ok(file_data) => {
                 let _ = res.send(Ok(file_data)).await;
             }

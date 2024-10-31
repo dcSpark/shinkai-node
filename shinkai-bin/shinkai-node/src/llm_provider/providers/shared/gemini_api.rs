@@ -136,7 +136,8 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     Ok(PromptResult {
         messages: PromptResultEnum::Value(result_json),
         functions: Some(vec![]),
-        remaining_tokens: remaining_output_tokens,
+        remaining_output_tokens,
+        tokens_used: used_tokens,
     })
 }
 
@@ -213,6 +214,6 @@ mod tests {
 
         // Assert the results
         assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
-        assert!(result.remaining_tokens > 0);
+        assert!(result.remaining_output_tokens > 0);
     }
 }

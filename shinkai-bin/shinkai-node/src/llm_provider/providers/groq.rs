@@ -59,7 +59,7 @@ impl LLMService for Groq {
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
-                    "max_tokens": result.remaining_tokens,
+                    // "max_tokens": result.remaining_tokens,
                     "stream": is_stream,
                 });
 
