@@ -149,14 +149,14 @@ impl GenericInferenceChain {
         */
 
         // 1) Vector search for knowledge if the scope isn't empty
-        let scope_is_empty = full_job.scope_with_files().is_empty();
+        let scope_is_empty = full_job.scope_with_files().unwrap().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
         let mut summary_node_text = None;
         if !scope_is_empty {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
-                full_job.scope_with_files(),
+                full_job.scope_with_files().unwrap(),
                 user_message.clone(),
                 &user_profile,
                 generator.clone(),

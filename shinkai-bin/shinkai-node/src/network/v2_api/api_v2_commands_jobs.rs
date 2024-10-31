@@ -1244,7 +1244,7 @@ impl Node {
         match db.create_new_job(
             forked_job_id.clone(),
             source_job.parent_llm_provider_id,
-            source_job.scope_with_files,
+            source_job.scope_with_files.clone().unwrap(),
             source_job.is_hidden,
             source_job.associated_ui,
             source_job.config,

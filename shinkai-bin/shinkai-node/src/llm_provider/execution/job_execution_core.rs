@@ -709,7 +709,9 @@ impl JobManager {
                         .map_err(|e| LLMProviderError::InvalidVRPath(e.to_string()))?,
                     source: VRSourceReference::None,
                 };
-                mutable_job.scope_with_files.vector_fs_items.push(vector_fs_entry);
+
+                // Unwrap the scope_with_files since you are sure it is always Some
+                mutable_job.scope_with_files.as_mut().unwrap().vector_fs_items.push(vector_fs_entry);
             }
 
             // Determine the workflow to use
@@ -900,67 +902,77 @@ impl JobManager {
 
         match new_scope_entries_result {
             Ok(new_scope_entries) => {
-                // Update the job scope with new entries
-                for (_filename, scope_entry) in new_scope_entries {
-                    match scope_entry {
-                        ScopeEntry::LocalScopeVRKai(local_entry) => {
-                            if !full_job.scope_with_files.local_vrkai.contains(&local_entry) {
-                                full_job.scope_with_files.local_vrkai.push(local_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate LocalScopeVRKaiEntry detected",
-                                );
+                // Safely unwrap the scope_with_files
+                let job_id = full_job.job_id().to_string();
+                if let Some(ref mut scope_with_files) = full_job.scope_with_files {
+                    // Update the job scope with new entries
+                    for (_filename, scope_entry) in new_scope_entries {
+                        match scope_entry {
+                            ScopeEntry::LocalScopeVRKai(local_entry) => {
+                                if !scope_with_files.local_vrkai.contains(&local_entry) {
+                                    scope_with_files.local_vrkai.push(local_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate LocalScopeVRKaiEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::LocalScopeVRPack(local_entry) => {
-                            if !full_job.scope_with_files.local_vrpack.contains(&local_entry) {
-                                full_job.scope_with_files.local_vrpack.push(local_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate LocalScopeVRPackEntry detected",
-                                );
+                            ScopeEntry::LocalScopeVRPack(local_entry) => {
+                                if !scope_with_files.local_vrpack.contains(&local_entry) {
+                                    scope_with_files.local_vrpack.push(local_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate LocalScopeVRPackEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::VectorFSItem(fs_entry) => {
-                            if !full_job.scope_with_files.vector_fs_items.contains(&fs_entry) {
-                                full_job.scope_with_files.vector_fs_items.push(fs_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate VectorFSScopeEntry detected",
-                                );
+                            ScopeEntry::VectorFSItem(fs_entry) => {
+                                if !scope_with_files.vector_fs_items.contains(&fs_entry) {
+                                    scope_with_files.vector_fs_items.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::VectorFSFolder(fs_entry) => {
-                            if !full_job.scope_with_files.vector_fs_folders.contains(&fs_entry) {
-                                full_job.scope_with_files.vector_fs_folders.push(fs_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate VectorFSScopeEntry detected",
-                                );
+                            ScopeEntry::VectorFSFolder(fs_entry) => {
+                                if !scope_with_files.vector_fs_folders.contains(&fs_entry) {
+                                    scope_with_files.vector_fs_folders.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::NetworkFolder(nf_entry) => {
-                            if !full_job.scope_with_files.network_folders.contains(&nf_entry) {
-                                full_job.scope_with_files.network_folders.push(nf_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate VectorFSScopeEntry detected",
-                                );
+                            ScopeEntry::NetworkFolder(nf_entry) => {
+                                if !scope_with_files.network_folders.contains(&nf_entry) {
+                                    scope_with_files.network_folders.push(nf_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
                             }
                         }
                     }
+                    db.update_job_scope(job_id, scope_with_files.clone())?;
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        "No scope_with_files found in full_job",
+                    );
                 }
-                db.update_job_scope(full_job.job_id().to_string(), full_job.scope_with_files.clone())?;
             }
             Err(e) => {
                 shinkai_log(

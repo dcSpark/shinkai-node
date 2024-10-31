@@ -253,7 +253,8 @@ impl ShinkaiDB {
         self.get_job_with_options(job_id, true, true)
     }
 
-    /// Fetches a job from the DB as a Box<dyn JobLik>
+    /// Fetches a job from the DB as a Box<dyn JobLike>
+    /// by default it does not fetch the step history but does fetch scope_with_files
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
         let start = std::time::Instant::now();
         let (
@@ -269,7 +270,7 @@ impl ShinkaiDB {
             associated_ui,
             config,
             forked_jobs,
-        ) = self.get_job_data(job_id, false, false)?;
+        ) = self.get_job_data(job_id, false, true)?;
 
         // Construct the job
         let job = Job {
@@ -310,7 +311,7 @@ impl ShinkaiDB {
     ) -> Result<
         (
             MinimalJobScope,
-            JobScope,
+            Option<JobScope>,
             bool,
             bool,
             String,
@@ -345,13 +346,21 @@ impl ShinkaiDB {
         
         eprintln!("Scope: {:?}", scope);
 
-        let mut scope_with_files: JobScope = JobScope::new_default();
+        let mut scope_with_files: Option<JobScope> = None;
         if fetch_scope_with_files {
-            let scope_with_files_value = self
+            let scope_with_files_value = if let Some(value) = self
                 .db
                 .get_cf(cf_jobs, format!("jobinbox_{}_scope_with_files", job_id).as_bytes())?
-                .ok_or(ShinkaiDBError::DataNotFound)?;
-            scope_with_files = JobScope::from_bytes(&scope_with_files_value)?;
+            {
+                value
+            } else {
+                // Try to get it from the scope if DataNotFound
+                self.db
+                    .get_cf(cf_jobs, format!("jobinbox_{}_scope", job_id).as_bytes())?
+                    .ok_or(ShinkaiDBError::DataNotFound)?
+            };
+
+            scope_with_files = Some(JobScope::from_bytes(&scope_with_files_value)?);
         }
 
         // Measure the elapsed time

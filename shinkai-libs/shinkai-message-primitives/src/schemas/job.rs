@@ -11,7 +11,7 @@ pub trait JobLike: Send + Sync {
     fn is_finished(&self) -> bool;
     fn parent_llm_provider_id(&self) -> &str;
     fn scope(&self) -> &MinimalJobScope;
-    fn scope_with_files(&self) -> &JobScope;
+    fn scope_with_files(&self) -> Option<&JobScope>;
     fn conversation_inbox_name(&self) -> &InboxName;
     fn associated_ui(&self) -> Option<&AssociatedUI>;
     fn config(&self) -> Option<&JobConfig>;
@@ -34,7 +34,7 @@ pub struct Job {
     /// (Simplified version) What VectorResources the Job has access to when performing vector searches
     pub scope: MinimalJobScope,
     /// (Full version) What VectorResources the Job has access to when performing vector searches, including files
-    pub scope_with_files: JobScope,
+    pub scope_with_files: Option<JobScope>,
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
     /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
@@ -84,8 +84,8 @@ impl JobLike for Job {
         &self.scope
     }
 
-    fn scope_with_files(&self) -> &JobScope {
-        &self.scope_with_files
+    fn scope_with_files(&self) -> Option<&JobScope> {
+        self.scope_with_files.as_ref()
     }
 
     fn conversation_inbox_name(&self) -> &InboxName {
