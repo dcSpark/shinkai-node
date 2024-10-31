@@ -709,7 +709,7 @@ impl JobManager {
                         .map_err(|e| LLMProviderError::InvalidVRPath(e.to_string()))?,
                     source: VRSourceReference::None,
                 };
-                mutable_job.scope.vector_fs_items.push(vector_fs_entry);
+                mutable_job.scope_with_files.vector_fs_items.push(vector_fs_entry);
             }
 
             // Determine the workflow to use
@@ -904,8 +904,8 @@ impl JobManager {
                 for (_filename, scope_entry) in new_scope_entries {
                     match scope_entry {
                         ScopeEntry::LocalScopeVRKai(local_entry) => {
-                            if !full_job.scope.local_vrkai.contains(&local_entry) {
-                                full_job.scope.local_vrkai.push(local_entry);
+                            if !full_job.scope_with_files.local_vrkai.contains(&local_entry) {
+                                full_job.scope_with_files.local_vrkai.push(local_entry);
                             } else {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
@@ -915,8 +915,8 @@ impl JobManager {
                             }
                         }
                         ScopeEntry::LocalScopeVRPack(local_entry) => {
-                            if !full_job.scope.local_vrpack.contains(&local_entry) {
-                                full_job.scope.local_vrpack.push(local_entry);
+                            if !full_job.scope_with_files.local_vrpack.contains(&local_entry) {
+                                full_job.scope_with_files.local_vrpack.push(local_entry);
                             } else {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
@@ -926,8 +926,8 @@ impl JobManager {
                             }
                         }
                         ScopeEntry::VectorFSItem(fs_entry) => {
-                            if !full_job.scope.vector_fs_items.contains(&fs_entry) {
-                                full_job.scope.vector_fs_items.push(fs_entry);
+                            if !full_job.scope_with_files.vector_fs_items.contains(&fs_entry) {
+                                full_job.scope_with_files.vector_fs_items.push(fs_entry);
                             } else {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
@@ -937,8 +937,8 @@ impl JobManager {
                             }
                         }
                         ScopeEntry::VectorFSFolder(fs_entry) => {
-                            if !full_job.scope.vector_fs_folders.contains(&fs_entry) {
-                                full_job.scope.vector_fs_folders.push(fs_entry);
+                            if !full_job.scope_with_files.vector_fs_folders.contains(&fs_entry) {
+                                full_job.scope_with_files.vector_fs_folders.push(fs_entry);
                             } else {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
@@ -948,8 +948,8 @@ impl JobManager {
                             }
                         }
                         ScopeEntry::NetworkFolder(nf_entry) => {
-                            if !full_job.scope.network_folders.contains(&nf_entry) {
-                                full_job.scope.network_folders.push(nf_entry);
+                            if !full_job.scope_with_files.network_folders.contains(&nf_entry) {
+                                full_job.scope_with_files.network_folders.push(nf_entry);
                             } else {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
@@ -960,7 +960,7 @@ impl JobManager {
                         }
                     }
                 }
-                db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
+                db.update_job_scope(full_job.job_id().to_string(), full_job.scope_with_files.clone())?;
             }
             Err(e) => {
                 shinkai_log(

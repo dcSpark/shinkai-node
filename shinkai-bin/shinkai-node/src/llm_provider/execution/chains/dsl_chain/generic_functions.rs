@@ -220,7 +220,7 @@ pub fn process_embeddings_in_job_scope(
             .block_on(async {
                 let vector_fs = context.vector_fs();
                 let user_profile = context.user_profile();
-                let scope = context.full_job().scope.clone();
+                let scope = context.full_job().scope_with_files.clone();
 
                 let resource_stream =
                     JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile)
@@ -285,7 +285,7 @@ pub fn process_embeddings_in_job_scope_with_metadata(
             .block_on(async {
                 let vector_fs = context.vector_fs();
                 let user_profile = context.user_profile();
-                let scope = context.full_job().scope.clone();
+                let scope = context.full_job().scope_with_files.clone();
 
                 let resource_stream =
                     JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile)
@@ -357,7 +357,7 @@ pub fn search_embeddings_in_job_scope(
                 let db = context.db();
                 let vector_fs = context.vector_fs();
                 let user_profile = context.user_profile();
-                let job_scope = context.full_job().scope.clone();
+                let job_scope = context.full_job().scope_with_files.clone();
                 let generator = context.generator();
 
                 let result = JobManager::keyword_chained_job_scope_vector_search(

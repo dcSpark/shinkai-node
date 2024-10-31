@@ -23,7 +23,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
     // Separate messages into those with a user / assistant / system role and those without
-    let (mut messages_with_role, _tools): (Vec<_>, Vec<_>) = chat_completion_messages
+    let (mut messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
         .into_iter()
         .partition(|message| message.role.is_some());
 
@@ -72,6 +72,18 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .collect(),
         _ => vec![],
     };
+
+    // Extract functions from tools
+    let functions_vec = tools.into_iter().filter_map(|tool| {
+        if let Some(function_call) = tool.function_call {
+            Some(serde_json::json!({
+                "name": function_call.name,
+                "arguments": function_call.arguments,
+            }))
+        } else {
+            None
+        }
+    }).collect::<Vec<_>>();
 
     // Separate system instruction from other messages
     let system_instruction = messages_vec
@@ -130,7 +142,8 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 "role": role,
                 "parts": content
             })
-        }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>(),
+        "functions": functions_vec
     });
 
     Ok(PromptResult {

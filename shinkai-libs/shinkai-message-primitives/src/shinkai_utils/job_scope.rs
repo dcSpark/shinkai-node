@@ -7,6 +7,76 @@ use utoipa::ToSchema;
 
 use crate::schemas::shinkai_name::ShinkaiName;
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MinimalJobScope {
+    pub local_vrkai: Vec<String>,
+    pub local_vrpack: Vec<String>,
+    pub vector_fs_items: Vec<String>,
+    pub vector_fs_folders: Vec<String>,
+    pub network_folders: Vec<String>,
+    pub vector_search_mode: Vec<String>,
+}
+
+impl MinimalJobScope {
+    /// Converts the MinimalJobScope to a JSON value.
+    pub fn to_json_value(&self) -> serde_json::Result<serde_json::Value> {
+        serde_json::to_value(self)
+    }
+
+    /// Converts the MinimalJobScope to a byte vector.
+    pub fn from_bytes(bytes: &[u8]) -> serde_json::Result<Self> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+impl From<&JobScope> for MinimalJobScope {
+    fn from(job_scope: &JobScope) -> Self {
+        let local_vrkai_ids: Vec<String> = job_scope
+            .local_vrkai
+            .iter()
+            .map(|entry| match &entry.vrkai.resource {
+                BaseVectorResource::Document(doc) => doc.reference_string(),
+                BaseVectorResource::Map(map) => map.reference_string(),
+            })
+            .collect();
+
+        let local_vrpack_ids: Vec<String> = job_scope.local_vrpack.iter().map(|entry| entry.vrpack.id()).collect();
+
+        let vector_fs_item_paths: Vec<String> = job_scope
+            .vector_fs_items
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let vector_fs_folder_paths: Vec<String> = job_scope
+            .vector_fs_folders
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let network_folder_paths: Vec<String> = job_scope
+            .network_folders
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let vector_search_modes: Vec<String> = job_scope
+            .vector_search_mode
+            .iter()
+            .map(|mode| format!("{:?}", mode))
+            .collect();
+
+        MinimalJobScope {
+            local_vrkai: local_vrkai_ids,
+            local_vrpack: local_vrpack_ids,
+            vector_fs_items: vector_fs_item_paths,
+            vector_fs_folders: vector_fs_folder_paths,
+            network_folders: network_folder_paths,
+            vector_search_mode: vector_search_modes,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 /// Job's scope which includes both Local entries (vrkai stored locally only in job)
 /// and VecFS entries (source/vector resource stored in the FS, accessible to all jobs)
