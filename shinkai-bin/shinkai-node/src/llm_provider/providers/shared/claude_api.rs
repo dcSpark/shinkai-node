@@ -3,37 +3,24 @@ use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use serde_json::{self};
+use shinkai_message_primitives::schemas::llm_message::LlmMessage;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 
 use super::shared_model_logic;
 
-pub fn claude_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+pub fn claude_prepare_messages(
+    model: &LLMProviderInterface,
+    prompt: Prompt,
+) -> Result<(PromptResult, Vec<LlmMessage>), LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
-    let mut chat_completion_messages = prompt.generate_llm_messages(
+    let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
-
-    // Turn system role to assistant. Claude supports only user and assistant roles
-    for message in &mut chat_completion_messages {
-        if message.role == Some("system".to_string()) {
-            message.role = Some("assistant".to_string());
-        }
-    }
-
-    // Filter out empty content messages
-    chat_completion_messages.retain(|message| {
-        if let Some(content) = &message.content {
-            if content.is_empty() {
-                return false;
-            }
-        }
-        true
-    });
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
@@ -41,9 +28,25 @@ pub fn claude_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
     // Separate messages into those with a valid role and those without
-    let (messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
+    let (mut messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
         .into_iter()
         .partition(|message| message.role.is_some());
+
+    let mut system_messages = Vec::new();
+
+    // Collect system messages
+    for message in &mut messages_with_role {
+        if message.role == Some("system".to_string()) {
+            system_messages.push(message.clone());
+        }
+    }
+
+    // Filter out empty content and keep only user and assistant messages
+    messages_with_role.retain(|message| {
+        message.content.is_some()
+            && message.content.as_ref().unwrap().len() > 0
+            && (message.role == Some("user".to_string()) || message.role == Some("assistant".to_string()))
+    });
 
     // Convert both sets of messages to serde Value
     let messages_json = serde_json::to_value(messages_with_role)?;
@@ -106,9 +109,13 @@ pub fn claude_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
-    Ok(PromptResult {
-        messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
-        functions: Some(tools_vec),
-        remaining_tokens: remaining_output_tokens,
-    })
+    Ok((
+        PromptResult {
+            messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
+            functions: Some(tools_vec),
+            remaining_output_tokens,
+            tokens_used: used_tokens,
+        },
+        system_messages,
+    ))
 }

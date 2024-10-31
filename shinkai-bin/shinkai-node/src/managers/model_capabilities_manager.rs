@@ -447,6 +447,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama3.2") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
+            model_type if model_type.starts_with("claude") => 200_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
@@ -633,31 +634,32 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(_) => true,
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
-                (model.model_type.starts_with("llama3.1") ||
-                model.model_type.starts_with("llama3.2") ||
-                model.model_type.starts_with("llama-3.1") ||
-                model.model_type.starts_with("llama-3.2") ||
-                model.model_type.starts_with("mistral-nemo") ||
-                model.model_type.starts_with("mistral-small") ||
-                model.model_type.starts_with("mistral-large")) &&
-                stream.map_or(true, |s| !s)
-            },
+                (model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small")
+                    || model.model_type.starts_with("mistral-large"))
+                    && stream.map_or(true, |s| !s)
+            }
             LLMProviderInterface::Groq(model) => {
-                model.model_type.starts_with("llama-3.2") ||
-                model.model_type.starts_with("llama3.2") ||
-                model.model_type.starts_with("llama-3.1") ||
-                model.model_type.starts_with("llama3.1")
-            },
+                model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama3.1")
+            }
             LLMProviderInterface::OpenRouter(model) => {
-                model.model_type.starts_with("llama-3.2") ||
-                model.model_type.starts_with("llama3.2") ||
-                model.model_type.starts_with("llama-3.1") ||
-                model.model_type.starts_with("llama3.1") ||
-                model.model_type.starts_with("mistral-nemo") ||
-                model.model_type.starts_with("mistral-small") ||
-                model.model_type.starts_with("mistral-large") ||
-                model.model_type.starts_with("mistral-pixtral")
-            },
+                model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small")
+                    || model.model_type.starts_with("mistral-large")
+                    || model.model_type.starts_with("mistral-pixtral")
+            }
+            LLMProviderInterface::Claude(_) => true,
             _ => false,
         }
     }
