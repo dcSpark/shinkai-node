@@ -1,4 +1,4 @@
-use crate::{shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::JobScope};
+use crate::{shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::{JobScope, MinimalJobScope}};
 
 use super::{inbox_name::InboxName, job_config::JobConfig, prompts::Prompt};
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,8 @@ pub trait JobLike: Send + Sync {
     fn datetime_created(&self) -> &str;
     fn is_finished(&self) -> bool;
     fn parent_llm_provider_id(&self) -> &str;
-    fn scope(&self) -> &JobScope;
+    fn scope(&self) -> &MinimalJobScope;
+    fn scope_with_files(&self) -> Option<&JobScope>;
     fn conversation_inbox_name(&self) -> &InboxName;
     fn associated_ui(&self) -> Option<&AssociatedUI>;
     fn config(&self) -> Option<&JobConfig>;
@@ -30,8 +31,10 @@ pub struct Job {
     pub is_finished: bool,
     /// Identity of the parent agent. We just use a full identity name for simplicity
     pub parent_agent_or_llm_provider_id: String,
-    /// What VectorResources the Job has access to when performing vector searches
-    pub scope: JobScope,
+    /// (Simplified version) What VectorResources the Job has access to when performing vector searches
+    pub scope: MinimalJobScope,
+    /// (Full version) What VectorResources the Job has access to when performing vector searches, including files
+    pub scope_with_files: Option<JobScope>,
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
     /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
@@ -39,8 +42,6 @@ pub struct Job {
     /// Under the hood this is a tree, but it looks like a simple Vec because we only care about the latest valid path
     /// based on the last message sent by the user
     pub step_history: Vec<JobStepResult>,
-    /// An ordered list of the latest messages sent to the job which are yet to be processed
-    pub unprocessed_messages: Vec<String>,
     /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
     /// Same as step_history. Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
     pub execution_context: HashMap<String, String>,
@@ -79,8 +80,12 @@ impl JobLike for Job {
         &self.parent_agent_or_llm_provider_id
     }
 
-    fn scope(&self) -> &JobScope {
+    fn scope(&self) -> &MinimalJobScope {
         &self.scope
+    }
+
+    fn scope_with_files(&self) -> Option<&JobScope> {
+        self.scope_with_files.as_ref()
     }
 
     fn conversation_inbox_name(&self) -> &InboxName {

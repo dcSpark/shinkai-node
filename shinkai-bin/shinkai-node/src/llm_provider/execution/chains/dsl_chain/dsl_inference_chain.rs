@@ -402,7 +402,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         // If both the scope and custom_system_prompt are not empty, we use an empty string
         // for the user_message and the custom_system_prompt as the query_text.
         // This allows for more focused searches based on the system prompt when a scope is provided.
-        let (effective_user_message, query_text) = if !full_job.scope().is_empty() && custom_system_prompt.is_some() {
+        let (effective_user_message, query_text) = if !full_job.scope_with_files().unwrap().is_empty() && custom_system_prompt.is_some() {
             ("".to_string(), custom_system_prompt.clone().unwrap_or_default())
         } else {
             (user_message.clone(), user_message.clone())
@@ -412,7 +412,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         // TODO: extract files from args
 
         // If we need to search for nodes using the scope
-        let scope_is_empty = full_job.scope().is_empty();
+        let scope_is_empty = full_job.scope_with_files().unwrap().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
         let mut summary_node_text = None;
         if !scope_is_empty {
@@ -420,7 +420,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
-                full_job.scope(),
+                full_job.scope_with_files().unwrap(),
                 query_text.clone(),
                 user_profile,
                 generator.clone(),

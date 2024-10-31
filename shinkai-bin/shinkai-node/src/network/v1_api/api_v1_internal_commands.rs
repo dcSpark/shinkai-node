@@ -35,6 +35,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_fs::welcome_files::welcome_message::WELCOME_MESSAGE;
 use shinkai_vector_resources::vector_resource::VRPath;
+use std::time::Instant;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
@@ -125,6 +126,8 @@ impl Node {
                 return Vec::new();
             }
         };
+        // Start the timer
+        let start = Instant::now();
         let result = match db.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
@@ -136,6 +139,9 @@ impl Node {
                 return Vec::new();
             }
         };
+        // Measure the elapsed time
+        let duration = start.elapsed();
+        println!("Time taken to get all inboxes: {:?}", duration);
 
         result
     }
@@ -435,7 +441,6 @@ impl Node {
                                 local_vrpack: vec![],
                                 vector_fs_items: vec![],
                                 vector_fs_folders: vec![shinkai_folder_fs],
-                                network_folders: vec![],
                                 vector_search_mode: vec![],
                             };
                             let job_creation = JobCreationInfo {

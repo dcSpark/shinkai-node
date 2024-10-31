@@ -21,7 +21,7 @@ use shinkai_message_primitives::{
         },
     },
     shinkai_utils::job_scope::{
-        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, NetworkFolderScopeEntry, VectorFSFolderScopeEntry,
+        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, VectorFSFolderScopeEntry,
         VectorFSItemScopeEntry,
     },
 };
@@ -1109,7 +1109,7 @@ pub async fn remove_job_handler(
             JobMessageRequest, GetLastMessagesRequest, V2ChatMessage, GetLastMessagesWithBranchesRequest,
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
-            VectorFSItemScopeEntry, VectorFSFolderScopeEntry, NetworkFolderScopeEntry, CallbackAction, ShinkaiName,
+            VectorFSItemScopeEntry, VectorFSFolderScopeEntry, CallbackAction, ShinkaiName,
             LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest,
             ShinkaiSubidentityType, OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
             SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)

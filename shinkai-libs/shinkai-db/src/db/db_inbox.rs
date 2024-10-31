@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -493,11 +494,18 @@ impl ShinkaiDB {
         let mut smart_inboxes = Vec::new();
 
         for inbox_id in inboxes {
+            // Start the timer
+            let start = Instant::now();
+
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
                 .next()
                 .and_then(|mut v| v.pop());
+
+            // Measure the elapsed time
+            let duration = start.elapsed();
+            println!("Time taken to get last message: {:?}", duration);
 
             let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
             let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", &inbox_id);
@@ -515,8 +523,8 @@ impl ShinkaiDB {
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone())? {
                     InboxName::JobInbox { unique_id, .. } => {
-                        let job = self.get_job(&unique_id)?;
-                        let scope_value = job.scope.to_json_value_minimal()?;
+                        let job = self.get_job_with_options(&unique_id, false, false)?;
+                        let scope_value = job.scope.to_json_value()?;
                         job_scope_value = Some(scope_value);
                         job_config_value = job.config;
                         datetime_created.clone_from(&job.datetime_created);
@@ -528,6 +536,9 @@ impl ShinkaiDB {
                 false
             };
 
+            // Start the timer
+            let start = Instant::now();
+
             let agent_subset = {
                 let profile_result = profile_name_identity.full_identity_name.clone().extract_profile();
                 match profile_result {
@@ -535,8 +546,11 @@ impl ShinkaiDB {
                         if inbox_id.starts_with("job_inbox::") {
                             match InboxName::new(inbox_id.clone())? {
                                 InboxName::JobInbox { unique_id, .. } => {
-                                    let job = self.get_job(&unique_id)?;
+                                    // Start the timer
+                                    let job = self.get_job_with_options(&unique_id, false, false)?;
                                     let agent_id = job.parent_agent_or_llm_provider_id;
+
+                                    // TODO: add caching so we don't call this every time for the same agent_id
                                     match self.get_llm_provider(&agent_id, &p) {
                                         Ok(agent) => agent.map(LLMProviderSubset::from_serialized_llm_provider),
                                         Err(_) => None,

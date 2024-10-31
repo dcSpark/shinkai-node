@@ -150,7 +150,7 @@ impl SheetUIInferenceChain {
         // 1) Vector search for knowledge if the scope isn't empty
         // Check if the sheet has uploaded files and add them to the job scope
         let job_scope = if let Some(sheet_manager) = &sheet_manager {
-            let mut job_scope = full_job.scope().clone();
+            let mut job_scope = full_job.scope_with_files.clone().unwrap();
 
             let sheet = {
                 let sheet_manager_guard = sheet_manager.lock().await;
@@ -188,7 +188,7 @@ impl SheetUIInferenceChain {
             }
             job_scope
         } else {
-            full_job.scope().clone()
+            full_job.scope_with_files.clone().unwrap()
         };
 
         let scope_is_empty = job_scope.is_empty();
