@@ -3421,6 +3421,7 @@ dependencies = [
  "keyphrases",
  "lazy_static",
  "lz4_flex",
+ "num-traits",
  "ordered-float",
  "rand",
  "regex",

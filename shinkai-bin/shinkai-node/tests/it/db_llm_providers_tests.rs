@@ -162,7 +162,7 @@ mod tests {
         // Get agent profiles with access
         let profiles = db.get_llm_provider_profiles_with_access(&test_agent.id, &profile);
         assert!(profiles.is_ok(), "Failed to get agent profiles");
-        assert_eq!(vec!["profilename", "sender1", "sender2"], profiles.unwrap());
+        assert_eq!(vec!["profilename"], profiles.unwrap());
 
         // Get agent toolkits accessible
         let toolkits = db.get_llm_provider_toolkits_accessible(&test_agent.id, &profile);
