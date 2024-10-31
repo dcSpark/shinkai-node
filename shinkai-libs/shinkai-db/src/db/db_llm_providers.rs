@@ -227,38 +227,6 @@ impl ShinkaiDB {
         Ok(profiles_with_access)
     }
 
-    pub fn get_llm_provider_toolkits_accessible(
-        &self,
-        llm_provider_id: &str,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<String>, ShinkaiDBError> {
-        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-        let llm_provider_id_for_db = Self::db_llm_provider_id(llm_provider_id, profile)?;
-        let llm_provider_id_for_db_hash = Self::llm_provider_id_to_hash(&llm_provider_id_for_db);
-        let prefix = format!("agent_{}_toolkit_", llm_provider_id_for_db_hash);
-        let mut toolkits_accessible = Vec::new();
-
-        let iter = self.db.prefix_iterator_cf(cf_node_and_users, prefix.as_bytes());
-        for item in iter {
-            match item {
-                Ok((key, _)) => {
-                    // Extract toolkit name from the key
-                    let key_str = String::from_utf8(key.to_vec())
-                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
-                    // Ensure the key follows the prefix convention before extracting the toolkit name
-                    if key_str.starts_with(&prefix) {
-                        if let Some(toolkit_name) = key_str.split('_').last() {
-                            toolkits_accessible.push(toolkit_name.to_string());
-                        }
-                    }
-                }
-                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-            }
-        }
-
-        Ok(toolkits_accessible)
-    }
-
     pub fn remove_profile_from_llm_provider_access(
         &self,
         llm_provider_id: &str,
