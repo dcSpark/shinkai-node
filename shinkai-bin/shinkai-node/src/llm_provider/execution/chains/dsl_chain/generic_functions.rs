@@ -637,7 +637,6 @@ mod tests {
                 path: VRPath::root(),
                 name: "/".to_string(),
             }],
-            network_folders: Vec::new(),
             vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
@@ -773,7 +772,6 @@ mod tests {
                 path: VRPath::root(),
                 name: "/".to_string(),
             }],
-            network_folders: Vec::new(),
             vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
@@ -924,7 +922,6 @@ mod tests {
                 path: VRPath::root(),
                 name: "/".to_string(),
             }],
-            network_folders: Vec::new(),
             vector_search_mode: Vec::new(),
         };
         shinkai_db_arc

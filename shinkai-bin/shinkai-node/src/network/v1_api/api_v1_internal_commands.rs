@@ -441,7 +441,6 @@ impl Node {
                                 local_vrpack: vec![],
                                 vector_fs_items: vec![],
                                 vector_fs_folders: vec![shinkai_folder_fs],
-                                network_folders: vec![],
                                 vector_search_mode: vec![],
                             };
                             let job_creation = JobCreationInfo {

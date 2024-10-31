@@ -222,7 +222,8 @@ mod tests {
                         }
                     }]
                 }
-            ]
+            ],
+            "functions": []
         });
 
         // Assert the results

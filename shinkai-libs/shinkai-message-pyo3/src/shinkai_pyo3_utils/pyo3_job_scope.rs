@@ -49,6 +49,5 @@ impl PyJobScope {
             && self.inner.local_vrpack.is_empty()
             && self.inner.vector_fs_folders.is_empty()
             && self.inner.vector_fs_items.is_empty()
-            && self.inner.network_folders.is_empty()
     }
 }

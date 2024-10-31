@@ -952,17 +952,6 @@ impl JobManager {
                                     );
                                 }
                             }
-                            ScopeEntry::NetworkFolder(nf_entry) => {
-                                if !scope_with_files.network_folders.contains(&nf_entry) {
-                                    scope_with_files.network_folders.push(nf_entry);
-                                } else {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        "Duplicate VectorFSScopeEntry detected",
-                                    );
-                                }
-                            }
                         }
                     }
                     db.update_job_scope(job_id, scope_with_files.clone())?;

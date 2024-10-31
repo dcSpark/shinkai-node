@@ -39,10 +39,10 @@ impl ShinkaiDB {
 
         // Generate time currently, used as a key. It should be safe because it's generated here so it shouldn't be duplicated.
         let current_time = ShinkaiStringTime::generate_time_now();
-        let scope_bytes = scope.to_bytes()?;
+        let scope_with_files_bytes = scope.to_bytes()?;
 
         // Serialize the JSON value to a byte vector
-        let scope_bytes_files = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
+        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
 
         // Construct keys with job_id as part of the key
         let job_scope_key = format!("jobinbox_{}_scope", job_id);
@@ -74,7 +74,7 @@ impl ShinkaiDB {
 
         // Put Job Data into the DB
         batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
-        batch.put_cf(cf_inbox, job_scope_with_files_key.as_bytes(), &scope_bytes_files);
+        batch.put_cf(cf_inbox, job_scope_with_files_key.as_bytes(), &scope_with_files_bytes);
         batch.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"false");
         batch.put_cf(cf_inbox, job_datetime_created_key.as_bytes(), current_time.as_bytes());
         batch.put_cf(cf_inbox, job_parent_providerid.as_bytes(), llm_provider_id.as_bytes());
