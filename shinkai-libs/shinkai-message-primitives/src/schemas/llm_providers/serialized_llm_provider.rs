@@ -31,6 +31,20 @@ impl SerializedLLMProvider {
         .to_string()
     }
 
+    pub fn baml_provider_string(&self) -> String {
+        match &self.model {
+            LLMProviderInterface::OpenAI(_) => "openai".to_string(),
+            LLMProviderInterface::TogetherAI(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Ollama(_) => "ollama".to_string(),
+            LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend".to_string(),
+            LLMProviderInterface::LocalLLM(_) => "local-llm".to_string(),
+            LLMProviderInterface::Groq(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
+            LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
+            LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
+        }
+    }
+
     pub fn get_model_string(&self) -> String {
         match &self.model {
             LLMProviderInterface::OpenAI(openai) => openai.model_type.clone(),
@@ -54,6 +68,22 @@ impl SerializedLLMProvider {
             model: LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-4o-mini".to_string(),
             }),
+        }
+    }
+
+    pub fn baml_provider_base_url(&self) -> Option<String> {
+        let mut base_url = self.external_url.clone().unwrap_or_default();
+
+        // Conditionally append "/v1" based on the model type
+        match &self.model {
+            LLMProviderInterface::OpenAI(_) | LLMProviderInterface::Ollama(_) => {
+                if !base_url.ends_with("/v1") {
+                    base_url = format!("{}/v1", base_url.trim_end_matches('/'));
+                }
+                Some(base_url)
+            }
+            LLMProviderInterface::Gemini(_) => None,
+            _ => Some(base_url),
         }
     }
 }
