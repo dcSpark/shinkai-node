@@ -148,13 +148,9 @@ fn vector_fs_api_tests() {
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
-                    perform_locally: false,
                     api_key: Some("".to_string()),
                     external_url: Some(server.url()),
                     model: LLMProviderInterface::Ollama(ollama),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 };
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),

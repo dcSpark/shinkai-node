@@ -3,6 +3,7 @@ use super::inference_chain_trait::{InferenceChain, InferenceChainContext, Infere
 use super::sheet_ui_chain::sheet_ui_inference_chain::SheetUIInferenceChain;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::job::Job;
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use crate::llm_provider::error::LLMProviderError;
@@ -15,7 +16,6 @@ use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -30,7 +30,7 @@ impl JobManager {
     pub async fn inference_chain_router(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         job_message: JobMessage,
         message_hash_id: Option<String>,
@@ -48,7 +48,19 @@ impl JobManager {
     ) -> Result<InferenceChainResult, LLMProviderError> {
         // Initializations
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
-        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+        let model = {
+            if let ProviderOrAgent::LLMProvider(llm_provider) = llm_provider.clone() {
+                &llm_provider.model.clone()
+            } else {
+                // If it's an agent, we need to get the LLM provider from the agent
+                let llm_id = llm_provider.get_llm_provider_id();
+                let llm_provider = db
+                    .get_llm_provider(llm_id, &user_profile)?
+                    .ok_or(LLMProviderError::LLMProviderNotFound)?;
+                &llm_provider.model.clone()
+            }
+        };
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
         // Create the inference chain context

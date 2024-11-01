@@ -19,13 +19,9 @@ pub trait SerializedLLMProviderJsValueConversion {
     fn from_strings(
         id: String,
         full_identity_name: String,
-        perform_locally: String,
         external_url: String,
         api_key: String,
         model: String,
-        toolkit_permissions: String,
-        storage_bucket_permissions: String,
-        allowed_message_senders: String,
     ) -> Result<Self, JsValue>
     where
         Self: Sized;
@@ -52,18 +48,11 @@ impl SerializedLLMProviderJsValueConversion for SerializedLLMProvider {
     fn from_strings(
         id: String,
         full_identity_name: String,
-        perform_locally: String,
         external_url: String,
         api_key: String,
         model: String,
-        toolkit_permissions: String,
-        storage_bucket_permissions: String,
-        allowed_message_senders: String,
     ) -> Result<Self, JsValue> {
         // Convert the strings to the appropriate types
-        let perform_locally = perform_locally
-            .parse::<bool>()
-            .map_err(|_| JsValue::from_str("Invalid perform_locally"))?;
         let external_url = if external_url.is_empty() {
             None
         } else {
@@ -73,32 +62,13 @@ impl SerializedLLMProviderJsValueConversion for SerializedLLMProvider {
         let model = model
             .parse::<LLMProviderInterface>()
             .map_err(|_| JsValue::from_str("Invalid model"))?;
-        let toolkit_permissions = if toolkit_permissions.is_empty() {
-            Vec::new()
-        } else {
-            toolkit_permissions.split(',').map(|s| s.to_string()).collect()
-        };
-        let storage_bucket_permissions = if storage_bucket_permissions.is_empty() {
-            Vec::new()
-        } else {
-            storage_bucket_permissions.split(',').map(|s| s.to_string()).collect()
-        };
-        let allowed_message_senders = if allowed_message_senders.is_empty() {
-            Vec::new()
-        } else {
-            allowed_message_senders.split(',').map(|s| s.to_string()).collect()
-        };
 
         Ok(SerializedLLMProvider {
             id,
             full_identity_name: ShinkaiName::new(full_identity_name)?,
-            perform_locally,
             external_url,
             api_key,
             model,
-            toolkit_permissions,
-            storage_bucket_permissions,
-            allowed_message_senders,
         })
     }
 }
@@ -124,24 +94,16 @@ impl SerializedLLMProviderWrapper {
     pub fn from_strings(
         id: String,
         full_identity_name: String,
-        perform_locally: String,
         external_url: String,
         api_key: String,
         model: String,
-        toolkit_permissions: String,
-        storage_bucket_permissions: String,
-        allowed_message_senders: String,
     ) -> Result<SerializedLLMProviderWrapper, JsValue> {
         let inner = SerializedLLMProvider::from_strings(
             id,
             full_identity_name,
-            perform_locally,
             external_url,
             api_key,
             model,
-            toolkit_permissions,
-            storage_bucket_permissions,
-            allowed_message_senders,
         )?;
         Ok(SerializedLLMProviderWrapper { inner })
     }

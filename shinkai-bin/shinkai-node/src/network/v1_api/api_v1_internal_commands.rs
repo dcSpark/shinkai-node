@@ -126,8 +126,6 @@ impl Node {
                 return Vec::new();
             }
         };
-        // Start the timer
-        let start = Instant::now();
         let result = match db.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
@@ -139,9 +137,6 @@ impl Node {
                 return Vec::new();
             }
         };
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get all inboxes: {:?}", duration);
 
         result
     }
@@ -674,15 +669,11 @@ impl Node {
                         requester_profile.full_name, sanitized_model
                     ))
                     .expect("Failed to create ShinkaiName"),
-                    perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(Ollama {
                         model_type: model.clone(),
                     }),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 }
             })
             .collect();

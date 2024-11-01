@@ -489,14 +489,7 @@ impl ShinkaiDB {
         &self,
         profile_name_identity: StandardIdentity,
     ) -> Result<Vec<SmartInbox>, ShinkaiDBError> {
-        // Start the timer
-        let start = Instant::now();
-
         let inboxes = self.get_inboxes_for_profile(profile_name_identity.clone())?;
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get inboxes: {:?}", duration);
 
         let mut smart_inboxes = Vec::new();
 
@@ -509,10 +502,6 @@ impl ShinkaiDB {
                 .into_iter()
                 .next()
                 .and_then(|mut v| v.pop());
-
-            // Measure the elapsed time
-            let duration = start.elapsed();
-            println!("Time taken to get last message: {:?}", duration);
 
             let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
             let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", &inbox_id);
@@ -543,9 +532,6 @@ impl ShinkaiDB {
                 false
             };
 
-            // Start the timer
-            let start = Instant::now();
-
             let agent_subset = {
                 let profile_result = profile_name_identity.full_identity_name.clone().extract_profile();
                 match profile_result {
@@ -554,13 +540,9 @@ impl ShinkaiDB {
                             match InboxName::new(inbox_id.clone())? {
                                 InboxName::JobInbox { unique_id, .. } => {
                                     // Start the timer
-                                    let start = Instant::now();
                                     let job = self.get_job_with_options(&unique_id, false, false)?;
-                                    // Measure the elapsed time
-                                    let duration = start.elapsed();
-                                    println!("Time taken to get job: {:?}", duration);
+                                    let agent_id = job.parent_agent_or_llm_provider_id;
 
-                                    let agent_id = job.parent_llm_provider_id;
                                     // TODO: add caching so we don't call this every time for the same agent_id
                                     match self.get_llm_provider(&agent_id, &p) {
                                         Ok(agent) => agent.map(LLMProviderSubset::from_serialized_llm_provider),
@@ -577,10 +559,6 @@ impl ShinkaiDB {
                 }
             };
 
-            // Measure the elapsed time
-            let duration = start.elapsed();
-            println!("Time taken to get agent subset: {:?}", duration);
-
             let smart_inbox = SmartInbox {
                 inbox_id: inbox_id.clone(),
                 custom_name,
@@ -595,9 +573,6 @@ impl ShinkaiDB {
             smart_inboxes.push(smart_inbox);
         }
 
-        // Start the timer
-        let start = Instant::now();
-
         // Sort the smart_inboxes by the timestamp of the last message
         smart_inboxes.sort_by(|a, b| match (&a.last_message, &b.last_message) {
             (Some(a_msg), Some(b_msg)) => {
@@ -609,10 +584,6 @@ impl ShinkaiDB {
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => std::cmp::Ordering::Equal,
         });
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to sort smart inboxes: {:?}", duration);
 
         Ok(smart_inboxes)
     }

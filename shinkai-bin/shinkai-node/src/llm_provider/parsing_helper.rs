@@ -2,7 +2,8 @@ use super::error::LLMProviderError;
 use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
@@ -19,8 +20,9 @@ impl ParsingHelper {
     /// Given a list of TextGroup, generates a description using the Agent's LLM
     pub async fn generate_description(
         text_groups: &Vec<TextGroup>,
-        agent: SerializedLLMProvider,
+        agent: ProviderOrAgent,
         max_node_text_size: u64,
+        db: Arc<ShinkaiDB>,
     ) -> Result<String, LLMProviderError> {
         let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
@@ -35,6 +37,7 @@ impl ParsingHelper {
                 None,
                 None,
                 llm_stopper.clone(),
+                db.clone(),
             )
             .await
             {
@@ -74,9 +77,10 @@ impl ParsingHelper {
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         parsing_tags: &Vec<DataTag>,
-        agent: Option<SerializedLLMProvider>,
+        agent: Option<ProviderOrAgent>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
+        db: Arc<ShinkaiDB>,
     ) -> Result<BaseVectorResource, LLMProviderError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -90,7 +94,7 @@ impl ParsingHelper {
 
         let mut desc = None;
         if let Some(actual_agent) = agent {
-            desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size).await?);
+            desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size, db.clone()).await?);
         } else {
             let description_text = ShinkaiFileParser::process_groups_into_description(
                 &text_groups,
@@ -120,7 +124,8 @@ impl ParsingHelper {
     pub async fn process_files_into_vrkai(
         files: Vec<(String, Vec<u8>, DistributionInfo)>,
         generator: &dyn EmbeddingGenerator,
-        agent: Option<SerializedLLMProvider>,
+        agent: Option<ProviderOrAgent>,
+        db: Arc<ShinkaiDB>,
     ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
         #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (
@@ -160,6 +165,7 @@ impl ParsingHelper {
                 agent.clone(),
                 (generator.model_type().max_input_token_count() - 20) as u64,
                 file.2.clone(),
+                db.clone(),
             )
             .await?;
 

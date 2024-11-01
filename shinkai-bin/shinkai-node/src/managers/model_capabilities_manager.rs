@@ -5,7 +5,7 @@ use crate::llm_provider::{
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
     llm_message::LlmMessage,
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+    llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}},
     prompts::Prompt,
     shinkai_name::ShinkaiName,
 };
@@ -437,6 +437,31 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
+    pub fn get_max_input_tokens_for_provider_or_agent(
+        provider_or_agent: ProviderOrAgent,
+        db: Arc<ShinkaiDB>,
+    ) -> Option<usize> {
+        match provider_or_agent {
+            ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
+                Some(ModelCapabilitiesManager::get_max_input_tokens(&serialized_llm_provider.model))
+            }
+            ProviderOrAgent::Agent(agent) => {
+                let llm_id = &agent.llm_provider_id;
+                let profile = agent.full_identity_name.extract_profile().ok()?;
+                if let Some(llm_provider) = db.get_llm_provider(llm_id, &profile).ok() {
+                    if let Some(model) = llm_provider {
+                        Some(ModelCapabilitiesManager::get_max_input_tokens(&model.model))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
     pub fn get_max_input_tokens(model: &LLMProviderInterface) -> usize {
         let max_tokens = Self::get_max_tokens(model);
         let max_output_tokens = Self::get_max_output_tokens(model) / 2;
@@ -602,6 +627,31 @@ impl ModelCapabilitiesManager {
             .sum();
 
         (num as f32 * 1.04) as usize
+    }
+
+    /// Returns whether the given model supports tool/function calling capabilities
+    pub fn has_tool_capabilities_for_provider_or_agent(
+        provider_or_agent: ProviderOrAgent,
+        db: Arc<ShinkaiDB>,
+        stream: Option<bool>,
+    ) -> bool {
+        match provider_or_agent {
+            ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
+                ModelCapabilitiesManager::has_tool_capabilities(&serialized_llm_provider.model, stream)
+            }
+            ProviderOrAgent::Agent(agent) => {
+                let llm_id = &agent.llm_provider_id;
+                if let Some(llm_provider) = db.get_llm_provider(llm_id, &agent.full_identity_name).ok() {
+                    if let Some(model) = llm_provider {
+                        ModelCapabilitiesManager::has_tool_capabilities(&model.model, stream)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     /// Returns whether the given model supports tool/function calling capabilities

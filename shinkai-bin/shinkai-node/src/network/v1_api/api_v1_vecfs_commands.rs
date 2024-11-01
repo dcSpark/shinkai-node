@@ -1169,7 +1169,7 @@ impl Node {
         }
 
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None).await?;
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None, db.clone()).await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();

@@ -17,13 +17,9 @@ mod tests {
         let serialized_llm_provider_wrapper = SerializedLLMProviderWrapper::from_strings(
             "test_agent".to_string(),
             "@@node.shinkai/main/agent/test_agent".to_string(),
-            "false".to_string(),
             "http://example.com".to_string(),
             "123456".to_string(),
             "openai:gpt-3.5-turbo-1106".to_string(),
-            "permission1,permission2".to_string(),
-            "bucket1,bucket2".to_string(),
-            "sender1,sender2".to_string(),
         )
         .unwrap();
 
@@ -37,7 +33,6 @@ mod tests {
             agent.full_identity_name.to_string(),
             "@@node.shinkai/main/agent/test_agent"
         );
-        assert_eq!(agent.perform_locally, false);
         assert_eq!(agent.external_url, Some("http://example.com".to_string()));
         assert_eq!(agent.api_key, Some("123456".to_string()));
         assert_eq!(
@@ -45,18 +40,6 @@ mod tests {
             LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-3.5-turbo-1106".to_string()
             })
-        );
-        assert_eq!(
-            agent.toolkit_permissions,
-            vec!["permission1".to_string(), "permission2".to_string()]
-        );
-        assert_eq!(
-            agent.storage_bucket_permissions,
-            vec!["bucket1".to_string(), "bucket2".to_string()]
-        );
-        assert_eq!(
-            agent.allowed_message_senders,
-            vec!["sender1".to_string(), "sender2".to_string()]
         );
     }
 
@@ -68,13 +51,9 @@ mod tests {
         let serialized_llm_provider_wrapper = SerializedLLMProviderWrapper::from_strings(
             "test_agent".to_string(),
             "@@node.shinkai/main/agent/test_agent".to_string(),
-            "false".to_string(),
             "http://example.com".to_string(),
             "123456".to_string(),
             "openai:gpt-3.5-turbo-1106".to_string(),
-            "permission1,permission2".to_string(),
-            "bucket1,bucket2".to_string(),
-            "sender1,sender2".to_string(),
         )
         .unwrap();
 
@@ -100,7 +79,6 @@ mod tests {
             agent.full_identity_name.to_string(),
             "@@node.shinkai/main/agent/test_agent"
         );
-        assert_eq!(agent.perform_locally, false);
         assert_eq!(agent.external_url, Some("http://example.com".to_string()));
         assert_eq!(agent.api_key, Some("123456".to_string()));
         assert_eq!(
@@ -108,18 +86,6 @@ mod tests {
             LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-3.5-turbo-1106".to_string()
             })
-        );
-        assert_eq!(
-            agent.toolkit_permissions,
-            vec!["permission1".to_string(), "permission2".to_string()]
-        );
-        assert_eq!(
-            agent.storage_bucket_permissions,
-            vec!["bucket1".to_string(), "bucket2".to_string()]
-        );
-        assert_eq!(
-            agent.allowed_message_senders,
-            vec!["sender1".to_string(), "sender2".to_string()]
         );
     }
 }

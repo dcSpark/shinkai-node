@@ -116,7 +116,6 @@ fn job_tree_usage_tests() {
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
-                    perform_locally: false,
                     // external_url: Some("http://localhost:11435".to_string()),
                     // external_url: Some("https://api.openai.com".to_string()),
                     api_key: Some("".to_string()),
@@ -127,9 +126,6 @@ fn job_tree_usage_tests() {
                     // model: LLMProviderInterface::OpenAI(open_ai),
                     // model: LLMProviderInterface::GenericAPI(generic_api),
                     model: LLMProviderInterface::Ollama(ollama),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 };
                 api_agent_registration(
                     node1_commands_sender.clone(),

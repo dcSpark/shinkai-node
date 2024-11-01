@@ -399,6 +399,7 @@ pub fn search_embeddings_in_job_scope(
 #[cfg(test)]
 mod tests {
     use shinkai_db::db::ShinkaiDB;
+    use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
         LLMProviderInterface, OpenAI, SerializedLLMProvider,
     };
@@ -696,13 +697,9 @@ mod tests {
         let agent = SerializedLLMProvider {
             id: "test_agent_id".to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
         let image_files = HashMap::new();
 
@@ -717,7 +714,7 @@ mod tests {
             },
             None,
             image_files,
-            agent,
+            ProviderOrAgent::LLMProvider(agent),
             HashMap::new(),
             generator,
             ShinkaiName::default_testnet_localhost(),
@@ -832,13 +829,9 @@ mod tests {
         let agent = SerializedLLMProvider {
             id: "test_agent_id_with_query".to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
         let image_files = HashMap::new();
 
@@ -853,7 +846,7 @@ mod tests {
             },
             None,
             image_files,
-            agent,
+            ProviderOrAgent::LLMProvider(agent),
             HashMap::new(),
             generator,
             ShinkaiName::default_testnet_localhost(),
@@ -983,13 +976,9 @@ mod tests {
         let agent = SerializedLLMProvider {
             id: "test_agent_id".to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
         let image_files = HashMap::new();
 
@@ -1004,7 +993,7 @@ mod tests {
             },
             None,
             image_files,
-            agent,
+            ProviderOrAgent::LLMProvider(agent),
             HashMap::new(),
             generator,
             ShinkaiName::default_testnet_localhost(),

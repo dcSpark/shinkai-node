@@ -225,7 +225,7 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             is_finished,
-            parent_llm_provider_id: parent_agent_id,
+            parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
             scope_with_files,
             conversation_inbox_name: conversation_inbox,
@@ -278,7 +278,7 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             is_finished,
-            parent_llm_provider_id: parent_agent_id,
+            parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
             scope_with_files,
             conversation_inbox_name: conversation_inbox,
@@ -329,9 +329,6 @@ impl ShinkaiDB {
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
 
         // Begin fetching the data from the DB
-        // Start the timer
-        let start = Instant::now();
-
         let scope_value = self
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_scope", job_id).as_bytes())?
@@ -344,8 +341,6 @@ impl ShinkaiDB {
             Ok::<MinimalJobScope, serde_json::Error>(MinimalJobScope::from(&job_scope))
         })?;
         
-        eprintln!("Scope: {:?}", scope);
-
         let mut scope_with_files: Option<JobScope> = None;
         if fetch_scope_with_files {
             let scope_with_files_value = if let Some(value) = self
@@ -363,22 +358,11 @@ impl ShinkaiDB {
             scope_with_files = Some(JobScope::from_bytes(&scope_with_files_value)?);
         }
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get scope: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
-
         let is_finished_value = self
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_is_finished", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let is_finished = std::str::from_utf8(&is_finished_value)? == "true";
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get is_finished: {:?}", duration);
 
         // Start the timer
         let start = Instant::now();
@@ -389,25 +373,11 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let datetime_created = std::str::from_utf8(&datetime_created_value)?.to_string();
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get datetime_created: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
-
         let parent_agent_id_value = self
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_agentid", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get parent_agent_id: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
 
         let job_inbox_name = self
             .db
@@ -416,35 +386,14 @@ impl ShinkaiDB {
         let inbox_name = std::str::from_utf8(&job_inbox_name)?.to_string();
         let conversation_inbox = InboxName::new(inbox_name)?;
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get conversation_inbox: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
-
         let is_hidden_value = self
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_is_hidden", job_id).as_bytes())?
             .unwrap_or_else(|| b"false".to_vec());
         let is_hidden = std::str::from_utf8(&is_hidden_value)? == "true";
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get is_hidden: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
-
         // Reads all of the step history by iterating
         let step_history = self.get_step_history(job_id, fetch_step_history)?;
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get step_history: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
 
         // Try to read associated_ui
         let associated_ui_value = self
@@ -454,13 +403,6 @@ impl ShinkaiDB {
             .flatten()
             .and_then(|value| serde_json::from_slice(&value).ok());
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get associated_ui: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
-
         let config_value = self
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_config", job_id).as_bytes())
@@ -468,18 +410,7 @@ impl ShinkaiDB {
             .flatten()
             .and_then(|value| serde_json::from_slice(&value).ok());
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get config: {:?}", duration);
-
-        // Start the timer
-        let start = Instant::now();
-
         let forked_jobs = self.get_forked_jobs(job_id)?;
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get forked_jobs: {:?}", duration);
 
         Ok((
             scope,
@@ -928,9 +859,6 @@ impl ShinkaiDB {
 
     /// Fetches all forked jobs for a specific Job from the DB
     fn get_forked_jobs(&self, job_id: &str) -> Result<Vec<ForkedJob>, ShinkaiDBError> {
-        // Start the timer
-        let start = Instant::now();
-
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         // TODO: this is wrong
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
@@ -938,9 +866,6 @@ impl ShinkaiDB {
         match self.db.get_cf(cf_inbox, forked_jobs_key.as_bytes()) {
             Ok(Some(value)) => {
                 let forked_jobs: Vec<ForkedJob> = serde_json::from_slice(&value)?;
-                // Measure the elapsed time
-                let duration = start.elapsed();
-                println!("Time taken to get forked jobs: {:?}", duration);
                 Ok(forked_jobs)
             }
             Ok(None) => Ok(Vec::new()),

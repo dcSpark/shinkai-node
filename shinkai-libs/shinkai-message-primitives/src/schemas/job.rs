@@ -30,7 +30,7 @@ pub struct Job {
     /// Marks if the job is finished or not
     pub is_finished: bool,
     /// Identity of the parent agent. We just use a full identity name for simplicity
-    pub parent_llm_provider_id: String,
+    pub parent_agent_or_llm_provider_id: String,
     /// (Simplified version) What VectorResources the Job has access to when performing vector searches
     pub scope: MinimalJobScope,
     /// (Full version) What VectorResources the Job has access to when performing vector searches, including files
@@ -77,7 +77,7 @@ impl JobLike for Job {
     }
 
     fn parent_llm_provider_id(&self) -> &str {
-        &self.parent_llm_provider_id
+        &self.parent_agent_or_llm_provider_id
     }
 
     fn scope(&self) -> &MinimalJobScope {
