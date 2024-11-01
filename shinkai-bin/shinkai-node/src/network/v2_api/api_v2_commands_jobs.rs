@@ -444,8 +444,6 @@ impl Node {
             }
         };
 
-        // Start the timer
-        let start = Instant::now();
         // Retrieve all smart inboxes for the profile
         let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
             Ok(inboxes) => inboxes,
@@ -460,20 +458,11 @@ impl Node {
             }
         };
 
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get all inboxes: {:?}", duration);
-
-        let start = Instant::now();
         // Convert SmartInbox to V2SmartInbox
         let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
-
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to convert smart inboxes: {:?}", duration);
 
         match v2_smart_inboxes {
             Ok(inboxes) => {

@@ -126,8 +126,6 @@ impl Node {
                 return Vec::new();
             }
         };
-        // Start the timer
-        let start = Instant::now();
         let result = match db.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
@@ -139,9 +137,6 @@ impl Node {
                 return Vec::new();
             }
         };
-        // Measure the elapsed time
-        let duration = start.elapsed();
-        println!("Time taken to get all inboxes: {:?}", duration);
 
         result
     }

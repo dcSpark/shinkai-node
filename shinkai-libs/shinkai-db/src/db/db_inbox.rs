@@ -503,10 +503,6 @@ impl ShinkaiDB {
                 .next()
                 .and_then(|mut v| v.pop());
 
-            // Measure the elapsed time
-            let duration = start.elapsed();
-            println!("Time taken to get last message: {:?}", duration);
-
             let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
             let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", &inbox_id);
             let custom_name = match self.db.get_cf(cf_inbox, inbox_smart_inbox_name_key.as_bytes())? {
@@ -535,9 +531,6 @@ impl ShinkaiDB {
             } else {
                 false
             };
-
-            // Start the timer
-            let start = Instant::now();
 
             let agent_subset = {
                 let profile_result = profile_name_identity.full_identity_name.clone().extract_profile();
