@@ -55,7 +55,7 @@ impl LanceShinkaiDb {
         }
 
         self.prompt_table
-            .create_index(&["prompt"], Index::FTS(FtsIndexBuilder::default()))
+            .create_index(&["name"], Index::FTS(FtsIndexBuilder::default()))
             .execute()
             .await?;
 
@@ -312,7 +312,7 @@ impl LanceShinkaiDb {
             .prompt_table
             .query()
             .full_text_search(FullTextSearchQuery {
-                columns: vec!["prompt".to_string()],
+                columns: vec!["name".to_string()],
                 query: query.to_owned(),
                 limit: Some(num_results as i64),
                 wand_factor: Some(1.0),
@@ -372,48 +372,24 @@ impl LanceShinkaiDb {
             vector_results.extend(prompts);
         }
 
-        // Merge results using interleave and remove duplicates
+        // Combine results: first FTS results, then vector results, removing duplicates
         let mut combined_results = Vec::new();
         let mut seen = HashSet::new();
-        let mut fts_iter = fts_results.into_iter();
-        let mut vector_iter = vector_results.into_iter();
 
-        while combined_results.len() < num_results as usize {
-            match (fts_iter.next(), vector_iter.next()) {
-                (Some(fts_item), Some(vector_item)) => {
-                    if seen.insert(fts_item.name.clone()) && combined_results.len() < num_results as usize {
-                        combined_results.push(fts_item);
-                    }
-                    if seen.insert(vector_item.name.clone()) && combined_results.len() < num_results as usize {
-                        combined_results.push(vector_item);
-                    }
-                }
-                (Some(fts_item), None) => {
-                    if seen.insert(fts_item.name.clone()) && combined_results.len() < num_results as usize {
-                        combined_results.push(fts_item);
-                    }
-                }
-                (None, Some(vector_item)) => {
-                    if seen.insert(vector_item.name.clone()) && combined_results.len() < num_results as usize {
-                        combined_results.push(vector_item);
-                    }
-                }
-                (None, None) => break,
+        for fts_item in fts_results {
+            // Check if the name contains the query string and ensure no duplicates
+            if fts_item.name.to_lowercase().contains(&query.to_lowercase())
+                && seen.insert(fts_item.name.clone())
+                && combined_results.len() < num_results as usize
+            {
+                combined_results.push(fts_item);
             }
         }
 
-        // Continue to add results from the remaining iterator if needed
-        while combined_results.len() < num_results as usize {
-            if let Some(fts_item) = fts_iter.next() {
-                if seen.insert(fts_item.name.clone()) {
-                    combined_results.push(fts_item);
-                }
-            } else if let Some(vector_item) = vector_iter.next() {
-                if seen.insert(vector_item.name.clone()) {
-                    combined_results.push(vector_item);
-                }
-            } else {
-                break;
+        for vector_item in vector_results {
+            // Add vector search results, ensuring no duplicates
+            if seen.insert(vector_item.name.clone()) && combined_results.len() < num_results as usize {
+                combined_results.push(vector_item);
             }
         }
 
