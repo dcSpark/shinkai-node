@@ -134,7 +134,7 @@ impl LLMService for Gemini {
                         "temperature": 0.9,
                         "topK": 1,
                         "topP": 1,
-                        "maxOutputTokens": 2048
+                        "maxOutputTokens": 8192
                     },
                     "safety_settings": [
                         {

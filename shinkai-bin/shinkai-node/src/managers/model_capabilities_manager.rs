@@ -511,7 +511,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(_) => {
                 // Fill in the appropriate logic for Ollama
-                4096
+                8192
             }
             LLMProviderInterface::OpenRouter(_) => {
                 // Fill in the appropriate logic for OpenRouter
