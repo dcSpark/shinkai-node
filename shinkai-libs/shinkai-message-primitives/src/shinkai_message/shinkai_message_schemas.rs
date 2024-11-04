@@ -719,6 +719,14 @@ pub struct APIWorkflowKeyname {
     pub tool_router_key: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportInboxMessagesFormat {
+    CSV,
+    JSON,
+    TXT,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct WSMessage {
     pub subscriptions: Vec<TopicSubscription>,

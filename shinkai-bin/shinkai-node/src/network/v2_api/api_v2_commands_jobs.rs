@@ -1,9 +1,9 @@
-use std::{collections::HashMap, sync::Arc, time::Instant, usize};
+use std::{collections::HashMap, sync::Arc, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
-use serde_json::Value;
+use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
@@ -19,7 +19,8 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData},
         shinkai_message_schemas::{
-            APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
+            V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -1382,5 +1383,191 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_export_messages_from_inbox(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        bearer: String,
+        inbox_name: String,
+        format: ExportInboxMessagesFormat,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the messages from the inbox
+        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, None) {
+            Ok(messages) => messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the retrieved messages to Vec<V2ChatMessage>
+        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+            Ok(v2_messages) => v2_messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the filenames in the inboxes
+        let file_inboxes = v2_chat_messages
+            .iter()
+            .flatten()
+            .map(|message| message.job_message.files_inbox.clone())
+            .collect::<Vec<_>>();
+        let mut inbox_filenames = HashMap::new();
+
+        for inbox in file_inboxes {
+            let files = match vector_fs.db.get_all_filenames_from_inbox(inbox.clone()) {
+                Ok(files) => files,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get files from inbox: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            inbox_filenames.insert(inbox, files);
+        }
+
+        // Export the messages in the requested format
+        match format {
+            ExportInboxMessagesFormat::CSV => {
+                let mut writer = csv::WriterBuilder::new().delimiter(b';').from_writer(vec![]);
+                let headers = vec!["timestamp", "sender", "receiver", "message", "files"];
+
+                match writer.write_record(headers) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to write CSV headers: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                }
+
+                for message in v2_chat_messages.into_iter().flatten() {
+                    let timestamp = message.node_api_data.node_timestamp;
+                    let sender = message.sender_subidentity;
+                    let receiver = message.receiver_subidentity;
+                    let content = message.job_message.content;
+                    let files = inbox_filenames
+                        .get(&message.job_message.files_inbox)
+                        .unwrap_or(&vec![])
+                        .join(", ");
+
+                    let row = vec![timestamp, sender, receiver, content, files];
+                    match writer.write_record(row) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to write CSV row: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    }
+                }
+
+                let csv_data = match writer.into_inner() {
+                    Ok(data) => match String::from_utf8(data) {
+                        Ok(csv_string) => csv_string,
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to convert CSV data to string: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    },
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to retrieve CSV data: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                let _ = res.send(Ok(json!(csv_data))).await;
+            }
+            ExportInboxMessagesFormat::JSON => {
+                let result_messages = v2_chat_messages
+                    .into_iter()
+                    .map(|messages| {
+                        messages
+                            .into_iter()
+                            .map(|message| {
+                                json!({
+                                    "message": message,
+                                    "files": inbox_filenames.get(&message.job_message.files_inbox).unwrap_or(&vec![]),
+                                })
+                            })
+                            .collect::<Vec<serde_json::Value>>()
+                    })
+                    .collect::<Vec<_>>();
+
+                match serde_json::to_value(&result_messages) {
+                    Ok(value) => {
+                        let _ = res.send(Ok(value)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize messages: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            ExportInboxMessagesFormat::TXT => {
+                let mut result_messages = String::new();
+
+                for messages in v2_chat_messages {
+                    for message in messages {
+                        result_messages.push_str(&format!("{}\n\n", message.job_message.content));
+
+                        if let Some(files) = inbox_filenames.get(&message.job_message.files_inbox) {
+                            result_messages.push_str(&format!("Attached files: [{}]\n\n", files.join(", ")));
+                        }
+                    }
+                }
+
+                let _ = res.send(Ok(json!(result_messages))).await;
+            }
+        }
+
+        Ok(())
     }
 }
