@@ -240,7 +240,6 @@ async fn handle_streaming_response(
         match item {
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
-                eprintln!("Chunk: {}", chunk_str);
                 let processed_chunk = process_chunk(&chunk)?;
                 response_text.push_str(&processed_chunk.partial_text);
 
@@ -291,33 +290,31 @@ async fn handle_streaming_response(
 
                 if let Some(ref manager) = ws_manager_trait {
                     if let Some(ref inbox_name) = inbox_name {
-                        if !processed_chunk.partial_text.is_empty() {
-                            let m = manager.lock().await;
-                            let inbox_name_string = inbox_name.to_string();
-                            let metadata = WSMetadata {
-                                id: Some(session_id.clone()),
-                                is_done: processed_chunk.is_done,
-                                done_reason: if processed_chunk.is_done {
-                                    processed_chunk.done_reason.clone()
-                                } else {
-                                    None
-                                },
-                                total_duration: None,
-                                eval_count: None,
-                            };
+                        let m = manager.lock().await;
+                        let inbox_name_string = inbox_name.to_string();
+                        let metadata = WSMetadata {
+                            id: Some(session_id.clone()),
+                            is_done: processed_chunk.is_done,
+                            done_reason: if processed_chunk.is_done {
+                                processed_chunk.done_reason.clone()
+                            } else {
+                                None
+                            },
+                            total_duration: None,
+                            eval_count: None,
+                        };
 
-                            let ws_message_type = WSMessageType::Metadata(metadata);
+                        let ws_message_type = WSMessageType::Metadata(metadata);
 
-                            let _ = m
-                                .queue_message(
-                                    WSTopic::Inbox,
-                                    inbox_name_string,
-                                    processed_chunk.partial_text.clone(),
-                                    ws_message_type,
-                                    true,
-                                )
-                                .await;
-                        }
+                        let _ = m
+                            .queue_message(
+                                WSTopic::Inbox,
+                                inbox_name_string,
+                                processed_chunk.partial_text.clone(),
+                                ws_message_type,
+                                true,
+                            )
+                            .await;
 
                         if let Some(ref function_call) = function_call {
                             let m = manager.lock().await;
