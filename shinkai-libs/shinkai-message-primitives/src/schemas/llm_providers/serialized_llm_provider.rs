@@ -43,6 +43,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
             LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Claude(_) => "claude".to_string(),
         }
     }
 
