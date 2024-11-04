@@ -122,7 +122,11 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         "contents": contents.into_iter().map(|msg| {
             let role = msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()));
             let content = msg.get("content").cloned().unwrap_or(serde_json::Value::String("".to_string()));
-            let content = if let serde_json::Value::Array(content_array) = content {
+
+            // Check if content is a string and wrap it in an array
+            let content = if let serde_json::Value::String(text) = content {
+                vec![serde_json::json!({"text": text})]
+            } else if let serde_json::Value::Array(content_array) = content {
                 let mut parts = vec![];
                 for item in content_array {
                     if let serde_json::Value::Object(mut obj) = item {
@@ -136,14 +140,15 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 }
                 parts
             } else {
-                vec![]
+                vec![] // If content is neither a string nor an array, return an empty vector
             };
+
             serde_json::json!({
                 "role": role,
                 "parts": content
             })
         }).collect::<Vec<_>>(),
-        "functions": functions_vec
+        // "functions": functions_vec
     });
 
     Ok(PromptResult {
@@ -223,7 +228,7 @@ mod tests {
                     }]
                 }
             ],
-            "functions": []
+            // "functions": []
         });
 
         // Assert the results

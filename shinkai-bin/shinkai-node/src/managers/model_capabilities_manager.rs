@@ -389,7 +389,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => 1_000_000,
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
-            LLMProviderInterface::Groq(groq) => Self::get_max_tokens_for_model_type(&groq.model_type),
+            LLMProviderInterface::Groq(groq) => std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000),
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
         }
     }
@@ -511,7 +511,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(_) => {
                 // Fill in the appropriate logic for Ollama
-                4096
+                8192
             }
             LLMProviderInterface::OpenRouter(_) => {
                 // Fill in the appropriate logic for OpenRouter

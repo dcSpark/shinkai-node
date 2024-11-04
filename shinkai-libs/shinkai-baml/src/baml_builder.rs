@@ -28,9 +28,10 @@ impl Default for GeneratorConfig {
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
     pub provider: String,
-    pub base_url: String,
+    pub base_url: Option<String>,
     pub model: String,
     pub default_role: String,
+    pub api_key: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -75,6 +76,12 @@ impl BamlConfig {
             ),
         );
 
+        let base_url_option = if let Some(base_url) = &self.client.base_url {
+            format!(r#"base_url "{}""#, base_url)
+        } else {
+            String::new()
+        };
+
         files.insert(
             "client.baml".to_string(),
             format!(
@@ -82,17 +89,19 @@ impl BamlConfig {
             client<llm> {} {{
                 provider {}
                 options {{
-                    base_url "{}"
+                    {}
                     model "{}"
                     default_role "{}"
+                    api_key "{}"
                 }}
             }}
             "##,
                 "ShinkaiProvider",
                 self.client.provider,
-                self.client.base_url,
+                base_url_option,
                 self.client.model,
-                self.client.default_role
+                self.client.default_role,
+                self.client.api_key.clone().unwrap_or_default()
             ),
         );
 
