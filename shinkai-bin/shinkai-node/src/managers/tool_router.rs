@@ -990,9 +990,10 @@ mod tests {
 
                 let client_config = ClientConfig {
                     provider: "ollama".to_string(),
-                    base_url: "http://localhost:11434/v1".to_string(),
+                    base_url: Some("http://localhost:11434/v1".to_string()),
                     model: "mistral-small:22b".to_string(),
                     default_role: "user".to_string(),
+                    api_key: None,
                 };
 
                 eprintln!("\n\nworkflow_content: {:?}", workflow_content);

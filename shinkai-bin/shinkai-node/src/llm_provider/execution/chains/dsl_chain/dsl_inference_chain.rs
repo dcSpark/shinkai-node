@@ -529,18 +529,12 @@ impl AsyncFunction for BamlInference {
             }
         };
 
-        let base_url = llm_provider.external_url.clone().unwrap_or_default();
-        let base_url = if base_url == "http://localhost:11434" || base_url == "http://localhost:11435" {
-            format!("{}/v1", base_url)
-        } else {
-            base_url
-        };
-
         let client_config = ClientConfig {
-            provider: llm_provider.get_provider_string(),
-            base_url,
+            provider: llm_provider.baml_provider_string(),
+            base_url: llm_provider.baml_provider_base_url(),
             model: llm_provider.get_model_string(),
             default_role: "user".to_string(),
+            api_key: llm_provider.api_key.clone(),
         };
         eprintln!("BamlInference> client_config: {:?}", client_config);
 
