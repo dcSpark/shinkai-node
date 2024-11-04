@@ -98,13 +98,9 @@
 //                 let agent = SerializedLLMProvider {
 //                     id: node1_agent.clone().to_string(),
 //                     full_identity_name: agent_name,
-//                     perform_locally: false,
 //                     external_url: Some(server.url()),
 //                     api_key: Some("mockapikey".to_string()),
 //                     model: LLMProviderInterface::OpenAI(open_ai),
-//                     toolkit_permissions: vec![],
-//                     storage_bucket_permissions: vec![],
-//                     allowed_message_senders: vec![],
 //                 };
 //                 api_agent_registration(
 //                     node1_commands_sender.clone(),

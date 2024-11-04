@@ -7,6 +7,7 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -16,9 +17,7 @@ use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider,
-};
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteLogger;
@@ -111,7 +110,7 @@ impl SheetUIInferenceChain {
         user_message: String,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
-        llm_provider: SerializedLLMProvider,
+        llm_provider: ProviderOrAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -151,7 +150,7 @@ impl SheetUIInferenceChain {
         // 1) Vector search for knowledge if the scope isn't empty
         // Check if the sheet has uploaded files and add them to the job scope
         let job_scope = if let Some(sheet_manager) = &sheet_manager {
-            let mut job_scope = full_job.scope().clone();
+            let mut job_scope = full_job.scope_with_files.clone().unwrap();
 
             let sheet = {
                 let sheet_manager_guard = sheet_manager.lock().await;
@@ -189,7 +188,7 @@ impl SheetUIInferenceChain {
             }
             job_scope
         } else {
-            full_job.scope().clone()
+            full_job.scope_with_files.clone().unwrap()
         };
 
         let scope_is_empty = job_scope.is_empty();
@@ -214,33 +213,13 @@ impl SheetUIInferenceChain {
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         let job_config = full_job.config();
         let mut tools = vec![];
-        let use_tools = match &llm_provider.model {
-            LLMProviderInterface::OpenAI(_) => true,
-            LLMProviderInterface::Ollama(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama3.1")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("mistral-nemo")
-                    || model_type.model_type.starts_with("mistral-small")
-                    || model_type.model_type.starts_with("mistral-large");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            LLMProviderInterface::Groq(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama3.1");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            _ => false,
-        };
+        let stream = job_config.as_ref().and_then(|config| config.stream);
+        let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
+            llm_provider.clone(),
+            db.clone(),
+            stream,
+        );
+
         if use_tools {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
@@ -266,11 +245,11 @@ impl SheetUIInferenceChain {
 
         // 3) Generate Prompt
         let job_config = full_job.config();
-        
+
         let csv_result = {
             let sheet_manager_clone = sheet_manager.clone().unwrap();
             let sheet_id_clone = sheet_id.clone();
-            
+
             // Export the current CSV data
             let csv_result = SheetRustFunctions::get_table(sheet_manager_clone, sheet_id_clone, HashMap::new()).await;
 
@@ -280,7 +259,7 @@ impl SheetUIInferenceChain {
             };
 
             csv_data
-        };        
+        };
 
         // Extend the user message to include the CSV data if available
         let extended_user_message = if csv_result.is_empty() {
@@ -327,6 +306,7 @@ impl SheetUIInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
+                db.clone(),
             )
             .await;
 

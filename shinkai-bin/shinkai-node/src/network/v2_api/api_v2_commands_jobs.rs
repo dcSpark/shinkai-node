@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{collections::HashMap, sync::Arc, time::Instant, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -199,8 +199,8 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job(&job_message.job_id) {
-            Ok(job) => job.parent_llm_provider_id.clone(),
+        let llm_provider = match db.get_job_with_options(&job_message.job_id, false, false) {
+            Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -655,7 +655,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the config
                 match db.update_job_config(&job_id, config) {
@@ -701,7 +701,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_prompt: None,
@@ -991,7 +991,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
                 match db.update_job_scope(job_id.clone(), job_scope.clone()) {
@@ -1046,7 +1046,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1151,7 +1151,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.get_job(&job_id) {
+        let source_job = match db.get_job_with_options(&job_id, false, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1198,7 +1198,7 @@ impl Node {
             node_name.node_name,
             "main".to_string(),
             ShinkaiSubidentityType::Agent,
-            source_job.parent_llm_provider_id.clone(),
+            source_job.parent_agent_or_llm_provider_id.clone(),
         ) {
             Ok(name) => name,
             Err(err) => {
@@ -1232,8 +1232,8 @@ impl Node {
         let forked_job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         match db.create_new_job(
             forked_job_id.clone(),
-            source_job.parent_llm_provider_id,
-            source_job.scope,
+            source_job.parent_agent_or_llm_provider_id,
+            source_job.scope_with_files.clone().unwrap(),
             source_job.is_hidden,
             source_job.associated_ui,
             source_job.config,

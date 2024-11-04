@@ -13,7 +13,7 @@ use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},
         inbox_name::InboxName,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::{
@@ -949,6 +949,342 @@ impl Node {
         // Stop the LLM
         stopper.stop(&inbox_name.get_value());
         let _ = res.send(Ok(())).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_add_agent(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        bearer: String,
+        agent: Agent,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the profile name from the identity manager
+        let requester_name = match identity_manager.lock().await.get_main_identity() {
+            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+            _ => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Wrong identity type. Expected Standard identity.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Construct the expected full identity name
+        let expected_full_identity_name = ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            requester_name.get_node_name_string(),
+            agent.agent_id
+        ))
+        .unwrap();
+
+        // Check if the full identity name matches
+        if agent.full_identity_name != expected_full_identity_name {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid full identity name.".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        // TODO: validate tools
+        // TODO: validate knowledge
+
+        // Check if the llm_provider_id exists
+        match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
+            Ok(Some(_)) => {
+                // Check if the agent_id already exists
+                match db.get_agent(&agent.agent_id) {
+                    Ok(Some(_)) => {
+                        let api_error = APIError {
+                            code: StatusCode::CONFLICT.as_u16(),
+                            error: "Conflict".to_string(),
+                            message: "agent_id already exists".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                    Ok(None) => {
+                        // Add the agent to the database
+                        match db.add_agent(agent, &requester_name) {
+                            Ok(_) => {
+                                let _ = res.send(Ok("Agent added successfully".to_string())).await;
+                            }
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to add agent: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to check agent_id: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "llm_provider_id does not exist".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to check llm_provider_id: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_remove_agent(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Remove the agent from the database
+        match db.remove_agent(&agent_id) {
+            Ok(_) => {
+                let _ = res.send(Ok("Agent removed successfully".to_string())).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_update_agent(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        partial_agent: serde_json::Value,
+        res: Sender<Result<Agent, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Extract agent_id from partial_agent
+        let agent_id = match partial_agent.get("agent_id").and_then(|id| id.as_str()) {
+            Some(id) => id.to_string(),
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "agent_id is missing in the request".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the existing agent from the database
+        let existing_agent = match db.get_agent(&agent_id) {
+            Ok(Some(agent)) => agent,
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Agent not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Database error: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Construct the full identity name
+        let full_identity_name = match ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            existing_agent.full_identity_name.get_node_name_string(),
+            agent_id
+        )) {
+            Ok(name) => name,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Failed to construct full identity name.".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Manually merge fields from partial_agent with existing_agent
+        let updated_agent = Agent {
+            name: partial_agent
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&existing_agent.name)
+                .to_string(),
+            agent_id: existing_agent.agent_id.clone(), // Keep the original agent_id
+            llm_provider_id: partial_agent
+                .get("llm_provider_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&existing_agent.llm_provider_id)
+                .to_string(),
+                // TODO: decide if we keep this
+            // instructions: partial_agent
+            //     .get("instructions")
+            //     .and_then(|v| v.as_str())
+            //     .unwrap_or(&existing_agent.instructions)
+            //     .to_string(),
+            ui_description: partial_agent
+                .get("ui_description")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&existing_agent.ui_description)
+                .to_string(),
+            knowledge: partial_agent
+                .get("knowledge")
+                .and_then(|v| v.as_array())
+                .map_or(existing_agent.knowledge.clone(), |v| {
+                    v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
+                }),
+            storage_path: partial_agent
+                .get("storage_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&existing_agent.storage_path)
+                .to_string(),
+            tools: partial_agent
+                .get("tools")
+                .and_then(|v| v.as_array())
+                .map_or(existing_agent.tools.clone(), |v| {
+                    v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
+                }),
+            debug_mode: partial_agent
+                .get("debug_mode")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(existing_agent.debug_mode),
+            config: partial_agent.get("config").map_or(existing_agent.config.clone(), |v| {
+                serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
+            }),
+            full_identity_name, // Set the constructed full identity name
+        };
+
+        // Update the agent in the database
+        match db.update_agent(updated_agent.clone()) {
+            Ok(_) => {
+                let _ = res.send(Ok(updated_agent)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_agent(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Agent, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the agent from the database
+        match db.get_agent(&agent_id) {
+            Ok(Some(agent)) => {
+                let _ = res.send(Ok(agent)).await;
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Agent not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_all_agents(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Vec<Agent>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve all agents from the database
+        match db.get_all_agents() {
+            Ok(agents) => {
+                let _ = res.send(Ok(agents)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve agents: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
         Ok(())
     }
 }

@@ -58,6 +58,7 @@ pub enum ShinkaiDBError {
     WorkflowNotFound(String),
     SheetNotFound(String),
     Other(String),
+    IdCollision(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -125,6 +126,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::WorkflowNotFound(e) => write!(f, "Workflow not found: {}", e),
             ShinkaiDBError::SheetNotFound(e) => write!(f, "Sheet not found: {}", e),
             ShinkaiDBError::Other(e) => write!(f, "Other error: {}", e),
+            ShinkaiDBError::IdCollision(e) => write!(f, "Id collision: {}", e),
         }
     }
 }
@@ -188,6 +190,7 @@ impl PartialEq for ShinkaiDBError {
             }
             (ShinkaiDBError::DeviceNameNonExistent(msg1), ShinkaiDBError::DeviceNameNonExistent(msg2)) => msg1 == msg2,
             (ShinkaiDBError::Other(msg1), ShinkaiDBError::Other(msg2)) => msg1 == msg2,
+            (ShinkaiDBError::IdCollision(msg1), ShinkaiDBError::IdCollision(msg2)) => msg1 == msg2,
             _ => false,
         }
     }

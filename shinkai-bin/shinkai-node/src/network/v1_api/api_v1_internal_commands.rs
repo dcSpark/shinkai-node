@@ -35,6 +35,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_fs::welcome_files::welcome_message::WELCOME_MESSAGE;
 use shinkai_vector_resources::vector_resource::VRPath;
+use std::time::Instant;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
@@ -435,7 +436,6 @@ impl Node {
                                 local_vrpack: vec![],
                                 vector_fs_items: vec![],
                                 vector_fs_folders: vec![shinkai_folder_fs],
-                                network_folders: vec![],
                                 vector_search_mode: vec![],
                             };
                             let job_creation = JobCreationInfo {
@@ -669,15 +669,11 @@ impl Node {
                         requester_profile.full_name, sanitized_model
                     ))
                     .expect("Failed to create ShinkaiName"),
-                    perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(Ollama {
                         model_type: model.clone(),
                     }),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 }
             })
             .collect();

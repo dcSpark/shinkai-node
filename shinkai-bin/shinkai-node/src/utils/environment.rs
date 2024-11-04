@@ -76,13 +76,9 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
             id: initial_agent_names[i].clone(),
             full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_names[i]))
                 .unwrap(),
-            perform_locally: false,
             external_url: Some(initial_agent_urls[i].clone()),
             api_key: Some(initial_agent_api_keys[i].clone()),
             model: model.expect("Failed to parse agent model"),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
 
         llm_providers.push(agent);

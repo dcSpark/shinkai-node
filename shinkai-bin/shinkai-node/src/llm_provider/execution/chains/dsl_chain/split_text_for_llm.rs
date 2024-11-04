@@ -15,7 +15,12 @@ pub fn split_text_for_llm(
         .clone();
 
     let agent = context.agent();
-    let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+    let max_tokens = ModelCapabilitiesManager::get_max_input_tokens_for_provider_or_agent(agent.clone(), context.db().clone());
+
+    let max_tokens = match max_tokens {
+        Some(tokens) => tokens,
+        None => return Err(WorkflowError::ExecutionError("Max tokens not found".to_string())),
+    };
     
     let mut result = Vec::new();
     let current_text = input1.clone();

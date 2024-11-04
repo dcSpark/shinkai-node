@@ -132,7 +132,6 @@
 //                 let agent = SerializedLLMProvider {
 //                     id: node1_agent.clone().to_string(),
 //                     full_identity_name: agent_name.clone(),
-//                     perform_locally: false,
 //                     // external_url: Some(server.url()),
 //                     // api_key: Some("mockapikey".to_string()),
 //                     external_url: Some("https://api.openai.com".to_string()),
@@ -140,9 +139,6 @@
 //                     // external_url: Some("https://api.together.xyz".to_string()),
 //                     model: LLMProviderInterface::OpenAI(open_ai),
 //                     // model: LLMProviderInterface::GenericAPI(generic_api),
-//                     toolkit_permissions: vec![],
-//                     storage_bucket_permissions: vec![],
-//                     allowed_message_senders: vec![],
 //                 };
 //                 api_llm_provider_registration(
 //                     node1_commands_sender.clone(),
