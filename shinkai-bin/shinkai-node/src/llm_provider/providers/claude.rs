@@ -239,7 +239,6 @@ async fn handle_streaming_response(
 
         match item {
             Ok(chunk) => {
-                let chunk_str = String::from_utf8_lossy(&chunk).to_string();
                 let processed_chunk = process_chunk(&chunk)?;
                 response_text.push_str(&processed_chunk.partial_text);
 
@@ -317,7 +316,6 @@ async fn handle_streaming_response(
                             .await;
 
                         if let Some(ref function_call) = function_call {
-                            let m = manager.lock().await;
                             let inbox_name_string = inbox_name.to_string();
 
                             // Serialize FunctionCall to JSON value
