@@ -44,9 +44,11 @@ pub fn process_llm_messages(
     }
 
     messages_with_role.retain(|message| {
-        (message.content.is_some()
-            && message.content.as_ref().unwrap().len() > 0
-            && (message.role == Some("user".to_string()) || message.role == Some("function".to_string())))
+        ((message.role == Some("user".to_string())
+            || message.role == Some("function".to_string())
+            || message.role == Some("assistant".to_string()))
+            && message.content.is_some()
+            && message.content.as_ref().unwrap().len() > 0)
             || (message.role == Some("assistant".to_string()) && message.function_call.is_some())
     });
 
@@ -79,6 +81,9 @@ pub fn process_llm_messages(
                             ]);
                         }
                         message.as_object_mut().unwrap().remove("function_call");
+                    } else if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
+                        message["content"] = serde_json::Value::String(content.to_string());
+                        message.as_object_mut().unwrap().remove("images");
                     }
                 }
 
