@@ -15,83 +15,110 @@ pub fn claude_prepare_messages(
 ) -> Result<(PromptResult, Vec<LlmMessage>), LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
-    // Generate the messages and filter out images
     let chat_completion_messages = prompt.generate_llm_messages(
         Some(max_input_tokens),
         Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
 
-    // Get a more accurate estimate of the number of used tokens
+    process_llm_messages(chat_completion_messages, model)
+}
+
+pub fn process_llm_messages(
+    chat_completion_messages: Vec<LlmMessage>,
+    model: &LLMProviderInterface,
+) -> Result<(PromptResult, Vec<LlmMessage>), LLMProviderError> {
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
-    // Calculate the remaining output tokens available
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
-    // Separate messages into those with a valid role and those without
     let (mut messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
         .into_iter()
         .partition(|message| message.role.is_some());
 
     let mut system_messages = Vec::new();
 
-    // Collect system messages
     for message in &mut messages_with_role {
         if message.role == Some("system".to_string()) {
             system_messages.push(message.clone());
         }
     }
 
-    // Filter out empty content and keep only user and assistant messages
+    eprintln!("messages_with_role (before): {:?}", messages_with_role);
+
     messages_with_role.retain(|message| {
-        message.content.is_some()
+        (message.content.is_some()
             && message.content.as_ref().unwrap().len() > 0
-            && (message.role == Some("user".to_string()) || message.role == Some("assistant".to_string()))
+            && (message.role == Some("user".to_string()) || message.role == Some("function".to_string())))
+            || (message.role == Some("assistant".to_string()) && message.function_call.is_some())
     });
 
-    // Convert both sets of messages to serde Value
+    eprintln!("messages_with_role (after): {:?}", messages_with_role);
+
     let messages_json = serde_json::to_value(messages_with_role)?;
     let tools_json = serde_json::to_value(tools)?;
 
-    // Convert messages_json and tools_json to Vec<serde_json::Value>
+    let mut previous_message_content: Option<String> = None;
+
     let messages_vec = match messages_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
             .map(|mut message| {
-                let images = message.get("images").cloned();
-                let text = message.get("content").cloned();
-
-                if let Some(serde_json::Value::Array(images_array)) = images {
-                    let mut content = vec![];
-                    if let Some(text) = text {
-                        content.push(serde_json::json!({"type": "text", "text": text}));
+                if message.get("role") == Some(&serde_json::Value::String("user".to_string())) {
+                    if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
+                        previous_message_content = Some(content.to_string());
+                        message["content"] = serde_json::Value::String(content.to_string());
                     }
-                    for image in images_array {
-                        if let serde_json::Value::String(image_str) = image {
-                            if let Some(image_type) = shared_model_logic::get_image_type(&image_str) {
-                                content.push(serde_json::json!({
-                                    "type": "image_url",
-                                    "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
-                                }));
-                            }
-                        }
-                    }
-                    message["content"] = serde_json::json!(content);
                     message.as_object_mut().unwrap().remove("images");
                 }
+
+                if message.get("role") == Some(&serde_json::Value::String("assistant".to_string())) {
+                    if let Some(function_call) = message.get("function_call").cloned() {
+                        if let Some(arguments) = function_call.get("arguments").and_then(|v| v.as_str()) {
+                            let input: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
+
+                            let mut content_array = vec![];
+                            if let Some(prev_content) = previous_message_content.take() {
+                                content_array.push(serde_json::json!({
+                                    "type": "text",
+                                    "text": prev_content
+                                }));
+                            }
+                            content_array.push(serde_json::json!({
+                                "type": "tool_use",
+                                "id": "toolu_abc123",
+                                "name": function_call.get("name").cloned().unwrap_or_default(),
+                                "input": input
+                            }));
+
+                            message["content"] = serde_json::Value::Array(content_array);
+                        }
+                        message.as_object_mut().unwrap().remove("function_call");
+                    }
+                }
+
+                if message.get("role") == Some(&serde_json::Value::String("function".to_string())) {
+                    if let Some(content) = message.get("content").cloned() {
+                        message["content"] = serde_json::json!([{
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_abc123",
+                            "content": content
+                        }]);
+                    }
+                    message["role"] = serde_json::Value::String("user".to_string());
+                    message.as_object_mut().unwrap().remove("name");
+                }
+
                 message
             })
             .collect(),
         _ => vec![],
     };
 
-    // Flatten the tools array to extract functions directly
-    // TODO: this is to support the old functions format. We need to update it to tools
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
             .flat_map(|tool| {
                 if let serde_json::Value::Object(mut map) = tool {
-                    // TODO: functions is deprecated in favor of tools. Update it
                     map.remove("functions")
                         .and_then(|functions| {
                             if let serde_json::Value::Array(funcs) = functions {
@@ -118,4 +145,105 @@ pub fn claude_prepare_messages(
         },
         system_messages,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use shinkai_message_primitives::schemas::{
+        llm_message::DetailedFunctionCall, llm_providers::serialized_llm_provider::Claude,
+    };
+
+    #[test]
+    fn test_claude_prepare_messages() {
+        let claude_model = Claude {
+            model_type: "claude-3-5-sonnet-20241022".to_string(),
+        };
+
+        let model = LLMProviderInterface::Claude(claude_model);
+
+        let llm_messages = vec![
+            LlmMessage {
+                role: Some("system".to_string()),
+                content: Some("You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string()),
+                name: None,
+                function_call: None,
+                functions: None,
+                images: None,
+            },
+            LlmMessage {
+                role: Some("user".to_string()),
+                content: Some("tell me what's the response when using shinkai echo tool with: say hello".to_string()),
+                name: None,
+                function_call: None,
+                functions: None,
+                images: Some(vec![]),
+            },
+            LlmMessage {
+                role: Some("assistant".to_string()),
+                content: None,
+                name: None,
+                function_call: Some(DetailedFunctionCall {
+                    name: "shinkai__echo".to_string(),
+                    arguments: "{\"message\":\"hello\"}".to_string(),
+                }),
+                functions: None,
+                images: None,
+            },
+            LlmMessage {
+                role: Some("function".to_string()),
+                content: Some("{\"data\":{\"message\":\"echoing: hello\"}}".to_string()),
+                name: Some("shinkai__echo".to_string()),
+                function_call: None,
+                functions: None,
+                images: None,
+            },
+        ];
+
+        let expected_json = json!([
+          {
+            "role": "user",
+            "content": "tell me what's the response when using shinkai echo tool with: say hello"
+          },
+          {
+            "role": "assistant",
+            "content": [
+                 {
+            "type": "text",
+            "text": "I'll help you echo the message \"hello\" using the shinkai__echo tool."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_abc123",
+            "name": "shinkai__echo",
+            "input": {
+              "message": "hello"
+            }
+          }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "toolu_abc123",
+                "content": "{\"data\":{\"message\":\"echoing: hello\"}}"
+              }
+            ]
+          }
+        ]);
+
+        let (messages_result, _system_messages) = process_llm_messages(llm_messages, &model).unwrap();
+        let messages_json = match messages_result.messages {
+            PromptResultEnum::Value(v) => v,
+            _ => {
+                panic!("Expected Value variant in PromptResultEnum");
+            }
+        };
+        eprintln!("\n\nresult: {:?}", messages_json);
+        eprintln!("\n\nexpected: {:?}", expected_json);
+        assert_eq!(messages_json, expected_json);
+    }
 }
