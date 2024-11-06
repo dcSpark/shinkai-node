@@ -13,7 +13,9 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_db::schemas::ws_types::{ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata};
+use shinkai_db::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
@@ -23,7 +25,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-fn truncate_image_url_in_payload(payload: &mut JsonValue) {
+pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
         if let Some(array) = messages.as_array_mut() {
             for message in array {
@@ -224,7 +226,8 @@ async fn handle_streaming_response(
                                             let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                                 tools_array.iter().find_map(|tool| {
                                                     if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                        tool.get("tool_router_key")
+                                                            .and_then(|key| key.as_str().map(|s| s.to_string()))
                                                     } else {
                                                         None
                                                     }
@@ -250,17 +253,14 @@ async fn handle_streaming_response(
                                     let inbox_name_string = inbox_name.to_string();
 
                                     // Serialize FunctionCall to JSON value
-                                    let function_call_json = serde_json::to_value(function_call)
-                                        .unwrap_or_else(|_| serde_json::json!({}));
+                                    let function_call_json =
+                                        serde_json::to_value(function_call).unwrap_or_else(|_| serde_json::json!({}));
 
                                     // Prepare ToolMetadata
                                     let tool_metadata = ToolMetadata {
                                         tool_name: function_call.name.clone(),
                                         tool_router_key: function_call.tool_router_key.clone(),
-                                        args: function_call_json
-                                            .as_object()
-                                            .cloned()
-                                            .unwrap_or_default(),
+                                        args: function_call_json.as_object().cloned().unwrap_or_default(),
                                         result: None,
                                         status: ToolStatus {
                                             type_: ToolStatusType::Running,
@@ -268,14 +268,14 @@ async fn handle_streaming_response(
                                         },
                                     };
 
-                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+                                    let ws_message_type =
+                                        WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
                                     let _ = m
                                         .queue_message(
                                             WSTopic::Inbox,
                                             inbox_name_string,
-                                            serde_json::to_string(&function_call)
-                                                .unwrap_or_else(|_| "{}".to_string()),
+                                            serde_json::to_string(&function_call).unwrap_or_else(|_| "{}".to_string()),
                                             ws_message_type,
                                             true,
                                         )
