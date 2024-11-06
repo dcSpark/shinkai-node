@@ -8,6 +8,7 @@ use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_wallets::wallet_routes;
 use super::api_v2_handlers_workflows::workflows_routes;
+use super::api_v2_handlers_tools::tool_routes;
 use super::{api_v2_handlers_general::general_routes, api_v2_handlers_subscriptions::subscriptions_routes};
 use async_channel::Sender;
 use serde::Serialize;
@@ -29,6 +30,7 @@ pub fn v2_routes(
     let custom_prompt = prompt_routes(node_commands_sender.clone());
     let swagger_ui_routes = swagger_ui_routes();
     let sheets_routes = sheets_routes(node_commands_sender.clone());
+    let tool_routes = tool_routes(node_commands_sender.clone());
 
     general_routes
         .or(vecfs_routes)
@@ -40,6 +42,7 @@ pub fn v2_routes(
         .or(custom_prompt)
         .or(swagger_ui_routes)
         .or(sheets_routes)
+        .or(tool_routes)
 }
 
 pub fn with_sender(

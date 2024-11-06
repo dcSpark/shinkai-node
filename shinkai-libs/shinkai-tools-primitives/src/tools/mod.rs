@@ -8,3 +8,6 @@ pub mod shinkai_tool;
 pub mod workflow_tool;
 pub mod tool_router_dep;
 pub mod network_tool;
+pub mod python_tools;
+pub mod deno_tools;
+pub mod internal_tools;

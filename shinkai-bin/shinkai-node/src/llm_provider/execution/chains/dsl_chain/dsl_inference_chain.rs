@@ -670,6 +670,21 @@ struct ShinkaiToolFunction {
 impl AsyncFunction for ShinkaiToolFunction {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         let result = match &self.tool {
+            ShinkaiTool::Deno(_deno_tool, _) => {
+                return Err(WorkflowError::ExecutionError(
+                    "NYI".to_string(),
+                ));
+            }
+            ShinkaiTool::Python(_python_tool, _) => {
+                return Err(WorkflowError::ExecutionError(
+                    "NYI".to_string(),
+                ));
+            }
+            ShinkaiTool::Internal(_internal_tool, _) => {
+                return Err(WorkflowError::ExecutionError(
+                    "NYI".to_string(),
+                ));
+            }
             ShinkaiTool::JS(js_tool, _) => {
                 let params = parse_params(args)?;
                 eprintln!("params: {:?}", params);

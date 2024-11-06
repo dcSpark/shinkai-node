@@ -3,7 +3,7 @@ use std::{collections::HashMap, net::SocketAddr};
 use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
-use serde_json::Value;
+use serde_json::{Value, Map};
 use shinkai_message_primitives::{
     schemas::{
         coinbase_mpc_config::CoinbaseMPCWalletConfig,
@@ -969,4 +969,14 @@ pub enum NodeCommand {
         payload: APISetSheetUploadedFilesPayload,
         res: Sender<Result<Value, APIError>>,
     },
+    ExecuteCommand {
+        bearer: String,
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    GenerateToolDefinitions {
+        language: String,
+        res: Sender<Result<Value, APIError>>,
+    }
 }

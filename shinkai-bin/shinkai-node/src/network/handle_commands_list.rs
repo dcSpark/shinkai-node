@@ -3034,6 +3034,43 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::ExecuteCommand { 
+                bearer,
+                tool_router_key,
+                parameters,
+                res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                let vector_fs_clone = self.vector_fs.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let sheet_manager_clone = self.sheet_manager.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::execute_command(
+                        db_clone,
+                        bearer,
+                        lance_db_clone,
+                        tool_router_key,
+                        parameters,
+                        res
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::GenerateToolDefinitions {
+                language,
+                res
+            } => {
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::generate_tool_definitions(
+                        language,
+                        lance_db_clone,
+                        res
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

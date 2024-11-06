@@ -8,6 +8,7 @@ mod runner;
 mod utils;
 mod workflows;
 mod wallet;
+mod tools;
 
 use runner::{initialize_node, run_node_tasks};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;

@@ -459,6 +459,24 @@ impl ToolRouter {
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
+            ShinkaiTool::Deno(_, _) => {
+                return Ok(ToolCallFunctionResponse {
+                    response: "Deno!".to_string(),
+                    function_call,
+                });
+            }
+            ShinkaiTool::Python(_, _) => {
+                return Ok(ToolCallFunctionResponse {
+                    response: "Deno!".to_string(),
+                    function_call,
+                });
+            }
+            ShinkaiTool::Internal(_, _) => {
+                return Ok(ToolCallFunctionResponse {
+                    response: "Deno!".to_string(),
+                    function_call,
+                });
+            }
             ShinkaiTool::Rust(_, _) => {
                 if let Some(rust_function) = RustToolFunctions::get_tool_function(&function_name) {
                     let args: Vec<Box<dyn Any + Send>> = RustTool::convert_args_from_fn_call(function_args)?;
