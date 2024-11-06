@@ -16,13 +16,12 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::NodeApiData,
         shinkai_message_schemas::{
-            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, JobCreationInfo, JobMessage, SheetJobAction,
-            SheetManagerAction, V2ChatMessage,
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo,
+            JobMessage, SheetJobAction, SheetManagerAction, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::{
-        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, VectorFSFolderScopeEntry,
-        VectorFSItemScopeEntry,
+        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
     },
 };
 use utoipa::{OpenApi, ToSchema};
@@ -163,6 +162,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(remove_job_handler);
 
+    let export_messages_from_inbox_route = warp::path("export_messages_from_inbox")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(export_messages_from_inbox_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -181,6 +187,7 @@ pub fn job_routes(
         .or(get_tooling_logs_route)
         .or(fork_job_messages_route)
         .or(remove_job_route)
+        .or(export_messages_from_inbox_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -238,6 +245,12 @@ pub struct ForkJobMessagesRequest {
 #[derive(Deserialize, ToSchema)]
 pub struct RemoveJobRequest {
     pub job_id: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ExportInboxMessagesRequest {
+    pub inbox_name: String,
+    pub format: ExportInboxMessagesFormat,
 }
 
 #[utoipa::path(
@@ -1082,6 +1095,47 @@ pub async fn remove_job_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/export_messages_from_inbox",
+    request_body = ExportInboxMessagesRequest,
+    responses(
+        (status = 200, description = "Successfully retrieved last messages with branches", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn export_messages_from_inbox_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: ExportInboxMessagesRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let node_commands_sender = node_commands_sender.clone();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiExportMessagesFromInbox {
+            bearer,
+            inbox_name: payload.inbox_name,
+            format: payload.format,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1110,7 +1164,7 @@ pub async fn remove_job_handler(
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
             VectorFSItemScopeEntry, VectorFSFolderScopeEntry, CallbackAction, ShinkaiName,
-            LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest,
+            LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest, ExportInboxMessagesFormat, ExportInboxMessagesRequest,
             ShinkaiSubidentityType, OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
             SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
     ),

@@ -2965,7 +2965,11 @@ impl Node {
                     let _ = Node::v2_api_remove_agent(db_clone, bearer, agent_id, res).await;
                 });
             }
-            NodeCommand::V2ApiUpdateAgent { bearer, partial_agent, res } => {
+            NodeCommand::V2ApiUpdateAgent {
+                bearer,
+                partial_agent,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_agent(db_clone, bearer, partial_agent, res).await;
@@ -3069,6 +3073,20 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiExportMessagesFromInbox {
+                bearer,
+                inbox_name,
+                format,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
+                tokio::spawn(async move {
+                    let _ =
+                        Node::v2_export_messages_from_inbox(db_clone, vector_fs_clone, bearer, inbox_name, format, res)
+                            .await;
                 });
             }
             _ => (),
