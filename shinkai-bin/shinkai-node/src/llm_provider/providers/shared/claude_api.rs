@@ -43,8 +43,6 @@ pub fn process_llm_messages(
         }
     }
 
-    eprintln!("messages_with_role (before): {:?}", messages_with_role);
-
     messages_with_role.retain(|message| {
         (message.content.is_some()
             && message.content.as_ref().unwrap().len() > 0
@@ -52,12 +50,8 @@ pub fn process_llm_messages(
             || (message.role == Some("assistant".to_string()) && message.function_call.is_some())
     });
 
-    eprintln!("messages_with_role (after): {:?}", messages_with_role);
-
     let messages_json = serde_json::to_value(messages_with_role)?;
     let tools_json = serde_json::to_value(tools)?;
-
-    let mut previous_message_content: Option<String> = None;
 
     let messages_vec = match messages_json {
         serde_json::Value::Array(arr) => arr
@@ -65,7 +59,6 @@ pub fn process_llm_messages(
             .map(|mut message| {
                 if message.get("role") == Some(&serde_json::Value::String("user".to_string())) {
                     if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-                        previous_message_content = Some(content.to_string());
                         message["content"] = serde_json::Value::String(content.to_string());
                     }
                     message.as_object_mut().unwrap().remove("images");
@@ -76,21 +69,14 @@ pub fn process_llm_messages(
                         if let Some(arguments) = function_call.get("arguments").and_then(|v| v.as_str()) {
                             let input: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
 
-                            let mut content_array = vec![];
-                            if let Some(prev_content) = previous_message_content.take() {
-                                content_array.push(serde_json::json!({
-                                    "type": "text",
-                                    "text": prev_content
-                                }));
-                            }
-                            content_array.push(serde_json::json!({
-                                "type": "tool_use",
-                                "id": "toolu_abc123",
-                                "name": function_call.get("name").cloned().unwrap_or_default(),
-                                "input": input
-                            }));
-
-                            message["content"] = serde_json::Value::Array(content_array);
+                            message["content"] = serde_json::json!([
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_abc123",
+                                    "name": function_call.get("name").cloned().unwrap_or_default(),
+                                    "input": input
+                                }
+                            ]);
                         }
                         message.as_object_mut().unwrap().remove("function_call");
                     }
@@ -209,10 +195,6 @@ mod tests {
           {
             "role": "assistant",
             "content": [
-                 {
-            "type": "text",
-            "text": "I'll help you echo the message \"hello\" using the shinkai__echo tool."
-          },
           {
             "type": "tool_use",
             "id": "toolu_abc123",
