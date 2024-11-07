@@ -27,6 +27,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(_) => "gemini",
             LLMProviderInterface::Exo(_) => "exo",
             LLMProviderInterface::OpenRouter(_) => "openrouter",
+            LLMProviderInterface::Claude(_) => "claude",
         }
         .to_string()
     }
@@ -42,6 +43,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
             LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Claude(_) => "claude".to_string(),
         }
     }
 
@@ -56,6 +58,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
+            LLMProviderInterface::Claude(claude) => claude.model_type.clone(),
         }
     }
 
@@ -99,6 +102,7 @@ pub enum LLMProviderInterface {
     Gemini(Gemini),
     Exo(Exo),
     OpenRouter(OpenRouter),
+    Claude(Claude),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
@@ -190,6 +194,11 @@ pub struct TogetherAI {
     pub model_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct Claude {
+    pub model_type: String,
+}
+
 impl FromStr for LLMProviderInterface {
     type Err = ();
 
@@ -219,6 +228,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("openrouter:") {
             let model_type = s.strip_prefix("openrouter:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::OpenRouter(OpenRouter { model_type }))
+        } else if s.starts_with("claude:") {
+            let model_type = s.strip_prefix("claude:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::Claude(Claude { model_type }))
         } else {
             Err(())
         }
@@ -261,6 +273,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::OpenRouter(openrouter) => {
                 let model_type = format!("openrouter:{}", openrouter.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::Claude(claude) => {
+                let model_type = format!("claude:{}", claude.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -307,6 +323,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openrouter" => Ok(LLMProviderInterface::OpenRouter(OpenRouter {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "claude" => Ok(LLMProviderInterface::Claude(Claude {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
@@ -320,6 +339,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "exo",
                     "gemini",
                     "openrouter",
+                    "claude",
                 ],
             )),
         }

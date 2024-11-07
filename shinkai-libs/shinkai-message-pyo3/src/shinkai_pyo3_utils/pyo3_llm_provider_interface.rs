@@ -1,7 +1,6 @@
 use pyo3::prelude::*;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Exo;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Gemini;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::TogetherAI;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Groq;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LocalLLM;
@@ -9,6 +8,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAI;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenRouter;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::ShinkaiBackend;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::TogetherAI;
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -107,6 +107,7 @@ impl PyLLMProviderInterface {
             LLMProviderInterface::Gemini(gemini) => Ok(format!("gemini:{}", gemini.model_type)),
             LLMProviderInterface::Exo(exo) => Ok(format!("exo:{}", exo.model_type)),
             LLMProviderInterface::OpenRouter(open_router) => Ok(format!("openrouter:{}", open_router.model_type)),
+            LLMProviderInterface::Claude(claude) => Ok(format!("claude:{}", claude.model_type)),
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 Ok(format!("shinkai-backend:{}", shinkai_backend.model_type()))
             }

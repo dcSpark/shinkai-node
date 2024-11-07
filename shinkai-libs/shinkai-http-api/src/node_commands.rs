@@ -6,7 +6,17 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::{
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, coinbase_mpc_config::CoinbaseMPCWalletConfig, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, smart_inbox::{SmartInbox, V2SmartInbox}, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+        coinbase_mpc_config::CoinbaseMPCWalletConfig,
+        custom_prompt::CustomPrompt,
+        identity::{Identity, StandardIdentity},
+        job_config::JobConfig,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        shinkai_name::ShinkaiName,
+        shinkai_subscription::ShinkaiSubscription,
+        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        smart_inbox::{SmartInbox, V2SmartInbox},
+        wallet_complementary::{WalletRole, WalletSource},
+        wallet_mixed::NetworkIdentifier,
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
@@ -17,8 +27,8 @@ use shinkai_message_primitives::{
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
-            RegistrationCodeType, V2ChatMessage,
+            APIVecFsSearchItems, APIWorkflowKeyname, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
+            JobMessage, RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -988,6 +998,12 @@ pub enum NodeCommand {
     V2ApiSetSheetUploadedFiles {
         bearer: String,
         payload: APISetSheetUploadedFilesPayload,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExportMessagesFromInbox {
+        bearer: String,
+        inbox_name: String,
+        format: ExportInboxMessagesFormat,
         res: Sender<Result<Value, APIError>>,
     },
 }
