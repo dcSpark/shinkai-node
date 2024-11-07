@@ -10302,7 +10302,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.8.13"
+version = "0.8.14"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -10361,7 +10361,7 @@ dependencies = [
  "shinkai_subscription_manager",
  "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
- "shinkai_tools_runner 0.0.0",
+ "shinkai_tools_runner 0.8.0",
  "shinkai_vector_fs",
  "shinkai_vector_resources",
  "tempfile",
@@ -10498,38 +10498,10 @@ dependencies = [
  "shinkai_db",
  "shinkai_dsl",
  "shinkai_message_primitives",
- "shinkai_tools_runner 0.0.0",
+ "shinkai_tools_runner 0.8.0",
  "shinkai_vector_resources",
  "tokio",
  "uuid 1.10.0",
-]
-
-[[package]]
-name = "shinkai_tools_runner"
-version = "0.0.0"
-dependencies = [
- "base64-simd",
- "copy_to_output",
- "derivative",
- "derive_more",
- "dispose",
- "env_logger 0.11.5",
- "futures",
- "glob",
- "hex-simd",
- "lazy_static",
- "log 0.4.22",
- "nanoid",
- "once_cell",
- "patch",
- "phf 0.11.2",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util 0.7.12",
- "zip 2.2.0",
 ]
 
 [[package]]
@@ -10553,6 +10525,36 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-util 0.7.12",
+ "zip 2.2.0",
+]
+
+[[package]]
+name = "shinkai_tools_runner"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91ca9c8baaec876289276494a5c796b20e7bfb04ac6681e6b63e772350ea6656"
+dependencies = [
+ "base64-simd",
+ "copy_to_output",
+ "derivative",
+ "derive_more",
+ "dispose",
+ "env_logger 0.11.5",
+ "futures",
+ "glob",
+ "hex-simd",
+ "lazy_static",
+ "log 0.4.22",
+ "nanoid",
+ "once_cell",
+ "patch",
+ "phf 0.11.2",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tokio-util 0.7.12",
  "zip 2.2.0",
