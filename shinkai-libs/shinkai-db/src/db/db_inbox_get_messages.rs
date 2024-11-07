@@ -53,7 +53,7 @@ impl ShinkaiDB {
     /// Extract the identifier key from the full key
     /// Input: inbox_53a92e9e4c9427f5becf26c1fd6ffe51_message_TIMEKEY:::HASHKEY
     /// Output: Some("TIMEKEY:::HASHKEY")
-    fn extract_identifier_key(full_key: &str) -> Option<String> {
+    pub fn extract_identifier_key(full_key: &str) -> Option<String> {
         let prefix_length = 47; // The fixed length of the prefix
         if full_key.len() > prefix_length {
             // Extract everything after the prefix and return it

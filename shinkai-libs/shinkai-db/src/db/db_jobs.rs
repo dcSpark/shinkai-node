@@ -839,16 +839,38 @@ impl ShinkaiDB {
 
         // Delete inbox messages
         let inbox_hash = InboxName::new(inbox_name.to_string())?.hash_value_first_half();
-        let inbox_key_prefixes = vec![
-            format!("inbox_{}_message_", inbox_hash),
-            format!("inbox_{}_parent_", inbox_hash),
-            format!("inbox_{}_children_", inbox_hash),
-        ];
-        for prefix in inbox_key_prefixes {
-            let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
-            for item in iter {
-                if let Ok((key, _)) = item {
-                    batch.delete_cf(cf_inbox, key);
+        let inbox_key_prefix = format!("inbox_{}_message_", inbox_hash);
+        let iter = self.db.prefix_iterator_cf(cf_inbox, inbox_key_prefix.as_bytes());
+        for item in iter {
+            if let Ok((key, _)) = item {
+                let key_str = String::from_utf8(key.to_vec()).unwrap();
+                batch.delete_cf(cf_inbox, key);
+
+                // Delete parent / children keys if exist
+                if let Some(identifier_key) = Self::extract_identifier_key(&key_str) {
+                    // Split the composite key to get the hash key
+                    let split: Vec<&str> = identifier_key.split(":::").collect();
+                    let hash_key = if split.len() < 2 {
+                        // If the key does not contain ":::", assume it's a hash key
+                        identifier_key.clone()
+                    } else {
+                        split[1].to_string()
+                    };
+
+                    let message_parent_key = format!("inbox_{}_parent_{}", inbox_hash, hash_key);
+                    if let Some(parent_bytes) = self.db.get_cf(cf_inbox, message_parent_key.as_bytes())? {
+                        let parent_key_str = String::from_utf8(parent_bytes.to_vec()).unwrap();
+                        batch.delete_cf(cf_inbox, parent_bytes);
+
+                        if !parent_key_str.is_empty() {
+                            let parent_children_key = format!("inbox_{}_children_{}", inbox_hash, parent_key_str);
+                            if let Some(parent_children_bytes) =
+                                self.db.get_cf(cf_inbox, parent_children_key.as_bytes())?
+                            {
+                                batch.delete_cf(cf_inbox, parent_children_bytes);
+                            }
+                        }
+                    }
                 }
             }
         }
