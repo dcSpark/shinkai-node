@@ -1,13 +1,13 @@
 [package]
 name = "shinkai_node"
-version = "0.8.13"
+version = "0.8.14"
 edition = "2021"
 authors.workspace = true
 # this causes `cargo run` in the workspace root to run this package
 default-run = "shinkai_node"
 
 [build-dependencies]
-shinkai_tools_runner = { version = "0.7.19", features = ["built-in-tools"] }
+shinkai_tools_runner = { version = "0.8.0", features = ["built-in-tools"] }
 
 [features]
 default = []
