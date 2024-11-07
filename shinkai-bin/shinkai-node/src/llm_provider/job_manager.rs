@@ -494,8 +494,8 @@ impl JobManager {
         let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
             let mut content = job_message.clone().content;
-            if content.chars().count() > 30 {
-                let truncated_content: String = content.chars().take(30).collect();
+            if content.chars().count() > 120 {
+                let truncated_content: String = content.chars().take(120).collect();
                 content = format!("{}...", truncated_content);
             }
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();

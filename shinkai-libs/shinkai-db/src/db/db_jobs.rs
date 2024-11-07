@@ -28,8 +28,6 @@ impl ShinkaiDB {
         associated_ui: Option<AssociatedUI>,
         config: Option<JobConfig>,
     ) -> Result<(), ShinkaiDBError> {
-        let start = std::time::Instant::now();
-
         // Use shared CFs
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
@@ -116,14 +114,11 @@ impl ShinkaiDB {
         self.db.write(batch)?;
 
         let batch_write_duration = batch_write_start.elapsed();
-        println!("create_new_job Batch write took: {:?}", batch_write_duration);
-
-        let duration = start.elapsed();
         if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
             shinkai_log(
                 ShinkaiLogOption::Database,
                 ShinkaiLogLevel::Info,
-                format!("create_new_job execution time: {:?}", duration).as_str(),
+                format!("create_new_job batch_write_duration: {:?}", batch_write_duration).as_str(),
             );
         }
 
