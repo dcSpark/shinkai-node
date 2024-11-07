@@ -10,30 +10,30 @@ authors = ["Nico Arqueros <nico@shinkai.com>"]
 
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }
-serde_json = "1.0.117"
+serde_json = { workspace = true }
 serde-wasm-bindgen = "0.5"
 chacha20poly1305 = "0.7.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
-rand = "0.8.4"
+rand = { workspace = true }
 wasm-bindgen = "0.2.92"
-chrono = "0.4"
-chrono-tz = "0.5"
-regex = "1"
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+regex = { workspace = true }
 js-sys = "0.3"
-anyhow = "1.0.72"
+anyhow = { workspace = true }
 thiserror = "1.0.44"
 console_log = "0.2"
-log = "0.4.14"
+log = { workspace = true }
 env_logger = "0.10"
-hex = "=0.4.3"
-blake3 = "1.2.0"
+hex = { workspace = true }
+blake3 = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.10", features = ["js"] }
 
 [dependencies.serde]
-version = "1.0.188"
+workspace = true
 features = ["derive"]
 
 [lib]
@@ -44,9 +44,7 @@ wasm-bindgen-test = "0.3.37"
 
 [dependencies.web-sys]
 version = "0.3.64"
-features = [
-    'console',
-]
+features = ['console']
 
 [[test]]
 name = "shinkai_message_tests"

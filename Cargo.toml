@@ -45,3 +45,22 @@ shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
 shinkai_mini_libs = { path = "./shinkai-libs/shinkai-mini-libs" }
 shinkai_lancedb = { path = "./shinkai-libs/shinkai-lancedb" }
 shinkai_sqlite = { path = "./shinkai-libs/shinkai-sqlite" }
+futures = "0.3.30"
+
+tokio = { version = "1.36", features = ["full"] }
+tokio-util = "0.6"
+log = "0.4.20"
+chrono = "0.4"
+serde_json = "1.0.117"
+anyhow = "1.0"
+blake3 = "1.2.0"
+shinkai_tools_runner = "0.8.0"
+serde = "1.0.188"
+base64 = "0.22.0"
+reqwest = "0.11.26"
+regex = "1"
+rocksdb = { version = "0.22.0", default-features = false }
+uuid = { version = "1.6.1" }
+rand = "=0.8.5"
+chrono-tz = "0.5"
+hex = "=0.4.3"
