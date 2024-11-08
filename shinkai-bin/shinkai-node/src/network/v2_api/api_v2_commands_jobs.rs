@@ -709,6 +709,7 @@ impl Node {
         match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
+                    custom_system_prompt: None,
                     custom_prompt: None,
                     temperature: None,
                     seed: None,
@@ -717,6 +718,7 @@ impl Node {
                     stream: None,
                     max_tokens: None,
                     other_model_params: None,
+                    use_tools: None,
                 });
                 let _ = res.send(Ok(config)).await;
                 Ok(())

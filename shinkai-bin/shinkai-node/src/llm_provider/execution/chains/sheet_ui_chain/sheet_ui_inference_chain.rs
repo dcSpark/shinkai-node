@@ -214,13 +214,14 @@ impl SheetUIInferenceChain {
         let job_config = full_job.config();
         let mut tools = vec![];
         let stream = job_config.as_ref().and_then(|config| config.stream);
+        let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(true);
         let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
             llm_provider.clone(),
             db.clone(),
             stream,
         );
 
-        if use_tools {
+        if use_tools && tools_allowed {
             tools.extend(SheetRustFunctions::sheet_rust_fn());
 
             if let Some(tool_router) = &tool_router {
