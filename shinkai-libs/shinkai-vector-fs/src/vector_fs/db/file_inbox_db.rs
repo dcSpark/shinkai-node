@@ -31,8 +31,12 @@ impl VectorFSDB {
         //     .map_err(|_| VectorFSError::FailedFetchingValue)?;
 
         // Directly put the file content into the column family without using a write batch
-        self.put_cf(FSTopic::TempFilesInbox.as_str(), cf_name_encrypted_inbox.as_bytes(), file_content)
-            .map_err(|_| VectorFSError::FailedFetchingValue)?;
+        self.put_cf(
+            FSTopic::TempFilesInbox.as_str(),
+            cf_name_encrypted_inbox.as_bytes(),
+            file_content,
+        )
+        .map_err(|_| VectorFSError::FailedFetchingValue)?;
 
         Ok(())
     }

@@ -335,7 +335,7 @@ impl ShinkaiDB {
             let job_scope = JobScope::from_bytes(&scope_value)?;
             Ok::<MinimalJobScope, serde_json::Error>(MinimalJobScope::from(&job_scope))
         })?;
-        
+
         let mut scope_with_files: Option<JobScope> = None;
         if fetch_scope_with_files {
             let scope_with_files_value = if let Some(value) = self
@@ -757,10 +757,12 @@ impl ShinkaiDB {
         let job_associated_ui_key = format!("jobinbox_{}_associated_ui", job_id);
 
         let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
-        let inbox_searchable = format!(
+        let inbox_searchable_key = format!(
             "inbox_placeholder_value_to_match_prefix_abcdef_{}",
             job_inbox_name_content
         );
+        let inbox_read_list_key = format!("{}_read_list", job_inbox_name_content);
+        let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", job_inbox_name_content);
 
         // Start a write batch
         let mut batch = rocksdb::WriteBatch::default();
@@ -779,7 +781,9 @@ impl ShinkaiDB {
         batch.delete_cf(cf_inbox, job_read_list_key.as_bytes());
         batch.delete_cf(cf_inbox, job_config_key.as_bytes());
         batch.delete_cf(cf_inbox, job_associated_ui_key.as_bytes());
-        batch.delete_cf(cf_inbox, inbox_searchable.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_searchable_key.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_read_list_key.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_smart_inbox_name_key.as_bytes());
 
         let all_jobs_time_keyed_prefix = b"all_jobs_time_keyed_placeholder_to_fit_prefix__";
         let iter = self.db.prefix_iterator_cf(cf_inbox, all_jobs_time_keyed_prefix);
@@ -825,6 +829,44 @@ impl ShinkaiDB {
                 }
             } else {
                 break;
+            }
+        }
+
+        // Delete inbox messages
+        let inbox_hash = InboxName::new(inbox_name.to_string())?.hash_value_first_half();
+        let inbox_key_prefix = format!("inbox_{}_message_", inbox_hash);
+        let iter = self.db.prefix_iterator_cf(cf_inbox, inbox_key_prefix.as_bytes());
+        for item in iter {
+            if let Ok((key, _)) = item {
+                let key_str = String::from_utf8(key.to_vec()).unwrap();
+                batch.delete_cf(cf_inbox, key);
+
+                // Delete parent / children keys if exist
+                if let Some(identifier_key) = Self::extract_identifier_key(&key_str) {
+                    // Split the composite key to get the hash key
+                    let split: Vec<&str> = identifier_key.split(":::").collect();
+                    let hash_key = if split.len() < 2 {
+                        // If the key does not contain ":::", assume it's a hash key
+                        identifier_key.clone()
+                    } else {
+                        split[1].to_string()
+                    };
+
+                    let message_parent_key = format!("inbox_{}_parent_{}", inbox_hash, hash_key);
+                    if let Some(parent_bytes) = self.db.get_cf(cf_inbox, message_parent_key.as_bytes())? {
+                        let parent_key_str = String::from_utf8(parent_bytes.to_vec()).unwrap();
+                        batch.delete_cf(cf_inbox, parent_bytes);
+
+                        if !parent_key_str.is_empty() {
+                            let parent_children_key = format!("inbox_{}_children_{}", inbox_hash, parent_key_str);
+                            if let Some(parent_children_bytes) =
+                                self.db.get_cf(cf_inbox, parent_children_key.as_bytes())?
+                            {
+                                batch.delete_cf(cf_inbox, parent_children_bytes);
+                            }
+                        }
+                    }
+                }
             }
         }
 
