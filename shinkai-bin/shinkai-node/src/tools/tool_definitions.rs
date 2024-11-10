@@ -1,18 +1,15 @@
-pub mod definitions_custom;
 pub mod definitions_built_in_tools;
+pub mod definitions_custom;
 
-use serde_json::Value;
-use std::collections::HashMap;
+use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
 use std::sync::Arc;
-use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use tokio::sync::RwLock;
 
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
-use super::llm_language_support::generate_typescript::generate_typescript_definition;
 use super::llm_language_support::generate_python::generate_python_definition;
-use super::tool_definitions::definitions_custom::get_custom_tools;
+use super::llm_language_support::generate_typescript::generate_typescript_definition;
 use super::tool_definitions::definitions_built_in_tools::get_built_in_tools;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use super::tool_definitions::definitions_custom::get_custom_tools;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 #[derive(Debug)]
 struct ToolExecutionResult {
@@ -21,9 +18,7 @@ struct ToolExecutionResult {
     error: Option<String>,
 }
 
-pub async fn generate_tool_definitions(language: &str,
-             lance_db: Arc<RwLock<LanceShinkaiDb>>,
-) -> String {
+pub async fn generate_tool_definitions(language: Language, lance_db: Arc<RwLock<LanceShinkaiDb>>) -> String {
     let mut tools = get_built_in_tools();
     tools.extend(get_custom_tools());
 
@@ -31,45 +26,26 @@ pub async fn generate_tool_definitions(language: &str,
         Ok(data) => data,
         Err(_) => Vec::new(),
     };
-    
+
     let mut output = String::new();
-    
-    match language.to_lowercase().as_str() {
-        "typescript" | "ts" => {
+
+    match language {
+        Language::Typescript => {
             output.push_str("import axios from 'axios';\n\n");
         }
-        "python" | "py" => {
+        Language::Python => {
             output.push_str("import os\nimport requests\nfrom typing import TypedDict, Optional\n\n");
         }
         _ => return "Unsupported language".to_string(),
     }
 
     for (name, runner_def) in tools {
-        
         let tool_result = tools_data.iter().find(|header| header.toolkit_name == name);
-        
-        // match tool_result {
-        //     Some(header) => {
-        //         results.push(ToolExecutionResult {
-        //             name: name.clone(),
-        //             result: header.result.clone(),
-        //             error: header.error.clone(),
-        //         });
-        //     }
-        //     None => {
-        //         results.push(ToolExecutionResult {
-        //             name: name.clone(),
-        //             result: String::new(),
-        //             error: Some("No result found for tool".to_string()),
-        //         });
-        //     }
-        // }
-
-        match language.to_lowercase().as_str() {
-            "typescript" | "ts" => {
+        match language {
+            Language::Typescript => {
                 output.push_str(&generate_typescript_definition(name, &runner_def, tool_result));
             }
-            "python" | "py" => {
+            Language::Python => {
                 output.push_str(&generate_python_definition(name, &runner_def));
             }
             _ => unreachable!(),

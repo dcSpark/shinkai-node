@@ -3,7 +3,7 @@ use std::{collections::HashMap, net::SocketAddr};
 use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
-use serde_json::{Value, Map};
+use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
         coinbase_mpc_config::CoinbaseMPCWalletConfig,
@@ -41,6 +41,8 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 //     }
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
+
+use crate::api_v2::api_v2_handlers_tools::Language;
 
 use super::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
@@ -976,7 +978,31 @@ pub enum NodeCommand {
         res: Sender<Result<Value, APIError>>,
     },
     GenerateToolDefinitions {
-        language: String,
+        bearer: String,
+        language: Language,
         res: Sender<Result<Value, APIError>>,
-    }
+    },
+    GenerateToolImplementation {
+        bearer: String,
+        language: Language,
+        prompt: String,
+        code: Option<String>,
+        metadata: Option<String>,
+        output: Option<String>,
+        job_creation_info: JobCreationInfo,
+        llm_provider: String,
+        raw: bool,
+        fetch_query: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    GenerateToolMetadataImplementation {
+        bearer: String,
+        language: Language,
+        code: Option<String>,
+        metadata: Option<String>,
+        output: Option<String>,
+        job_creation_info: JobCreationInfo,
+        llm_provider: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }

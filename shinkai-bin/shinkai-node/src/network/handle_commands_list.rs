@@ -3034,11 +3034,12 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::ExecuteCommand { 
+            NodeCommand::ExecuteCommand {
                 bearer,
                 tool_router_key,
                 parameters,
-                res } => {
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db_clone = self.lance_db.clone();
                 let vector_fs_clone = self.vector_fs.clone();
@@ -3046,27 +3047,100 @@ impl Node {
                 let sheet_manager_clone = self.sheet_manager.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::execute_command(
-                        db_clone,
+                    let _ =
+                        Node::execute_command(bearer, db_clone, lance_db_clone, tool_router_key, parameters, res).await;
+                });
+            }
+            NodeCommand::GenerateToolDefinitions { bearer, language, res } => {
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::generate_tool_definitions(bearer, language, lance_db_clone, res).await;
+                });
+            }
+            NodeCommand::GenerateToolImplementation {
+                bearer,
+                language,
+                code,
+                metadata,
+                output,
+                prompt,
+                job_creation_info,
+                llm_provider,
+                raw,
+                fetch_query,
+                res,
+            } => {
+                let lance_db_clone = self.lance_db.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let node_name_clone = self.node_name.clone();
+                let db_clone = self.db.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::generate_tool_implementation(
                         bearer,
+                        language,
+                        code,
+                        metadata,
+                        output,
+                        prompt,
                         lance_db_clone,
-                        tool_router_key,
-                        parameters,
-                        res
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        job_creation_info,
+                        llm_provider,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        raw,
+                        fetch_query,
+                        res,
                     )
                     .await;
                 });
             }
-            NodeCommand::GenerateToolDefinitions {
+            NodeCommand::GenerateToolMetadataImplementation {
+                bearer,
                 language,
-                res
+                code,
+                metadata,
+                output,
+                job_creation_info,
+                llm_provider,
+                res,
             } => {
                 let lance_db_clone = self.lance_db.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let node_name_clone = self.node_name.clone();
+                let db_clone = self.db.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
                 tokio::spawn(async move {
-                    let _ = Node::generate_tool_definitions(
+                    let _ = Node::generate_tool_metadata_implementation(
+                        bearer,
                         language,
+                        code,
+                        metadata,
+                        output,
                         lance_db_clone,
-                        res
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        job_creation_info,
+                        llm_provider,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
                     )
                     .await;
                 });
