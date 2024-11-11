@@ -174,13 +174,14 @@ impl GenericInferenceChain {
         );
         let mut tools = vec![];
         let stream = job_config.as_ref().and_then(|config| config.stream);
+        let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(true);
         let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
             llm_provider.clone(),
             db.clone(),
             stream,
         );
 
-        if use_tools {
+        if use_tools && tools_allowed {
             // If the llm_provider is an Agent, retrieve tools directly from the Agent struct
             if let ProviderOrAgent::Agent(agent) = &llm_provider {
                 for tool_name in &agent.tools {
@@ -251,9 +252,17 @@ impl GenericInferenceChain {
             }
         });
 
+        let custom_system_prompt = job_config.and_then(|config| config.custom_system_prompt.clone()).or_else(|| {
+            if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                agent.config.as_ref().and_then(|config| config.custom_system_prompt.clone())
+            } else {
+                None
+            }
+        });
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
+            custom_system_prompt,
             custom_prompt,
-            None, // TODO: connect later on
             user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
