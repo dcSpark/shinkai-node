@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    usize,
+};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -705,6 +709,7 @@ impl Node {
         match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
+                    custom_system_prompt: None,
                     custom_prompt: None,
                     temperature: None,
                     seed: None,
@@ -713,6 +718,7 @@ impl Node {
                     stream: None,
                     max_tokens: None,
                     other_model_params: None,
+                    use_tools: None,
                 });
                 let _ = res.send(Ok(config)).await;
                 Ok(())
@@ -1352,6 +1358,7 @@ impl Node {
 
     pub async fn v2_remove_job(
         db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         bearer: String,
         job_id: String,
         res: Sender<Result<SendResponseBody, APIError>>,
@@ -1361,18 +1368,50 @@ impl Node {
             return Ok(());
         }
 
+        let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
+            Ok(inbox) => inbox.to_string(),
+            Err(_) => "".to_string(),
+        };
+
+        // Retrieve the messages from the inbox
+        let messages = match db.get_last_messages_from_inbox(inbox_name, usize::MAX - 1, None) {
+            Ok(messages) => messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the retrieved messages to Vec<V2ChatMessage>
+        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+            Ok(v2_messages) => v2_messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the file inboxes
+        let file_inboxes = v2_chat_messages
+            .iter()
+            .flatten()
+            .map(|message| message.job_message.files_inbox.clone())
+            .filter(|inbox| !inbox.is_empty())
+            .collect::<HashSet<_>>();
+
         // Remove the job
         match db.remove_job(&job_id) {
-            Ok(_) => {
-                let _ = res
-                    .send(Ok(SendResponseBody {
-                        status: "success".to_string(),
-                        message: "Job removed successfully".to_string(),
-                        data: None,
-                    }))
-                    .await;
-                Ok(())
-            }
+            Ok(_) => {}
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1380,9 +1419,34 @@ impl Node {
                     message: format!("Failed to remove job: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                Ok(())
+                return Ok(());
             }
         }
+
+        // Remove the file inboxes
+        for file_inbox in file_inboxes {
+            match vector_fs.db.remove_inbox(&file_inbox) {
+                Ok(_) => {}
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to remove file inbox: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        }
+
+        let _ = res
+            .send(Ok(SendResponseBody {
+                status: "success".to_string(),
+                message: "Job removed successfully".to_string(),
+                data: None,
+            }))
+            .await;
+        Ok(())
     }
 
     pub async fn v2_export_messages_from_inbox(
