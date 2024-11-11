@@ -20,7 +20,6 @@ use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
@@ -78,7 +77,7 @@ impl InferenceChain for SheetUIInferenceChain {
             self.sheet_id.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
-            self.context.sqlite_logger.clone(),
+            // self.context.sqlite_logger.clone(),
             self.context.llm_stopper.clone(),
         )
         .await?;
@@ -122,7 +121,7 @@ impl SheetUIInferenceChain {
         sheet_id: String,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        sqlite_logger: Option<Arc<SqliteLogger>>,
+        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
@@ -388,7 +387,7 @@ impl SheetUIInferenceChain {
                         sheet_manager.clone(),
                         my_agent_payments_manager.clone(),
                         ext_agent_payments_manager.clone(),
-                        sqlite_logger.clone(),
+                        // sqlite_logger.clone(),
                         llm_stopper.clone(),
                     );
                     // JS or workflow tool

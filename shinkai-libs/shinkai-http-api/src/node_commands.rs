@@ -27,7 +27,7 @@ use shinkai_message_primitives::{
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, APIWorkflowKeyname, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
+            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
             JobMessage, RegistrationCodeType, V2ChatMessage,
         },
     },
@@ -728,25 +728,6 @@ pub enum NodeCommand {
     V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiSetWorkflow {
-        bearer: String,
-        payload: APISetWorkflow,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiRemoveWorkflow {
-        bearer: String,
-        payload: APIWorkflowKeyname,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetWorkflowInfo {
-        bearer: String,
-        payload: APIWorkflowKeyname,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiListAllWorkflows {
-        bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiTools {

@@ -1,7 +1,6 @@
 [workspace]
 members = [
   "shinkai-libs/shinkai-crypto-identities",
-  "shinkai-libs/shinkai-dsl",
   "shinkai-libs/shinkai-sheet",
   "shinkai-libs/shinkai-fs-mirror",
   "shinkai-libs/shinkai-message-primitives",
@@ -18,7 +17,6 @@ members = [
   "shinkai-libs/shinkai-mini-libs",
   "shinkai-libs/shinkai-lancedb",
   "shinkai-libs/shinkai-spreadsheet-llm",
-  "shinkai-libs/shinkai-sqlite",
   "shinkai-bin/*",
 ]
 resolver = "2"
@@ -32,7 +30,6 @@ shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
 shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" }
 shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
 shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
-shinkai_dsl = { path = "./shinkai-libs/shinkai-dsl" }
 shinkai_sheet = { path = "./shinkai-libs/shinkai-sheet" }
 shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
 shinkai_vector_fs = { path = "./shinkai-libs/shinkai-vector-fs" }
@@ -44,4 +41,3 @@ shinkai_http_api = { path = "./shinkai-libs/shinkai-http-api" }
 shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
 shinkai_mini_libs = { path = "./shinkai-libs/shinkai-mini-libs" }
 shinkai_lancedb = { path = "./shinkai-libs/shinkai-lancedb" }
-shinkai_sqlite = { path = "./shinkai-libs/shinkai-sqlite" }

@@ -2,7 +2,6 @@
 mod tests {
     use std::sync::Arc;
 
-    use shinkai_dsl::parser::parse_workflow;
     use shinkai_message_primitives::schemas::sheet::{CellStatus, ColumnBehavior, ColumnDefinition};
     use shinkai_sheet::sheet::Sheet;
     use tokio::sync::Mutex;
@@ -20,22 +19,11 @@ mod tests {
             behavior: ColumnBehavior::Text,
         };
 
-        let workflow_str = r#"
-            workflow WorkflowTest v0.1 {
-                step Main {
-                    $RESULT = call opinionated_inference($INPUT)
-                }
-            }
-        "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         let column_llm = ColumnDefinition {
             id: column_llm_id.clone(),
             name: "LLM Call Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -161,15 +149,12 @@ mod tests {
             }
         }
         "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
 
         let column_llm = ColumnDefinition {
             id: column_llm_id.clone(),
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -249,22 +234,11 @@ mod tests {
             behavior: ColumnBehavior::Formula("=A + \" Processed\"".to_string()),
         };
 
-        let workflow_str = r#"
-        workflow WorkflowTest v0.1 {
-            step Main {
-                $RESULT = call opinionated_inference($INPUT)
-            }
-        }
-        "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         let column_c = ColumnDefinition {
             id: column_c_id.clone(),
             name: "Column C".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Summarize: $INPUT".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -482,22 +456,11 @@ mod tests {
             behavior: ColumnBehavior::Text,
         };
 
-        let workflow_str = r#"
-        workflow WorkflowTest v0.1 {
-            step Main {
-                $RESULT = call opinionated_inference($INPUT)
-            }
-        }
-        "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         let column_llm = ColumnDefinition {
             id: column_llm_id.clone(),
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "=A".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -612,22 +575,11 @@ mod tests {
         let column_llm_id = Uuid::new_v4().to_string();
         let column_formula_id = Uuid::new_v4().to_string();
 
-        let workflow_str = r#"
-        workflow WorkflowTest v0.1 {
-            step Main {
-                $RESULT = call opinionated_inference($INPUT)
-            }
-        }
-        "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         let column_llm = ColumnDefinition {
             id: column_llm_id.clone(),
             name: "LLM Call Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -715,24 +667,12 @@ mod tests {
                 .unwrap();
         }
 
-        // Define the workflow for the LLMCall column
-        let workflow_str = r#"
-             workflow WorkflowTest v0.1 {
-                 step Main {
-                     $RESULT = call opinionated_inference($INPUT)
-                 }
-             }
-             "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         // Add Column B as LLMCall and check if jobs are created
         let column_b = ColumnDefinition {
             id: column_b_id.clone(),
             name: "Column B".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "Say Hello World".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -782,24 +722,12 @@ mod tests {
             .await
             .unwrap();
 
-        // Define the workflow for the LLMCall column
-        let workflow_str = r#"
-         workflow WorkflowTest v0.1 {
-             step Main {
-                 $RESULT = call opinionated_inference($INPUT)
-             }
-         }
-         "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         // Add Column B as LLMCall and check if jobs are created
         let column_b = ColumnDefinition {
             id: column_b_id.clone(),
             name: "New Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "=\"Say Hello World in \" + A".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -890,24 +818,12 @@ mod tests {
             .await
             .unwrap();
 
-        // Define the workflow for the LLMCall column
-        let workflow_str = r#"
-        workflow WorkflowTest v0.1 {
-            step Main {
-                $RESULT = call opinionated_inference($INPUT)
-            }
-        }
-    "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         // Create an LLMCall column
         let column_llm = ColumnDefinition {
             id: column_llm_id.clone(),
             name: "LLM Call Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "=A".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },
@@ -943,24 +859,12 @@ mod tests {
         let mut sheet = Sheet::new();
         let column_ai_id = Uuid::new_v4().to_string();
 
-        // Define the workflow for the AI column
-        let workflow_str = r#"
-    workflow WorkflowTest v0.1 {
-        step Main {
-            $RESULT = call opinionated_inference($INPUT)
-        }
-    }
-    "#;
-        let workflow = parse_workflow(workflow_str).unwrap();
-
         // Create an AI column
         let column_ai = ColumnDefinition {
             id: column_ai_id.clone(),
             name: "AI Column".to_string(),
             behavior: ColumnBehavior::LLMCall {
                 input: "=\"Hello World\"".to_string(),
-                workflow: Some(workflow),
-                workflow_name: None,
                 llm_provider_name: "MockProvider".to_string(),
                 input_hash: None,
             },

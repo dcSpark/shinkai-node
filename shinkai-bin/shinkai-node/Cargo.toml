@@ -55,10 +55,9 @@ shinkai_tcp_relayer = { workspace = true }
 shinkai_vector_fs = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_lancedb = { workspace = true }
-shinkai_sqlite = { workspace = true }
+# shinkai_sqlite = { workspace = true }
 shinkai_sheet = { workspace = true }
 shinkai_baml = { workspace = true }
-shinkai_dsl = { workspace = true }
 shinkai_db = { workspace = true }
 bincode = "1.3.3"
 qrcode = "0.12"

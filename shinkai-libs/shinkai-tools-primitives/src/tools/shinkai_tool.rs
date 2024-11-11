@@ -9,7 +9,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     argument::ToolArgument, deno_tools::DenoTool, internal_tools::InternalTool, js_toolkit_headers::ToolConfig,
-    network_tool::NetworkTool, python_tools::PythonTool, workflow_tool::WorkflowTool,
+    network_tool::NetworkTool, python_tools::PythonTool,
 };
 
 pub type IsEnabled = bool;
@@ -19,7 +19,6 @@ pub type IsEnabled = bool;
 pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
     JS(JSTool, IsEnabled),
-    Workflow(WorkflowTool, IsEnabled),
     Network(NetworkTool, IsEnabled),
     Deno(DenoTool, IsEnabled),
     Python(PythonTool, IsEnabled),
@@ -76,9 +75,6 @@ impl ShinkaiTool {
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
         match self {
-            ShinkaiTool::Workflow(w, _) => {
-                Self::gen_router_key("local".to_string(), w.workflow.author.clone(), w.get_name())
-            }
             ShinkaiTool::Network(n, _) => {
                 Self::gen_router_key(n.provider.to_string(), n.toolkit_name.clone(), n.name.clone())
             }
@@ -110,7 +106,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
             ShinkaiTool::JS(j, _) => j.name.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_name(),
             ShinkaiTool::Network(n, _) => n.name.clone(),
             ShinkaiTool::Deno(d, _) => d.name.clone(),
             ShinkaiTool::Python(p, _) => p.name.clone(),
@@ -122,7 +117,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.description.clone(),
             ShinkaiTool::JS(j, _) => j.description.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_description(),
             ShinkaiTool::Network(n, _) => n.description.clone(),
             ShinkaiTool::Deno(d, _) => d.description.clone(),
             ShinkaiTool::Python(p, _) => p.description.clone(),
@@ -135,7 +129,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.toolkit_name(),
             ShinkaiTool::JS(j, _) => j.toolkit_name.clone(),
-            ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
             ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
             ShinkaiTool::Deno(d, _) => d.toolkit_name(),
             ShinkaiTool::Python(p, _) => p.toolkit_name(),
@@ -148,7 +141,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.input_args.clone(),
             ShinkaiTool::JS(j, _) => j.input_args.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_input_args(),
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
             ShinkaiTool::Deno(d, _) => d.input_args.clone(),
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
@@ -161,7 +153,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, _) => "Rust",
             ShinkaiTool::JS(_, _) => "JS",
-            ShinkaiTool::Workflow(_, _) => "Workflow",
             ShinkaiTool::Network(_, _) => "Network",
             ShinkaiTool::Deno(_, _) => "Deno",
             ShinkaiTool::Python(_, _) => "Python",
@@ -184,7 +175,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
             ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
-            ShinkaiTool::Workflow(w, _) => w.embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
             ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
             ShinkaiTool::Python(p, _) => p.tool_embedding = Some(embedding),
@@ -243,7 +233,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
             ShinkaiTool::JS(j, _) => j.embedding.clone(),
-            ShinkaiTool::Workflow(w, _) => w.embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
             ShinkaiTool::Deno(d, _) => d.embedding.clone(),
             ShinkaiTool::Python(p, _) => p.tool_embedding.clone(),
@@ -264,7 +253,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
             ShinkaiTool::JS(j, _) => j.author.clone(),
-            ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
             ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
             ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
@@ -277,7 +265,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
             ShinkaiTool::JS(_j, _) => "v0.1".to_string(),
-            ShinkaiTool::Workflow(w, _) => w.workflow.version.clone(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
@@ -299,7 +286,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled,
             ShinkaiTool::JS(_, enabled) => *enabled,
-            ShinkaiTool::Workflow(_, enabled) => *enabled,
             ShinkaiTool::Network(_, enabled) => *enabled,
             ShinkaiTool::Deno(_, enabled) => *enabled,
             ShinkaiTool::Python(_, enabled) => *enabled,
@@ -312,7 +298,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = true,
             ShinkaiTool::JS(_, enabled) => *enabled = true,
-            ShinkaiTool::Workflow(_, enabled) => *enabled = true,
             ShinkaiTool::Network(_, enabled) => *enabled = true,
             ShinkaiTool::Deno(_, enabled) => *enabled = true,
             ShinkaiTool::Python(_, enabled) => *enabled = true,
@@ -325,7 +310,6 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = false,
             ShinkaiTool::JS(_, enabled) => *enabled = false,
-            ShinkaiTool::Workflow(_, enabled) => *enabled = false,
             ShinkaiTool::Network(_, enabled) => *enabled = false,
             ShinkaiTool::Deno(_, enabled) => *enabled = false,
             ShinkaiTool::Python(_, enabled) => *enabled = false,
@@ -346,7 +330,6 @@ impl ShinkaiTool {
     pub fn can_be_enabled(&self) -> bool {
         match self {
             ShinkaiTool::Rust(_, _) => true,
-            ShinkaiTool::Workflow(_, _) => true,
             ShinkaiTool::JS(js_tool, _) => js_tool.check_required_config_fields(),
             ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
             ShinkaiTool::Deno(_, _) => true,
@@ -374,11 +357,6 @@ impl ShinkaiTool {
     /// Check if the tool is JS-based
     pub fn is_js_based(&self) -> bool {
         matches!(self, ShinkaiTool::JS(_, _))
-    }
-
-    /// Check if the tool is Workflow-based
-    pub fn is_workflow_based(&self) -> bool {
-        matches!(self, ShinkaiTool::Workflow(_, _))
     }
 
     /// Check if the tool is Workflow-based
