@@ -45,7 +45,7 @@ pub async fn execute_tool(
             )
             .await
         }
-        ToolType::DenoDynamic => execute_deno_tool(tool_router_key.clone(), parameters, extra_config),
+        ToolType::DenoDynamic => execute_deno_tool(bearer.clone(), parameters, extra_config),
         ToolType::PythonDynamic => execute_python_tool(tool_router_key.clone(), parameters, extra_config),
         ToolType::Internal => execute_custom_tool(&tool_router_key, parameters, extra_config),
         _ => Err(ToolError::ExecutionError(format!("Unknown tool type: {}", tool_type))),

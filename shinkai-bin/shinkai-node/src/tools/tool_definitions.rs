@@ -1,7 +1,7 @@
 pub mod definitions_built_in_tools;
 pub mod definitions_custom;
 
-use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
+use shinkai_http_api::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -43,7 +43,12 @@ pub async fn generate_tool_definitions(language: Language, lance_db: Arc<RwLock<
         let tool_result = tools_data.iter().find(|header| header.toolkit_name == name);
         match language {
             Language::Typescript => {
-                output.push_str(&generate_typescript_definition(name, &runner_def, tool_result));
+                output.push_str(&generate_typescript_definition(
+                    ToolType::JS,
+                    name,
+                    &runner_def,
+                    tool_result,
+                ));
             }
             Language::Python => {
                 output.push_str(&generate_python_definition(name, &runner_def));

@@ -48,6 +48,7 @@ impl DenoTool {
 
     pub fn run_on_demand(
         &self,
+        bearer: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
@@ -91,6 +92,7 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("Running JSTool with config: {:?}", config);
                     println!("Running JSTool with input: {:?}", parameters);
+                    code.replace("process.env.BEARER", &bearer);
                     let tool = Tool::new(
                         code,
                         config_json,

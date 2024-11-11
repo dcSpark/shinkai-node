@@ -33,6 +33,7 @@
 */
 use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
+use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolType;
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
 use super::language_helpers::to_camel_case;
@@ -57,6 +58,7 @@ fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> S
 }
 
 pub fn generate_typescript_definition(
+    tool_type: ToolType,
     name: String,
     runner_def: &ToolDefinition,
     tool_result: Option<&ShinkaiToolHeader>,
@@ -170,6 +172,7 @@ pub fn generate_typescript_definition(
     ));
     typescript_output.push_str("    const data = {\n");
     typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool_router_key));
+    typescript_output.push_str(&format!("        tool_type: '{}',\n", tool_type));
     typescript_output.push_str("        parameters: {\n");
     if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
         for (param_name, _) in properties {

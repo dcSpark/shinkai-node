@@ -4,7 +4,7 @@ use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 pub fn execute_deno_tool(
-    tool_router_key: String,
+    bearer: String,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
 ) -> Result<Value, ToolError> {
@@ -38,7 +38,7 @@ pub fn execute_deno_tool(
     execution_parameters.remove("code");
 
     // Run the tool and convert the RunResult to Value
-    match tool.run_on_demand(execution_parameters, extra_config) {
+    match tool.run_on_demand(bearer, execution_parameters, extra_config) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }
