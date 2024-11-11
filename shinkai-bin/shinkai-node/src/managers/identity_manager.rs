@@ -253,15 +253,6 @@ impl IdentityManager {
         }
     }
 
-    pub async fn search_local_llm_provider(
-        &self,
-        agent_id: &str,
-        profile: &ShinkaiName,
-    ) -> Option<SerializedLLMProvider> {
-        let db_arc = self.db.upgrade()?;
-        db_arc.get_llm_provider(agent_id, profile).ok().flatten()
-    }
-
     // Primarily for testing
     pub fn get_all_subidentities_devices_and_llm_providers(&self) -> Vec<Identity> {
         self.local_identities.clone()
@@ -396,11 +387,11 @@ impl IdentityManagerTrait for IdentityManager {
                         IdentityPermissions::None,
                     ))
                 }
-                Err(_) => Err("Failed to get first address".to_string()),
+                Err(e) => Err(format!("Failed to get first address: {}", e)),
             },
-            Err(_) => Err(format!(
-                "Failed to get identity network manager for profile name: {}",
-                full_profile_name
+            Err(e) => Err(format!(
+                "Failed to get identity network manager for profile name: {} with error: {}",
+                full_profile_name, e
             )),
         }
     }

@@ -13,12 +13,14 @@ use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_p
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
-use std::net::{AddrParseError, SocketAddr};
+use std::net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::{Duration, UNIX_EPOCH};
 use tokio::net::lookup_host;
 use tokio::task;
+use trust_dns_resolver::config::*;
+use trust_dns_resolver::TokioAsyncResolver;
 use x25519_dalek::PublicKey;
 
 lazy_static! {
@@ -127,13 +129,49 @@ impl OnchainIdentity {
         match address.parse::<SocketAddr>() {
             Ok(addr) => Ok(addr),
             Err(_) => {
-                // If direct parsing fails, attempt DNS resolution
-                let resolved_addresses = lookup_host(address)
+                // Attempt a normal DNS lookup first
+                if let Ok(mut addrs) = lookup_host(address.clone()).await {
+                    if let Some(addr) = addrs.next() {
+                        return Ok(addr);
+                    }
+                }
+
+                // Split the address into host and port parts
+                let (host, port) = match address.rsplit_once(':') {
+                    Some((h, p)) => (h, p.parse().unwrap_or(9552)),
+                    None => (address.as_str(), 9552),
+                };
+
+                // Configure resolver with Google DNS and relaxed options
+                let mut opts = ResolverOpts::default();
+                opts.validate = false; // Disable strict validation
+                opts.use_hosts_file = false; // Don't check hosts file
+
+                let resolver = TokioAsyncResolver::tokio(
+                    ResolverConfig::from_parts(
+                        None,
+                        vec![],
+                        NameServerConfigGroup::from_ips_clear(
+                            &[
+                                IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), // Cloudflare DNS primary
+                                IpAddr::V4(Ipv4Addr::new(1, 0, 0, 1)), // Cloudflare DNS secondary
+                            ],
+                            53,
+                            true,
+                        ),
+                    ),
+                    opts,
+                );
+
+                let resolved_addresses = resolver
+                    .lookup_ip(host)
                     .await
                     .map_err(|e| ShinkaiRegistryError::CustomError(format!("DNS resolution error: {}", e)))?;
+
                 resolved_addresses
-                    .into_iter()
+                    .iter()
                     .next()
+                    .map(|ip| SocketAddr::new(ip, port))
                     .ok_or_else(|| ShinkaiRegistryError::CustomError("No address resolved".to_string()))
             }
         }
@@ -342,6 +380,7 @@ impl ShinkaiRegistry {
                 Ok(result) => {
                     let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
                     let last_updated = DateTime::<Utc>::from(last_updated);
+                    eprintln!("result: {:?}", result);
 
                     return Ok(OnchainIdentity {
                         shinkai_identity: identity,

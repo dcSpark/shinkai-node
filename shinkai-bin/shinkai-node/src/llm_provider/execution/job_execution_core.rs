@@ -16,6 +16,7 @@ use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_dsl::parser::parse_workflow;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata, WSTopic};
@@ -118,6 +119,7 @@ impl JobManager {
             user_profile.clone(),
             None,
             generator.clone(),
+            ws_manager.clone(),
         )
         .await;
         if let Err(e) = process_files_result {
@@ -257,7 +259,7 @@ impl JobManager {
         job_message: JobMessage,
         message_hash_id: Option<String>,
         full_job: Job,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -393,7 +395,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -547,7 +549,7 @@ impl JobManager {
         job_message: &JobMessage,
         message_hash_id: Option<String>,
         message_content: String,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -561,7 +563,19 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
-        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+        let model = {
+            if let ProviderOrAgent::LLMProvider(llm_provider) = llm_provider.clone() {
+                &llm_provider.model.clone()
+            } else {
+                // If it's an agent, we need to get the LLM provider from the agent
+                let llm_id = llm_provider.get_llm_provider_id();
+                let llm_provider = db
+                    .get_llm_provider(llm_id, &user_profile)?
+                    .ok_or(LLMProviderError::LLMProviderNotFound)?;
+                &llm_provider.model.clone()
+            }
+        };
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&model);
         let parsed_user_message = ParsedUserMessage::new(message_content);
         let full_execution_context = full_job.execution_context.clone();
         let empty_files = HashMap::new();
@@ -573,7 +587,7 @@ impl JobManager {
             parsed_user_message,
             message_hash_id,
             empty_files,
-            llm_provider,
+            llm_provider.clone(),
             full_execution_context,
             generator,
             user_profile.clone(),
@@ -647,7 +661,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
-        llm_provider_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
@@ -694,6 +708,7 @@ impl JobManager {
                     user_profile.clone(),
                     None,
                     generator.clone(),
+                    ws_manager.clone(),
                 )
                 .await?;
             }
@@ -707,7 +722,9 @@ impl JobManager {
                         .map_err(|e| LLMProviderError::InvalidVRPath(e.to_string()))?,
                     source: VRSourceReference::None,
                 };
-                mutable_job.scope.vector_fs_items.push(vector_fs_entry);
+
+                // Unwrap the scope_with_files since you are sure it is always Some
+                mutable_job.scope_with_files.as_mut().unwrap().vector_fs_items.push(vector_fs_entry);
             }
 
             // Determine the workflow to use
@@ -819,86 +836,145 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         files: Vec<(String, Vec<u8>)>,
-        agent_found: Option<SerializedLLMProvider>,
+        agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
+        // TODO: sync with Paul about format
+        // // Send WS message indicating file processing is starting
+        // if let Some(ref manager) = ws_manager {
+        //     let m = manager.lock().await;
+        //     let metadata = WSMetadata {
+        //         id: Some(full_job.job_id().to_string()),
+        //         is_done: false,
+        //         done_reason: Some("Starting file processing".to_string()),
+        //         total_duration: None,
+        //         eval_count: None,
+        //     };
+
+        //     let ws_message_type = WSMessageType::Metadata(metadata);
+        //     let _ = m
+        //         .queue_message(
+        //             WSTopic::Inbox,
+        //             full_job.job_id().to_string(),
+        //             "Processing files...".to_string(),
+        //             ws_message_type,
+        //             false,
+        //         )
+        //         .await;
+        // }
+
+        // Start timing the file processing
+        let start_time = Instant::now();
+
         // Process the files
         let new_scope_entries_result = JobManager::process_files_inbox(
             db.clone(),
             vector_fs.clone(),
             agent_found,
-            files,
+            files.clone(),
             profile,
             save_to_vector_fs_folder,
             generator,
         )
         .await;
 
+        // Calculate processing duration
+        let processing_duration = start_time.elapsed();
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("File processing took: {:?}", processing_duration),
+        );
+
+        // // Send WS message indicating file processing is complete
+        // if let Some(ref manager) = ws_manager {
+        //     let m = manager.lock().await;
+        //     let metadata = WSMetadata {
+        //         id: Some(full_job.job_id().to_string()),
+        //         is_done: false,
+        //         done_reason: Some("File processing complete".to_string()),
+        //         total_duration: None,
+        //         eval_count: None,
+        //     };
+
+        //     let ws_message_type = WSMessageType::Metadata(metadata);
+        //     let _ = m
+        //         .queue_message(
+        //             WSTopic::Inbox,
+        //             full_job.job_id().to_string(),
+        //             "Files processed successfully".to_string(),
+        //             ws_message_type,
+        //             true,
+        //         )
+        //         .await;
+        // }
+
         match new_scope_entries_result {
             Ok(new_scope_entries) => {
-                for (_, value) in new_scope_entries {
-                    match value {
-                        ScopeEntry::LocalScopeVRKai(local_entry) => {
-                            if !full_job.scope.local_vrkai.contains(&local_entry) {
-                                full_job.scope.local_vrkai.push(local_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate LocalScopeVRKaiEntry detected",
-                                );
+                // Safely unwrap the scope_with_files
+                let job_id = full_job.job_id().to_string();
+                if let Some(ref mut scope_with_files) = full_job.scope_with_files {
+                    // Update the job scope with new entries
+                    for (_filename, scope_entry) in new_scope_entries {
+                        match scope_entry {
+                            ScopeEntry::LocalScopeVRKai(local_entry) => {
+                                if !scope_with_files.local_vrkai.contains(&local_entry) {
+                                    scope_with_files.local_vrkai.push(local_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate LocalScopeVRKaiEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::LocalScopeVRPack(local_entry) => {
-                            if !full_job.scope.local_vrpack.contains(&local_entry) {
-                                full_job.scope.local_vrpack.push(local_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate LocalScopeVRPackEntry detected",
-                                );
+                            ScopeEntry::LocalScopeVRPack(local_entry) => {
+                                if !scope_with_files.local_vrpack.contains(&local_entry) {
+                                    scope_with_files.local_vrpack.push(local_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate LocalScopeVRPackEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::VectorFSItem(fs_entry) => {
-                            if !full_job.scope.vector_fs_items.contains(&fs_entry) {
-                                full_job.scope.vector_fs_items.push(fs_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate VectorFSScopeEntry detected",
-                                );
+                            ScopeEntry::VectorFSItem(fs_entry) => {
+                                if !scope_with_files.vector_fs_items.contains(&fs_entry) {
+                                    scope_with_files.vector_fs_items.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
                             }
-                        }
-                        ScopeEntry::VectorFSFolder(fs_entry) => {
-                            if !full_job.scope.vector_fs_folders.contains(&fs_entry) {
-                                full_job.scope.vector_fs_folders.push(fs_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate VectorFSScopeEntry detected",
-                                );
-                            }
-                        }
-                        ScopeEntry::NetworkFolder(nf_entry) => {
-                            if !full_job.scope.network_folders.contains(&nf_entry) {
-                                full_job.scope.network_folders.push(nf_entry);
-                            } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    "Duplicate VectorFSScopeEntry detected",
-                                );
+                            ScopeEntry::VectorFSFolder(fs_entry) => {
+                                if !scope_with_files.vector_fs_folders.contains(&fs_entry) {
+                                    scope_with_files.vector_fs_folders.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
                             }
                         }
                     }
+                    db.update_job_scope(job_id, scope_with_files.clone())?;
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        "No scope_with_files found in full_job",
+                    );
                 }
-                db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
             }
             Err(e) => {
                 shinkai_log(
@@ -919,11 +995,12 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedLLMProvider>,
+        agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         eprintln!("full_job: {:?}", full_job);
         eprintln!("job_message: {:?}", job_message);
@@ -954,6 +1031,7 @@ impl JobManager {
                 profile,
                 save_to_vector_fs_folder,
                 generator,
+                ws_manager,
             )
             .await?;
         }
@@ -968,11 +1046,12 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         files_inbox: String,
         file_names: Vec<String>,
-        agent_found: Option<SerializedLLMProvider>,
+        agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         eprintln!("full_job: {:?}", full_job);
         eprintln!("files_inbox: {:?}", files_inbox);
@@ -1010,6 +1089,7 @@ impl JobManager {
                 profile,
                 save_to_vector_fs_folder,
                 generator,
+                ws_manager,
             )
             .await?;
         }
@@ -1064,9 +1144,9 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        _db: Arc<ShinkaiDB>,
+        db: Arc<ShinkaiDB>,
         _vector_fs: Arc<VectorFS>,
-        agent: Option<SerializedLLMProvider>,
+        agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,
         _profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
@@ -1101,7 +1181,7 @@ impl JobManager {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
-        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone()).await?;
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), db.clone()).await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

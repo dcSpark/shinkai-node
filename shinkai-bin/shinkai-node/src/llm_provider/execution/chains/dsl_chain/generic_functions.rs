@@ -1,7 +1,7 @@
 use futures::{future::join_all, StreamExt};
 use serde_json::json;
 use shinkai_message_primitives::{
-    schemas::subprompts::SubPrompt,
+    schemas::{job::JobLike, subprompts::SubPrompt},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use std::{any::Any, collections::HashMap};
@@ -220,7 +220,7 @@ pub fn process_embeddings_in_job_scope(
             .block_on(async {
                 let vector_fs = context.vector_fs();
                 let user_profile = context.user_profile();
-                let scope = context.full_job().scope.clone();
+                let scope = context.full_job().scope_with_files().clone().unwrap();
 
                 let resource_stream =
                     JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile)
@@ -285,7 +285,7 @@ pub fn process_embeddings_in_job_scope_with_metadata(
             .block_on(async {
                 let vector_fs = context.vector_fs();
                 let user_profile = context.user_profile();
-                let scope = context.full_job().scope.clone();
+                let scope = context.full_job().scope_with_files().clone().unwrap();
 
                 let resource_stream =
                     JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile)
@@ -357,7 +357,7 @@ pub fn search_embeddings_in_job_scope(
                 let db = context.db();
                 let vector_fs = context.vector_fs();
                 let user_profile = context.user_profile();
-                let job_scope = context.full_job().scope.clone();
+                let job_scope = context.full_job().scope_with_files().clone().unwrap();
                 let generator = context.generator();
 
                 let result = JobManager::keyword_chained_job_scope_vector_search(
@@ -399,6 +399,7 @@ pub fn search_embeddings_in_job_scope(
 #[cfg(test)]
 mod tests {
     use shinkai_db::db::ShinkaiDB;
+    use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
         LLMProviderInterface, OpenAI, SerializedLLMProvider,
     };
@@ -637,7 +638,7 @@ mod tests {
                 path: VRPath::root(),
                 name: "/".to_string(),
             }],
-            network_folders: Vec::new(),
+            vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
             .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
@@ -696,13 +697,9 @@ mod tests {
         let agent = SerializedLLMProvider {
             id: "test_agent_id".to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
         let image_files = HashMap::new();
 
@@ -717,7 +714,7 @@ mod tests {
             },
             None,
             image_files,
-            agent,
+            ProviderOrAgent::LLMProvider(agent),
             HashMap::new(),
             generator,
             ShinkaiName::default_testnet_localhost(),
@@ -772,7 +769,7 @@ mod tests {
                 path: VRPath::root(),
                 name: "/".to_string(),
             }],
-            network_folders: Vec::new(),
+            vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
             .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
@@ -832,13 +829,9 @@ mod tests {
         let agent = SerializedLLMProvider {
             id: "test_agent_id_with_query".to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
         let image_files = HashMap::new();
 
@@ -853,7 +846,7 @@ mod tests {
             },
             None,
             image_files,
-            agent,
+            ProviderOrAgent::LLMProvider(agent),
             HashMap::new(),
             generator,
             ShinkaiName::default_testnet_localhost(),
@@ -922,7 +915,7 @@ mod tests {
                 path: VRPath::root(),
                 name: "/".to_string(),
             }],
-            network_folders: Vec::new(),
+            vector_search_mode: Vec::new(),
         };
         shinkai_db_arc
             .create_new_job(job_id.clone(), agent_id.clone(), job_scope.clone(), false, None, None)
@@ -983,13 +976,9 @@ mod tests {
         let agent = SerializedLLMProvider {
             id: "test_agent_id".to_string(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
         let image_files = HashMap::new();
 
@@ -1004,7 +993,7 @@ mod tests {
             },
             None,
             image_files,
-            agent,
+            ProviderOrAgent::LLMProvider(agent),
             HashMap::new(),
             generator,
             ShinkaiName::default_testnet_localhost(),

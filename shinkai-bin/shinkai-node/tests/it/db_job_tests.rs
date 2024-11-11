@@ -63,10 +63,16 @@ fn generate_message_with_text(
 mod tests {
     use std::collections::{HashMap, HashSet};
 
-    use shinkai_db::db::db_errors::ShinkaiDBError;
+    use shinkai_db::{db::db_errors::ShinkaiDBError, schemas::inbox_permission::InboxPermission};
     use shinkai_message_primitives::{
-        schemas::{inbox_name::InboxName, job::ForkedJob, subprompts::SubPrompt},
-        shinkai_message::shinkai_message_schemas::JobMessage,
+        schemas::{
+            identity::{StandardIdentity, StandardIdentityType},
+            inbox_name::InboxName,
+            job::ForkedJob,
+            shinkai_name::ShinkaiName,
+            subprompts::SubPrompt,
+        },
+        shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage},
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair,
             job_scope::JobScope,
@@ -100,7 +106,7 @@ mod tests {
         // Check that the job has the correct properties
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
-        assert_eq!(job.parent_llm_provider_id, agent_id);
+        assert_eq!(job.parent_agent_or_llm_provider_id, agent_id);
         assert!(!job.is_finished);
     }
 
@@ -151,7 +157,7 @@ mod tests {
 
         // Retrieve the job and check that the agent has been updated
         let job = shinkai_db.get_job(&job_id).unwrap();
-        assert_eq!(job.parent_llm_provider_id, new_agent_id);
+        assert_eq!(job.parent_agent_or_llm_provider_id, new_agent_id);
 
         // Check that the job is listed under the new agent
         let new_agent_jobs = shinkai_db.get_agent_jobs(new_agent_id.clone()).unwrap();
@@ -974,5 +980,85 @@ mod tests {
         assert_eq!(job.forked_jobs[0].message_id, forked_message1_id);
         assert_eq!(job.forked_jobs[1].job_id, forked_job2_id);
         assert_eq!(job.forked_jobs[1].message_id, forked_message2_id);
+    }
+
+    #[tokio::test]
+    async fn test_remove_job() {
+        setup();
+        let job1_id = "job1".to_string();
+        let job2_id = "job2".to_string();
+        let agent_id = "agent1".to_string();
+        let scope = JobScope::new_default();
+        let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Create new jobs
+        create_new_job(&mut shinkai_db, job1_id.clone(), agent_id.clone(), scope.clone());
+        create_new_job(&mut shinkai_db, job2_id.clone(), agent_id.clone(), scope);
+
+        // Check smart_inboxes
+        let node1_identity_name = "@@node1.shinkai";
+        let node1_subidentity_name = "main_profile_node1";
+        let (_, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let (_, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+        let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+        let node1_profile_identity = StandardIdentity::new(
+            ShinkaiName::from_node_and_profile_names(
+                node1_identity_name.to_string(),
+                node1_subidentity_name.to_string(),
+            )
+            .unwrap(),
+            None,
+            node1_encryption_pk.clone(),
+            node1_identity_pk.clone(),
+            Some(node1_subencryption_pk),
+            Some(node1_subidentity_pk),
+            StandardIdentityType::Profile,
+            IdentityPermissions::Standard,
+        );
+
+        let _ = shinkai_db.insert_profile(node1_profile_identity.clone());
+
+        let inbox1_name = InboxName::get_job_inbox_name_from_params(job1_id.clone()).unwrap();
+        let inbox2_name = InboxName::get_job_inbox_name_from_params(job2_id.clone()).unwrap();
+
+        shinkai_db
+            .add_permission(
+                &inbox1_name.to_string(),
+                &node1_profile_identity,
+                InboxPermission::Admin,
+            )
+            .unwrap();
+        shinkai_db
+            .add_permission(
+                &inbox2_name.to_string(),
+                &node1_profile_identity,
+                InboxPermission::Admin,
+            )
+            .unwrap();
+
+        let smart_inboxes = shinkai_db
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
+            .unwrap();
+        assert_eq!(smart_inboxes.len(), 2);
+
+        // Remove the first job
+        shinkai_db.remove_job(&job1_id).unwrap();
+
+        // Check if the job is removed
+        match shinkai_db.get_job(&job1_id) {
+            Ok(_) => panic!("Expected an error when getting a removed job"),
+            Err(e) => assert_eq!(e, ShinkaiDBError::DataNotFound),
+        }
+
+        // Check if the smart_inbox is removed
+        let smart_inboxes = shinkai_db
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
+            .unwrap();
+        assert_eq!(smart_inboxes.len(), 1);
+        assert!(smart_inboxes[0].inbox_id != inbox1_name.to_string());
     }
 }

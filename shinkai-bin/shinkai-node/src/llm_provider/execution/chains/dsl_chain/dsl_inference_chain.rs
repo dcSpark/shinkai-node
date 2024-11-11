@@ -15,7 +15,7 @@ use regex::Regex;
 use shinkai_baml::baml_builder::{BamlConfig, ClientConfig, GeneratorConfig};
 use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, job::JobLike},
+    schemas::{inbox_name::InboxName, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_sqlite::logger::{WorkflowLogEntry, WorkflowLogEntryStatus};
@@ -357,6 +357,7 @@ impl AsyncFunction for InferenceFunction {
             },
             None, // this is the config
             self.context.llm_stopper().clone(),
+            self.context.db().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -401,7 +402,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         // If both the scope and custom_system_prompt are not empty, we use an empty string
         // for the user_message and the custom_system_prompt as the query_text.
         // This allows for more focused searches based on the system prompt when a scope is provided.
-        let (effective_user_message, query_text) = if !full_job.scope().is_empty() && custom_system_prompt.is_some() {
+        let (effective_user_message, query_text) = if !full_job.scope_with_files().unwrap().is_empty() && custom_system_prompt.is_some() {
             ("".to_string(), custom_system_prompt.clone().unwrap_or_default())
         } else {
             (user_message.clone(), user_message.clone())
@@ -411,7 +412,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
         // TODO: extract files from args
 
         // If we need to search for nodes using the scope
-        let scope_is_empty = full_job.scope().is_empty();
+        let scope_is_empty = full_job.scope_with_files().unwrap().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
         let mut summary_node_text = None;
         if !scope_is_empty {
@@ -419,7 +420,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
-                full_job.scope(),
+                full_job.scope_with_files().unwrap(),
                 query_text.clone(),
                 user_profile,
                 generator.clone(),
@@ -460,6 +461,7 @@ impl AsyncFunction for OpinionatedInferenceFunction {
             },
             None, // this is the config
             self.context.llm_stopper().clone(),
+            self.context.db().clone(),
         )
         .await
         .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
@@ -507,23 +509,32 @@ impl AsyncFunction for BamlInference {
 
         // TODO: do we need the job for something?
         // let full_job = self.context.full_job();
-        let llm_provider = self.context.agent();
+        let llm_or_agent_provider = self.context.agent();
 
         let generator_config = GeneratorConfig::default();
 
-        // TODO: add support for other providers
-        let base_url = llm_provider.external_url.clone().unwrap_or_default();
-        let base_url = if base_url == "http://localhost:11434" || base_url == "http://localhost:11435" {
-            format!("{}/v1", base_url)
-        } else {
-            base_url
+        let llm_provider = match llm_or_agent_provider {
+            ProviderOrAgent::LLMProvider(provider) => provider,
+            ProviderOrAgent::Agent(agent) => {
+                let llm_provider_id = agent.llm_provider_id.clone();
+                let profile = agent.full_identity_name.clone();
+                let provider = self.context
+                    .db()
+                    .get_llm_provider(&llm_provider_id, &profile)
+                    .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+                &provider
+                    .as_ref()
+                    .ok_or_else(|| WorkflowError::ExecutionError("LLM provider not found".to_string()))?
+                    .clone()
+            }
         };
 
         let client_config = ClientConfig {
-            provider: llm_provider.get_provider_string(),
-            base_url,
+            provider: llm_provider.baml_provider_string(),
+            base_url: llm_provider.baml_provider_base_url(),
             model: llm_provider.get_model_string(),
             default_role: "user".to_string(),
+            api_key: llm_provider.api_key.clone(),
         };
         eprintln!("BamlInference> client_config: {:?}", client_config);
 
@@ -619,7 +630,15 @@ impl AsyncFunction for MultiInferenceFunction {
 
         let mut responses = Vec::new();
         let agent = self.context.agent();
-        let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+        let max_tokens = ModelCapabilitiesManager::get_max_input_tokens_for_provider_or_agent(
+            agent.clone(),
+            self.context.db().clone(),
+        );
+
+        let max_tokens = match max_tokens {
+            Some(tokens) => tokens,
+            None => return Err(WorkflowError::ExecutionError("Max tokens not found".to_string())),
+        };
 
         for text in split_texts.iter() {
             let inference_args = vec![

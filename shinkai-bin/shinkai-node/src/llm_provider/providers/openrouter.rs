@@ -89,7 +89,7 @@ impl LLMService for OpenRouter {
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
-                    "max_tokens": result.remaining_tokens,
+                    "max_tokens": result.remaining_output_tokens,
                 });
 
                 // Conditionally add functions to the payload if tools_json is not empty

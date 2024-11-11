@@ -10,13 +10,9 @@ use utoipa::ToSchema;
 pub struct SerializedLLMProvider {
     pub id: String,
     pub full_identity_name: ShinkaiName,
-    pub perform_locally: bool, // TODO: Remove this and update libs
     pub external_url: Option<String>,
     pub api_key: Option<String>,
     pub model: LLMProviderInterface,
-    pub toolkit_permissions: Vec<String>,
-    pub storage_bucket_permissions: Vec<String>,
-    pub allowed_message_senders: Vec<String>,
 }
 
 impl SerializedLLMProvider {
@@ -31,8 +27,24 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(_) => "gemini",
             LLMProviderInterface::Exo(_) => "exo",
             LLMProviderInterface::OpenRouter(_) => "openrouter",
+            LLMProviderInterface::Claude(_) => "claude",
         }
         .to_string()
+    }
+
+    pub fn baml_provider_string(&self) -> String {
+        match &self.model {
+            LLMProviderInterface::OpenAI(_) => "openai".to_string(),
+            LLMProviderInterface::TogetherAI(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Ollama(_) => "ollama".to_string(),
+            LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend".to_string(),
+            LLMProviderInterface::LocalLLM(_) => "local-llm".to_string(),
+            LLMProviderInterface::Groq(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
+            LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
+            LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
+            LLMProviderInterface::Claude(_) => "claude".to_string(),
+        }
     }
 
     pub fn get_model_string(&self) -> String {
@@ -46,6 +58,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
+            LLMProviderInterface::Claude(claude) => claude.model_type.clone(),
         }
     }
 
@@ -53,15 +66,27 @@ impl SerializedLLMProvider {
         SerializedLLMProvider {
             id: "mock_agent".to_string(),
             full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent".to_string()).unwrap(),
-            perform_locally: false,
             external_url: Some("https://api.example.com".to_string()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-4o-mini".to_string(),
             }),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
+        }
+    }
+
+    pub fn baml_provider_base_url(&self) -> Option<String> {
+        let mut base_url = self.external_url.clone().unwrap_or_default();
+
+        // Conditionally append "/v1" based on the model type
+        match &self.model {
+            LLMProviderInterface::OpenAI(_) | LLMProviderInterface::Ollama(_) => {
+                if !base_url.ends_with("/v1") {
+                    base_url = format!("{}/v1", base_url.trim_end_matches('/'));
+                }
+                Some(base_url)
+            }
+            LLMProviderInterface::Gemini(_) => None,
+            _ => Some(base_url),
         }
     }
 }
@@ -77,6 +102,7 @@ pub enum LLMProviderInterface {
     Gemini(Gemini),
     Exo(Exo),
     OpenRouter(OpenRouter),
+    Claude(Claude),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
@@ -168,6 +194,11 @@ pub struct TogetherAI {
     pub model_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct Claude {
+    pub model_type: String,
+}
+
 impl FromStr for LLMProviderInterface {
     type Err = ();
 
@@ -197,6 +228,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("openrouter:") {
             let model_type = s.strip_prefix("openrouter:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::OpenRouter(OpenRouter { model_type }))
+        } else if s.starts_with("claude:") {
+            let model_type = s.strip_prefix("claude:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::Claude(Claude { model_type }))
         } else {
             Err(())
         }
@@ -239,6 +273,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::OpenRouter(openrouter) => {
                 let model_type = format!("openrouter:{}", openrouter.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::Claude(claude) => {
+                let model_type = format!("claude:{}", claude.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -285,6 +323,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openrouter" => Ok(LLMProviderInterface::OpenRouter(OpenRouter {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "claude" => Ok(LLMProviderInterface::Claude(Claude {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
@@ -298,6 +339,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "exo",
                     "gemini",
                     "openrouter",
+                    "claude",
                 ],
             )),
         }

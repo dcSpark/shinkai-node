@@ -58,6 +58,7 @@ pub fn ollama_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
+
     // Calculate the remaining output tokens available
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
@@ -68,7 +69,8 @@ pub fn ollama_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     Ok(PromptResult {
         messages: PromptResultEnum::Value(messages_json),
         functions: None,
-        remaining_tokens: remaining_output_tokens,
+        remaining_output_tokens,
+        tokens_used: used_tokens,
     })
 }
 
@@ -178,7 +180,8 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
     Ok(PromptResult {
         messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
         functions: Some(tools_vec),
-        remaining_tokens: remaining_output_tokens,
+        remaining_output_tokens,
+        tokens_used: used_tokens,
     })
 }
 
@@ -255,7 +258,7 @@ mod tests {
 
         // Assert the results
         assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
-        assert!(result.remaining_tokens > 0);
+        assert!(result.remaining_output_tokens > 0);
     }
 
     #[test]

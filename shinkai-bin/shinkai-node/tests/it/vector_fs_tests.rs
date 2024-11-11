@@ -182,7 +182,7 @@ async fn test_vrkai_vrpack_vector_search() {
 
     // Perform vector search on VRPack
     let vrpack_search_results = vrpack
-        .dynamic_deep_vector_search(query_string, 100, 100, generator)
+        .dynamic_deep_vector_search(query_string, 100, 100, generator, vec![])
         .await
         .unwrap();
 
@@ -395,7 +395,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     let res = vector_fs
-        .deep_vector_search(&reader, query_string.clone(), 100, 100)
+        .deep_vector_search(&reader, query_string.clone(), 100, 100, vec![])
         .await
         .unwrap();
     assert_eq!(
@@ -417,7 +417,7 @@ async fn test_vector_fs_saving_reading() {
     let query_string = "What do you know about camels?".to_string();
     println!("Query String: {}", query_string);
     let res = vector_fs
-        .deep_vector_search(&reader, query_string.clone(), 100, 100)
+        .deep_vector_search(&reader, query_string.clone(), 100, 100, vec![])
         .await
         .unwrap();
     assert_eq!(
@@ -1405,13 +1405,9 @@ fn vector_search_multiple_embedding_models_test() {
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
-                    perform_locally: false,
                     api_key: Some("".to_string()),
                     external_url: Some(server.url()),
                     model: LLMProviderInterface::Ollama(ollama),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
                 };
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),

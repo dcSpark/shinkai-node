@@ -44,6 +44,7 @@ pub struct PaymentMetadata {
     pub invoice: Value,
     pub function_args: serde_json::Map<String, serde_json::Value>,
     pub wallet_balances: Value,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug)]

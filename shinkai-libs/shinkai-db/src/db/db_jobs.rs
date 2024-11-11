@@ -14,7 +14,7 @@ use shinkai_message_primitives::schemas::subprompts::SubPromptType;
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, MinimalJobScope};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
 
@@ -28,8 +28,6 @@ impl ShinkaiDB {
         associated_ui: Option<AssociatedUI>,
         config: Option<JobConfig>,
     ) -> Result<(), ShinkaiDBError> {
-        let start = std::time::Instant::now();
-
         // Use shared CFs
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
@@ -39,10 +37,14 @@ impl ShinkaiDB {
 
         // Generate time currently, used as a key. It should be safe because it's generated here so it shouldn't be duplicated.
         let current_time = ShinkaiStringTime::generate_time_now();
-        let scope_bytes = scope.to_bytes()?;
+        let scope_with_files_bytes = scope.to_bytes()?;
+
+        // Serialize the JSON value to a byte vector
+        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
 
         // Construct keys with job_id as part of the key
         let job_scope_key = format!("jobinbox_{}_scope", job_id);
+        let job_scope_with_files_key = format!("jobinbox_{}_scope_with_files", job_id);
         let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
         let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
         let job_parent_providerid = format!("jobinbox_{}_agentid", job_id);
@@ -70,6 +72,7 @@ impl ShinkaiDB {
 
         // Put Job Data into the DB
         batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
+        batch.put_cf(cf_inbox, job_scope_with_files_key.as_bytes(), &scope_with_files_bytes);
         batch.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"false");
         batch.put_cf(cf_inbox, job_datetime_created_key.as_bytes(), current_time.as_bytes());
         batch.put_cf(cf_inbox, job_parent_providerid.as_bytes(), llm_provider_id.as_bytes());
@@ -111,14 +114,11 @@ impl ShinkaiDB {
         self.db.write(batch)?;
 
         let batch_write_duration = batch_write_start.elapsed();
-        println!("create_new_job Batch write took: {:?}", batch_write_duration);
-
-        let duration = start.elapsed();
         if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
             shinkai_log(
                 ShinkaiLogOption::Database,
                 ShinkaiLogLevel::Info,
-                format!("create_new_job execution time: {:?}", duration).as_str(),
+                format!("create_new_job batch_write_duration: {:?}", batch_write_duration).as_str(),
             );
         }
 
@@ -191,23 +191,28 @@ impl ShinkaiDB {
         full_hash[..full_hash.len() / 2].to_string()
     }
 
-    /// Fetches a job from the DB
-    pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
+    /// Fetches a job from the DB with an option to fetch step history
+    pub fn get_job_with_options(
+        &self,
+        job_id: &str,
+        fetch_step_history: bool,
+        fetch_scope_with_files: bool,
+    ) -> Result<Job, ShinkaiDBError> {
         let start = std::time::Instant::now();
         let (
             scope,
+            scope_with_files,
             is_finished,
             is_hidden,
             datetime_created,
             parent_agent_id,
             conversation_inbox,
             step_history,
-            unprocessed_messages,
             execution_context,
             associated_ui,
             config,
             forked_jobs,
-        ) = self.get_job_data(job_id, true)?;
+        ) = self.get_job_data(job_id, fetch_step_history, fetch_scope_with_files)?;
 
         // Construct the job
         let job = Job {
@@ -215,11 +220,11 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             is_finished,
-            parent_llm_provider_id: parent_agent_id,
+            parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
+            scope_with_files,
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
-            unprocessed_messages,
             execution_context,
             associated_ui,
             config,
@@ -231,30 +236,36 @@ impl ShinkaiDB {
             shinkai_log(
                 ShinkaiLogOption::Database,
                 ShinkaiLogLevel::Info,
-                format!("get_job execution time: {:?}", duration).as_str(),
+                format!("get_job_with_options execution time: {:?}", duration).as_str(),
             );
         }
 
         Ok(job)
     }
 
-    /// Fetches a job from the DB as a Box<dyn JobLik>
+    /// Fetches a job from the DB
+    pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
+        self.get_job_with_options(job_id, true, true)
+    }
+
+    /// Fetches a job from the DB as a Box<dyn JobLike>
+    /// by default it does not fetch the step history but does fetch scope_with_files
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
         let start = std::time::Instant::now();
         let (
             scope,
+            scope_with_files,
             is_finished,
             is_hidden,
             datetime_created,
             parent_agent_id,
             conversation_inbox,
             _,
-            unprocessed_messages,
             execution_context,
             associated_ui,
             config,
             forked_jobs,
-        ) = self.get_job_data(job_id, false)?;
+        ) = self.get_job_data(job_id, false, true)?;
 
         // Construct the job
         let job = Job {
@@ -262,11 +273,11 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             is_finished,
-            parent_llm_provider_id: parent_agent_id,
+            parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
+            scope_with_files,
             conversation_inbox_name: conversation_inbox,
             step_history: Vec::new(), // Empty step history for JobLike
-            unprocessed_messages,
             execution_context,
             associated_ui,
             config,
@@ -291,16 +302,17 @@ impl ShinkaiDB {
         &self,
         job_id: &str,
         fetch_step_history: bool,
+        fetch_scope_with_files: bool,
     ) -> Result<
         (
-            JobScope,
+            MinimalJobScope,
+            Option<JobScope>,
             bool,
             bool,
             String,
             String,
             InboxName,
             Option<Vec<JobStepResult>>,
-            Vec<String>,
             HashMap<String, String>,
             Option<AssociatedUI>,
             Option<JobConfig>,
@@ -316,13 +328,39 @@ impl ShinkaiDB {
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_scope", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
-        let scope = JobScope::from_bytes(&scope_value)?;
+
+        // Attempt to deserialize into MinimalJobScope
+        let scope = MinimalJobScope::from_bytes(&scope_value).or_else(|_| {
+            // If it fails, try deserializing into JobScope and convert to MinimalJobScope
+            let job_scope = JobScope::from_bytes(&scope_value)?;
+            Ok::<MinimalJobScope, serde_json::Error>(MinimalJobScope::from(&job_scope))
+        })?;
+
+        let mut scope_with_files: Option<JobScope> = None;
+        if fetch_scope_with_files {
+            let scope_with_files_value = if let Some(value) = self
+                .db
+                .get_cf(cf_jobs, format!("jobinbox_{}_scope_with_files", job_id).as_bytes())?
+            {
+                value
+            } else {
+                // Try to get it from the scope if DataNotFound
+                self.db
+                    .get_cf(cf_jobs, format!("jobinbox_{}_scope", job_id).as_bytes())?
+                    .ok_or(ShinkaiDBError::DataNotFound)?
+            };
+
+            scope_with_files = Some(JobScope::from_bytes(&scope_with_files_value)?);
+        }
 
         let is_finished_value = self
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_is_finished", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let is_finished = std::str::from_utf8(&is_finished_value)? == "true";
+
+        // Start the timer
+        let start = Instant::now();
 
         let datetime_created_value = self
             .db
@@ -352,9 +390,6 @@ impl ShinkaiDB {
         // Reads all of the step history by iterating
         let step_history = self.get_step_history(job_id, fetch_step_history)?;
 
-        // Reads all of the unprocessed messages by iterating
-        let unprocessed_messages = self.get_unprocessed_messages(job_id)?;
-
         // Try to read associated_ui
         let associated_ui_value = self
             .db
@@ -374,13 +409,13 @@ impl ShinkaiDB {
 
         Ok((
             scope,
+            scope_with_files,
             is_finished,
             is_hidden,
             datetime_created,
             parent_agent_id,
             conversation_inbox,
             step_history,
-            unprocessed_messages,
             self.get_job_execution_context(job_id)?,
             associated_ui_value,
             config_value,
@@ -411,9 +446,17 @@ impl ShinkaiDB {
     /// Updates the JobScope of a job given it's id
     pub fn update_job_scope(&self, job_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
-        let scope_bytes = scope.to_bytes()?;
+
+        // Serialize the JSON value to a byte vector
+        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
+        let scope_with_files_bytes = scope.to_bytes()?;
+
         let job_scope_key = format!("jobinbox_{}_scope", &job_id);
-        self.db.put_cf(cf_jobs, job_scope_key.as_bytes(), scope_bytes)?;
+        self.db.put_cf(cf_jobs, job_scope_key.as_bytes(), &scope_bytes)?;
+
+        let job_scope_with_files_key = format!("jobinbox_{}_scope_with_files", &job_id);
+        self.db
+            .put_cf(cf_jobs, job_scope_with_files_key.as_bytes(), scope_with_files_bytes)?;
 
         Ok(())
     }
@@ -510,37 +553,6 @@ impl ShinkaiDB {
         }
 
         Ok(execution_context)
-    }
-
-    /// Fetches all unprocessed messages for a specific Job from the DB
-    fn get_unprocessed_messages(&self, job_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
-        let job_hash = Self::job_id_to_hash(job_id);
-        let prefix = format!("job_unprocess_{}_", job_hash);
-        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
-        let mut unprocessed_messages: Vec<String> = Vec::new();
-
-        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
-        for item in iter {
-            let (_key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
-            let message = std::str::from_utf8(&value)?.to_string();
-            unprocessed_messages.push(message);
-        }
-
-        Ok(unprocessed_messages)
-    }
-
-    /// Removes the oldest unprocessed message for a specific Job from the DB
-    pub fn remove_oldest_unprocessed_message(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
-        let job_hash = Self::job_id_to_hash(job_id);
-        let prefix = format!("job_unprocess_{}_", job_hash);
-        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
-
-        let mut iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
-        if let Some(Ok((key, _))) = iter.next() {
-            self.db.delete_cf(cf_inbox, &key)?;
-        }
-
-        Ok(())
     }
 
     /// Updates the Job to being finished
@@ -724,6 +736,146 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    /// Removes a job from the DB
+    pub fn remove_job(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox)?;
+
+        // Construct keys with job_id as part of the key
+        let job_scope_key = format!("jobinbox_{}_scope", job_id);
+        let job_scope_with_files_key = format!("jobinbox_{}_scope_with_files", job_id);
+        let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
+        let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
+        let job_parent_providerid = format!("jobinbox_{}_agentid", job_id);
+        let job_parent_llm_provider_id_key =
+            format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(&job_id), job_id);
+        let job_inbox_name = format!("jobinbox_{}_inboxname", job_id);
+        let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
+        let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
+        let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
+        let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
+        let job_config_key = format!("jobinbox_{}_config", job_id);
+        let job_associated_ui_key = format!("jobinbox_{}_associated_ui", job_id);
+
+        let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
+        let inbox_searchable_key = format!(
+            "inbox_placeholder_value_to_match_prefix_abcdef_{}",
+            job_inbox_name_content
+        );
+        let inbox_read_list_key = format!("{}_read_list", job_inbox_name_content);
+        let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", job_inbox_name_content);
+
+        // Start a write batch
+        let mut batch = rocksdb::WriteBatch::default();
+
+        // Delete the job attributes from the database
+        batch.delete_cf(cf_inbox, job_scope_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_scope_with_files_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_is_finished_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_datetime_created_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_parent_providerid.as_bytes());
+        batch.delete_cf(cf_inbox, job_parent_llm_provider_id_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_inbox_name.as_bytes());
+        batch.delete_cf(cf_inbox, job_conversation_inbox_name_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_smart_inbox_name_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_is_hidden_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_read_list_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_config_key.as_bytes());
+        batch.delete_cf(cf_inbox, job_associated_ui_key.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_searchable_key.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_read_list_key.as_bytes());
+        batch.delete_cf(cf_inbox, inbox_smart_inbox_name_key.as_bytes());
+
+        let all_jobs_time_keyed_prefix = b"all_jobs_time_keyed_placeholder_to_fit_prefix__";
+        let iter = self.db.prefix_iterator_cf(cf_inbox, all_jobs_time_keyed_prefix);
+        for item in iter {
+            let (key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
+            // The value is the job ID
+            let item_job_id = std::str::from_utf8(&value)?.to_string();
+
+            if item_job_id == job_id {
+                batch.delete_cf(cf_inbox, key);
+                break;
+            }
+        }
+
+        // Remove step history
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+        let mut until_offset_key: Option<String> = None;
+        loop {
+            let messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
+            if messages.is_empty() {
+                break;
+            }
+
+            for message_path in &messages {
+                if let Some(message) = message_path.first() {
+                    let message_key = message.calculate_message_hash_for_pagination();
+                    let hash_message_key = Self::message_key_to_hash(message_key);
+                    let prefix = format!("step_history__{}_", hash_message_key);
+                    let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+                    for item in iter {
+                        if let Ok((key, _)) = item {
+                            batch.delete_cf(cf_inbox, &key);
+                        }
+                    }
+                }
+            }
+
+            if let Some(last_message_path) = messages.last() {
+                if let Some(last_message) = last_message_path.first() {
+                    until_offset_key = Some(last_message.calculate_message_hash_for_pagination());
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Delete inbox messages
+        let inbox_hash = InboxName::new(inbox_name.to_string())?.hash_value_first_half();
+        let inbox_key_prefix = format!("inbox_{}_message_", inbox_hash);
+        let iter = self.db.prefix_iterator_cf(cf_inbox, inbox_key_prefix.as_bytes());
+        for item in iter {
+            if let Ok((key, _)) = item {
+                let key_str = String::from_utf8(key.to_vec()).unwrap();
+                batch.delete_cf(cf_inbox, key);
+
+                // Delete parent / children keys if exist
+                if let Some(identifier_key) = Self::extract_identifier_key(&key_str) {
+                    // Split the composite key to get the hash key
+                    let split: Vec<&str> = identifier_key.split(":::").collect();
+                    let hash_key = if split.len() < 2 {
+                        // If the key does not contain ":::", assume it's a hash key
+                        identifier_key.clone()
+                    } else {
+                        split[1].to_string()
+                    };
+
+                    let message_parent_key = format!("inbox_{}_parent_{}", inbox_hash, hash_key);
+                    if let Some(parent_bytes) = self.db.get_cf(cf_inbox, message_parent_key.as_bytes())? {
+                        let parent_key_str = String::from_utf8(parent_bytes.to_vec()).unwrap();
+                        batch.delete_cf(cf_inbox, parent_bytes);
+
+                        if !parent_key_str.is_empty() {
+                            let parent_children_key = format!("inbox_{}_children_{}", inbox_hash, parent_key_str);
+                            if let Some(parent_children_bytes) =
+                                self.db.get_cf(cf_inbox, parent_children_key.as_bytes())?
+                            {
+                                batch.delete_cf(cf_inbox, parent_children_bytes);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Commit the write batch
+        self.db.write(batch)?;
+
+        Ok(())
+    }
+
     pub fn add_forked_job(&self, job_id: &str, forked_job: ForkedJob) -> Result<(), ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
@@ -745,6 +897,7 @@ impl ShinkaiDB {
     /// Fetches all forked jobs for a specific Job from the DB
     fn get_forked_jobs(&self, job_id: &str) -> Result<Vec<ForkedJob>, ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        // TODO: this is wrong
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
 
         match self.db.get_cf(cf_inbox, forked_jobs_key.as_bytes()) {

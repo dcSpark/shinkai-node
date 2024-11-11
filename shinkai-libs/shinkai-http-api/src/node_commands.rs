@@ -10,7 +10,7 @@ use shinkai_message_primitives::{
         custom_prompt::CustomPrompt,
         identity::{Identity, StandardIdentity},
         job_config::JobConfig,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
@@ -27,8 +27,8 @@ use shinkai_message_primitives::{
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, APIWorkflowKeyname, IdentityPermissions, JobCreationInfo, JobMessage,
-            RegistrationCodeType, V2ChatMessage,
+            APIVecFsSearchItems, APIWorkflowKeyname, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
+            JobMessage, RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -43,6 +43,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::api_v2::api_v2_handlers_tools::Language;
+use crate::node_api_router::SendResponseBody;
 
 use super::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
@@ -565,6 +566,11 @@ pub enum NodeCommand {
         message_id: String,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiRemoveJob {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<SendResponseBody, APIError>>,
+    },
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,
         payload: APIVecFsRetrievePathSimplifiedJson,
@@ -934,6 +940,30 @@ pub enum NodeCommand {
         inbox_name: String,
         res: Sender<Result<(), APIError>>,
     },
+    V2ApiAddAgent {
+        bearer: String,
+        agent: Agent,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiRemoveAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiUpdateAgent {
+        bearer: String,
+        partial_agent: serde_json::Value,
+        res: Sender<Result<Agent, APIError>>,
+    },
+    V2ApiGetAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Agent, APIError>>,
+    },
+    V2ApiGetAllAgents {
+        bearer: String,
+        res: Sender<Result<Vec<Agent>, APIError>>,
+    },
     V2ApiRetryMessage {
         bearer: String,
         inbox_name: String,
@@ -1003,6 +1033,12 @@ pub enum NodeCommand {
         output: Option<String>,
         job_creation_info: JobCreationInfo,
         llm_provider: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExportMessagesFromInbox {
+        bearer: String,
+        inbox_name: String,
+        format: ExportInboxMessagesFormat,
         res: Sender<Result<Value, APIError>>,
     },
 }

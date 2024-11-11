@@ -23,7 +23,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
     // Separate messages into those with a user / assistant / system role and those without
-    let (mut messages_with_role, _tools): (Vec<_>, Vec<_>) = chat_completion_messages
+    let (mut messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
         .into_iter()
         .partition(|message| message.role.is_some());
 
@@ -73,6 +73,18 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
+    // Extract functions from tools
+    let functions_vec = tools.into_iter().filter_map(|tool| {
+        if let Some(function_call) = tool.function_call {
+            Some(serde_json::json!({
+                "name": function_call.name,
+                "arguments": function_call.arguments,
+            }))
+        } else {
+            None
+        }
+    }).collect::<Vec<_>>();
+
     // Separate system instruction from other messages
     let system_instruction = messages_vec
         .clone()
@@ -110,7 +122,11 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         "contents": contents.into_iter().map(|msg| {
             let role = msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()));
             let content = msg.get("content").cloned().unwrap_or(serde_json::Value::String("".to_string()));
-            let content = if let serde_json::Value::Array(content_array) = content {
+
+            // Check if content is a string and wrap it in an array
+            let content = if let serde_json::Value::String(text) = content {
+                vec![serde_json::json!({"text": text})]
+            } else if let serde_json::Value::Array(content_array) = content {
                 let mut parts = vec![];
                 for item in content_array {
                     if let serde_json::Value::Object(mut obj) = item {
@@ -124,19 +140,22 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 }
                 parts
             } else {
-                vec![]
+                vec![] // If content is neither a string nor an array, return an empty vector
             };
+
             serde_json::json!({
                 "role": role,
                 "parts": content
             })
-        }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>(),
+        // "functions": functions_vec
     });
 
     Ok(PromptResult {
         messages: PromptResultEnum::Value(result_json),
         functions: Some(vec![]),
-        remaining_tokens: remaining_output_tokens,
+        remaining_output_tokens,
+        tokens_used: used_tokens,
     })
 }
 
@@ -208,11 +227,12 @@ mod tests {
                         }
                     }]
                 }
-            ]
+            ],
+            // "functions": []
         });
 
         // Assert the results
         assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
-        assert!(result.remaining_tokens > 0);
+        assert!(result.remaining_output_tokens > 0);
     }
 }

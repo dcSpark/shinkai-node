@@ -4,7 +4,6 @@ use pyo3::wrap_pyfunction;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeVRKaiEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeVRPackEntry;
-use shinkai_message_primitives::shinkai_utils::job_scope::NetworkFolderScopeEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::VectorFSFolderScopeEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::VectorFSItemScopeEntry;
 
@@ -49,6 +48,5 @@ impl PyJobScope {
             && self.inner.local_vrpack.is_empty()
             && self.inner.vector_fs_folders.is_empty()
             && self.inner.vector_fs_items.is_empty()
-            && self.inner.network_folders.is_empty()
     }
 }

@@ -21,6 +21,7 @@ ethers = "2.0"
 dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
 lazy_static = "1.5.0"
+trust-dns-resolver = "0.23.2"
 
 [dependencies.serde]
 version = "1.0.188"

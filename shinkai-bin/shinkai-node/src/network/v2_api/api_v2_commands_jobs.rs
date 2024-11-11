@@ -1,11 +1,15 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    usize,
+};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
-use serde_json::Value;
+use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
         identity::Identity,
@@ -19,7 +23,8 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData},
         shinkai_message_schemas::{
-            APIChangeJobAgentRequest, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage,
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
+            V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -199,8 +204,8 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job(&job_message.job_id) {
-            Ok(job) => job.parent_llm_provider_id.clone(),
+        let llm_provider = match db.get_job_with_options(&job_message.job_id, false, false) {
+            Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -655,7 +660,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the config
                 match db.update_job_config(&job_id, config) {
@@ -701,7 +706,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_prompt: None,
@@ -991,7 +996,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
                 match db.update_job_scope(job_id.clone(), job_scope.clone()) {
@@ -1046,7 +1051,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job(&job_id) {
+        match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1151,7 +1156,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.get_job(&job_id) {
+        let source_job = match db.get_job_with_options(&job_id, false, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1198,7 +1203,7 @@ impl Node {
             node_name.node_name,
             "main".to_string(),
             ShinkaiSubidentityType::Agent,
-            source_job.parent_llm_provider_id.clone(),
+            source_job.parent_agent_or_llm_provider_id.clone(),
         ) {
             Ok(name) => name,
             Err(err) => {
@@ -1232,8 +1237,8 @@ impl Node {
         let forked_job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         match db.create_new_job(
             forked_job_id.clone(),
-            source_job.parent_llm_provider_id,
-            source_job.scope,
+            source_job.parent_agent_or_llm_provider_id,
+            source_job.scope_with_files.clone().unwrap(),
             source_job.is_hidden,
             source_job.associated_ui,
             source_job.config,
@@ -1346,6 +1351,285 @@ impl Node {
         }
 
         let _ = res.send(Ok(forked_job_id)).await;
+        Ok(())
+    }
+
+    pub async fn v2_remove_job(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<SendResponseBody, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
+            Ok(inbox) => inbox.to_string(),
+            Err(_) => "".to_string(),
+        };
+
+        // Retrieve the messages from the inbox
+        let messages = match db.get_last_messages_from_inbox(inbox_name, usize::MAX - 1, None) {
+            Ok(messages) => messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the retrieved messages to Vec<V2ChatMessage>
+        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+            Ok(v2_messages) => v2_messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the file inboxes
+        let file_inboxes = v2_chat_messages
+            .iter()
+            .flatten()
+            .map(|message| message.job_message.files_inbox.clone())
+            .filter(|inbox| !inbox.is_empty())
+            .collect::<HashSet<_>>();
+
+        // Remove the job
+        match db.remove_job(&job_id) {
+            Ok(_) => {}
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove job: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
+        // Remove the file inboxes
+        for file_inbox in file_inboxes {
+            match vector_fs.db.remove_inbox(&file_inbox) {
+                Ok(_) => {}
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to remove file inbox: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        }
+
+        let _ = res
+            .send(Ok(SendResponseBody {
+                status: "success".to_string(),
+                message: "Job removed successfully".to_string(),
+                data: None,
+            }))
+            .await;
+        Ok(())
+    }
+
+    pub async fn v2_export_messages_from_inbox(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        bearer: String,
+        inbox_name: String,
+        format: ExportInboxMessagesFormat,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the messages from the inbox
+        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, None) {
+            Ok(messages) => messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert the retrieved messages to Vec<V2ChatMessage>
+        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+            Ok(v2_messages) => v2_messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Retrieve the filenames in the inboxes
+        let file_inboxes = v2_chat_messages
+            .iter()
+            .flatten()
+            .map(|message| message.job_message.files_inbox.clone())
+            .collect::<Vec<_>>();
+        let mut inbox_filenames = HashMap::new();
+
+        for inbox in file_inboxes {
+            let files = match vector_fs.db.get_all_filenames_from_inbox(inbox.clone()) {
+                Ok(files) => files,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get files from inbox: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            inbox_filenames.insert(inbox, files);
+        }
+
+        // Export the messages in the requested format
+        match format {
+            ExportInboxMessagesFormat::CSV => {
+                let mut writer = csv::WriterBuilder::new().delimiter(b';').from_writer(vec![]);
+                let headers = vec!["timestamp", "sender", "receiver", "message", "files"];
+
+                match writer.write_record(headers) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to write CSV headers: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                }
+
+                for message in v2_chat_messages.into_iter().flatten() {
+                    let timestamp = message.node_api_data.node_timestamp;
+                    let sender = message.sender_subidentity;
+                    let receiver = message.receiver_subidentity;
+                    let content = message.job_message.content;
+                    let files = inbox_filenames
+                        .get(&message.job_message.files_inbox)
+                        .unwrap_or(&vec![])
+                        .join(", ");
+
+                    let row = vec![timestamp, sender, receiver, content, files];
+                    match writer.write_record(row) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to write CSV row: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    }
+                }
+
+                let csv_data = match writer.into_inner() {
+                    Ok(data) => match String::from_utf8(data) {
+                        Ok(csv_string) => csv_string,
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to convert CSV data to string: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            return Ok(());
+                        }
+                    },
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to retrieve CSV data: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                let _ = res.send(Ok(json!(csv_data))).await;
+            }
+            ExportInboxMessagesFormat::JSON => {
+                let result_messages = v2_chat_messages
+                    .into_iter()
+                    .map(|messages| {
+                        messages
+                            .into_iter()
+                            .map(|message| {
+                                json!({
+                                    "message": message,
+                                    "files": inbox_filenames.get(&message.job_message.files_inbox).unwrap_or(&vec![]),
+                                })
+                            })
+                            .collect::<Vec<serde_json::Value>>()
+                    })
+                    .collect::<Vec<_>>();
+
+                match serde_json::to_value(&result_messages) {
+                    Ok(value) => {
+                        let _ = res.send(Ok(value)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize messages: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            ExportInboxMessagesFormat::TXT => {
+                let mut result_messages = String::new();
+
+                for messages in v2_chat_messages {
+                    for message in messages {
+                        result_messages.push_str(&format!("{}\n\n", message.job_message.content));
+
+                        if let Some(files) = inbox_filenames.get(&message.job_message.files_inbox) {
+                            result_messages.push_str(&format!("Attached files: [{}]\n\n", files.join(", ")));
+                        }
+                    }
+                }
+
+                let _ = res.send(Ok(json!(result_messages))).await;
+            }
+        }
+
         Ok(())
     }
 }

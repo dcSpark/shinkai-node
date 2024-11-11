@@ -37,13 +37,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -108,13 +104,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -158,13 +150,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -174,12 +162,7 @@ mod tests {
         // Get agent profiles with access
         let profiles = db.get_llm_provider_profiles_with_access(&test_agent.id, &profile);
         assert!(profiles.is_ok(), "Failed to get agent profiles");
-        assert_eq!(vec!["profilename", "sender1", "sender2"], profiles.unwrap());
-
-        // Get agent toolkits accessible
-        let toolkits = db.get_llm_provider_toolkits_accessible(&test_agent.id, &profile);
-        assert!(toolkits.is_ok(), "Failed to get agent toolkits");
-        assert_eq!(vec!["toolkit1", "toolkit2"], toolkits.unwrap());
+        assert_eq!(vec!["profilename"], profiles.unwrap());
     }
 
     #[test]
@@ -197,13 +180,9 @@ mod tests {
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
-            perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
-            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
-            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
 
         // Add a new agent
@@ -216,14 +195,6 @@ mod tests {
         let profiles = db
             .get_llm_provider_profiles_with_access(&test_agent.id, &profile)
             .unwrap();
-        assert_eq!(vec!["profilename", "sender2"], profiles);
-
-        // Remove a toolkit from agent access
-        let result = db.remove_toolkit_from_llm_provider_access(&test_agent.id, "toolkit1", &profile);
-        assert!(result.is_ok(), "Failed to remove toolkit from agent access");
-        let toolkits = db
-            .get_llm_provider_toolkits_accessible(&test_agent.id, &profile)
-            .unwrap();
-        assert_eq!(vec!["toolkit2"], toolkits);
+        assert_eq!(vec!["profilename"], profiles);
     }
 }

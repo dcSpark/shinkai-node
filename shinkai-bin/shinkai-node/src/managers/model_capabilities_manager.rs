@@ -5,7 +5,7 @@ use crate::llm_provider::{
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
     llm_message::LlmMessage,
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+    llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}},
     prompts::Prompt,
     shinkai_name::ShinkaiName,
 };
@@ -41,7 +41,8 @@ impl std::error::Error for ModelCapabilitiesManagerError {}
 pub struct PromptResult {
     pub messages: PromptResultEnum,
     pub functions: Option<Vec<serde_json::Value>>,
-    pub remaining_tokens: usize,
+    pub remaining_output_tokens: usize,
+    pub tokens_used: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -164,6 +165,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
         }
     }
 
@@ -195,7 +197,6 @@ impl ModelCapabilitiesManager {
                 "gpt-4o-mini" => ModelCost::VeryCheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
-                "gpt-4o" => ModelCost::GoodValue,
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -219,6 +220,13 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
+            LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
+                "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => ModelCost::Cheap,
+                "claude-3-opus-20240229" | "claude-3-opus-latest" => ModelCost::GoodValue,
+                "claude-3-sonnet-20240229" => ModelCost::Cheap,
+                "claude-3-haiku-20240307" => ModelCost::VeryCheap,
+                _ => ModelCost::Unknown,
+            },
         }
     }
 
@@ -239,6 +247,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
+            LLMProviderInterface::Claude(_) => ModelPrivacy::RemoteGreedy,
         }
     }
 
@@ -339,6 +348,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, exo.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::Claude(claude) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, claude.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -389,8 +403,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => 1_000_000,
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
-            LLMProviderInterface::Groq(groq) => Self::get_max_tokens_for_model_type(&groq.model_type),
+            LLMProviderInterface::Groq(groq) => std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000),
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
+            LLMProviderInterface::Claude(_) => 200_000,
         }
     }
 
@@ -427,9 +442,38 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("wizardlm2") => 8_000,
             model_type if model_type.starts_with("phi2") => 4_000,
             model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
+            model_type if model_type.starts_with("llama-3.2") => 128_000,
+            model_type if model_type.starts_with("llama-3.1") => 128_000,
+            model_type if model_type.starts_with("llama3.2") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
+            model_type if model_type.starts_with("claude") => 200_000,
             _ => 4096, // Default token count if no specific model type matches
+        }
+    }
+
+    /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
+    pub fn get_max_input_tokens_for_provider_or_agent(
+        provider_or_agent: ProviderOrAgent,
+        db: Arc<ShinkaiDB>,
+    ) -> Option<usize> {
+        match provider_or_agent {
+            ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
+                Some(ModelCapabilitiesManager::get_max_input_tokens(&serialized_llm_provider.model))
+            }
+            ProviderOrAgent::Agent(agent) => {
+                let llm_id = &agent.llm_provider_id;
+                let profile = agent.full_identity_name.extract_profile().ok()?;
+                if let Some(llm_provider) = db.get_llm_provider(llm_id, &profile).ok() {
+                    if let Some(model) = llm_provider {
+                        Some(ModelCapabilitiesManager::get_max_input_tokens(&model.model))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -483,12 +527,19 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => 4096,
             LLMProviderInterface::Gemini(_) => {
                 // Fill in the appropriate logic for Ollama
-                4096
+                8192
             }
             LLMProviderInterface::OpenRouter(_) => {
                 // Fill in the appropriate logic for OpenRouter
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
+                } else {
+                    4096
+                }
+            }
+            LLMProviderInterface::Claude(claude) => {
+                if claude.model_type.starts_with("claude-3-5-sonnet") {
+                    8192
                 } else {
                     4096
                 }
@@ -599,6 +650,68 @@ impl ModelCapabilitiesManager {
             .sum();
 
         (num as f32 * 1.04) as usize
+    }
+
+    /// Returns whether the given model supports tool/function calling capabilities
+    pub fn has_tool_capabilities_for_provider_or_agent(
+        provider_or_agent: ProviderOrAgent,
+        db: Arc<ShinkaiDB>,
+        stream: Option<bool>,
+    ) -> bool {
+        match provider_or_agent {
+            ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
+                ModelCapabilitiesManager::has_tool_capabilities(&serialized_llm_provider.model, stream)
+            }
+            ProviderOrAgent::Agent(agent) => {
+                let llm_id = &agent.llm_provider_id;
+                if let Some(llm_provider) = db.get_llm_provider(llm_id, &agent.full_identity_name).ok() {
+                    if let Some(model) = llm_provider {
+                        ModelCapabilitiesManager::has_tool_capabilities(&model.model, stream)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Returns whether the given model supports tool/function calling capabilities
+    pub fn has_tool_capabilities(model: &LLMProviderInterface, stream: Option<bool>) -> bool {
+        eprintln!("has tool capabilities model: {:?}", model);
+        match model {
+            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::Ollama(model) => {
+                // For Ollama, check model type and respect the passed stream parameter
+                (model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small")
+                    || model.model_type.starts_with("mistral-large"))
+                    && stream.map_or(true, |s| !s)
+            }
+            LLMProviderInterface::Groq(model) => {
+                model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama3.1")
+            }
+            LLMProviderInterface::OpenRouter(model) => {
+                model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small")
+                    || model.model_type.starts_with("mistral-large")
+                    || model.model_type.starts_with("mistral-pixtral")
+            }
+            LLMProviderInterface::Claude(_) => true,
+            _ => false,
+        }
     }
 }
 

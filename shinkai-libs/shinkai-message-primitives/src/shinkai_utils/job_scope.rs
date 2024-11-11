@@ -1,11 +1,63 @@
 use serde::{Deserialize, Serialize};
-use shinkai_vector_resources::vector_resource::VectorResourceCore;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
+use shinkai_vector_resources::vector_resource::{VectorResourceCore, VectorSearchMode};
 use shinkai_vector_resources::{source::VRSourceReference, vector_resource::BaseVectorResource};
 use std::fmt;
 use utoipa::ToSchema;
 
-use crate::schemas::shinkai_name::ShinkaiName;
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MinimalJobScope {
+    pub local_vrkai: Vec<String>,
+    pub local_vrpack: Vec<String>,
+    pub vector_fs_items: Vec<String>,
+    pub vector_fs_folders: Vec<String>,
+}
+
+impl MinimalJobScope {
+    /// Converts the MinimalJobScope to a JSON value.
+    pub fn to_json_value(&self) -> serde_json::Result<serde_json::Value> {
+        serde_json::to_value(self)
+    }
+
+    /// Converts the MinimalJobScope to a byte vector.
+    pub fn from_bytes(bytes: &[u8]) -> serde_json::Result<Self> {
+        serde_json::from_slice(bytes)
+    }
+}
+
+impl From<&JobScope> for MinimalJobScope {
+    fn from(job_scope: &JobScope) -> Self {
+        let local_vrkai_ids: Vec<String> = job_scope
+            .local_vrkai
+            .iter()
+            .map(|entry| match &entry.vrkai.resource {
+                BaseVectorResource::Document(doc) => doc.reference_string(),
+                BaseVectorResource::Map(map) => map.reference_string(),
+            })
+            .collect();
+
+        let local_vrpack_ids: Vec<String> = job_scope.local_vrpack.iter().map(|entry| entry.vrpack.id()).collect();
+
+        let vector_fs_item_paths: Vec<String> = job_scope
+            .vector_fs_items
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let vector_fs_folder_paths: Vec<String> = job_scope
+            .vector_fs_folders
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        MinimalJobScope {
+            local_vrkai: local_vrkai_ids,
+            local_vrpack: local_vrpack_ids,
+            vector_fs_items: vector_fs_item_paths,
+            vector_fs_folders: vector_fs_folder_paths,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 /// Job's scope which includes both Local entries (vrkai stored locally only in job)
@@ -15,7 +67,8 @@ pub struct JobScope {
     pub local_vrpack: Vec<LocalScopeVRPackEntry>,
     pub vector_fs_items: Vec<VectorFSItemScopeEntry>,
     pub vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
-    pub network_folders: Vec<NetworkFolderScopeEntry>,
+    #[serde(default, deserialize_with = "deserialize_vec")]
+    pub vector_search_mode: Vec<VectorSearchMode>,
 }
 
 impl JobScope {}
@@ -26,14 +79,14 @@ impl JobScope {
         local_vrpack: Vec<LocalScopeVRPackEntry>,
         vector_fs_items: Vec<VectorFSItemScopeEntry>,
         vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
-        network_folders: Vec<NetworkFolderScopeEntry>,
+        vector_search_mode: Vec<VectorSearchMode>,
     ) -> Self {
         Self {
             local_vrkai,
             local_vrpack,
             vector_fs_items,
             vector_fs_folders,
-            network_folders,
+            vector_search_mode,
         }
     }
 
@@ -44,7 +97,7 @@ impl JobScope {
             local_vrpack: Vec::new(),
             vector_fs_items: Vec::new(),
             vector_fs_folders: Vec::new(),
-            network_folders: Vec::new(),
+            vector_search_mode: Vec::new(),
         }
     }
 
@@ -54,7 +107,6 @@ impl JobScope {
             && self.local_vrpack.is_empty()
             && self.vector_fs_items.is_empty()
             && self.vector_fs_folders.is_empty()
-            && self.network_folders.is_empty()
     }
 
     /// Determines if the JobScope contains significant amount of content to justify
@@ -66,7 +118,7 @@ impl JobScope {
         count += self.local_vrkai.len() + self.vector_fs_items.len();
 
         // Each VRPack and folder (both VectorFS and Network) counts as a multiple.
-        count += (self.local_vrpack.len() + self.vector_fs_folders.len() + self.network_folders.len()) * 3;
+        count += (self.local_vrpack.len() + self.vector_fs_folders.len()) * 3;
         count >= 4
     }
 
@@ -123,7 +175,7 @@ impl JobScope {
             "local_vrkai": local_vrkai_ids,
             "local_vrpack": local_vrpack_ids,
             "vector_fs_items": vector_fs_item_paths,
-            "vector_fs_folders": vector_fs_folder_paths,
+            "vector_fs_folders": vector_fs_folder_paths
         });
 
         Ok(minimal_json)
@@ -164,6 +216,14 @@ impl fmt::Debug for JobScope {
     }
 }
 
+// Convert null values to empty vectors
+fn deserialize_vec<'de, D>(deserializer: D) -> Result<Vec<VectorSearchMode>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::deserialize(deserializer).map(|opt| opt.unwrap_or_else(Vec::new))
+}
+
 /// Enum holding both Local and VectorFS scope entries
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub enum ScopeEntry {
@@ -171,7 +231,6 @@ pub enum ScopeEntry {
     LocalScopeVRPack(LocalScopeVRPackEntry),
     VectorFSItem(VectorFSItemScopeEntry),
     VectorFSFolder(VectorFSFolderScopeEntry),
-    NetworkFolder(NetworkFolderScopeEntry),
 }
 
 /// A Scope Entry for a local VRKai that only lives in the
@@ -200,15 +259,5 @@ pub struct VectorFSItemScopeEntry {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct VectorFSFolderScopeEntry {
     pub name: String,
-    pub path: VRPath,
-}
-
-/// A Scope Entry for a FSFolder that (potentially) exists on another node's VectorFS (if your node has perms).
-/// Unsupported currently, struct added for future compatibility.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct NetworkFolderScopeEntry {
-    pub name: String,
-    /// This should be the profile on the external node where the folder is stored
-    pub external_identity: ShinkaiName,
     pub path: VRPath,
 }

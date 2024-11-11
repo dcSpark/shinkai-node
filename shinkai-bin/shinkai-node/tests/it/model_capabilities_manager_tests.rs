@@ -35,13 +35,9 @@ mod tests {
         let gpt_3_5_llm_provider = SerializedLLMProvider {
             id: llm_provider_id.clone(),
             full_identity_name: llm_provider_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
 
         let manager = ModelCapabilitiesManager {
@@ -77,13 +73,9 @@ mod tests {
         let gpt_4_vision_llm_provider = SerializedLLMProvider {
             id: llm_provider_id.clone(),
             full_identity_name: llm_provider_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
 
         let manager = ModelCapabilitiesManager {
@@ -115,13 +107,9 @@ mod tests {
         let fake_gpt_agent = SerializedLLMProvider {
             id: agent_id.clone(),
             full_identity_name: agent_name,
-            perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
             model: LLMProviderInterface::OpenAI(open_ai),
-            toolkit_permissions: vec![],
-            storage_bucket_permissions: vec![],
-            allowed_message_senders: vec![],
         };
 
         let manager = ModelCapabilitiesManager {

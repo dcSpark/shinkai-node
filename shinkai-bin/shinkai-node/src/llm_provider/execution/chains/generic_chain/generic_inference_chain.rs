@@ -6,7 +6,7 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::providers::shared::openai_api::FunctionCall;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -18,9 +18,7 @@ use shinkai_db::schemas::ws_types::{
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider,
-};
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -110,7 +108,7 @@ impl GenericInferenceChain {
         user_message: String,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
-        llm_provider: SerializedLLMProvider,
+        llm_provider: ProviderOrAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -148,14 +146,14 @@ impl GenericInferenceChain {
         */
 
         // 1) Vector search for knowledge if the scope isn't empty
-        let scope_is_empty = full_job.scope().is_empty();
+        let scope_is_empty = full_job.scope_with_files().unwrap().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
         let mut summary_node_text = None;
         if !scope_is_empty {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
-                full_job.scope(),
+                full_job.scope_with_files().unwrap(),
                 user_message.clone(),
                 &user_profile,
                 generator.clone(),
@@ -175,90 +173,83 @@ impl GenericInferenceChain {
             &format!("job_config: {:?}", job_config),
         );
         let mut tools = vec![];
-        let use_tools = match &llm_provider.model {
-            LLMProviderInterface::OpenAI(_) => true,
-            LLMProviderInterface::Ollama(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama3.1")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("mistral-nemo")
-                    || model_type.model_type.starts_with("mistral-small")
-                    || model_type.model_type.starts_with("mistral-large");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            LLMProviderInterface::Groq(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama3.1");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            LLMProviderInterface::OpenRouter(model_type) => {
-                let is_supported_model = model_type.model_type.starts_with("llama-3.2")
-                    || model_type.model_type.starts_with("llama3.2")
-                    || model_type.model_type.starts_with("llama-3.1")
-                    || model_type.model_type.starts_with("llama3.1")
-                    || model_type.model_type.starts_with("mistral-nemo")
-                    || model_type.model_type.starts_with("mistral-small")
-                    || model_type.model_type.starts_with("mistral-large")
-                    || model_type.model_type.starts_with("mistral-pixtral");
-                is_supported_model
-                    && job_config
-                        .as_ref()
-                        .map_or(true, |config| config.stream.unwrap_or(true) == false)
-            }
-            _ => false,
-        };
+        let stream = job_config.as_ref().and_then(|config| config.stream);
+        let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
+            llm_provider.clone(),
+            db.clone(),
+            stream,
+        );
 
         if use_tools {
-            if let Some(tool_router) = &tool_router {
-                // TODO: enable back the default tools (must tools)
-                // // Get default tools
-                // if let Ok(default_tools) = tool_router.get_default_tools(&user_profile) {
-                //     tools.extend(default_tools);
-                // }
-
-                // Search in JS Tools
-                let results = tool_router
-                    .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
-                    .await;
-
-                match results {
-                    Ok(results) => {
-                        for result in results {
-                            match tool_router.get_tool_by_name(&result.tool_router_key).await {
-                                Ok(Some(tool)) => tools.push(tool),
-                                Ok(None) => {
-                                    return Err(LLMProviderError::ToolNotFound(
-                                        format!("Tool not found for key: {}", result.tool_router_key),
-                                    ));
-                                }
-                                Err(e) => {
-                                    return Err(LLMProviderError::ToolRetrievalError(
-                                        format!("Error retrieving tool: {:?}", e),
-                                    ));
-                                }
+            // If the llm_provider is an Agent, retrieve tools directly from the Agent struct
+            if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                for tool_name in &agent.tools {
+                    if let Some(tool_router) = &tool_router {
+                        match tool_router.get_tool_by_name(tool_name).await {
+                            Ok(Some(tool)) => tools.push(tool),
+                            Ok(None) => {
+                                return Err(LLMProviderError::ToolNotFound(format!(
+                                    "Tool not found for name: {}",
+                                    tool_name
+                                )));
+                            }
+                            Err(e) => {
+                                return Err(LLMProviderError::ToolRetrievalError(format!(
+                                    "Error retrieving tool: {:?}",
+                                    e
+                                )));
                             }
                         }
                     }
-                    Err(e) => {
-                        return Err(LLMProviderError::ToolSearchError(
-                            format!("Error during tool search: {:?}", e),
-                        ));
+                }
+            } else {
+                // If the llm_provider is not an Agent, perform a vector search for tools
+                if let Some(tool_router) = &tool_router {
+                    let results = tool_router
+                        .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
+                        .await;
+
+                    match results {
+                        Ok(results) => {
+                            for result in results {
+                                match tool_router.get_tool_by_name(&result.tool_router_key).await {
+                                    Ok(Some(tool)) => tools.push(tool),
+                                    Ok(None) => {
+                                        return Err(LLMProviderError::ToolNotFound(format!(
+                                            "Tool not found for key: {}",
+                                            result.tool_router_key
+                                        )));
+                                    }
+                                    Err(e) => {
+                                        return Err(LLMProviderError::ToolRetrievalError(format!(
+                                            "Error retrieving tool: {:?}",
+                                            e
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            return Err(LLMProviderError::ToolSearchError(format!(
+                                "Error during tool search: {:?}",
+                                e
+                            )));
+                        }
                     }
                 }
             }
         }
 
         // 3) Generate Prompt
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone());
+        // First, attempt to use the custom_prompt from the job's config.
+        // If it doesn't exist, fall back to the agent's custom_prompt if the llm_provider is an Agent.
+        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
+            if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
+            } else {
+                None
+            }
+        });
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_prompt,
@@ -295,6 +286,7 @@ impl GenericInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
+                db.clone(),
             )
             .await;
 
@@ -309,7 +301,6 @@ impl GenericInferenceChain {
 
             // 5) Check response if it requires a function call
             if let Some(function_call) = response.function_call {
-                tool_calls_history.push(function_call.clone());
                 let parsed_message = ParsedUserMessage::new(user_message.clone());
                 let image_files = HashMap::new();
                 let context = InferenceChainContext::new(
@@ -349,7 +340,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call, &context, &shinkai_tool)
+                    .call_function(function_call.clone(), &context, &shinkai_tool)
                     .await
                 {
                     Ok(response) => response,
@@ -360,8 +351,18 @@ impl GenericInferenceChain {
                     }
                 };
 
+                let mut function_call_with_router_key = function_call.clone();
+                function_call_with_router_key.tool_router_key = Some(shinkai_tool.tool_router_key());
+                tool_calls_history.push(function_call_with_router_key);
+
                 // Trigger WS update after receiving function_response
-                Self::trigger_ws_update(&ws_manager_trait, &Some(full_job.job_id.clone()), &function_response, shinkai_tool.tool_router_key()).await;
+                Self::trigger_ws_update(
+                    &ws_manager_trait,
+                    &Some(full_job.job_id.clone()),
+                    &function_response,
+                    shinkai_tool.tool_router_key(),
+                )
+                .await;
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(

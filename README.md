@@ -12,57 +12,13 @@ General Documentation: [https://docs.shinkai.com](https://docs.shinkai.com)
 
 More In Depth Codebase Documentation (Mutable.ai): [https://wiki.mutable.ai/dcSpark/shinkai-node](https://wiki.mutable.ai/dcSpark/shinkai-node)
 
-## Requirements
+## Installation (Local Compilation)
 
-### Rust
+Please refer to the installation instructions for your operating system:
 
-The Shinkai Node requires Rust 1.76.0 or later.
-
-### GCC Compiler Setup
-
-Make sure you have gcc/g++ as your default compilers:
-
-```
-export CC=gcc
-export CXX=g++
-```
-
-
-### Protobuf Compiler
-
-The Shinkai Node requires the `protobuf-compiler` library. Here are the installation instructions for different operating systems:
-
-#### Windows
-
-1. Download the latest release from the [official protobuf releases page](https://github.com/protocolbuffers/protobuf/releases).
-2. Extract the downloaded zip file.
-3. Add the `bin` directory to your system's PATH environment variable.
-
-#### Linux
-
-For Debian-based distributions (e.g., Ubuntu):
-
-```
-sudo apt-get install -y protobuf-compiler
-```
-
-For Fedora:
-
-```
-sudo dnf install -y protobuf-compiler
-```
-
-For Arch Linux:
-
-```
-sudo pacman -S protobuf
-```
-
-#### MacOS
-
-```
-brew install protobuf
-```
+- [Windows Installation Instructions](docs/installation/windows.md)
+- [Linux Installation Instructions](docs/installation/linux.md)
+- [macOS Installation Instructions](docs/installation/macos.md)
 
 ## Build
 

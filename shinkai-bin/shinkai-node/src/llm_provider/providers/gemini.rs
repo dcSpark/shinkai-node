@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
 use super::shared::gemini_api::gemini_prepare_messages;
-use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -134,7 +133,7 @@ impl LLMService for Gemini {
                         "temperature": 0.9,
                         "topK": 1,
                         "topP": 1,
-                        "maxOutputTokens": 2048
+                        "maxOutputTokens": 8192
                     },
                     "safety_settings": [
                         {

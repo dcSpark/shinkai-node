@@ -7,8 +7,8 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
-use shinkai_tools_runner::tools::shinkai_tools_backend_options::ShinkaiToolsBackendOptions;
 use shinkai_tools_runner::tools::tool::Tool;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
@@ -29,7 +29,11 @@ pub struct JSTool {
 }
 
 impl JSTool {
-    pub fn run(&self, parameters: serde_json::Map<String, serde_json::Value>, extra_config: Option<String>) -> Result<RunResult, ToolError> {
+    pub fn run(
+        &self,
+        parameters: serde_json::Map<String, serde_json::Value>,
+        extra_config: Option<String>,
+    ) -> Result<RunResult, ToolError> {
         println!("Running JSTool named: {}", self.name);
         println!("Running JSTool with input: {:?}", parameters);
         println!("Running JSTool with extra_config: {:?}", extra_config);
@@ -73,14 +77,10 @@ impl JSTool {
                     let tool = Tool::new(
                         code,
                         config_json,
-                        Some(ShinkaiToolsBackendOptions {
-                            binary_path: PathBuf::from(env::var("SHINKAI_TOOLS_BACKEND_BINARY_PATH").unwrap_or_else(
-                                |_| "./shinkai-tools-runner-resources/shinkai-tools-backend".to_string(),
+                        Some(DenoRunnerOptions {
+                            binary_path: PathBuf::from(env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH").unwrap_or_else(
+                                |_| "./shinkai-tools-runner-resources/deno".to_string(),
                             )),
-                            api_port: env::var("SHINKAI_TOOLS_BACKEND_API_PORT")
-                                .unwrap_or_else(|_| "9650".to_string())
-                                .parse::<u16>()
-                                .unwrap_or(9650),
                         }),
                     );
                     // TODO: Fix this object wrap after update tools library to have th right typification

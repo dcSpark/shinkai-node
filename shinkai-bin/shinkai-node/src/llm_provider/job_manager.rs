@@ -57,7 +57,6 @@ pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     pub db: Weak<ShinkaiDB>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
-    pub llm_providers: Vec<Arc<Mutex<LLMProvider>>>,
     pub identity_secret_key: SigningKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
@@ -91,17 +90,6 @@ impl JobManager {
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
-            }
-        }
-
-        // Get all serialized_llm_providers and convert them to LLM Providers
-        let mut llm_providers: Vec<Arc<Mutex<LLMProvider>>> = Vec::new();
-        {
-            let identity_manager = identity_manager.lock().await;
-            let serialized_llm_providers = identity_manager.get_all_llm_providers().await.unwrap();
-            for serialized_agent in serialized_llm_providers {
-                let llm_provider = LLMProvider::from_serialized_llm_provider(serialized_agent);
-                llm_providers.push(Arc::new(Mutex::new(llm_provider)));
             }
         }
 
@@ -179,7 +167,6 @@ impl JobManager {
             node_profile_name,
             jobs: jobs_map,
             identity_manager,
-            llm_providers,
             job_queue_manager: job_queue_manager.clone(),
             job_processing_task: Some(job_queue_handler),
             ws_manager,
@@ -456,8 +443,8 @@ impl JobManager {
     pub async fn process_job_creation(
         &mut self,
         job_creation: JobCreationInfo,
-        profile: &ShinkaiName,
-        llm_provider_id: &String,
+        _profile: &ShinkaiName,
+        llm_or_agent_provider_id: &String,
     ) -> Result<String, LLMProviderError> {
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
@@ -465,7 +452,7 @@ impl JobManager {
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
             match db_arc.create_new_job(
                 job_id.clone(),
-                llm_provider_id.clone(),
+                llm_or_agent_provider_id.clone(),
                 job_creation.scope,
                 is_hidden,
                 job_creation.associated_ui,
@@ -479,35 +466,7 @@ impl JobManager {
                 Ok(job) => {
                     std::mem::drop(db_arc); // require to avoid deadlock
                     self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
-                    let mut llm_provider_found = None;
-                    for agent in &self.llm_providers {
-                        let locked_agent = agent.lock().await;
-                        if &locked_agent.id == llm_provider_id {
-                            llm_provider_found = Some(agent.clone());
-                            break;
-                        }
-                    }
-
-                    if llm_provider_found.is_none() {
-                        let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager
-                            .search_local_llm_provider(llm_provider_id, profile)
-                            .await
-                        {
-                            let agent = LLMProvider::from_serialized_llm_provider(serialized_agent);
-                            llm_provider_found = Some(Arc::new(Mutex::new(agent)));
-                            if let Some(agent) = llm_provider_found.clone() {
-                                self.llm_providers.push(agent);
-                            }
-                        }
-                    }
-
-                    let job_id_to_return = match llm_provider_found {
-                        Some(_) => Ok(job_id.clone()),
-                        None => Err(anyhow::Error::new(LLMProviderError::LLMProviderNotFound)),
-                    };
-
-                    job_id_to_return.map_err(|_| LLMProviderError::LLMProviderNotFound)
+                    Ok(job_id.clone())
                 }
                 Err(err) => Err(LLMProviderError::ShinkaiDB(err)),
             }
@@ -535,8 +494,8 @@ impl JobManager {
         let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
             let mut content = job_message.clone().content;
-            if content.chars().count() > 30 {
-                let truncated_content: String = content.chars().take(30).collect();
+            if content.chars().count() > 120 {
+                let truncated_content: String = content.chars().take(120).collect();
                 content = format!("{}...", truncated_content);
             }
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();

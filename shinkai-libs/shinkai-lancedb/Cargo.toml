@@ -11,7 +11,7 @@ uuid = { version = "1.6.1", features = ["v4"] }
 shinkai_tools_primitives = { workspace = true }
 shinkai_vector_resources = { workspace = true }
 shinkai_message_primitives = { workspace = true }
-shinkai_tools_runner = { version = "0.7.15", features = ["built-in-tools"] }
+shinkai_tools_runner = { version = "0.8.0", features = ["built-in-tools"] }
 regex = "1"
 base64 = "0.22.0"
 lancedb = "0.10.0"

@@ -24,9 +24,10 @@ fn main() -> Result<()> {
 
     let client_config = ClientConfig {
         provider: "ollama".to_string(),
-        base_url: "http://localhost:11434/v1".to_string(),
-        model: "llama3.1".to_string(),
+        base_url: Some("http://localhost:11434/v1".to_string()),
+        model: "llama3.1:8b-instruct-q4_1".to_string(),
         default_role: "user".to_string(),
+        api_key: None,
     };
 
     let baml_config = BamlConfig::builder(generator_config, client_config)
