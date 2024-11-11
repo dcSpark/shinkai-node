@@ -16,6 +16,7 @@ export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="http://localhost:9081/"
 export PROXY_IDENTITY="@@relayer_pub_01.arb-sep-shinkai"
+export SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH="${workspaceFolder}/shinkai-bin/shinkai-node/shinkai-tools-runner-resources/deno"
 
 export INITIAL_AGENT_NAMES="o_mixtral"
 export INITIAL_AGENT_URLS="http://localhost:11434"

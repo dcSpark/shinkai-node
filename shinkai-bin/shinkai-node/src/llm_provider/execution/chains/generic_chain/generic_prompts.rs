@@ -74,12 +74,22 @@ impl JobPromptGenerator {
 
         // Add the user question and the preference prompt for the answer
         if !user_message.is_empty() {
-            let user_prompt = custom_user_prompt.unwrap_or_default();
-            let content = if user_prompt.is_empty() {
-                user_message.clone()
-            } else {
-                format!("{}\n {}", user_message, user_prompt)
-            };
+            let mut content = user_message.clone();
+
+            // If a custom user prompt is provided, use it as a template
+            if let Some(template) = custom_user_prompt {
+                let mut template_content = template.clone();
+
+                // Insert user_message into the template
+                if !template_content.contains("{{user_message}}") {
+                    template_content.push_str(&format!("\n{}", user_message));
+                } else {
+                    template_content = template_content.replace("{{user_message}}", &user_message);
+                }
+
+                content = template_content;
+            }
+
             prompt.add_omni(content, image_files, SubPromptType::UserLastMessage, 100);
         }
 
