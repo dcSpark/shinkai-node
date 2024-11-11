@@ -4,7 +4,6 @@ on:
   pull_request:
     branches: [main]
 
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -30,17 +29,20 @@ jobs:
           key: build-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: (Linux) Install build deps
-        if: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' }}
         run: |
           sudo apt-get install -y protobuf-compiler
 
       - name: build workspace
         run: cargo build --workspace
 
-      - name: build workspace
-        run: cargo test -- --test-threads=1
+      - name: run ./run-main-cargo-tests.sh
+        run: ./run-main-cargo-tests.sh
         env:
-          IS_TESTING: 1
-          WELCOME_MESSAGE: false
+          FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
+          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+
+      - name: run ./run-main-mirror-cargo-tests.sh
+        run: ./run-main-mirror-cargo-tests.sh
+        env:
           FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
