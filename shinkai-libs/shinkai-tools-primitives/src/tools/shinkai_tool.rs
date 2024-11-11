@@ -7,7 +7,10 @@ use serde_json::{self};
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{argument::ToolArgument, deno_tools::DenoTool, internal_tools::InternalTool, js_toolkit_headers::ToolConfig, network_tool::NetworkTool, python_tools::PythonTool, workflow_tool::WorkflowTool};
+use super::{
+    argument::ToolArgument, deno_tools::DenoTool, internal_tools::InternalTool, js_toolkit_headers::ToolConfig,
+    network_tool::NetworkTool, python_tools::PythonTool, workflow_tool::WorkflowTool,
+};
 
 pub type IsEnabled = bool;
 
@@ -183,7 +186,7 @@ impl ShinkaiTool {
             ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
             ShinkaiTool::Workflow(w, _) => w.embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
-            ShinkaiTool::Deno(d, _) => d.tool_embedding = Some(embedding),
+            ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
             ShinkaiTool::Python(p, _) => p.tool_embedding = Some(embedding),
             ShinkaiTool::Internal(i, _) => i.tool_embedding = Some(embedding),
         }
@@ -242,7 +245,7 @@ impl ShinkaiTool {
             ShinkaiTool::JS(j, _) => j.embedding.clone(),
             ShinkaiTool::Workflow(w, _) => w.embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
-            ShinkaiTool::Deno(d, _) => d.tool_embedding.clone(),
+            ShinkaiTool::Deno(d, _) => d.embedding.clone(),
             ShinkaiTool::Python(p, _) => p.tool_embedding.clone(),
             ShinkaiTool::Internal(i, _) => i.tool_embedding.clone(),
         }

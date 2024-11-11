@@ -42,7 +42,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::api_v2::api_v2_handlers_tools::Language;
+use crate::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use crate::node_api_router::SendResponseBody;
 
 use super::{
@@ -1004,6 +1004,7 @@ pub enum NodeCommand {
     ExecuteCommand {
         bearer: String,
         tool_router_key: String,
+        tool_type: ToolType,
         parameters: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     },

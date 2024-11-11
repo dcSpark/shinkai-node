@@ -1,8 +1,7 @@
 use serde_json::{Map, Value};
-use shinkai_tools_primitives::tools::argument::ToolArgument;
+use shinkai_tools_primitives::tools::deno_tools::DenoTool;
+use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::js_tools::{JSTool, JSToolResult};
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 
 pub fn execute_deno_tool(
     tool_router_key: String,
@@ -19,7 +18,7 @@ pub fn execute_deno_tool(
     let code = format!("{}", js_code);
 
     // Create a minimal JSTool instance
-    let tool = JSTool {
+    let tool = DenoTool {
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
         author: "system".to_string(),
@@ -30,6 +29,7 @@ pub fn execute_deno_tool(
         input_args: vec![],
         activated: true,
         embedding: None,
+        output: "".to_string(),
         result: JSToolResult::new("object".to_string(), Value::Null, vec![]),
     };
 
@@ -38,7 +38,7 @@ pub fn execute_deno_tool(
     execution_parameters.remove("code");
 
     // Run the tool and convert the RunResult to Value
-    match tool.run(execution_parameters, extra_config) {
+    match tool.run_on_demand(execution_parameters, extra_config) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

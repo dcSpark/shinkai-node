@@ -1,30 +1,34 @@
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use shinkai_tools_primitives::tools::error::ToolError;
 
-pub fn execute_custom_tool(    
+pub fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
-    extra_config: Option<String>,) -> Option<Result<Value, ToolError>> {
+    extra_config: Option<String>,
+) -> Result<Value, ToolError> {
     // Get the tool name from the parameters or router key
-    
+
     match tool_router_key {
-        s if s == &String::from("internal:::calculator") => Some(execute_calculator(&parameters)),
-        s if s == &String::from("internal:::text_analyzer") => Some(execute_text_analyzer(&parameters)),
-        _ => None, // Not a custom tool
+        s if s == &String::from("internal:::text_analyzer") => execute_text_analyzer(&parameters),
+        s if s == &String::from("internal:::calculator") => execute_calculator(&parameters),
+        _ => Ok(json!({})), // Not a custom tool
     }
 }
 
 fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
     // Extract parameters
-    let operation = parameters.get("operation")
+    let operation = parameters
+        .get("operation")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ToolError::SerializationError("Missing operation parameter".to_string()))?;
-    
-    let x = parameters.get("x")
+
+    let x = parameters
+        .get("x")
         .and_then(|v| v.as_f64())
         .ok_or_else(|| ToolError::SerializationError("Missing or invalid x parameter".to_string()))?;
-    
-    let y = parameters.get("y")
+
+    let y = parameters
+        .get("y")
         .and_then(|v| v.as_f64())
         .ok_or_else(|| ToolError::SerializationError("Missing or invalid y parameter".to_string()))?;
 
@@ -38,7 +42,7 @@ fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolErro
                 return Err(ToolError::ExecutionError("Division by zero".to_string()));
             }
             x / y
-        },
+        }
         _ => return Err(ToolError::ExecutionError("Invalid operation".to_string())),
     };
 
@@ -49,11 +53,13 @@ fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolErro
 
 fn execute_text_analyzer(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
     // Extract parameters
-    let text = parameters.get("text")
+    let text = parameters
+        .get("text")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ToolError::SerializationError("Missing text parameter".to_string()))?;
-    
-    let include_sentiment = parameters.get("include_sentiment")
+
+    let include_sentiment = parameters
+        .get("include_sentiment")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
@@ -70,10 +76,10 @@ fn execute_text_analyzer(parameters: &Map<String, Value>) -> Result<Value, ToolE
     // Add sentiment analysis if requested
     if include_sentiment {
         let sentiment_score = calculate_mock_sentiment(text);
-        response.as_object_mut().unwrap().insert(
-            "sentiment_score".to_string(),
-            json!(sentiment_score)
-        );
+        response
+            .as_object_mut()
+            .unwrap()
+            .insert("sentiment_score".to_string(), json!(sentiment_score));
     }
 
     Ok(response)
@@ -97,4 +103,4 @@ fn calculate_mock_sentiment(text: &str) -> f64 {
     }
 
     score.clamp(-1.0, 1.0)
-} 
+}

@@ -25,6 +25,36 @@ impl std::fmt::Display for Language {
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolType {
+    Local,
+    JS,
+    Deno,
+    DenoDynamic,
+    Python,
+    PythonDynamic,
+    Rust,
+    Network,
+    Internal,
+}
+
+impl std::fmt::Display for ToolType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolType::JS => write!(f, "js"),
+            ToolType::Local => write!(f, "local"),
+            ToolType::Deno => write!(f, "deno"),
+            ToolType::DenoDynamic => write!(f, "deno_dynamic"),
+            ToolType::Python => write!(f, "python"),
+            ToolType::PythonDynamic => write!(f, "python_dynamic"),
+            ToolType::Rust => write!(f, "rust"), 
+            ToolType::Network => write!(f, "network"),
+            ToolType::Internal => write!(f, "internal"),
+        }
+    }
+}
+
 pub fn tool_routes(
     node_commands_sender: Sender<NodeCommand>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -117,6 +147,7 @@ pub async fn tool_definitions_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct ToolExecutionRequest {
+    pub tool_type: ToolType,
     pub tool_router_key: String,
     pub parameters: Value,
     #[serde(default)]
@@ -155,6 +186,7 @@ pub async fn tool_execution_handler(
         .send(NodeCommand::ExecuteCommand {
             bearer,
             tool_router_key: payload.tool_router_key.clone(),
+            tool_type: payload.tool_type,
             parameters,
             res: res_sender,
         })

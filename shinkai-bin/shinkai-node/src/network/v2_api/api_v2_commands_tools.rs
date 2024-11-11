@@ -9,7 +9,10 @@ use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{Map, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::{api_v2::api_v2_handlers_tools::Language, node_api_router::APIError};
+use shinkai_http_api::{
+    api_v2::api_v2_handlers_tools::{Language, ToolType},
+    node_api_router::APIError,
+};
 use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
@@ -43,11 +46,21 @@ impl Node {
         db: Arc<ShinkaiDB>,
         lance_db: Arc<RwLock<LanceShinkaiDb>>,
         tool_router_key: String,
+        tool_type: ToolType,
         parameters: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Execute the tool directly
-        let result = execute_tool(tool_router_key.clone(), parameters, None, db, lance_db, bearer).await;
+        let result = execute_tool(
+            tool_router_key.clone(),
+            tool_type,
+            parameters,
+            None,
+            db,
+            lance_db,
+            bearer,
+        )
+        .await;
 
         match result {
             Ok(result) => {

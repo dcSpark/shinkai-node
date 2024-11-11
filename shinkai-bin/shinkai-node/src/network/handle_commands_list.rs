@@ -3079,6 +3079,7 @@ impl Node {
             NodeCommand::ExecuteCommand {
                 bearer,
                 tool_router_key,
+                tool_type,
                 parameters,
                 res,
             } => {
@@ -3089,8 +3090,16 @@ impl Node {
                 let sheet_manager_clone = self.sheet_manager.clone();
 
                 tokio::spawn(async move {
-                    let _ =
-                        Node::execute_command(bearer, db_clone, lance_db_clone, tool_router_key, parameters, res).await;
+                    let _ = Node::execute_command(
+                        bearer,
+                        db_clone,
+                        lance_db_clone,
+                        tool_router_key,
+                        tool_type,
+                        parameters,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::GenerateToolDefinitions { bearer, language, res } => {
