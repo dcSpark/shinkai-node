@@ -1,8 +1,8 @@
 [package]
 name = "shinkai-spreadsheet-llm"
-version = "0.1.0"
-edition = "2021"
-authors.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 async-trait = "0.1.74"

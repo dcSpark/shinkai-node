@@ -1,7 +1,8 @@
 [package]
 name = "shinkai_baml"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 baml-runtime = { git = "https://github.com/BoundaryML/baml.git", tag = "0.56.1", package = "baml-runtime", features = [

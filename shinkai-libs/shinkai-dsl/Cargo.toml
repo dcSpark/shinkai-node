@@ -1,16 +1,12 @@
 [package]
 name = "shinkai_dsl"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 pest = "2.7.10"
 pest_derive = "2.7.10"
 serde_json = { workspace = true }
-dashmap = "5.5.3"
-chrono = { workspace = true }
 regex = { workspace = true }
-
-[dependencies.serde]
-workspace = true
-features = ["derive"]
+serde = { workspace = true, features = ["derive"] }

@@ -1,7 +1,8 @@
 [package]
 name = "shinkai_fs_mirror"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }
@@ -13,7 +14,6 @@ anyhow = { workspace = true }
 serde_json = { workspace = true }
 clap = "3.0"
 chrono = { workspace = true }
-chrono-tz = { workspace = true }
 multipart = "0.17"
 reqwest = { workspace = true }
 dotenv = "0.15.0"
@@ -22,16 +22,8 @@ hex = { workspace = true }
 regex = { workspace = true }
 libsodium-sys-stable = "1.20.5"
 aes-gcm = "0.10.3"
-async-channel = "1.6.1"
-warp = "0.3.7"
-
-[dependencies.rocksdb]
-workspace = true
-features = ["lz4"]
-
-[dependencies.serde]
-workspace = true
-features = ["derive"]
+rocksdb = { workspace = true, features = ["lz4"] }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.2.0"

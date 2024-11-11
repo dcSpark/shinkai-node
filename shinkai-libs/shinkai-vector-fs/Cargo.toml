@@ -1,7 +1,8 @@
 [package]
 name = "shinkai_vector_fs"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }

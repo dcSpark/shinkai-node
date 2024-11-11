@@ -1,11 +1,11 @@
 [package]
 name = "shinkai_sqlite"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 serde_json = { workspace = true }
-dashmap = "5.5.3"
 chrono = { workspace = true }
 regex = { workspace = true }
 rusqlite = { version = "0.32.1", features = ["bundled"] }

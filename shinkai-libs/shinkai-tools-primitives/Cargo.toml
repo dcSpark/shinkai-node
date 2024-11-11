@@ -1,21 +1,19 @@
 [package]
 name = "shinkai_tools_primitives"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 serde_json = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-dashmap = "5.5.3"
 chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4"] }
 regex = { workspace = true }
 shinkai_dsl = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_vector_resources = { workspace = true }
-shinkai_db = { workspace = true }
-async-channel = "1.6.1"
 blake3 = { workspace = true }
 reqwest = { workspace = true, features = [
     "json",

@@ -1,13 +1,13 @@
 [package]
 name = "shinkai_sheet"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 serde_json = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-dashmap = "5.5.3"
 chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4"] }
 regex = { workspace = true }

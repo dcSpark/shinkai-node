@@ -1,8 +1,8 @@
 [package]
 name = "shinkai_message_primitives"
-version = "0.7.6"
-edition = "2018"
-authors = ["Nico Arqueros <nico@shinkai.com>"]
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,13 +13,10 @@ x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
 rand = { workspace = true }
 chrono = { workspace = true }
-chrono-tz = { workspace = true }
 regex = { workspace = true }
 anyhow = { workspace = true }
 thiserror = "1.0.44"
-console_log = "0.2"
 log = { workspace = true }
-colored = "2.0"
 hex = { workspace = true }
 shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 shinkai_dsl = { path = "../shinkai-dsl" }
@@ -30,13 +27,9 @@ base64 = { workspace = true }
 utoipa = "4.2.3"
 serde = { workspace = true, features = ["derive"] }
 
-[dependencies.tracing]
-version = "0.1.40"
-optional = true
+tracing = { version = "0.1.40", optional = true }
 
-[dependencies.tracing-subscriber]
-version = "0.3"
-optional = true
+tracing-subscriber = { version = "0.3", optional = true }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

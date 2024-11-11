@@ -24,6 +24,8 @@ members = [
 resolver = "2"
 
 [workspace.package]
+version = "0.8.15"
+edition = "2021"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
 [workspace.dependencies]

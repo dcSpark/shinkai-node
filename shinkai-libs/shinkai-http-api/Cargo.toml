@@ -1,7 +1,8 @@
 [package]
 name = "shinkai_http_api"
-version = "0.8.13"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 utoipa = "4.2.3"

@@ -1,11 +1,11 @@
 [package]
 name = "shinkai_subscription_manager"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 chrono = { workspace = true }
-chrono-tz = { workspace = true }
 futures = { workspace = true }
 dashmap = "5.5.3"
 bincode = "1.3.3"
@@ -31,5 +31,4 @@ aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
 aws-sdk-s3 = { version = "1.24.0", features = ["behavior-version-latest"] }
 urlencoding = "2.1.0"
 thiserror = "1.0.50"
-lru = "0.7.0"
 serde = { workspace = true, features = ["derive"] }

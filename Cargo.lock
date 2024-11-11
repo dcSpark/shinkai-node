@@ -296,7 +296,7 @@ dependencies = [
  "arrow-data",
  "arrow-schema",
  "chrono",
- "chrono-tz 0.9.0",
+ "chrono-tz",
  "half",
  "hashbrown 0.14.5",
  "num",
@@ -1250,7 +1250,7 @@ dependencies = [
  "serde",
  "time 0.3.36",
  "tokio",
- "tokio-util 0.7.12",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2111,16 +2111,6 @@ dependencies = [
 
 [[package]]
 name = "chrono-tz"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2554a3155fec064362507487171dcc4edc3df60cb10f3a1fb10ed8094822b120"
-dependencies = [
- "chrono",
- "parse-zoneinfo",
-]
-
-[[package]]
-name = "chrono-tz"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93698b29de5e97ad0ae26447b344c482a7284c737d9ddc5f9e52b74a336671bb"
@@ -2424,16 +2414,6 @@ checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
 dependencies = [
  "cfg-if",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "console_log"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e89f72f65e8501878b8a004d5a1afb780987e2ce2b4532c562e367a72c57499f"
-dependencies = [
- "log 0.4.22",
- "web-sys",
 ]
 
 [[package]]
@@ -4704,7 +4684,7 @@ dependencies = [
  "indexmap 2.5.0",
  "slab",
  "tokio",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tracing",
 ]
 
@@ -4723,7 +4703,7 @@ dependencies = [
  "indexmap 2.5.0",
  "slab",
  "tokio",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tracing",
 ]
 
@@ -6036,7 +6016,7 @@ dependencies = [
  "snafu",
  "tokio",
  "tokio-stream",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tracing",
  "url 2.5.2",
 ]
@@ -7768,7 +7748,7 @@ dependencies = [
  "bytes",
  "chrono",
  "console_error_panic_hook",
- "console_log 1.0.0",
+ "console_log",
  "image 0.25.2",
  "itertools 0.13.0",
  "js-sys",
@@ -9067,7 +9047,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls 0.24.1",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tower-service",
  "url 2.5.2",
  "wasm-bindgen",
@@ -9119,7 +9099,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls 0.26.0",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tower-service",
  "url 2.5.2",
  "wasm-bindgen",
@@ -10083,7 +10063,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
@@ -10098,7 +10078,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_baml"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "baml-runtime",
@@ -10112,12 +10092,10 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.1.1"
+version = "0.8.15"
 dependencies = [
  "bytes",
  "chrono",
- "chrono-tz 0.5.3",
- "clap 3.2.25",
  "dashmap",
  "ed25519-dalek",
  "ethers",
@@ -10126,16 +10104,14 @@ dependencies = [
  "serde",
  "serde_json",
  "shinkai_message_primitives",
- "tiny-bip39",
  "tokio",
- "tokio-util 0.6.10",
  "trust-dns-resolver",
  "x25519-dalek",
 ]
 
 [[package]]
 name = "shinkai_db"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "bincode",
@@ -10157,10 +10133,8 @@ dependencies = [
 
 [[package]]
 name = "shinkai_dsl"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
- "chrono",
- "dashmap",
  "pest",
  "pest_derive",
  "regex",
@@ -10170,14 +10144,12 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs_mirror"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "async-channel 1.9.0",
  "base64 0.22.1",
  "chrono",
- "chrono-tz 0.5.3",
  "clap 3.2.25",
  "dotenv",
  "ed25519-dalek",
@@ -10194,13 +10166,12 @@ dependencies = [
  "shinkai_message_primitives",
  "tempfile",
  "tokio",
- "warp",
  "x25519-dalek",
 ]
 
 [[package]]
 name = "shinkai_http_api"
-version = "0.8.13"
+version = "0.8.15"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -10225,7 +10196,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "chrono",
  "serde",
@@ -10237,7 +10208,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_lancedb"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "arrow",
  "arrow-array",
@@ -10260,7 +10231,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.7.6"
+version = "0.8.15"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -10268,9 +10239,6 @@ dependencies = [
  "blake3",
  "chacha20poly1305",
  "chrono",
- "chrono-tz 0.5.3",
- "colored",
- "console_log 0.2.2",
  "ed25519-dalek",
  "hex",
  "log 0.4.22",
@@ -10290,14 +10258,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "base64 0.22.1",
- "chrono",
- "regex",
- "serde",
- "serde_json",
- "uuid 1.10.0",
 ]
 
 [[package]]
@@ -10319,7 +10282,6 @@ dependencies = [
  "chacha20poly1305",
  "chashmap",
  "chrono",
- "chrono-tz 0.5.3",
  "clap 3.2.25",
  "console-subscriber",
  "cron-parser",
@@ -10379,7 +10341,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "image 0.25.2",
@@ -10394,12 +10356,11 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "async-channel 1.9.0",
  "blake3",
  "chrono",
- "dashmap",
  "futures",
  "regex",
  "serde",
@@ -10412,10 +10373,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "chrono",
- "dashmap",
  "futures",
  "r2d2",
  "r2d2_sqlite",
@@ -10431,7 +10391,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_subscription_manager"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
@@ -10439,11 +10399,9 @@ dependencies = [
  "bincode",
  "chacha20poly1305",
  "chrono",
- "chrono-tz 0.5.3",
  "dashmap",
  "ed25519-dalek",
  "futures",
- "lru 0.7.8",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -10461,7 +10419,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.1.1"
+version = "0.8.15"
 dependencies = [
  "bytes",
  "chrono",
@@ -10476,26 +10434,22 @@ dependencies = [
  "shinkai_crypto_identities",
  "shinkai_message_primitives",
  "tokio",
- "tokio-util 0.6.10",
  "uuid 1.10.0",
  "x25519-dalek",
 ]
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "anyhow",
- "async-channel 1.9.0",
  "blake3",
  "chrono",
- "dashmap",
  "futures",
  "regex",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
- "shinkai_db",
  "shinkai_dsl",
  "shinkai_message_primitives",
  "shinkai_tools_runner",
@@ -10530,13 +10484,13 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "tokio-util 0.7.12",
+ "tokio-util",
  "zip 2.2.0",
 ]
 
 [[package]]
 name = "shinkai_vector_fs"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "bincode",
  "blake3",
@@ -10552,7 +10506,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_vector_resources"
-version = "0.1.0"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10560,11 +10514,9 @@ dependencies = [
  "blake3",
  "byteorder",
  "chrono",
- "chrono-tz 0.5.3",
  "comrak",
  "csv",
  "docx-rust",
- "env_logger 0.9.3",
  "futures",
  "hex",
  "keyphrases",
@@ -10579,7 +10531,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shinkai_ocr",
- "textcode",
  "tokio",
  "umya-spreadsheet",
  "urlencoding 1.3.3",
@@ -11358,12 +11309,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "textcode"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "383d5314770f8b7b2129936c78638db0dad1cfc9e7ef78706d4ccf9f0a0677fd"
-
-[[package]]
 name = "textwrap"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11676,20 +11621,6 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.6.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-sink",
- "log 0.4.22",
- "pin-project-lite",
- "tokio",
-]
-
-[[package]]
-name = "tokio-util"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61e7c3654c13bcd040d4a03abee2c75b1d14a37b423cf5a813ceae1cc903ec6a"
@@ -11777,7 +11708,7 @@ dependencies = [
  "rand 0.8.5",
  "slab",
  "tokio",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -12455,7 +12386,7 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.25.0",
  "tokio-tungstenite 0.21.0",
- "tokio-util 0.7.12",
+ "tokio-util",
  "tower-service",
  "tracing",
 ]
