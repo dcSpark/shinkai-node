@@ -63,7 +63,7 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to import sheet: {}", e),
+                    message: format!("Error executing tool: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
             }

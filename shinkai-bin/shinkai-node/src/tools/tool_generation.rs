@@ -72,50 +72,106 @@ pub async fn tool_implementation(
     let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone()).await;
     let mut generate_code_prompt = String::new();
 
-    if let Some(prompt_text) = prompt {
-        match language {
-            Language::Typescript => {
-                generate_code_prompt.push_str(&format!(
-                    "
-RULE I:
-You may use any of the following tools if they are relevant and a good match for the task:
+    if (raw == false) {
+        if let Some(prompt_text) = prompt {
+            match language {
+                Language::Typescript => {
+                    generate_code_prompt.push_str(&format!(
+                        "
+RULE I: 
+These are two examples of METADATA:
+{{
+  id: 'shinkai-tool-coinbase-create-wallet',
+  name: 'Shinkai: Coinbase Wallet Creator',
+  description: 'Tool for creating a Coinbase wallet',
+  author: 'Shinkai',
+  keywords: ['coinbase', 'wallet', 'creator', 'shinkai'],
+  configurations: {{
+    type: 'object',
+    properties: {{
+      name: {{ type: 'string' }},
+      privateKey: {{ type: 'string' }},
+      useServerSigner: {{ type: 'string', default: 'false', nullable: true }},
+    }},
+    required: [{{'name', 'privateKey'}}],
+  }},
+  parameters: {{
+    type: 'object',
+    properties: {{}},
+    required: [], // No required parameters
+  }},
+  result: {{
+    type: 'object',
+    properties: {{
+      walletId: {{ type: 'string', nullable: true }},
+      seed: {{ type: 'string', nullable: true }},
+      address: {{ type: 'string', nullable: true }},
+    }},
+    required: [],
+  }},
+}};
 
-{},
-================================================================
+{{
+  id: 'shinkai-tool-download-pages',
+  name: 'Shinkai: Download Pages',
+  description: 'Downloads one or more URLs and converts their HTML content to Markdown',
+  author: 'Shinkai',
+  keywords: [
+    'HTML to Markdown',
+    'web page downloader',
+    'content conversion',
+    'URL to Markdown',
+  ],
+  configurations: {{
+    type: 'object',
+    properties: {{}},
+    required: [],
+  }},
+  parameters: {{
+    type: 'object',
+    properties: {{
+      urls: {{ type: 'array', items: {{ type: 'string' }} }},
+    }},
+    required: [{{'urls'}}],
+  }},
+  result: {{
+    type: 'object',
+    properties: {{
+      markdowns: {{ type: 'array', items: {{ type: 'string' }} }},
+    }},
+    required: [{{'markdowns'}}],
+  }},
+}};
+
+---- 
 RULE II:
-Write a code snippet in {} within the following function signature, where you can update the main function code to
-implement the task you can also update the CONFIG, INPUTS and OUTPUT types to match the tool's 
+Following this example, generate the METADATA for the following code in the {} language:
 
-type CONFIG = {{}};
-type INPUTS = {{}};
-type OUTPUT = {{}};
-async function main(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
-    return {{}}
-}}
-
-================================================================
-RULE III:
-Implement the following task:
 {}
+
 ",
-                    &tool_definitions, language, prompt_text
-                ));
-            }
-            Language::Python => {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("NYI Python"),
-                })
-            }
-            _ => {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Unknown Language {}", language),
-                });
+                        language,
+                        code.unwrap_or("".to_string())
+                    ));
+                }
+                Language::Python => {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("NYI Python"),
+                    })
+                }
+                _ => {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Unknown Language {}", language),
+                    });
+                }
             }
         }
+    } else {
+        generate_code_prompt = prompt.unwrap_or("".to_string());
     }
 
     if (fetch_query) {
