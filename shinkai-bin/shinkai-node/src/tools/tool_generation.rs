@@ -63,6 +63,72 @@ fn generic_error_str(e: &str) -> APIError {
     }
 }
 
+async fn v2_create_and_send_job_message(
+    bearer: String,
+    job_creation_info: JobCreationInfo,
+    llm_provider: String,
+    content: String,
+    db_clone: Arc<ShinkaiDB>,
+    node_name_clone: ShinkaiName,
+    identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    job_manager_clone: Arc<Mutex<JobManager>>,
+    encryption_secret_key_clone: EncryptionStaticKey,
+    encryption_public_key_clone: EncryptionPublicKey,
+    signing_secret_key_clone: SigningKey,
+) -> Result<String, APIError> {
+    // Create job
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    let _ = Node::v2_create_new_job(
+        db_clone.clone(),
+        node_name_clone.clone(),
+        identity_manager_clone.clone(),
+        job_manager_clone.clone(),
+        bearer.clone(),
+        job_creation_info,
+        llm_provider,
+        encryption_secret_key_clone.clone(),
+        encryption_public_key_clone.clone(),
+        signing_secret_key_clone.clone(),
+        res_sender,
+    )
+    .await;
+
+    let job_id = res_receiver.recv().await.map_err(|e| generic_error(e))??;
+
+    // Send message
+    let job_message = JobMessage {
+        job_id: job_id.clone(),
+        content,
+        files_inbox: "".to_string(),
+        parent: None,
+        workflow_code: None,
+        workflow_name: None,
+        sheet_job_data: None,
+        callback: None,
+        metadata: None,
+    };
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    let _ = Node::v2_job_message(
+        db_clone,
+        node_name_clone,
+        identity_manager_clone,
+        job_manager_clone,
+        bearer,
+        job_message,
+        encryption_secret_key_clone,
+        encryption_public_key_clone,
+        signing_secret_key_clone,
+        res_sender,
+    )
+    .await;
+
+    res_receiver.recv().await.map_err(|e| generic_error(e))??;
+    Ok(job_id)
+}
+
 pub async fn tool_implementation(
     bearer: String,
     language: Language,
@@ -87,7 +153,7 @@ pub async fn tool_implementation(
     let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone()).await;
     let mut generate_code_prompt = String::new();
 
-    if (raw == false) {
+    if !raw {
         if let Some(prompt_text) = prompt {
             match language {
                 Language::Typescript => {
@@ -137,60 +203,26 @@ Implement the code in {} for the following task:
         generate_code_prompt = prompt.unwrap_or("".to_string());
     }
 
-    if (fetch_query) {
+    if fetch_query {
         return Ok(json!({
             "query": generate_code_prompt,
         }));
     }
 
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-
-    let _ = Node::v2_create_new_job(
-        db_clone.clone(),
-        node_name_clone.clone(),
-        identity_manager_clone.clone(),
-        job_manager_clone.clone(),
-        bearer.clone(),
+    let job_id = v2_create_and_send_job_message(
+        bearer,
         job_creation_info,
         llm_provider,
-        encryption_secret_key_clone.clone(),
-        encryption_public_key_clone.clone(),
-        signing_secret_key_clone.clone(),
-        res_sender,
+        generate_code_prompt,
+        db_clone,
+        node_name_clone,
+        identity_manager_clone,
+        job_manager_clone,
+        encryption_secret_key_clone,
+        encryption_public_key_clone,
+        signing_secret_key_clone,
     )
-    .await;
-
-    let job_id = res_receiver.recv().await.map_err(|e| generic_error(e))??;
-
-    let job_message = JobMessage {
-        job_id: job_id.clone(),
-        content: generate_code_prompt,
-        files_inbox: "".to_string(),
-        parent: None,
-        workflow_code: None,
-        workflow_name: None,
-        sheet_job_data: None,
-        callback: None,
-        metadata: None,
-    };
-
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-
-    let _ = Node::v2_job_message(
-        db_clone.clone(),
-        node_name_clone.clone(),
-        identity_manager_clone.clone(),
-        job_manager_clone.clone(),
-        bearer.clone(),
-        job_message,
-        encryption_secret_key_clone.clone(),
-        encryption_public_key_clone.clone(),
-        signing_secret_key_clone.clone(),
-        res_sender,
-    )
-    .await;
-
-    let job_id = res_receiver.recv().await.map_err(|e| generic_error(e))??;
+    .await?;
 
     Ok(json!({
         "job_id": job_id,
@@ -305,57 +337,21 @@ Following this example, generate the METADATA for the following code in the {} l
         }
     }
 
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-
-    let _ = Node::v2_create_new_job(
-        db_clone.clone(),
-        node_name_clone.clone(),
-        identity_manager_clone.clone(),
-        job_manager_clone.clone(),
-        bearer.clone(),
+    let job_id = v2_create_and_send_job_message(
+        bearer,
         job_creation_info,
         llm_provider,
-        encryption_secret_key_clone.clone(),
-        encryption_public_key_clone.clone(),
-        signing_secret_key_clone.clone(),
-        res_sender,
+        generate_code_prompt,
+        db_clone,
+        node_name_clone,
+        identity_manager_clone,
+        job_manager_clone,
+        encryption_secret_key_clone,
+        encryption_public_key_clone,
+        signing_secret_key_clone,
     )
-    .await;
+    .await?;
 
-    let job_id = res_receiver.recv().await.map_err(|e| {
-        // Convert the Rejection error to APIError
-        generic_error(e)
-    })??;
-
-    let job_message = JobMessage {
-        job_id: job_id.clone(),
-        content: generate_code_prompt,
-        files_inbox: "".to_string(),
-        parent: None,
-        workflow_code: None,
-        workflow_name: None,
-        sheet_job_data: None,
-        callback: None,
-        metadata: None,
-    };
-
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-
-    let _ = Node::v2_job_message(
-        db_clone.clone(),
-        node_name_clone.clone(),
-        identity_manager_clone.clone(),
-        job_manager_clone.clone(),
-        bearer.clone(),
-        job_message,
-        encryption_secret_key_clone.clone(),
-        encryption_public_key_clone.clone(),
-        signing_secret_key_clone.clone(),
-        res_sender,
-    )
-    .await;
-
-    let result = res_receiver.recv().await.map_err(|e| generic_error(e))??;
     Ok(json!({
         "job_id": job_id,
     }))
