@@ -30,7 +30,6 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
-use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -1082,47 +1081,47 @@ impl Node {
         }
     }
 
-    pub async fn v2_api_get_tooling_logs(
-        db: Arc<ShinkaiDB>,
-        sqlite_logger: Arc<SqliteLogger>,
-        bearer: String,
-        message_id: String,
-        res: Sender<Result<Value, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
+    // pub async fn v2_api_get_tooling_logs(
+    //     db: Arc<ShinkaiDB>,
+    //     sqlite_logger: Arc<SqliteLogger>,
+    //     bearer: String,
+    //     message_id: String,
+    //     res: Sender<Result<Value, APIError>>,
+    // ) -> Result<(), NodeError> {
+    //     // Validate the bearer token
+    //     if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+    //         return Ok(());
+    //     }
 
-        // Retrieve logs for the given message_id using SqliteLogger
-        match sqlite_logger.get_logs(Some(&message_id), None, None) {
-            Ok(logs) => {
-                match serde_json::to_value(&logs) {
-                    Ok(logs_value) => {
-                        let _ = res.send(Ok(logs_value)).await;
-                    }
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to serialize logs: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                    }
-                }
-                Ok(())
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve logs: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
+    //     // Retrieve logs for the given message_id using SqliteLogger
+    //     match sqlite_logger.get_logs(Some(&message_id), None, None) {
+    //         Ok(logs) => {
+    //             match serde_json::to_value(&logs) {
+    //                 Ok(logs_value) => {
+    //                     let _ = res.send(Ok(logs_value)).await;
+    //                 }
+    //                 Err(err) => {
+    //                     let api_error = APIError {
+    //                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+    //                         error: "Internal Server Error".to_string(),
+    //                         message: format!("Failed to serialize logs: {}", err),
+    //                     };
+    //                     let _ = res.send(Err(api_error)).await;
+    //                 }
+    //             }
+    //             Ok(())
+    //         }
+    //         Err(err) => {
+    //             let api_error = APIError {
+    //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+    //                 error: "Internal Server Error".to_string(),
+    //                 message: format!("Failed to retrieve logs: {}", err),
+    //             };
+    //             let _ = res.send(Err(api_error)).await;
+    //             Ok(())
+    //         }
+    //     }
+    // }
 
     pub async fn v2_fork_job_messages(
         db: Arc<ShinkaiDB>,

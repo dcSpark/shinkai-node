@@ -1,7 +1,4 @@
-use crate::{
-    managers::model_capabilities_manager::ModelCapabilitiesManagerError,
-    workflows::sm_executor::WorkflowError,
-};
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManagerError;
 use anyhow::Error as AnyhowError;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::{
@@ -356,12 +353,6 @@ impl From<VectorFSError> for LLMProviderError {
 impl From<String> for LLMProviderError {
     fn from(err: String) -> LLMProviderError {
         LLMProviderError::WorkflowExecutionError(err)
-    }
-}
-
-impl From<WorkflowError> for LLMProviderError {
-    fn from(err: WorkflowError) -> LLMProviderError {
-        LLMProviderError::WorkflowExecutionError(err.to_string())
     }
 }
 

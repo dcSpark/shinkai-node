@@ -6,7 +6,6 @@ mod managers;
 mod network;
 mod runner;
 mod utils;
-mod workflows;
 mod wallet;
 mod tools;
 

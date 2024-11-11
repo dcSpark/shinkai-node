@@ -21,7 +21,6 @@ use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::inbox_permission::InboxPermission;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
@@ -39,7 +38,7 @@ use shinkai_message_primitives::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
             APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
-            APIReadUpToTimeRequest, APISetWorkflow, APIWorkflowKeyname, IdentityPermissions, MessageSchemaType,
+            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType,
             RegistrationCodeRequest, RegistrationCodeType,
         },
     },
@@ -53,7 +52,6 @@ use shinkai_message_primitives::{
 };
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_tools_primitives::tools::workflow_tool::WorkflowTool;
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -3112,263 +3110,6 @@ impl Node {
             let _ = res.send(Err(api_error)).await;
             Ok(())
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn api_add_workflow(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<JsonValue, APIError>>,
-    ) -> Result<(), NodeError> {
-        let (api_add_workflow, requester_name) = match Self::validate_and_extract_payload::<APISetWorkflow>(
-            node_name.clone(),
-            identity_manager.clone(),
-            encryption_secret_key,
-            potentially_encrypted_msg,
-            MessageSchemaType::AddWorkflow,
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invalid node name provided".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Create the workflow using the new method
-        let workflow = match Workflow::new(api_add_workflow.workflow_raw, api_add_workflow.description) {
-            Ok(workflow) => workflow,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to create workflow: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Create a ShinkaiTool::Workflow
-        let workflow_tool = WorkflowTool::new(workflow.clone());
-        let shinkai_tool = ShinkaiTool::Workflow(workflow_tool, true);
-
-        // Save the workflow to the LanceShinkaiDb
-        {
-            let lance_db = lance_db.write().await;
-            if let Err(err) = lance_db.set_tool(&shinkai_tool).await {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to save workflow: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        } // Lock on lance_db is dropped here
-
-        let response = json!({ "status": "success", "message": "Workflow added to database" });
-        let _ = res.send(Ok(response)).await;
-        Ok(())
-    }
-
-    pub async fn api_remove_workflow(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<JsonValue, APIError>>,
-    ) -> Result<(), NodeError> {
-        let (workflow_key, requester_name) = match Self::validate_and_extract_payload::<APIWorkflowKeyname>(
-            node_name.clone(),
-            identity_manager.clone(),
-            encryption_secret_key,
-            potentially_encrypted_msg,
-            MessageSchemaType::RemoveWorkflow,
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invalid node name provided".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Generate the workflow key
-        let workflow_key_str = workflow_key.tool_router_key;
-
-        // Remove the workflow from the LanceShinkaiDb
-        {
-            let lance_db = lance_db.write().await;
-            if let Err(err) = lance_db.remove_tool(&workflow_key_str).await {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to remove workflow: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        } // Lock on lance_db is dropped here
-
-        let response = json!({ "status": "success", "message": "Workflow removed from database" });
-        let _ = res.send(Ok(response)).await;
-        Ok(())
-    }
-
-    pub async fn api_get_workflow_info(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<JsonValue, APIError>>,
-    ) -> Result<(), NodeError> {
-        let (workflow_key, requester_name) = match Self::validate_and_extract_payload::<APIWorkflowKeyname>(
-            node_name.clone(),
-            identity_manager.clone(),
-            encryption_secret_key,
-            potentially_encrypted_msg,
-            MessageSchemaType::GetWorkflow,
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invalid node name provided".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Generate the workflow key
-        let workflow_key_str = workflow_key.tool_router_key;
-
-        // Get the workflow from the LanceShinkaiDb
-        let workflow = {
-            let lance_db = lance_db.read().await;
-            match lance_db.get_tool(&workflow_key_str).await {
-                Ok(Some(workflow)) => workflow,
-                Ok(None) => {
-                    let api_error = APIError {
-                        code: StatusCode::NOT_FOUND.as_u16(),
-                        error: "Not Found".to_string(),
-                        message: "Workflow not found".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to get workflow: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        }; // Lock on lance_db is dropped here
-
-        let response = json!(workflow);
-        let _ = res.send(Ok(response)).await;
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn api_list_all_workflows(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<JsonValue, APIError>>,
-    ) -> Result<(), NodeError> {
-        let requester_name = match Self::validate_and_extract_payload::<String>(
-            node_name.clone(),
-            identity_manager.clone(),
-            encryption_secret_key,
-            potentially_encrypted_msg,
-            MessageSchemaType::ListWorkflows,
-        )
-        .await
-        {
-            Ok((_, requester_name)) => requester_name,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invalid node name provided".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // List all workflows
-        let workflows = {
-            let lance_db = lance_db.read().await;
-            match lance_db.get_all_workflows().await {
-                Ok(workflows) => workflows,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to list workflows: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        }; // Lock on lance_db is dropped here
-
-        let response = json!(workflows);
-        let _ = res.send(Ok(response)).await;
-        Ok(())
     }
 
     pub async fn api_list_all_shinkai_tools(
