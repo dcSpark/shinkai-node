@@ -1,18 +1,143 @@
+use std::sync::Arc;
+
 use serde_json::{json, Map, Value};
+use shinkai_message_primitives::schemas::inbox_name;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::V2ChatMessage;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_tools_primitives::tools::error::ToolError;
 
-pub fn execute_custom_tool(
+use ed25519_dalek::SigningKey;
+use reqwest::StatusCode;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use tokio::sync::{Mutex, RwLock};
+
+use x25519_dalek::PublicKey as EncryptionPublicKey;
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+use crate::managers::IdentityManager;
+use crate::tools::tool_generation::v2_create_and_send_job_message;
+use crate::{llm_provider::job_manager::JobManager, network::Node};
+
+use tokio::time::{sleep, Duration};
+
+pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
+    bearer: String,
+    db: Arc<ShinkaiDB>,
+    node_name: ShinkaiName,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
-    // Get the tool name from the parameters or router key
-
     match tool_router_key {
-        s if s == &String::from("internal:::text_analyzer") => execute_text_analyzer(&parameters),
-        s if s == &String::from("internal:::calculator") => execute_calculator(&parameters),
+        s if s == "local:::llm" => {
+            execute_llm(
+                bearer,
+                db,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+                &parameters,
+            )
+            .await
+        }
+        s if s == &String::from("local:::text_analyzer") => execute_text_analyzer(&parameters),
+        s if s == &String::from("local:::calculator") => execute_calculator(&parameters),
         _ => Ok(json!({})), // Not a custom tool
     }
+}
+
+async fn execute_llm(
+    bearer: String,
+    db_clone: Arc<ShinkaiDB>,
+    node_name_clone: ShinkaiName,
+    identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    job_manager_clone: Arc<Mutex<JobManager>>,
+    encryption_secret_key_clone: EncryptionStaticKey,
+    encryption_public_key_clone: EncryptionPublicKey,
+    signing_secret_key_clone: SigningKey,
+    parameters: &Map<String, Value>,
+) -> Result<Value, ToolError> {
+    let llm_provider = "llama3_1_8b".to_string();
+    let content = parameters
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let response = v2_create_and_send_job_message(
+        bearer.clone(),
+        JobCreationInfo {
+            scope: JobScope::new_default(),
+            is_hidden: Some(false),
+            associated_ui: None,
+        },
+        llm_provider,
+        content,
+        db_clone.clone(),
+        node_name_clone,
+        identity_manager_clone,
+        job_manager_clone,
+        encryption_secret_key_clone,
+        encryption_public_key_clone,
+        signing_secret_key_clone,
+    )
+    .await
+    .map_err(|_| ToolError::ExecutionError("Failed to create job".to_string()))?;
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    let inbox_name = InboxName::get_job_inbox_name_from_params(response.clone())
+        .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+    let start_time = std::time::Instant::now();
+    let timeout = Duration::from_secs(180); // 3 minutes timeout
+    let delay = Duration::from_secs(1); // 1 second delay between polls
+
+    let x = loop {
+        let _ = Node::v2_get_last_messages_from_inbox_with_branches(
+            db_clone.clone(),
+            bearer.clone(),
+            inbox_name.to_string(),
+            100,
+            None,
+            res_sender.clone(),
+        )
+        .await;
+
+        let x = res_receiver
+            .recv()
+            .await
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?
+            .map_err(|_| ToolError::ExecutionError("Failed to get messages".to_string()))?;
+
+        if x.len() >= 2 {
+            break x;
+        }
+
+        if start_time.elapsed() >= timeout {
+            return Err(ToolError::ExecutionError("Timeout waiting for messages".to_string()));
+        }
+
+        sleep(delay).await;
+    };
+    println!("messages-llm-bot: {} {:?}", x.len(), x);
+
+    Ok(json!({ "message": x.last().unwrap().last().unwrap().job_message.content.clone() }))
 }
 
 fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolError> {

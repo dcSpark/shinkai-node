@@ -30,14 +30,15 @@ impl Node {
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Convert the String output to a Value
-        let definitions = generate_tool_definitions(language, lance_db).await;
-        let value = Value::String(definitions);
-
-        // Send the result
-        res.send(Ok(value)).await.map_err(|e| NodeError {
-            message: format!("Failed to send response: {}", e),
-        })?;
-
+        let definitions = generate_tool_definitions(language, lance_db, false).await;
+        match definitions {
+            Ok(definitions) => {
+                let _ = res.send(Ok(Value::String(definitions))).await;
+            }
+            Err(e) => {
+                let _ = res.send(Err(e)).await;
+            }
+        }
         Ok(())
     }
 
@@ -48,6 +49,12 @@ impl Node {
         tool_router_key: String,
         tool_type: ToolType,
         parameters: Map<String, Value>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Execute the tool directly
@@ -59,26 +66,28 @@ impl Node {
             db,
             lance_db,
             bearer,
+            node_name,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
         )
         .await;
 
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_router_key);
-                if let Err(e) = res.send(Ok(result)).await {
-                    eprintln!("[execute_command] Failed to send success response: {}", e);
-                    return Err(NodeError {
-                        message: format!("Failed to send response: {}", e),
-                    });
-                }
+                let _ = res.send(Ok(result)).await;
             }
             Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Error executing tool: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error executing tool: {}", e),
+                    }))
+                    .await;
             }
         }
 
@@ -131,16 +140,10 @@ impl Node {
 
         match implementation {
             Ok(implementation_) => {
-                // Send response
-                res.send(Ok(implementation_)).await.map_err(|e| NodeError {
-                    message: format!("Failed to send response: {}", e),
-                })?;
+                let _ = res.send(Ok(implementation_)).await;
             }
             Err(e) => {
-                let api_error = APIError::from(e);
-                res.send(Err(api_error)).await.map_err(|e| NodeError {
-                    message: format!("Failed to send response: {}", e),
-                })?;
+                let _ = res.send(Err(e)).await;
             }
         }
 
@@ -188,16 +191,10 @@ impl Node {
 
         match metadata {
             Ok(metadata_) => {
-                // Send response
-                res.send(Ok(metadata_)).await.map_err(|e| NodeError {
-                    message: format!("Failed to send response: {}", e),
-                })?;
+                let _ = res.send(Ok(metadata_)).await;
             }
             Err(e) => {
-                let api_error = APIError::from(e);
-                res.send(Err(api_error)).await.map_err(|e| NodeError {
-                    message: format!("Failed to send response: {}", e),
-                })?;
+                let _ = res.send(Err(e)).await;
             }
         }
 

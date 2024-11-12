@@ -58,137 +58,122 @@ fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> S
     }
 }
 
-pub fn generate_typescript_definition(
-    tool_type: ToolType,
-    name: String,
-    runner_def: &ToolDefinition,
-    tool_result: Option<&ShinkaiToolHeader>,
-) -> String {
+pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: bool) -> String {
     let mut typescript_output = String::new();
     let node_env = fetch_node_environment();
     let api_port = node_env.api_listen_address.port();
 
     typescript_output.push_str("/**\n");
-    typescript_output.push_str(&format!(" * {}\n", runner_def.description));
+    typescript_output.push_str(&format!(" * {}\n", tool.description));
 
-    if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        for (param_name, param_value) in properties {
-            let required = runner_def
-                .parameters
-                .get("required")
-                .and_then(|r| r.as_array())
-                .map(|arr| arr.iter().any(|v| v.as_str() == Some(param_name)))
-                .unwrap_or(false);
-
-            let desc = param_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
-
-            typescript_output.push_str(&format!(
-                " * @param {} - ({}{}) {}\n",
-                param_name,
-                if required { "required" } else { "optional" },
-                if !desc.is_empty() {
-                    format!(", {}", desc)
-                } else {
-                    String::new()
-                },
-                if required { "" } else { ", default: undefined" }
-            ));
-        }
+    // Generate parameter documentation
+    for arg in &tool.input_args {
+        typescript_output.push_str(&format!(
+            " * @param {} - ({}{}) {}\n",
+            arg.name,
+            if arg.is_required { "required" } else { "optional" },
+            if !arg.description.is_empty() {
+                format!(", {}", arg.description)
+            } else {
+                String::new()
+            },
+            if arg.is_required { "" } else { ", default: undefined" }
+        ));
     }
 
     // Generate return type documentation
     typescript_output.push_str(" * @returns {{\n");
-    if let Some(properties) = runner_def.result.get("properties").and_then(|v| v.as_object()) {
-        for (prop_name, prop_value) in properties {
-            let type_str = json_type_to_typescript(
-                prop_value.get("type").unwrap_or(&Value::String("any".to_string())),
-                prop_value.get("items"),
-            );
-            let desc = prop_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
-            typescript_output.push_str(&format!(
-                " *   {}: {} {}\n",
-                prop_name,
-                type_str,
-                if !desc.is_empty() {
-                    format!("- {}", desc)
-                } else {
-                    String::new()
-                }
-            ));
+    // Parse the output_arg.json to get the return type properties
+    if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
+        if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
+            for (prop_name, prop_value) in properties {
+                let type_str = json_type_to_typescript(
+                    prop_value.get("type").unwrap_or(&Value::String("any".to_string())),
+                    prop_value.get("items"),
+                );
+                let desc = prop_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                typescript_output.push_str(&format!(
+                    " *   {}: {} {}\n",
+                    prop_name,
+                    type_str,
+                    if !desc.is_empty() {
+                        format!("- {}", desc)
+                    } else {
+                        String::new()
+                    }
+                ));
+            }
         }
     }
     typescript_output.push_str(" * }}\n");
     typescript_output.push_str(" */\n");
 
-    let function_name = to_camel_case(&name);
-    typescript_output.push_str(&format!("async function {}(", function_name));
+    let function_name = to_camel_case(&tool.name);
+
+    // Add 'export' and 'declare' for .d.ts files
+    if generate_dts {
+        typescript_output.push_str(&format!("export async function {}(", function_name));
+    } else {
+        typescript_output.push_str(&format!("async function {}(", function_name));
+    }
 
     // Generate function parameters
-    if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        let params: Vec<String> = properties
-            .iter()
-            .map(|(param_name, param_value)| {
-                let required = runner_def
-                    .parameters
-                    .get("required")
-                    .and_then(|r| r.as_array())
-                    .map(|arr| arr.iter().any(|v| v.as_str() == Some(param_name)))
-                    .unwrap_or(false);
-                let type_str = json_type_to_typescript(
-                    param_value.get("type").unwrap_or(&Value::String("any".to_string())),
-                    param_value.get("items"),
-                );
-                if required {
-                    format!("{}: {}", param_name, type_str)
-                } else {
-                    format!("{}?: {}", param_name, type_str)
-                }
-            })
-            .collect();
-        typescript_output.push_str(&params.join(", "));
-    }
+    let params: Vec<String> = tool
+        .input_args
+        .iter()
+        .map(|arg| {
+            let type_str = &arg.arg_type;
+            if arg.is_required {
+                format!("{}: {}", arg.name, type_str)
+            } else {
+                format!("{}?: {}", arg.name, type_str)
+            }
+        })
+        .collect();
+    typescript_output.push_str(&params.join(", "));
 
     // Generate return type inline
     typescript_output.push_str("): Promise<{\n");
-    if let Some(properties) = runner_def.result.get("properties").and_then(|v| v.as_object()) {
-        for (prop_name, prop_value) in properties {
-            let type_str = json_type_to_typescript(
-                prop_value.get("type").unwrap_or(&Value::String("any".to_string())),
-                prop_value.get("items"),
-            );
-            typescript_output.push_str(&format!("    {}: {};\n", prop_name, type_str));
+    if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
+        if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
+            for (prop_name, prop_value) in properties {
+                let type_str = json_type_to_typescript(
+                    prop_value.get("type").unwrap_or(&Value::String("any".to_string())),
+                    prop_value.get("items"),
+                );
+                typescript_output.push_str(&format!("    {}: {};\n", prop_name, type_str));
+            }
         }
     }
-    typescript_output.push_str("}> {\n");
+    typescript_output.push_str("}>"); // Close the return type
 
-    let tool_router_key = if let Some(header) = tool_result {
-        format!("{}", header.tool_router_key)
+    if generate_dts {
+        typescript_output.push_str(";\n"); // End the declaration with semicolon
     } else {
-        format!("internal:::{}", name.to_lowercase())
-    };
-
-    typescript_output.push_str(&format!(
-        "    const _url = 'http://localhost:{}/v2/tool_execution';\n",
-        api_port
-    ));
-    typescript_output.push_str("    const data = {\n");
-    typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool_router_key));
-    typescript_output.push_str(&format!("        tool_type: '{}',\n", tool_type));
-    typescript_output.push_str("        parameters: {\n");
-    if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        for (param_name, _) in properties {
-            typescript_output.push_str(&format!("            {}: {},\n", param_name, param_name));
+        // Only include implementation if not generating .d.ts
+        typescript_output.push_str(" {\n");
+        typescript_output.push_str(&format!(
+            "    const _url = 'http://localhost:{}/v2/tool_execution';\n",
+            api_port
+        ));
+        typescript_output.push_str("    const data = {\n");
+        typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
+        typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type));
+        typescript_output.push_str("        parameters: {\n");
+        for arg in &tool.input_args {
+            typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));
         }
+        typescript_output.push_str("        },\n");
+        typescript_output.push_str("    };\n");
+        typescript_output.push_str("    const response = await axios.post(_url, data, {\n");
+        typescript_output.push_str("        headers: {\n");
+        typescript_output.push_str("            'Authorization': `Bearer ${process.env.BEARER}`\n");
+        typescript_output.push_str("        }\n");
+        typescript_output.push_str("    });\n");
+        typescript_output.push_str("    return response.data;\n");
+        typescript_output.push_str("}\n");
     }
-    typescript_output.push_str("        },\n");
-    typescript_output.push_str("    };\n");
-    typescript_output.push_str("    const response = await axios.post(_url, data, {\n");
-    typescript_output.push_str("        headers: {\n");
-    typescript_output.push_str("            'Authorization': `Bearer ${process.env.BEARER}`\n");
-    typescript_output.push_str("        }\n");
-    typescript_output.push_str("    });\n");
-    typescript_output.push_str("    return response.data;\n");
-    typescript_output.push_str("}\n\n");
 
+    typescript_output.push_str("\n");
     typescript_output
 }

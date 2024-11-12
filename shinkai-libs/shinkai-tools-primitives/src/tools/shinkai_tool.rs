@@ -1,15 +1,18 @@
 use std::env;
 
 use crate::tools::error::ToolError;
-use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
-    argument::ToolArgument, deno_tools::DenoTool, internal_tools::InternalTool, js_toolkit_headers::ToolConfig,
-    network_tool::NetworkTool, python_tools::PythonTool,
+    argument::{ToolArgument, ToolOutputArg},
+    deno_tools::DenoTool,
+    internal_tools::InternalTool,
+    js_toolkit_headers::ToolConfig,
+    network_tool::NetworkTool,
+    python_tools::PythonTool,
 };
 
 pub type IsEnabled = bool;
@@ -18,7 +21,6 @@ pub type IsEnabled = bool;
 #[serde(tag = "type", content = "content")]
 pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
-    JS(JSTool, IsEnabled),
     Network(NetworkTool, IsEnabled),
     Deno(DenoTool, IsEnabled),
     Python(PythonTool, IsEnabled),
@@ -37,6 +39,7 @@ pub struct ShinkaiToolHeader {
     pub version: String,
     pub enabled: bool,
     pub input_args: Vec<ToolArgument>,
+    pub output_arg: ToolOutputArg,
     pub config: Option<Vec<ToolConfig>>,
     pub usage_type: Option<UsageType>, // includes pricing
     // Note: do we need usage_type? it's already contained in the tool_offering
@@ -66,6 +69,7 @@ impl ShinkaiTool {
             version: self.version(),
             enabled: self.is_enabled(),
             input_args: self.input_args(),
+            output_arg: self.output_arg(),
             config: self.get_js_tool_config().cloned(),
             usage_type: self.get_usage_type(),
             tool_offering: None,
@@ -83,7 +87,7 @@ impl ShinkaiTool {
                     self.name(),
                     match self {
                         ShinkaiTool::Rust(r, _) => r.toolkit_name(),
-                        ShinkaiTool::JS(j, _) => j.toolkit_name.to_string(),
+                        ShinkaiTool::Deno(j, _) => j.toolkit_name.to_string(),
                         ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
                         _ => unreachable!(), // This case is already handled above
                     },
@@ -105,7 +109,6 @@ impl ShinkaiTool {
     pub fn name(&self) -> String {
         match self {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
-            ShinkaiTool::JS(j, _) => j.name.clone(),
             ShinkaiTool::Network(n, _) => n.name.clone(),
             ShinkaiTool::Deno(d, _) => d.name.clone(),
             ShinkaiTool::Python(p, _) => p.name.clone(),
@@ -116,7 +119,6 @@ impl ShinkaiTool {
     pub fn description(&self) -> String {
         match self {
             ShinkaiTool::Rust(r, _) => r.description.clone(),
-            ShinkaiTool::JS(j, _) => j.description.clone(),
             ShinkaiTool::Network(n, _) => n.description.clone(),
             ShinkaiTool::Deno(d, _) => d.description.clone(),
             ShinkaiTool::Python(p, _) => p.description.clone(),
@@ -128,7 +130,6 @@ impl ShinkaiTool {
     pub fn toolkit_name(&self) -> String {
         match self {
             ShinkaiTool::Rust(r, _) => r.toolkit_name(),
-            ShinkaiTool::JS(j, _) => j.toolkit_name.clone(),
             ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
             ShinkaiTool::Deno(d, _) => d.toolkit_name(),
             ShinkaiTool::Python(p, _) => p.toolkit_name(),
@@ -140,7 +141,6 @@ impl ShinkaiTool {
     pub fn input_args(&self) -> Vec<ToolArgument> {
         match self {
             ShinkaiTool::Rust(r, _) => r.input_args.clone(),
-            ShinkaiTool::JS(j, _) => j.input_args.clone(),
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
             ShinkaiTool::Deno(d, _) => d.input_args.clone(),
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
@@ -148,11 +148,21 @@ impl ShinkaiTool {
         }
     }
 
+    /// Returns the input arguments of the tool
+    pub fn output_arg(&self) -> ToolOutputArg {
+        match self {
+            ShinkaiTool::Rust(r, _) => r.output_arg.clone(),
+            ShinkaiTool::Network(n, _) => n.output_arg.clone(),
+            ShinkaiTool::Deno(d, _) => d.output_arg.clone(),
+            ShinkaiTool::Python(p, _) => p.output_arg.clone(),
+            ShinkaiTool::Internal(i, _) => i.output_arg.clone(),
+        }
+    }
+
     /// Returns the output arguments of the tool
     pub fn tool_type(&self) -> &'static str {
         match self {
             ShinkaiTool::Rust(_, _) => "Rust",
-            ShinkaiTool::JS(_, _) => "JS",
             ShinkaiTool::Network(_, _) => "Network",
             ShinkaiTool::Deno(_, _) => "Deno",
             ShinkaiTool::Python(_, _) => "Python",
@@ -174,7 +184,6 @@ impl ShinkaiTool {
     pub fn set_embedding(&mut self, embedding: Embedding) {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
-            ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
             ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
             ShinkaiTool::Python(p, _) => p.tool_embedding = Some(embedding),
@@ -232,7 +241,6 @@ impl ShinkaiTool {
     pub fn get_embedding(&self) -> Option<Embedding> {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
-            ShinkaiTool::JS(j, _) => j.embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
             ShinkaiTool::Deno(d, _) => d.embedding.clone(),
             ShinkaiTool::Python(p, _) => p.tool_embedding.clone(),
@@ -252,7 +260,6 @@ impl ShinkaiTool {
     pub fn author(&self) -> String {
         match self {
             ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
-            ShinkaiTool::JS(j, _) => j.author.clone(),
             ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
             ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
@@ -264,7 +271,6 @@ impl ShinkaiTool {
     pub fn version(&self) -> String {
         match self {
             ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
-            ShinkaiTool::JS(_j, _) => "v0.1".to_string(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
@@ -285,7 +291,6 @@ impl ShinkaiTool {
     pub fn is_enabled(&self) -> bool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled,
-            ShinkaiTool::JS(_, enabled) => *enabled,
             ShinkaiTool::Network(_, enabled) => *enabled,
             ShinkaiTool::Deno(_, enabled) => *enabled,
             ShinkaiTool::Python(_, enabled) => *enabled,
@@ -297,7 +302,6 @@ impl ShinkaiTool {
     pub fn enable(&mut self) {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = true,
-            ShinkaiTool::JS(_, enabled) => *enabled = true,
             ShinkaiTool::Network(_, enabled) => *enabled = true,
             ShinkaiTool::Deno(_, enabled) => *enabled = true,
             ShinkaiTool::Python(_, enabled) => *enabled = true,
@@ -309,7 +313,6 @@ impl ShinkaiTool {
     pub fn disable(&mut self) {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = false,
-            ShinkaiTool::JS(_, enabled) => *enabled = false,
             ShinkaiTool::Network(_, enabled) => *enabled = false,
             ShinkaiTool::Deno(_, enabled) => *enabled = false,
             ShinkaiTool::Python(_, enabled) => *enabled = false,
@@ -319,7 +322,7 @@ impl ShinkaiTool {
 
     /// Get the config from a JSTool, return None if it's another type
     pub fn get_js_tool_config(&self) -> Option<&Vec<ToolConfig>> {
-        if let ShinkaiTool::JS(js_tool, _) = self {
+        if let ShinkaiTool::Deno(js_tool, _) = self {
             Some(&js_tool.config)
         } else {
             None
@@ -330,9 +333,8 @@ impl ShinkaiTool {
     pub fn can_be_enabled(&self) -> bool {
         match self {
             ShinkaiTool::Rust(_, _) => true,
-            ShinkaiTool::JS(js_tool, _) => js_tool.check_required_config_fields(),
             ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
-            ShinkaiTool::Deno(_, _) => true,
+            ShinkaiTool::Deno(deno_tool, _) => deno_tool.check_required_config_fields(),
             ShinkaiTool::Python(_, _) => true,
             ShinkaiTool::Internal(_, _) => true,
         }
@@ -356,7 +358,7 @@ impl ShinkaiTool {
 
     /// Check if the tool is JS-based
     pub fn is_js_based(&self) -> bool {
-        matches!(self, ShinkaiTool::JS(_, _))
+        matches!(self, ShinkaiTool::Deno(_, _))
     }
 
     /// Check if the tool is Workflow-based
@@ -371,9 +373,9 @@ impl From<RustTool> for ShinkaiTool {
     }
 }
 
-impl From<JSTool> for ShinkaiTool {
-    fn from(tool: JSTool) -> Self {
-        ShinkaiTool::JS(tool, true)
+impl From<DenoTool> for ShinkaiTool {
+    fn from(tool: DenoTool) -> Self {
+        ShinkaiTool::Deno(tool, true)
     }
 }
 

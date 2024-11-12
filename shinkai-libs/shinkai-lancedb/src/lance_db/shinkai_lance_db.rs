@@ -131,7 +131,7 @@ impl LanceShinkaiDb {
             eprintln!("Not enough elements to create other indices. Skipping index creation for tool table.");
             return Ok(());
         }
-        
+
         // Create the indices
         self.tool_table
             .create_index(&["tool_key"], Index::Auto)
@@ -202,7 +202,7 @@ impl LanceShinkaiDb {
         // For Debugging
         // add an if using env REINSTALL_TOOLS so we inject some configuration data for certain tools and also we make it enabled
         if env::var("REINSTALL_TOOLS").is_ok() || env::var("INITIAL_CONF").is_ok() {
-            if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+            if let ShinkaiTool::Deno(ref mut js_tool, _) = shinkai_tool {
                 if tool_key.starts_with("local:::shinkai-tool-coinbase") {
                     if let (Ok(api_name), Ok(private_key), Ok(wallet_id), Ok(use_server_signer)) = (
                         env::var("COINBASE_API_NAME"),
@@ -847,7 +847,7 @@ mod tests {
         for (name, definition) in tools {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
                 let embedding = generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())
                     .await
@@ -899,12 +899,12 @@ mod tests {
         );
 
         // Print the author name before the change
-        if let ShinkaiTool::JS(ref js_tool, _) = fetched_tool {
+        if let ShinkaiTool::Deno(ref js_tool, _) = fetched_tool {
             println!("Author before change: {}", js_tool.author);
         }
 
         // Update the author name of the tool
-        if let ShinkaiTool::JS(ref mut js_tool, _) = fetched_tool {
+        if let ShinkaiTool::Deno(ref mut js_tool, _) = fetched_tool {
             js_tool.author = "New Author".to_string();
         }
 
@@ -917,7 +917,7 @@ mod tests {
         let updated_tool = db.get_tool(&duckduckgo_tool_key).await?;
         assert!(updated_tool.is_some(), "Failed to fetch the updated tool");
         let updated_tool = updated_tool.unwrap();
-        if let ShinkaiTool::JS(js_tool, _) = updated_tool {
+        if let ShinkaiTool::Deno(js_tool, _) = updated_tool {
             assert_eq!(js_tool.author, "New Author", "Author name was not updated");
         }
 
@@ -949,7 +949,7 @@ mod tests {
         for (name, definition) in tools {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
                 let embedding = generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())
                     .await
@@ -1040,7 +1040,7 @@ mod tests {
 
         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
         let tool = toolkit.tools.into_iter().next().unwrap();
-        let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+        let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
         let embedding = generator
             .generate_embedding_default(&shinkai_tool.format_embedding_string())
             .await
@@ -1056,7 +1056,7 @@ mod tests {
         let fetched_tool = db.get_tool(&tool_key).await?;
         assert!(fetched_tool.is_some(), "Failed to fetch the tool using get_tool");
         let mut fetched_tool = fetched_tool.unwrap();
-        if let ShinkaiTool::JS(ref js_tool, _) = fetched_tool {
+        if let ShinkaiTool::Deno(ref js_tool, _) = fetched_tool {
             for config in &js_tool.config {
                 if let ToolConfig::BasicConfig(ref basic_config) = config {
                     assert!(basic_config.key_value.is_none(), "Initial key_value should be None");
@@ -1066,7 +1066,7 @@ mod tests {
 
         // Update the config with a random JSON value
         let new_config_value = "new_value".to_string();
-        if let ShinkaiTool::JS(ref mut js_tool, _) = fetched_tool {
+        if let ShinkaiTool::Deno(ref mut js_tool, _) = fetched_tool {
             for config in &mut js_tool.config {
                 if let ToolConfig::BasicConfig(ref mut basic_config) = config {
                     basic_config.key_value = Some(new_config_value.clone());
@@ -1083,7 +1083,7 @@ mod tests {
         let updated_tool = db.get_tool(&tool_key).await?;
         assert!(updated_tool.is_some(), "Failed to fetch the updated tool");
         let updated_tool = updated_tool.unwrap();
-        if let ShinkaiTool::JS(js_tool, _) = updated_tool {
+        if let ShinkaiTool::Deno(js_tool, _) = updated_tool {
             for config in &js_tool.config {
                 if let ToolConfig::BasicConfig(basic_config) = config {
                     assert_eq!(
@@ -1117,7 +1117,7 @@ mod tests {
 
         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
         let tool = toolkit.tools.into_iter().next().unwrap();
-        let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+        let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
         let embedding = generator
             .generate_embedding_default(&shinkai_tool.format_embedding_string())
             .await
@@ -1190,7 +1190,7 @@ mod tests {
 
         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
         let tool = toolkit.tools.into_iter().next().unwrap();
-        let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+        let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
         let embedding = generator
             .generate_embedding_default(&shinkai_tool.format_embedding_string())
             .await
@@ -1227,7 +1227,7 @@ mod tests {
 
         let js_toolkit = JSToolkit::new(js_name, vec![js_definition.clone()]);
         let js_tool = js_toolkit.tools.into_iter().next().unwrap();
-        let mut shinkai_js_tool = ShinkaiTool::JS(js_tool.clone(), true);
+        let mut shinkai_js_tool = ShinkaiTool::Deno(js_tool.clone(), true);
         let js_embedding = generator
             .generate_embedding_default(&shinkai_js_tool.format_embedding_string())
             .await
@@ -1249,6 +1249,7 @@ mod tests {
             activated: true,
             config: vec![],
             input_args: vec![],
+            output_arg: ToolOutputArg { json: "".to_string() },
             embedding: None,
             restrictions: None,
         };

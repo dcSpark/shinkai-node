@@ -46,7 +46,7 @@ pub async fn execute_built_in_tool(
     match tool_type {
         ToolType::JS => {
             let tool: ShinkaiTool = get_shinkai_tool(db, lance_db, bearer, tool_router_key).await?;
-            if let ShinkaiTool::JS(js_tool, enabled) = tool {
+            if let ShinkaiTool::Deno(js_tool, enabled) = tool {
                 if !enabled {
                     return Err(ToolError::ToolNotRunnable(
                         "This tool is currently disabled".to_string(),

@@ -38,8 +38,8 @@ use shinkai_message_primitives::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
             APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
-            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType,
-            RegistrationCodeRequest, RegistrationCodeType,
+            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -1675,7 +1675,7 @@ impl Node {
         // Add the toolkit using LanceShinkaiDb
         let lance_db = lance_db.write().await;
         for tool in toolkit.tools {
-            let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+            let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
             if let Err(err) = lance_db.set_tool(&shinkai_tool).await {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

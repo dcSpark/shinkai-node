@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_tools_primitives::tools::argument::ToolArgument;
+use shinkai_tools_primitives::tools::argument::{ToolArgument, ToolOutputArg};
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
@@ -172,7 +172,7 @@ impl ToolRouter {
 
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
                 let lance_db = self.lance_db.write().await;
                 lance_db.set_tool(&shinkai_tool).await?;
             }
@@ -206,6 +206,7 @@ impl ToolRouter {
                     description: "".to_string(),
                     is_required: true,
                 }],
+                output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
             };
@@ -232,6 +233,7 @@ impl ToolRouter {
                     description: "The URL of the YouTube video".to_string(),
                     is_required: true,
                 }],
+                output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
             };
@@ -245,9 +247,9 @@ impl ToolRouter {
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
             let lance_db = self.lance_db.write().await;
             if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
-                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
-                    let modified_tool = ShinkaiTool::JS(js_tool, true);
+                    let modified_tool = ShinkaiTool::Deno(js_tool, true);
                     lance_db.set_tool(&modified_tool).await?;
                 }
             }
@@ -256,9 +258,9 @@ impl ToolRouter {
                 .get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
                 .await?
             {
-                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
                     js_tool.name = "youtube_transcript_with_timestamps".to_string();
-                    let modified_tool = ShinkaiTool::JS(js_tool, true);
+                    let modified_tool = ShinkaiTool::Deno(js_tool, true);
                     lance_db.set_tool(&modified_tool).await?;
                 }
             }
@@ -378,12 +380,6 @@ impl ToolRouter {
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
-            ShinkaiTool::Deno(_, _) => {
-                return Ok(ToolCallFunctionResponse {
-                    response: "Deno!".to_string(),
-                    function_call,
-                });
-            }
             ShinkaiTool::Python(_, _) => {
                 return Ok(ToolCallFunctionResponse {
                     response: "Deno!".to_string(),
@@ -414,9 +410,9 @@ impl ToolRouter {
                 //     });
                 // }
             }
-            ShinkaiTool::JS(js_tool, _) => {
+            ShinkaiTool::Deno(deno_tool, _) => {
                 let function_config = shinkai_tool.get_config_from_env();
-                let result = js_tool
+                let result = deno_tool
                     .run(function_args, function_config)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -714,7 +710,7 @@ impl ToolRouter {
         let function_config = shinkai_tool.get_config_from_env();
 
         let js_tool = match shinkai_tool {
-            ShinkaiTool::JS(js_tool, _) => js_tool,
+            ShinkaiTool::Deno(js_tool, _) => js_tool,
             _ => return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string())),
         };
 

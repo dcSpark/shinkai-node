@@ -63,7 +63,7 @@ fn generic_error_str(e: &str) -> APIError {
     }
 }
 
-async fn v2_create_and_send_job_message(
+pub async fn v2_create_and_send_job_message(
     bearer: String,
     job_creation_info: JobCreationInfo,
     llm_provider: String,
@@ -150,7 +150,7 @@ pub async fn tool_implementation(
     fetch_query: bool,
 ) -> Result<Value, APIError> {
     // Generate tool definitions first
-    let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone()).await;
+    let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone(), true).await?;
     let mut generate_code_prompt = String::new();
 
     if !raw {
@@ -160,7 +160,8 @@ pub async fn tool_implementation(
                     generate_code_prompt.push_str(&format!(
                         "
 RULE I:
-You may use any of the following tools if they are relevant and a good match for the task:
+You may use any of the following tools if they are relevant and a good match for the task.
+They are defined in the global scope, so they must be used without importing them.
 ```{}
 {}
 ```
@@ -180,7 +181,8 @@ RULE III:
 Write a single implementation file.
 This will be shared as a library, that will call the main(...) function.
 Do not examples how to execute it.
-The function signature MUST be async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>; 
+The function signature MUST be: async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>;
+If you need to import other libraries, do it in the Deno NPM format: 'import axios from 'npm:axios' with the 'npm:' prefix.
 
 ================================================================
 RULE IV:
@@ -246,7 +248,7 @@ pub async fn tool_metadata_implementation(
     signing_secret_key_clone: SigningKey,
 ) -> Result<Value, APIError> {
     // Generate tool definitions first
-    let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone()).await;
+    // let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone(), true).await?;
     let mut generate_code_prompt = String::new();
 
     match language {
