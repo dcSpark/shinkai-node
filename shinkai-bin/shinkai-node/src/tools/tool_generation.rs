@@ -180,8 +180,7 @@ RULE III:
 Write a single implementation file.
 This will be shared as a library, that will call the main(...) function.
 Do not examples how to execute it.
-The function signature MUST be async function main(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>; 
-
+The function signature MUST be async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>; 
 
 ================================================================
 RULE IV:

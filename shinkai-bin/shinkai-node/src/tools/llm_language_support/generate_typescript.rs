@@ -18,6 +18,7 @@
         const _url = 'http://localhost:9950/v2/tool_execution';
         const data = {
             tool_router_key: 'internal:::text_analyzer',
+            tool_type: 'js',
             parameters: {
                 text: text,
                 include_sentiment: include_sentiment,

@@ -90,11 +90,10 @@ impl DenoTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("Running JSTool with config: {:?}", config);
-                    println!("Running JSTool with input: {:?}", parameters);
-                    code.replace("process.env.BEARER", &bearer);
+                    println!("Running DenoTool with config: {:?}", config);
+                    println!("Running DenoTool with input: {:?}", parameters);
                     let tool = Tool::new(
-                        code,
+                        code.replace("process.env.BEARER", &format!("\"{}\"", &bearer)),
                         config_json,
                         Some(DenoRunnerOptions {
                             binary_path: PathBuf::from(
