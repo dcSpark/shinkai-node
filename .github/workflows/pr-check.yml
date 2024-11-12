@@ -26,7 +26,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: build-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: (Linux) Install build deps
         run: |
@@ -46,3 +46,12 @@ jobs:
         env:
           FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+
+      - name: run ./run-main-cargo-tests.sh
+        run: ./run-main-cargo-tests.sh
+        env:
+          FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
+          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_URL: ${{ secrets.AWS_URL }}
