@@ -19,6 +19,8 @@ members = [
   "shinkai-libs/shinkai-lancedb",
   "shinkai-libs/shinkai-spreadsheet-llm",
   "shinkai-libs/shinkai-sqlite",
+  "shinkai-libs/shinkai-message-wasm",
+  "shinkai-libs/shinkai-message-pyo3",
   "shinkai-bin/*",
 ]
 resolver = "2"

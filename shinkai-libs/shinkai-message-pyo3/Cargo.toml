@@ -4,8 +4,6 @@ version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 
-[workspace]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 crate-type = ["cdylib"]
@@ -15,7 +13,7 @@ workspace = true
 features = ["derive"]
 
 [dependencies]
-shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+shinkai_message_primitives = { workspace = true }
 serde_json = { workspace = true }
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
