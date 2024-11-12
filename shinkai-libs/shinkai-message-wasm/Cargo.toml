@@ -1,8 +1,8 @@
 [package]
 name = "shinkai_message_wasm"
-version = "0.8.15"
-edition = "2021"
-authors = ["Nico Arqueros <nico@shinkai.com>"]
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [workspace]
 
@@ -10,29 +10,29 @@ authors = ["Nico Arqueros <nico@shinkai.com>"]
 
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }
-serde_json = { version = "1.0.117" }
+serde_json = { workspace = true }
 serde-wasm-bindgen = "0.5"
 chacha20poly1305 = "0.7.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
-rand = { version = "=0.8.5" }
+rand = { workspace = true }
 wasm-bindgen = "0.2.92"
-chrono = { version = "0.4" }
-chrono-tz = { version = "0.5" }
-regex = { version = "1" }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+regex = { workspace = true }
 js-sys = "0.3"
-anyhow = { version = "1.0" }
+anyhow = { workspace = true }
 thiserror = "1.0.44"
 console_log = "0.2"
-log = { version = "0.4.20" }
+log = { workspace = true }
 env_logger = "0.10"
-hex = { version = "=0.4.3" }
-blake3 = { version = "1.2.0" }
+hex = { workspace = true }
+blake3 = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.10", features = ["js"] }
 
-serde = { version = "1.0.188", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
