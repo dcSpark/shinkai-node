@@ -7,7 +7,7 @@ authors = { workspace = true }
 default-run = "shinkai_node"
 
 [build-dependencies]
-shinkai_tools_runner = { version = "0.8.0", features = ["built-in-tools"] }
+shinkai_tools_runner = { version = "0.8.1", features = ["built-in-tools"] }
 
 [features]
 default = []
