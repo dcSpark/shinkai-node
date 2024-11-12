@@ -5,8 +5,8 @@
 // use tokio::sync::RwLock; // Use tokio's RwLock for async compatibility
 // use chrono::Utc;
 
-// #[tokio::main]
-// async fn main() -> rusqlite::Result<()> {
+#[tokio::main]
+async fn main() -> rusqlite::Result<()> {
 //     // Remove the database file if it exists
 //     let db_path = "example.db";
 //     if Path::new(db_path).exists() {
@@ -88,25 +88,5 @@
 //         println!(); // Add a blank line between trees
 //     }
 
-//     Ok(())
-// }
-
-// fn print_log_tree(tree: &LogTree, depth: usize) {
-//     let indent = "  ".repeat(depth);
-//     let result_preview = match &tree.log.result {
-//         Value::String(s) => s.chars().take(20).collect::<String>(),
-//         _ => "Non-string result".to_string(),
-//     };
-//     println!(
-//         "{}Log ID: {}, Type: {}, Result: {:?}, Status: {}, Timestamp: {}",
-//         indent,
-//         tree.log.id.unwrap(),
-//         tree.log.log_type,
-//         result_preview,     // Print only the first 20 characters of the result
-//         tree.log.status,    // Assuming status is a field in your log structure
-//         tree.log.timestamp  // Assuming timestamp is a field in your log structure
-//     );
-//     for child in &tree.children {
-//         print_log_tree(child, depth + 1);
-//     }
-// }
+    Ok(())
+}

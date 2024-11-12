@@ -2,7 +2,7 @@
 name = "shinkai_node"
 version = "0.8.14"
 edition = "2021"
-authors.workspace = true
+authors = ["Nico Arqueros <nico@shinkai.com>"]
 # this causes `cargo run` in the workspace root to run this package
 default-run = "shinkai_node"
 
