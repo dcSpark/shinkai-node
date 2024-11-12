@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub mod embedding_function;
 pub mod prompt_manager;
 pub mod shinkai_prompt;
-
+pub mod tool_header_manager;
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
@@ -62,6 +62,8 @@ impl SqliteManager {
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
+        Self::initialize_tools_table(conn)?;
+        Self::initialize_tools_vector_table(conn)?;
         Ok(())
     }
 
@@ -94,6 +96,45 @@ impl SqliteManager {
         // Create a table for prompt vector embeddings
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(embedding float[384])",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    // Updated method to initialize the tools table with name and description columns at the top
+    fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_tools (
+                name TEXT NOT NULL,
+                description TEXT,
+                tool_key TEXT NOT NULL,
+                embedding_seo TEXT NOT NULL,
+                tool_data BLOB NOT NULL,
+                tool_type TEXT NOT NULL,
+                author TEXT NOT NULL,
+                version TEXT NOT NULL,
+                is_enabled INTEGER NOT NULL,
+                on_demand_price REAL,
+                is_network INTEGER NOT NULL
+            );",
+            [],
+        )?;
+
+        // Create indexes for the shinkai_tools table if needed
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shinkai_tools_key ON shinkai_tools (tool_key);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    // New method to initialize the tools vector table
+    fn initialize_tools_vector_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Create a table for tool vector embeddings
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS tools_vec_items USING vec0(embedding float[384])",
             [],
         )?;
 
