@@ -160,17 +160,17 @@ pub async fn tool_implementation(
                     generate_code_prompt.push_str(&format!(
                         "
 # RULE I:
-You may use any of the following tools if they are relevant and a good match for the task.
-Import them in the following way (do not rename functions with AS):
-`import {{ xx }} as '@shinkai/local-tools'`
+* You may use any of the following functions if they are relevant and a good match for the task.
+* Import them in the following way (do not rename functions with 'as'):
+`import {{ xx }} from '@shinkai/local-tools'`
 
-This is the content of @shinkai/local-tools:
+* This is the content of '@shinkai/local-tools':
 ```{}
 {}
 ```
 
 #RULE II:
-implement the task you can also update the CONFIG, INPUTS and OUTPUT types to match the tool's type 
+* To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type: 
 ```{}
 type CONFIG = {{}}; 
 type INPUTS = {{}}; 
@@ -181,20 +181,21 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 ```
 
 # RULE III:
-* This will be shared as a library, that will call the run(...) function.
-* Do not include examples how to execute it.
+* This will be shared as a library, when used it run(...) function will be called.
 * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
 * If you need to import other libraries, do it in the Deno NPM format, for example 'import axios from 'npm:axios' with the 'npm:' prefix.
 
 # RULE IV:
-* Output only the code, so it can be directly executed.
+* Do not output, notes, ideas, explanations or examples.
+* Output only valid {} code, so the complete Output can be directly executed. 
+* Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
 * Write a single implementation file.
 * Implements the code in {} for the following INPUT:
 
 # INPUT:
 {}
 ",
-                        language, tool_definitions, language, language, prompt_text
+language, language, tool_definitions, language, language, prompt_text
                     ));
                 }
                 Language::Python => {
@@ -260,8 +261,9 @@ pub async fn tool_metadata_implementation(
         Language::Typescript => {
             generate_code_prompt.push_str(&format!(
                 "
-RULE I: 
+# RULE I: 
 These are two examples of METADATA:
+## Example 1:
 {{
   id: 'shinkai-tool-coinbase-create-wallet',
   name: 'Shinkai: Coinbase Wallet Creator',
@@ -292,7 +294,7 @@ These are two examples of METADATA:
     required: [],
   }},
 }};
-
+## Example 2:
 {{
   id: 'shinkai-tool-download-pages',
   name: 'Shinkai: Download Pages',
@@ -325,10 +327,14 @@ These are two examples of METADATA:
   }},
 }};
 
----- 
-RULE II:
-Following this example, generate the METADATA for the following code in the {} language:
+# RULE II:
+* Following the format of the examples provided.
+* The METADATA must be in JSON format.
+* Output only the METADATA, so the complete Output it's a valid JSON string.
+* Any comments, notes, explanations or examples must be omitted in the Output.
+* Generate the METADATA for the following {} source code in the INPUT:
 
+# INPUT:
 {}
 ",
                 language,
