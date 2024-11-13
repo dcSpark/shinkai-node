@@ -86,13 +86,11 @@ cargo test tcp_node_test -- --nocapture --test-threads=1
 #### Main tests
 
 ```
-# Build workspace
-cargo build --workspace
-
 # Run tests
-./.github/run-main-cargo-tests.sh
-./.github/run-main-mirror-cargo-tests.sh
-./.github/run-main-primitives-cargo-tests.sh
+cargo test --workspace
+
+# For specific projects
+cargo test -p shinkai_message_primitives
 ```
 
 ### Shinkai App tests

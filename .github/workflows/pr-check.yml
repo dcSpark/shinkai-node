@@ -36,7 +36,7 @@ jobs:
         run: cargo build --workspace
 
       - name: run cargo test
-        run: cargo test --workspace
+        run: cargo test --workspace -- --test-threads=1
         env:
           IS_TESTING: 1
           WELCOME_MESSAGE: false

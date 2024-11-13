@@ -807,6 +807,7 @@ mod tests {
             true,
             vec![],
             vec![],
+            ToolOutputArg { json: String::from("") },
             None,
             None,
         );
