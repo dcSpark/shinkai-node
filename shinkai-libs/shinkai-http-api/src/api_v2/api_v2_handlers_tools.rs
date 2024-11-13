@@ -8,7 +8,7 @@ use reqwest::StatusCode;
 use std::collections::HashMap;
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
-use super::{api_v2_handlers_jobs::CreateJobRequest, api_v2_router::{create_success_response, with_sender}};
+use super::{api_v2_router::{create_success_response, with_sender}};
 
 #[derive(Deserialize, ToSchema, Clone)]
 pub enum Language {
@@ -28,13 +28,10 @@ impl std::fmt::Display for Language {
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolType {
-    Local,
-    JS,
     Deno,
     DenoDynamic,
     Python,
     PythonDynamic,
-    Rust,
     Network,
     Internal,
 }
@@ -42,15 +39,12 @@ pub enum ToolType {
 impl std::fmt::Display for ToolType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ToolType::JS => write!(f, "js"),
-            ToolType::Local => write!(f, "local"),
-            ToolType::Deno => write!(f, "deno"),
+            ToolType::Deno => write!(f, "Deno"),
             ToolType::DenoDynamic => write!(f, "deno_dynamic"),
-            ToolType::Python => write!(f, "python"),
+            ToolType::Python => write!(f, "Python"),
             ToolType::PythonDynamic => write!(f, "python_dynamic"),
-            ToolType::Rust => write!(f, "rust"), 
-            ToolType::Network => write!(f, "network"),
-            ToolType::Internal => write!(f, "internal"),
+            ToolType::Network => write!(f, "Network"),
+            ToolType::Internal => write!(f, "Internal"),
         }
     }
 }

@@ -44,7 +44,7 @@ pub async fn execute_built_in_tool(
     bearer: String,
 ) -> Result<Value, ToolError> {
     match tool_type {
-        ToolType::JS => {
+        ToolType::Deno => {
             let tool: ShinkaiTool = get_shinkai_tool(db, lance_db, bearer, tool_router_key).await?;
             if let ShinkaiTool::Deno(js_tool, enabled) = tool {
                 if !enabled {
@@ -68,12 +68,10 @@ pub async fn execute_built_in_tool(
                 ))
             }
         }
-        ToolType::Local => todo!(),
         ToolType::Deno => todo!(),
         ToolType::DenoDynamic => todo!(),
         ToolType::Python => todo!(),
         ToolType::PythonDynamic => todo!(),
-        ToolType::Rust => todo!(),
         ToolType::Network => todo!(),
         ToolType::Internal => todo!(),
     }
