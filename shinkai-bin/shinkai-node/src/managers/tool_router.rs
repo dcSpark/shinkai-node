@@ -7,11 +7,8 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
-use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
-// use shinkai_lancedb::lance_db::prompts::prompts_data;
-// use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
@@ -68,9 +65,6 @@ impl ToolRouter {
 
             // Add static prompts
             let _ = self.add_static_prompts(&generator).await;
-
-            // Set the latest version in the database
-            // self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_js_tools().await;
@@ -726,20 +720,4 @@ impl ToolRouter {
 
         return Ok(result_str);
     }
-
-    // pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {
-    //     let lance_db = self.lance_db.read().await;
-    //     lance_db
-    //         .get_current_version()
-    //         .await
-    //         .map_err(|e| ToolError::DatabaseError(e.to_string()))
-    // }
-
-    // pub async fn set_lancedb_version(&self, version: &str) -> Result<(), ToolError> {
-    //     let lance_db = self.lance_db.write().await;
-    //     lance_db
-    //         .set_version(version)
-    //         .await
-    //         .map_err(|e| ToolError::DatabaseError(e.to_string()))
-    // }
 }
