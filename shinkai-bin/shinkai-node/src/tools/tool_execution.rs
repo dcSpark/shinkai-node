@@ -44,7 +44,7 @@ pub async fn execute_tool(
 
     // Route based on the prefix
     match tool_type {
-        ToolType::JS => {
+        ToolType::Deno => {
             execute_built_in_tool(
                 tool_type,
                 tool_router_key,

@@ -34,14 +34,15 @@ pub async fn generate_tool_definitions(
     only_headers: bool,
 ) -> Result<String, APIError> {
     // let mut tools = get_built_in_tools();
-    // tools.extend(get_custom_tools());
 
-    let all_tools = lance_db
+    let mut all_tools = lance_db
         .read()
         .await
         .get_all_tools(true) // true to include network tools
         .await
         .map_err(|e| generic_error_str(&format!("Failed to fetch tools: {}", e)))?;
+
+    all_tools.extend(get_custom_tools());
 
     let mut output = String::new();
     match language {

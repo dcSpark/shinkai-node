@@ -158,7 +158,7 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         ));
         typescript_output.push_str("    const data = {\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
-        typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type));
+        typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
         typescript_output.push_str("        parameters: {\n");
         for arg in &tool.input_args {
             typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));
