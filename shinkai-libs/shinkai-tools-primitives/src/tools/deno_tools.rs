@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::{env, thread};
 
 use super::tool_config::ToolConfig;
+use super::argument::ToolOutputArg;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -23,10 +24,10 @@ pub struct DenoTool {
     pub description: String,
     pub keywords: Vec<String>,
     pub input_args: Vec<ToolArgument>,
+    pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: JSToolResult,
-    pub output: String,
 }
 
 impl DenoTool {
@@ -46,8 +47,18 @@ impl DenoTool {
         Ok(deserialized)
     }
 
+    pub fn run(
+        &self,
+        parameters: serde_json::Map<String, serde_json::Value>,
+        extra_config: Option<String>,
+    ) -> Result<RunResult, ToolError> {
+        self.run_on_demand(String::new(), String::new(), parameters, extra_config)
+    }
+
     pub fn run_on_demand(
         &self,
+        bearer: String,
+        header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
@@ -89,10 +100,18 @@ impl DenoTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("Running JSTool with config: {:?}", config);
-                    println!("Running JSTool with input: {:?}", parameters);
+                    println!("Running DenoTool with config: {:?}", config);
+                    println!("Running DenoTool with input: {:?}", parameters);
+                    let final_code = if !bearer.is_empty() {
+                        let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
+                        let code_with_header = format!("{} {}", header_code, regex.replace_all(&code, "").into_owned());
+                        code_with_header.replace("${process.env.BEARER}", &bearer)
+                    } else {
+                        code
+                    };
+                    // println!("Final code: {}", final_code);
                     let tool = Tool::new(
-                        code,
+                        final_code,
                         config_json,
                         Some(DenoRunnerOptions {
                             binary_path: PathBuf::from(
@@ -101,8 +120,8 @@ impl DenoTool {
                             ),
                         }),
                     );
-                    // TODO: Fix this object wrap after update tools library to have th right typification
-                    tool.run(serde_json::Value::Object(parameters), None)
+                    // TODO: Fix this object wrap after update tools library to have the right typification
+                    tool.run(None, serde_json::Value::Object(parameters), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
@@ -110,6 +129,18 @@ impl DenoTool {
             .unwrap()
             .join()
             .expect("Thread panicked")
+    }
+
+    /// Check if all required config fields are set
+    pub fn check_required_config_fields(&self) -> bool {
+        for config in &self.config {
+            if let ToolConfig::BasicConfig(basic_config) = config {
+                if basic_config.required && basic_config.key_value.is_none() {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 

@@ -63,7 +63,7 @@ fn generic_error_str(e: &str) -> APIError {
     }
 }
 
-async fn v2_create_and_send_job_message(
+pub async fn v2_create_and_send_job_message(
     bearer: String,
     job_creation_info: JobCreationInfo,
     llm_provider: String,
@@ -150,7 +150,7 @@ pub async fn tool_implementation(
     fetch_query: bool,
 ) -> Result<Value, APIError> {
     // Generate tool definitions first
-    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone()).await;
+    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
     let mut generate_code_prompt = String::new();
 
     if !raw {
@@ -159,36 +159,43 @@ pub async fn tool_implementation(
                 Language::Typescript => {
                     generate_code_prompt.push_str(&format!(
                         "
-RULE I:
-You may use any of the following tools if they are relevant and a good match for the task:
+# RULE I:
+* You may use any of the following functions if they are relevant and a good match for the task.
+* Import them in the following way (do not rename functions with 'as'):
+`import {{ xx }} from '@shinkai/local-tools'`
+
+* This is the content of '@shinkai/local-tools':
 ```{}
 {}
 ```
-================================================================
-RULE II:
-implement the task you can also update the CONFIG, INPUTS and OUTPUT types to match the tool's type 
+
+#RULE II:
+* To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type: 
 ```{}
-CONFIG = {{}}; 
+type CONFIG = {{}}; 
 type INPUTS = {{}}; 
 type OUTPUT = {{}}; 
-async function main(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
+export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
     return {{}};
 }}
 ```
-================================================================
-RULE III:
-Write a single implementation file.
-This will be shared as a library, that will call the main(...) function.
-Do not examples how to execute it.
-The function signature MUST be async function main(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>; 
 
+# RULE III:
+* This will be shared as a library, when used it run(...) function will be called.
+* The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
+* If you need to import other libraries, do it in the Deno NPM format and with version, for example to import axios use 'import axios from 'npm:axios@1.6.2' with the 'npm:' prefix, and the exact version.
 
-================================================================
-RULE IV:
-Implement the code in {} for the following task:
+# RULE IV:
+* Do not output, notes, ideas, explanations or examples.
+* Output only valid {} code, so the complete Output can be directly executed. 
+* Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
+* Write a single implementation file.
+* Implements the code in {} for the following INPUT:
+
+# INPUT:
 {}
 ",
-                        language, tool_definitions, language, language, prompt_text
+language, language, tool_definitions, language, language, prompt_text
                     ));
                 }
                 Language::Python => {
@@ -247,15 +254,16 @@ pub async fn tool_metadata_implementation(
     signing_secret_key_clone: SigningKey,
 ) -> Result<Value, APIError> {
     // Generate tool definitions first
-    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone()).await;
+    // let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
     let mut generate_code_prompt = String::new();
 
     match language {
         Language::Typescript => {
             generate_code_prompt.push_str(&format!(
                 "
-RULE I: 
+# RULE I: 
 These are two examples of METADATA:
+## Example 1:
 {{
   id: 'shinkai-tool-coinbase-create-wallet',
   name: 'Shinkai: Coinbase Wallet Creator',
@@ -286,7 +294,7 @@ These are two examples of METADATA:
     required: [],
   }},
 }};
-
+## Example 2:
 {{
   id: 'shinkai-tool-download-pages',
   name: 'Shinkai: Download Pages',
@@ -319,10 +327,14 @@ These are two examples of METADATA:
   }},
 }};
 
----- 
-RULE II:
-Following this example, generate the METADATA for the following code in the {} language:
+# RULE II:
+* Following the format of the examples provided.
+* The METADATA must be in JSON format.
+* Output only the METADATA, so the complete Output it's a valid JSON string.
+* Any comments, notes, explanations or examples must be omitted in the Output.
+* Generate the METADATA for the following {} source code in the INPUT:
 
+# INPUT:
 {}
 ",
                 language,
@@ -331,9 +343,6 @@ Following this example, generate the METADATA for the following code in the {} l
         }
         Language::Python => {
             return Err(generic_error_str("NYI Python"));
-        }
-        _ => {
-            return Err(generic_error_str("Unknown Language"));
         }
     }
 

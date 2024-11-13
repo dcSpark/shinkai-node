@@ -103,7 +103,7 @@ impl CoinbaseMPCWallet {
                 let mut name = String::new();
                 let mut private_key = String::new();
                 let mut use_server_signer = String::new();
-                if let ShinkaiTool::JS(js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
                     for cfg in js_tool.config {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
@@ -201,7 +201,7 @@ impl CoinbaseMPCWallet {
                 let mut name = String::new();
                 let mut private_key = String::new();
                 let mut use_server_signer = String::new();
-                if let ShinkaiTool::JS(js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
                     for cfg in js_tool.config {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
@@ -313,7 +313,7 @@ impl CoinbaseMPCWallet {
         let function_config_str = serde_json::to_string(&function_config_value)
             .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
 
-        if let ShinkaiTool::JS(js_tool, _) = shinkai_tool {
+        if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
             let result = js_tool
                 .run(params, Some(function_config_str))
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;

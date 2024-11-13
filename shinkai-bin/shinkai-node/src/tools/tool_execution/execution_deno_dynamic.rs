@@ -1,12 +1,14 @@
 use serde_json::{Map, Value};
+use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 pub fn execute_deno_tool(
-    tool_router_key: String,
+    bearer: String,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
+    header_code: String,
 ) -> Result<Value, ToolError> {
     // Extract the JavaScript code from parameters
     let js_code = parameters
@@ -17,7 +19,7 @@ pub fn execute_deno_tool(
 
     let code = format!("{}", js_code);
 
-    // Create a minimal JSTool instance
+    // Create a minimal DenoTool instance
     let tool = DenoTool {
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
@@ -27,9 +29,9 @@ pub fn execute_deno_tool(
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
         input_args: vec![],
+        output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        output: "".to_string(),
         result: JSToolResult::new("object".to_string(), Value::Null, vec![]),
     };
 
@@ -38,7 +40,7 @@ pub fn execute_deno_tool(
     execution_parameters.remove("code");
 
     // Run the tool and convert the RunResult to Value
-    match tool.run_on_demand(execution_parameters, extra_config) {
+    match tool.run_on_demand(bearer, header_code, execution_parameters, extra_config) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

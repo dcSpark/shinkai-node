@@ -1,15 +1,8 @@
 [package]
 name = "shinkai_mini_libs"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
-serde_json = "1.0.117"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.6.1", features = ["v4"] }
-regex = "1"
-base64 = "0.22.0"
-
-[dependencies.serde]
-version = "1.0.188"
-features = ["derive"]
+base64 = { workspace = true }

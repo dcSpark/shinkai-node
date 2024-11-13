@@ -17,3 +17,8 @@ impl ToolArgument {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ToolOutputArg {
+    pub json: String,
+}

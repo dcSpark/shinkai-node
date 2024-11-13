@@ -1,13 +1,14 @@
 [package]
 name = "shinkai_node"
-version = "0.8.14"
-edition = "2021"
-authors = ["Nico Arqueros <nico@shinkai.com>"]
-# this causes `cargo run` in the workspace root to run this package
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+# this makes `cargo run` in the workspace root to run this package
 default-run = "shinkai_node"
 
 [build-dependencies]
-shinkai_tools_runner = { version = "0.8.0", features = ["built-in-tools"] }
+shinkai_tools_runner = { version = "0.8.1", features = ["built-in-tools"] }
 
 [features]
 default = []
@@ -18,27 +19,27 @@ static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 doctest = false
 
 [dependencies]
+tokio = { workspace = true, features = ["full"] }
+log = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
 async-trait = "0.1.74"
-futures = "0.3.30"
 warp = { version = "0.3.7", features = ["compression-gzip"] }
-chrono = "0.4"
-chrono-tz = "0.5"
-serde_json = "1.0.117"
 chacha20poly1305 = "0.7.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = "2.1.0"
-rand = "=0.8.5"
-tokio = { version = "1.36", features = ["full"] }
-log = "0.4.20"
+rand = { workspace = true }
 chashmap = "2.2.2"
 async-channel = "1.6.1"
 lazy_static = "1.5.0"
 clap = "3.0.0-beta.5"
-anyhow = "1.0"
-regex = "1"
+regex = { workspace = true }
 csv = "1.1.6"
-uuid = { version = "1.6.1", features = ["v4"] }
-reqwest = { version = "0.11.26", features = [
+uuid = { workspace = true, features = ["v4"] }
+reqwest = { workspace = true, features = [
     "json",
     "tokio-native-tls",
     "blocking",
@@ -62,12 +63,11 @@ bincode = "1.3.3"
 qrcode = "0.12"
 image = "0.23"
 urlencoding = "2.1.0"
-hex = "=0.4.3"
+hex = { workspace = true }
 aes-gcm = "0.10.3"
-blake3 = "1.2.0"
+blake3 = { workspace = true }
 cron-parser = "0.8.1"
 thiserror = "1.0.50"
-base64 = "0.22.0"
 ethers = "2.0"
 dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
@@ -75,8 +75,7 @@ num_cpus = "1.16.0"
 async-lock = "2.4.0"
 governor = "0.6.3"
 lru = "0.7.0"
-shinkai_tools_runner = { version = "0.8.0", features = ["built-in-tools"] }
-
+shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 console-subscriber = { version = "0.1", optional = true }
 bytes = "1.7.1"
 downcast-rs = "1.2.1"
@@ -85,14 +84,9 @@ bigdecimal = "0.2.2"
 rust_decimal = "1.17.0"
 umya-spreadsheet = "2.1.1"
 rcgen = "0.13.1"
+serde = { workspace = true, features = ["derive"] }
 
-[dependencies.serde]
-version = "1.0.188"
-features = ["derive"]
-
-[dependencies.async-std]
-version = "1.5.0"
-features = ["unstable"]
+async-std = { version = "1.5.0", features = ["unstable"] }
 
 [dev-dependencies]
 mockito = "1.0.2"

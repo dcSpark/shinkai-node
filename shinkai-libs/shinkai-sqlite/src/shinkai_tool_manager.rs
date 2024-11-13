@@ -507,7 +507,6 @@ mod tests {
             activated: true,
             embedding: None,
             result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            output: "".to_string(),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant

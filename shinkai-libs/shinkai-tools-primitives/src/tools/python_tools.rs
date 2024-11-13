@@ -1,16 +1,16 @@
-use std::any::Any;
-use std::fmt;
-
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
+
+use super::argument::ToolOutputArg;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PythonTool {
     pub name: String,
     pub description: String,
     pub input_args: Vec<ToolArgument>,
+    pub output_arg: ToolOutputArg,
     pub tool_embedding: Option<Embedding>,
 }
 
@@ -25,6 +25,7 @@ impl PythonTool {
             name: VRPath::clean_string(&name),
             description,
             input_args,
+            output_arg: ToolOutputArg { json: "".to_string() },
             tool_embedding,
         }
     }

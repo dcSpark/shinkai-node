@@ -1073,6 +1073,20 @@ mod tests {
     //                 .unwrap();
     //             shinkai_tool.set_embedding(embedding);
 
+    // --- merge conflict of commented code ---
+        // // Add tools to the database
+        // for (name, definition) in tools {
+        //     let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+        //     for tool in toolkit.tools {
+        //         let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
+        //         eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
+        //         let embedding = generator
+        //             .generate_embedding_default(&shinkai_tool.format_embedding_string())
+        //             .await
+        //             .unwrap();
+        //         shinkai_tool.set_embedding(embedding);
+        // --- 
+
     //             lance_db
     //                 .write()
     //                 .await
