@@ -6,10 +6,10 @@ use shinkai_vector_resources::model_type::EmbeddingModelType;
 use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub mod embedding_function;
 pub mod prompt_manager;
-pub mod shinkai_prompt;
 pub mod shinkai_tool_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -17,6 +17,15 @@ pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
     api_url: String,
     model_type: EmbeddingModelType,
+}
+
+impl std::fmt::Debug for SqliteManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SqliteManager")
+            .field("api_url", &self.api_url)
+            .field("model_type", &self.model_type)
+            .finish()
+    }
 }
 
 impl SqliteManager {
@@ -34,7 +43,8 @@ impl SqliteManager {
 
         let manager = SqliteConnectionManager::file(db_path);
         let pool = Pool::builder()
-            .max_size(10) // Adjust based on your needs
+            .max_size(10)
+            .connection_timeout(Duration::from_secs(60))
             .build(manager)
             .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
 

@@ -3,11 +3,10 @@ pub mod execution_custom;
 pub mod execution_deno_dynamic;
 pub mod execution_python_dynamic;
 
-use async_std::println;
 use serde_json::{Map, Value};
 use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolType;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 
 use super::tool_execution::execution_built_in_tools::execute_built_in_tool;
 use super::tool_execution::execution_custom::execute_custom_tool;
@@ -15,9 +14,7 @@ use super::tool_execution::execution_deno_dynamic::execute_deno_tool;
 use super::tool_execution::execution_python_dynamic::execute_python_tool;
 
 use shinkai_db::db::ShinkaiDB;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub async fn execute_tool(
     tool_router_key: String,
@@ -25,7 +22,7 @@ pub async fn execute_tool(
     parameters: Map<String, Value>,
     extra_config: Option<String>,
     db: Arc<ShinkaiDB>,
-    lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    sqlite_manager: Arc<SqliteManager>,
     bearer: String,
 ) -> Result<Value, ToolError> {
     // Split the tool name by ":::"
@@ -40,7 +37,7 @@ pub async fn execute_tool(
                 parameters,
                 extra_config,
                 db,
-                lance_db,
+                sqlite_manager,
                 bearer,
             )
             .await

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{env, thread};
 
-use super::js_toolkit_headers::ToolConfig;
+use super::tool_config::ToolConfig;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

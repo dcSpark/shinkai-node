@@ -10,7 +10,9 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
-use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::invoices::{
+    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -883,7 +885,6 @@ mod tests {
 
     use super::*;
     use async_trait::async_trait;
-    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
         schemas::{
             identity::{Identity, StandardIdentity, StandardIdentityType},
@@ -895,7 +896,8 @@ mod tests {
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
-    use shinkai_tools_primitives::tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool};
+    use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
+    use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
     use shinkai_tools_runner::built_in_tools;
     use shinkai_vector_resources::{
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
@@ -1012,7 +1014,7 @@ mod tests {
     // }
 
     #[tokio::test]
-    async fn test_agent_offerings_manager() -> Result<(), ShinkaiLanceDBError> {
+    async fn test_agent_offerings_manager() -> Result<(), SqliteManagerError> {
         setup();
 
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -1021,7 +1023,7 @@ mod tests {
         // Initialize ShinkaiDB
         let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
             Ok(db) => Arc::new(db),
-            Err(e) => return Err(ShinkaiLanceDBError::ShinkaiDBError(e.to_string())),
+            Err(e) => return Err(SqliteManagerError::DatabaseError(e.to_string())),
         };
 
         let lance_db = Arc::new(RwLock::new(

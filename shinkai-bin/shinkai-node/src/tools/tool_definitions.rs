@@ -2,14 +2,13 @@ pub mod definitions_built_in_tools;
 pub mod definitions_custom;
 
 use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
+use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::llm_language_support::generate_python::generate_python_definition;
 use super::llm_language_support::generate_typescript::generate_typescript_definition;
 use super::tool_definitions::definitions_built_in_tools::get_built_in_tools;
 use super::tool_definitions::definitions_custom::get_custom_tools;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 #[derive(Debug)]
 struct ToolExecutionResult {
@@ -18,11 +17,11 @@ struct ToolExecutionResult {
     error: Option<String>,
 }
 
-pub async fn generate_tool_definitions(language: Language, lance_db: Arc<RwLock<LanceShinkaiDb>>) -> String {
+pub async fn generate_tool_definitions(language: Language, sqlite_manager: Arc<SqliteManager>) -> String {
     let mut tools = get_built_in_tools();
     tools.extend(get_custom_tools());
 
-    let tools_data = match lance_db.read().await.get_all_tools(true).await {
+    let tools_data = match sqlite_manager.get_all_tool_headers() {
         Ok(data) => data,
         Err(_) => Vec::new(),
     };

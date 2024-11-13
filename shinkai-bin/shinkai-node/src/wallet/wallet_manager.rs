@@ -1,4 +1,4 @@
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
@@ -9,10 +9,9 @@ use shinkai_message_primitives::schemas::{
     wallet_complementary::WalletSource,
     wallet_mixed::{Asset, Balance, Network, PublicAddress},
 };
-use tokio::sync::{Mutex, RwLock};
+use shinkai_sqlite::SqliteManager;
+use tokio::sync::RwLock;
 use uuid::Uuid;
-
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 use super::{
     coinbase_mpc_wallet::CoinbaseMPCWallet,
@@ -173,13 +172,13 @@ impl WalletManager {
 
     pub async fn create_coinbase_mpc_wallet_manager(
         network: Network,
-        lance_db: Weak<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> =
-            Box::new(CoinbaseMPCWallet::create_wallet(network.clone(), lance_db.clone(), config.clone()).await?);
+            Box::new(CoinbaseMPCWallet::create_wallet(network.clone(), Arc::downgrade(&sqlite_manager), config.clone()).await?);
         let receiving_wallet: Box<dyn ReceivingWallet> =
-            Box::new(CoinbaseMPCWallet::create_wallet(network, lance_db, config).await?);
+            Box::new(CoinbaseMPCWallet::create_wallet(network, Arc::downgrade(&sqlite_manager), config).await?);
 
         Ok(WalletManager {
             payment_wallet,
@@ -189,16 +188,16 @@ impl WalletManager {
 
     pub async fn recover_coinbase_mpc_wallet_manager(
         network: Network,
-        lance_db: Weak<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> = Box::new(
-            CoinbaseMPCWallet::restore_wallet(network.clone(), lance_db.clone(), config.clone(), wallet_id.clone())
+            CoinbaseMPCWallet::restore_wallet(network.clone(), Arc::downgrade(&sqlite_manager), config.clone(), wallet_id.clone())
                 .await?,
         );
         let receiving_wallet: Box<dyn ReceivingWallet> =
-            Box::new(CoinbaseMPCWallet::restore_wallet(network, lance_db, config, wallet_id).await?);
+            Box::new(CoinbaseMPCWallet::restore_wallet(network, Arc::downgrade(&sqlite_manager), config, wallet_id).await?);
 
         Ok(WalletManager {
             payment_wallet,

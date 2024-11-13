@@ -7,9 +7,8 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
-use shinkai_lancedb::lance_db::prompts::prompts_data;
-use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
-use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
+// use shinkai_lancedb::lance_db::prompts::prompts_data;
+// use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
@@ -18,18 +17,18 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ToolRouter {
-    pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    pub sqlite_manager: Arc<SqliteManager>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -39,17 +38,24 @@ pub struct ToolCallFunctionResponse {
 }
 
 impl ToolRouter {
-    pub fn new(lance_db: Arc<RwLock<LanceShinkaiDb>>) -> Self {
-        ToolRouter { lance_db }
+    pub fn new(sqlite_manager: Arc<SqliteManager>) -> Self {
+        ToolRouter { sqlite_manager }
     }
 
     pub async fn initialization(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         let is_empty;
         let has_any_js_tools;
         {
-            let lance_db = self.lance_db.read().await;
-            is_empty = lance_db.is_empty().await?;
-            has_any_js_tools = lance_db.has_any_js_tools().await?;
+            is_empty = self
+                .sqlite_manager
+                .is_empty()
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            
+            has_any_js_tools = self
+                .sqlite_manager
+                .has_any_js_tools()
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
         if is_empty {
@@ -60,14 +66,11 @@ impl ToolRouter {
             let _ = self.add_static_prompts(&generator).await;
 
             // Set the latest version in the database
-            self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
+            // self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_js_tools().await;
         }
-
-        self.lance_db.write().await.create_tool_indices_if_needed().await?;
-        self.lance_db.write().await.create_prompt_indices_if_needed().await?;
 
         Ok(())
     }
@@ -79,10 +82,7 @@ impl ToolRouter {
         let _ = self.add_static_prompts(generator).await;
 
         // Set the latest version in the database
-        self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
-
-        self.lance_db.write().await.create_tool_indices_if_needed().await?;
-        self.lance_db.write().await.create_prompt_indices_if_needed().await?;
+        // self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
 
         Ok(())
     }
@@ -97,54 +97,47 @@ impl ToolRouter {
 
         let start_time = Instant::now();
 
-        // Determine which set of prompts to use
-        let prompts_data = if env::var("IS_TESTING").unwrap_or_default() == "1" {
-            prompts_data::PROMPTS_JSON_TESTING
-        } else {
-            prompts_data::PROMPTS_JSON
-        };
+        // TODO: needs to be added again
+        // // Determine which set of prompts to use
+        // let prompts_data = if env::var("IS_TESTING").unwrap_or_default() == "1" {
+        //     prompts_data::PROMPTS_JSON_TESTING
+        // } else {
+        //     prompts_data::PROMPTS_JSON
+        // };
 
-        let json_value: Value = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
-        let json_array = json_value
-            .as_array()
-            .expect("Expected prompts JSON data to be an array");
+        // let json_value: Value = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
+        // let json_array = json_value
+        //     .as_array()
+        //     .expect("Expected prompts JSON data to be an array");
 
-        println!("Number of static prompts to add: {}", json_array.len());
+        // println!("Number of static prompts to add: {}", json_array.len());
 
-        for item in json_array {
-            let custom_prompt: Result<CustomPrompt, _> = serde_json::from_value(item.clone());
-            let mut custom_prompt = match custom_prompt {
-                Ok(prompt) => prompt,
-                Err(e) => {
-                    eprintln!("Failed to parse custom_prompt: {}. JSON: {:?}", e, item);
-                    continue; // Skip this item and continue with the next one
-                }
-            };
+        // for item in json_array {
+        //     let custom_prompt: Result<CustomPrompt, _> = serde_json::from_value(item.clone());
+        //     let mut custom_prompt = match custom_prompt {
+        //         Ok(prompt) => prompt,
+        //         Err(e) => {
+        //             eprintln!("Failed to parse custom_prompt: {}. JSON: {:?}", e, item);
+        //             continue; // Skip this item and continue with the next one
+        //         }
+        //     };
 
-            // Generate embedding if not present
-            if custom_prompt.embedding.is_none() {
-                let embedding = generator
-                    .generate_embedding_default(&custom_prompt.text_for_embedding())
-                    .await
-                    .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
-                custom_prompt.embedding = Some(embedding.vector);
-            }
+        //     self.sqlite_manager.set_prompt(&custom_prompt).await?;
+        // }
 
-            let lance_db = self.lance_db.write().await;
-            lance_db.set_prompt(custom_prompt).await?;
-        }
-
-        let duration = start_time.elapsed();
-        if env::var("LOG_ALL").unwrap_or_default() == "1" {
-            println!("Time taken to add static prompts: {:?}", duration);
-        }
+        // let duration = start_time.elapsed();
+        // if env::var("LOG_ALL").unwrap_or_default() == "1" {
+        //     println!("Time taken to add static prompts: {:?}", duration);
+        // }
         Ok(())
     }
 
     pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.write().await;
-        lance_db.set_tool(&ShinkaiTool::Network(network_tool, true)).await?;
-        Ok(())
+        self.sqlite_manager
+            .add_tool(ShinkaiTool::Network(network_tool, true))
+            .await
+            .map(|_| ())
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
     async fn add_js_tools(&self) -> Result<(), ToolError> {
@@ -170,12 +163,12 @@ impl ToolRouter {
             }
             println!("Adding JS tool: {}", name);
 
-            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-            for tool in toolkit.tools {
-                let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
-                let lance_db = self.lance_db.write().await;
-                lance_db.set_tool(&shinkai_tool).await?;
-            }
+            // let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+            // for tool in toolkit.tools {
+            //     let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+            //     let lance_db = self.lance_db.write().await;
+            //     lance_db.set_tool(&shinkai_tool).await?;
+            // }
         }
 
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
@@ -211,10 +204,10 @@ impl ToolRouter {
             };
 
             let shinkai_tool = ShinkaiTool::Network(network_tool, true);
-            {
-                let lance_db = self.lance_db.write().await;
-                lance_db.set_tool(&shinkai_tool).await?;
-            }
+            self.sqlite_manager
+                .add_tool(shinkai_tool)
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
             // Manually create another NetworkTool
             let youtube_tool = NetworkTool {
@@ -237,29 +230,48 @@ impl ToolRouter {
             };
 
             let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-            let lance_db = self.lance_db.write().await;
-            lance_db.set_tool(&shinkai_tool).await?;
+            self.sqlite_manager
+                .add_tool(shinkai_tool)
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            let lance_db = self.lance_db.write().await;
-            if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
-                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
-                    js_tool.name = "network__echo".to_string();
-                    let modified_tool = ShinkaiTool::JS(js_tool, true);
-                    lance_db.set_tool(&modified_tool).await?;
-                }
+            let shinkai_tool = self
+                .sqlite_manager
+                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+            if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
+                js_tool.name = "network__echo".to_string();
+                let modified_tool = ShinkaiTool::JS(js_tool, true);
+                self.sqlite_manager
+                    .add_tool(modified_tool)
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
             }
 
-            if let Some(shinkai_tool) = lance_db
-                .get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
-                .await?
+            match self
+                .sqlite_manager
+                .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
             {
-                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
-                    js_tool.name = "youtube_transcript_with_timestamps".to_string();
-                    let modified_tool = ShinkaiTool::JS(js_tool, true);
-                    lance_db.set_tool(&modified_tool).await?;
+                Ok(shinkai_tool) => {
+                    if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
+                        js_tool.name = "youtube_transcript_with_timestamps".to_string();
+                        let modified_tool = ShinkaiTool::JS(js_tool, true);
+                        self.sqlite_manager
+                            .add_tool(modified_tool)
+                            .await
+                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                    }
+                }
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    eprintln!("Tool not found: local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript");
+                    // Handle the case where the tool is not found, if necessary
+                }
+                Err(e) => {
+                    return Err(ToolError::DatabaseError(e.to_string()));
                 }
             }
         }
@@ -271,32 +283,32 @@ impl ToolRouter {
     }
 
     pub async fn get_tool_by_name(&self, name: &str) -> Result<Option<ShinkaiTool>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        lance_db
-            .get_tool(name)
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))
+        match self.sqlite_manager.get_tool_by_key(name) {
+            Ok(tool) => Ok(Some(tool)),
+            Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
+            Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+        }
     }
 
     pub async fn get_tools_by_names_with_smart_retry(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
-        let lance_db = self.lance_db.read().await;
         let mut tools = Vec::new();
 
         for name in names {
-            match lance_db.get_tool(&name).await {
-                Ok(Some(tool)) => tools.push(tool),
-                Ok(None) => {
+            match self.sqlite_manager.get_tool_by_key(&name) {
+                Ok(tool) => tools.push(tool),
+                Err(SqliteManagerError::ToolNotFound(_)) => {
                     // Perform a vector search if the tool is not found
-                    let search_results = lance_db
-                        .vector_search_all_tools(&name, 10, true)
+                    let search_results = self
+                        .sqlite_manager
+                        .tool_vector_search(&name, 10)
                         .await
                         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
                     // Search for the result that has the same name
                     if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
-                        match lance_db.get_tool(&matching_result.tool_router_key).await {
-                            Ok(Some(tool)) => tools.push(tool),
-                            Ok(None) => {
+                        match self.sqlite_manager.get_tool_by_key(&matching_result.tool_router_key) {
+                            Ok(tool) => tools.push(tool),
+                            Err(SqliteManagerError::ToolNotFound(_)) => {
                                 eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
                                 continue; // Skip this tool and continue with the next one
                             }
@@ -325,10 +337,11 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db
-            .vector_search_enabled_tools(query, num_of_results, false)
-            .await?;
+        let tool_headers = self
+            .sqlite_manager
+            .tool_vector_search(query, num_of_results)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         Ok(tool_headers)
     }
 
@@ -337,10 +350,11 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db
-            .vector_search_enabled_tools(query, num_of_results, true)
-            .await?;
+        let tool_headers = self
+            .sqlite_manager
+            .tool_vector_search(query, num_of_results)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         Ok(tool_headers)
     }
 
@@ -349,22 +363,11 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db.vector_search_all_tools(query, num_of_results, false).await?;
-        Ok(tool_headers)
-    }
-
-    pub async fn workflow_search(
-        &self,
-        name_query: &str,
-        num_of_results: u64,
-    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        if name_query.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db.workflow_vector_search(name_query, num_of_results).await?;
+        let tool_headers = self
+            .sqlite_manager
+            .tool_vector_search(query, num_of_results)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         Ok(tool_headers)
     }
 
@@ -727,19 +730,19 @@ impl ToolRouter {
         return Ok(result_str);
     }
 
-    pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        lance_db
-            .get_current_version()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))
-    }
+    // pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {
+    //     let lance_db = self.lance_db.read().await;
+    //     lance_db
+    //         .get_current_version()
+    //         .await
+    //         .map_err(|e| ToolError::DatabaseError(e.to_string()))
+    // }
 
-    pub async fn set_lancedb_version(&self, version: &str) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.write().await;
-        lance_db
-            .set_version(version)
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))
-    }
+    // pub async fn set_lancedb_version(&self, version: &str) -> Result<(), ToolError> {
+    //     let lance_db = self.lance_db.write().await;
+    //     lance_db
+    //         .set_version(version)
+    //         .await
+    //         .map_err(|e| ToolError::DatabaseError(e.to_string()))
+    // }
 }

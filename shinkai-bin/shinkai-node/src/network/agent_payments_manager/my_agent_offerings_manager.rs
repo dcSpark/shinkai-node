@@ -633,7 +633,6 @@ mod tests {
     use crate::managers::identity_manager::IdentityManagerTrait;
     use async_trait::async_trait;
     use chrono::Utc;
-    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
         schemas::{
             identity::{Identity, StandardIdentity, StandardIdentityType},
@@ -645,6 +644,7 @@ mod tests {
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
+    use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
     use shinkai_vector_resources::{
         embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
@@ -753,7 +753,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_verify_invoice() -> Result<(), ShinkaiLanceDBError> {
+    async fn test_verify_invoice() -> Result<(), SqliteManagerError> {
         setup();
 
         // Setup the necessary components for MyAgentOfferingsManager

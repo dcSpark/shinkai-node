@@ -13,9 +13,9 @@ use shinkai_http_api::{
     api_v2::api_v2_handlers_tools::{Language, ToolType},
     node_api_router::APIError,
 };
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
+use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
@@ -26,11 +26,11 @@ impl Node {
     pub async fn generate_tool_definitions(
         bearer: String,
         language: Language,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Convert the String output to a Value
-        let definitions = generate_tool_definitions(language, lance_db).await;
+        let definitions = generate_tool_definitions(language, sqlite_manager).await;
         let value = Value::String(definitions);
 
         // Send the result
@@ -44,7 +44,7 @@ impl Node {
     pub async fn execute_command(
         bearer: String,
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
         tool_type: ToolType,
         parameters: Map<String, Value>,
@@ -57,7 +57,7 @@ impl Node {
             parameters,
             None,
             db,
-            lance_db,
+            sqlite_manager,
             bearer,
         )
         .await;
@@ -92,7 +92,7 @@ impl Node {
         metadata: Option<String>,
         output: Option<String>,
         prompt: String,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         db_clone: Arc<ShinkaiDB>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -114,7 +114,7 @@ impl Node {
             metadata,
             output,
             Some(prompt),
-            lance_db,
+            sqlite_manager,
             db_clone,
             node_name_clone,
             identity_manager_clone,
@@ -153,7 +153,7 @@ impl Node {
         code: Option<String>,
         metadata: Option<String>,
         output: Option<String>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         db_clone: Arc<ShinkaiDB>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -173,7 +173,7 @@ impl Node {
             code,
             metadata,
             output,
-            lance_db,
+            sqlite_manager,
             db_clone,
             node_name_clone,
             identity_manager_clone,

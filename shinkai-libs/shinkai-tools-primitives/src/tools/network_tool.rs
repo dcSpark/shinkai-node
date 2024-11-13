@@ -1,7 +1,7 @@
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{argument::ToolArgument, error::ToolError, js_toolkit_headers::ToolConfig, shinkai_tool::ShinkaiTool};
+use super::{argument::ToolArgument, error::ToolError, tool_config::ToolConfig, shinkai_tool::ShinkaiTool};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NetworkTool {

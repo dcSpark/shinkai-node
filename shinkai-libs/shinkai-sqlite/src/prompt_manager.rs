@@ -1,16 +1,17 @@
-use crate::{shinkai_prompt::ShinkaiPrompt, SqliteManager};
+use crate::SqliteManager;
 use bytemuck::cast_slice;
-use rusqlite::{params, Result};
+use rusqlite::{params, OptionalExtension, Result};
+use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 
 impl SqliteManager {
-    pub async fn add_prompt(&self, prompt: &ShinkaiPrompt) -> Result<ShinkaiPrompt> {
+    pub async fn add_prompt(&self, prompt: &CustomPrompt) -> Result<CustomPrompt> {
         // Generate the embedding from the query string
         let embedding = self.generate_embeddings(&prompt.prompt).await?;
         self.add_prompt_with_vector(prompt, embedding)
     }
 
-    // Adds a ShinkaiPrompt entry to the shinkai_prompts table and its vector to prompt_vec_items
-    pub fn add_prompt_with_vector(&self, prompt: &ShinkaiPrompt, vector: Vec<f32>) -> Result<ShinkaiPrompt> {
+    // Adds a CustomPrompt entry to the shinkai_prompts table and its vector to prompt_vec_items
+    pub fn add_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<CustomPrompt> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -48,13 +49,13 @@ impl SqliteManager {
         Ok(prompt)
     }
 
-    // Retrieves ShinkaiPrompt entries based on optional filters
+    // Retrieves CustomPrompt entries based on optional filters
     pub fn get_prompts(
         &self,
         name: Option<&str>,
         is_system: Option<bool>,
         is_enabled: Option<bool>,
-    ) -> Result<Vec<ShinkaiPrompt>> {
+    ) -> Result<Vec<CustomPrompt>> {
         let conn = self.get_connection()?;
         let mut query = "SELECT * FROM shinkai_prompts WHERE 1=1".to_string();
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
@@ -75,7 +76,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare(&query)?;
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let prompt_iter = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok(ShinkaiPrompt {
+            Ok(CustomPrompt {
                 rowid: Some(row.get(0)?),
                 name: row.get(1)?,
                 is_system: row.get::<_, i32>(2)? != 0,
@@ -89,14 +90,14 @@ impl SqliteManager {
         prompt_iter.collect()
     }
 
-    // Retrieves a single ShinkaiPrompt by rowid
-    pub fn get_prompt(&self, rowid: i64) -> Result<Option<ShinkaiPrompt>> {
+    // Retrieves a single CustomPrompt by rowid
+    pub fn get_prompt(&self, rowid: i64) -> Result<Option<CustomPrompt>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM shinkai_prompts WHERE rowid = ?1 LIMIT 1")?;
         let mut rows = stmt.query(params![rowid])?;
 
         if let Some(row) = rows.next()? {
-            Ok(Some(ShinkaiPrompt {
+            Ok(Some(CustomPrompt {
                 rowid: Some(row.get(0)?),
                 name: row.get(1)?,
                 is_system: row.get::<_, i32>(2)? != 0,
@@ -110,13 +111,13 @@ impl SqliteManager {
         }
     }
 
-    pub async fn set_prompt(&self, prompt: &ShinkaiPrompt) -> Result<()> {
+    pub async fn set_prompt(&self, prompt: &CustomPrompt) -> Result<()> {
         let embedding = self.generate_embeddings(&prompt.prompt).await?;
         self.set_prompt_with_vector(prompt, embedding)
     }
 
-    // Updates or inserts a ShinkaiPrompt and its vector
-    pub fn set_prompt_with_vector(&self, prompt: &ShinkaiPrompt, vector: Vec<f32>) -> Result<()> {
+    // Updates or inserts a CustomPrompt and its vector
+    pub fn set_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<()> {
         // TODO: add error handling
         // if prompt.rowid.is_none() {
         //     return ;
@@ -166,11 +167,11 @@ impl SqliteManager {
     }
 
     // Retrieves all favorite prompts
-    pub fn get_favorite_prompts(&self) -> Result<Vec<ShinkaiPrompt>> {
+    pub fn get_favorite_prompts(&self) -> Result<Vec<CustomPrompt>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM shinkai_prompts WHERE is_favorite = 1")?;
         let prompt_iter = stmt.query_map([], |row| {
-            Ok(ShinkaiPrompt {
+            Ok(CustomPrompt {
                 rowid: Some(row.get(0)?),
                 name: row.get(1)?,
                 is_system: row.get::<_, i32>(2)? != 0,
@@ -184,15 +185,32 @@ impl SqliteManager {
         prompt_iter.collect()
     }
 
-    // Removes a prompt by name
+    // Removes a prompt by name and its associated vector
     pub fn remove_prompt(&self, name: &str) -> Result<()> {
-        let conn = self.get_connection()?;
-        conn.execute("DELETE FROM shinkai_prompts WHERE name = ?1", params![name])?;
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        // Retrieve the rowid of the prompt to be deleted
+        let rowid: Option<i64> = tx.query_row(
+            "SELECT rowid FROM shinkai_prompts WHERE name = ?1",
+            params![name],
+            |row| row.get(0),
+        ).optional()?;
+
+        if let Some(rowid) = rowid {
+            // Delete the prompt from shinkai_prompts
+            tx.execute("DELETE FROM shinkai_prompts WHERE rowid = ?1", params![rowid])?;
+
+            // Delete the associated vector from prompt_vec_items
+            tx.execute("DELETE FROM prompt_vec_items WHERE rowid = ?1", params![rowid])?;
+        }
+
+        tx.commit()?;
         Ok(())
     }
 
     // Performs a vector search for prompts using a precomputed vector
-    pub fn prompt_vector_search_with_vector(&self, vector: Vec<f32>, num_results: u64) -> Result<Vec<ShinkaiPrompt>> {
+    pub fn prompt_vector_search_with_vector(&self, vector: Vec<f32>, num_results: u64) -> Result<Vec<CustomPrompt>> {
         // Convert Vec<f32> to &[u8] using bytemuck
         let embedding_bytes: &[u8] = cast_slice(&vector);
 
@@ -202,19 +220,19 @@ impl SqliteManager {
             "SELECT rowid FROM prompt_vec_items 
              WHERE embedding MATCH ? 
              ORDER BY distance 
-             LIMIT ?"
+             LIMIT ?",
         )?;
 
-        let rowids: Vec<i64> = stmt.query_map(params![embedding_bytes, num_results], |row| {
-            row.get(0)
-        })?.collect::<Result<Vec<i64>, _>>()?;
+        let rowids: Vec<i64> = stmt
+            .query_map(params![embedding_bytes, num_results], |row| row.get(0))?
+            .collect::<Result<Vec<i64>, _>>()?;
 
-        // Step 2: Retrieve the corresponding ShinkaiPrompt entries
+        // Step 2: Retrieve the corresponding CustomPrompt entries
         let mut prompts = Vec::new();
         for rowid in rowids {
             let mut stmt = conn.prepare("SELECT * FROM shinkai_prompts WHERE rowid = ?")?;
             let prompt = stmt.query_row(params![rowid], |row| {
-                Ok(ShinkaiPrompt {
+                Ok(CustomPrompt {
                     rowid: Some(row.get(0)?),
                     name: row.get(1)?,
                     is_system: row.get::<_, i32>(2)? != 0,
@@ -231,7 +249,7 @@ impl SqliteManager {
     }
 
     // Performs a vector search for prompts based on a query string
-    pub async fn prompt_vector_search(&self, query: &str, num_results: u64) -> Result<Vec<ShinkaiPrompt>> {
+    pub async fn prompt_vector_search(&self, query: &str, num_results: u64) -> Result<Vec<CustomPrompt>> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -252,6 +270,11 @@ impl SqliteManager {
         // Convert &[u8] back to Vec<f32> using bytemuck
         let embedding: &[f32] = bytemuck::cast_slice(&embedding_bytes);
         Ok(embedding.to_vec())
+    }
+
+    // Retrieves all CustomPrompt entries
+    pub fn get_all_prompts(&self) -> Result<Vec<CustomPrompt>> {
+        self.get_prompts(None, None, None)
     }
 }
 
@@ -280,7 +303,7 @@ mod tests {
     #[test]
     fn test_add_prompt_with_vector() {
         let manager = setup_test_db();
-        let prompt = ShinkaiPrompt {
+        let prompt = CustomPrompt {
             rowid: None,
             name: "Test Prompt".to_string(),
             is_system: false,
@@ -298,7 +321,7 @@ mod tests {
     #[test]
     fn test_get_prompt_with_vector() {
         let manager = setup_test_db();
-        let prompt = ShinkaiPrompt {
+        let prompt = CustomPrompt {
             rowid: None,
             name: "Test Prompt".to_string(),
             is_system: false,
@@ -310,15 +333,22 @@ mod tests {
 
         let vector = generate_vector(0.1);
         let added_prompt = manager.add_prompt_with_vector(&prompt, vector).unwrap();
-        let retrieved_prompt = manager.get_prompt(added_prompt.rowid.unwrap()).unwrap();
-        assert!(retrieved_prompt.is_some());
-        assert_eq!(retrieved_prompt.unwrap().name, "Test Prompt");
+        
+        // Test retrieval by rowid
+        let retrieved_prompt_by_rowid = manager.get_prompt(added_prompt.rowid.unwrap()).unwrap();
+        assert!(retrieved_prompt_by_rowid.is_some());
+        assert_eq!(retrieved_prompt_by_rowid.unwrap().name, "Test Prompt");
+
+        // Test retrieval by name using get_prompts
+        let retrieved_prompts_by_name = manager.get_prompts(Some("Test Prompt"), None, None).unwrap();
+        assert_eq!(retrieved_prompts_by_name.len(), 1);
+        assert_eq!(retrieved_prompts_by_name[0].name, "Test Prompt");
     }
 
     #[test]
     fn test_remove_prompt_with_vector() {
         let manager = setup_test_db();
-        let prompt = ShinkaiPrompt {
+        let prompt = CustomPrompt {
             rowid: None,
             name: "Test Prompt".to_string(),
             is_system: false,
@@ -339,7 +369,7 @@ mod tests {
     fn test_list_prompts_with_vector() {
         let manager = setup_test_db();
 
-        let prompt1 = ShinkaiPrompt {
+        let prompt1 = CustomPrompt {
             rowid: None,
             name: "Prompt One".to_string(),
             is_system: false,
@@ -349,7 +379,7 @@ mod tests {
             is_favorite: false,
         };
 
-        let prompt2 = ShinkaiPrompt {
+        let prompt2 = CustomPrompt {
             rowid: None,
             name: "Prompt Two".to_string(),
             is_system: true,
@@ -375,7 +405,7 @@ mod tests {
     fn test_add_and_search_prompt_with_vector() {
         let manager = setup_test_db();
 
-        // Create five ShinkaiPrompts with different vectors
+        // Create five CustomPrompts with different vectors
         let prompts = vec![
             ("Prompt 0.1", 0.1),
             ("Prompt 0.2", 0.2),
@@ -385,7 +415,7 @@ mod tests {
         ];
 
         for (name, value) in prompts {
-            let prompt = ShinkaiPrompt {
+            let prompt = CustomPrompt {
                 rowid: None,
                 name: name.to_string(),
                 is_system: true,
@@ -421,15 +451,11 @@ mod tests {
         let manager = setup_test_db();
 
         // Add three prompts
-        let prompts = vec![
-            ("Prompt 0.1", 0.1),
-            ("Prompt 0.2", 0.2),
-            ("Prompt 0.3", 0.3),
-        ];
+        let prompts = vec![("Prompt 0.1", 0.1), ("Prompt 0.2", 0.2), ("Prompt 0.3", 0.3)];
 
         let mut rowid_to_update = None;
         for (name, value) in &prompts {
-            let prompt = ShinkaiPrompt {
+            let prompt = CustomPrompt {
                 rowid: None,
                 name: name.to_string(),
                 is_system: false,
@@ -447,7 +473,7 @@ mod tests {
         }
 
         // Update the second prompt to "Prompt 0.7" with vector 0.7
-        let updated_prompt = ShinkaiPrompt {
+        let updated_prompt = CustomPrompt {
             rowid: rowid_to_update,
             name: "Prompt 0.7".to_string(),
             is_system: true,
@@ -465,7 +491,10 @@ mod tests {
         assert!(retrieved_prompt.is_some());
         let retrieved_prompt = retrieved_prompt.unwrap();
         assert_eq!(retrieved_prompt.name, "Prompt 0.7");
-        assert_eq!(retrieved_prompt.prompt, "This is an updated test prompt for Prompt 0.7.");
+        assert_eq!(
+            retrieved_prompt.prompt,
+            "This is an updated test prompt for Prompt 0.7."
+        );
         assert_eq!(retrieved_prompt.is_system, true);
         assert_eq!(retrieved_prompt.is_enabled, false);
         assert_eq!(retrieved_prompt.version, "1.1");

@@ -3,15 +3,14 @@ use bigdecimal::BigDecimal;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
-use shinkai_tools_primitives::tools::js_toolkit_headers::ToolConfig;
+use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
-use tokio::sync::RwLock;
 
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
@@ -26,7 +25,7 @@ pub struct CoinbaseMPCWallet {
     pub network: Network,
     pub address: Address,
     pub config: CoinbaseMPCWalletConfig,
-    pub lance_db: Option<Weak<RwLock<LanceShinkaiDb>>>,
+    pub sqlite_manager: Option<Weak<SqliteManager>>,
 }
 
 // Note: do we need access to ToolRouter? (maybe not, since we can call the Coinbase SDK directly)
@@ -76,28 +75,29 @@ impl<'de> Deserialize<'de> for CoinbaseMPCWallet {
             network: data.network,
             address: data.address,
             config: data.config,
-            lance_db: None,
+            sqlite_manager: None,
         })
     }
 }
 
 impl CoinbaseMPCWallet {
-    pub fn update_lance_db(&mut self, lance_db: Arc<RwLock<LanceShinkaiDb>>) {
-        self.lance_db = Some(Arc::downgrade(&lance_db));
+    pub fn update_sqlite_manager(&mut self, sqlite_manager: Arc<SqliteManager>) {
+        self.sqlite_manager = Some(Arc::downgrade(&sqlite_manager));
     }
 
     pub async fn create_wallet(
         network: Network,
-        lance_db: Weak<RwLock<LanceShinkaiDb>>, // Changed to Weak
+        sqlite_manager: Weak<SqliteManager>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<Self, WalletError> {
-        let lance_db_strong = lance_db.upgrade().ok_or(WalletError::ConfigNotFound)?;
+        let sqlite_manager_strong = sqlite_manager.upgrade().ok_or(WalletError::ConfigNotFound)?;
         let mut config = match config {
             Some(cfg) => cfg,
             None => {
-                let db = lance_db_strong.read().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
-                let shinkai_tool = db.get_tool(tool_id).await?.ok_or(WalletError::ConfigNotFound)?;
+                let shinkai_tool = sqlite_manager_strong
+                    .get_tool_by_key(tool_id)
+                    .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
                 // Extract the required configuration from the JSTool
                 let mut name = String::new();
@@ -142,7 +142,7 @@ impl CoinbaseMPCWallet {
 
         let response = Self::call_function(
             config.clone(),
-            lance_db.clone(),
+            sqlite_manager.clone(),
             ShinkaiToolCoinbase::CreateWallet,
             params,
         )
@@ -174,7 +174,7 @@ impl CoinbaseMPCWallet {
                 public_key: None,
                 address_id,
             },
-            lance_db: Some(lance_db), // Store the Weak reference
+            sqlite_manager: Some(sqlite_manager), // Store the Weak reference
         };
 
         Ok(wallet)
@@ -182,22 +182,20 @@ impl CoinbaseMPCWallet {
 
     pub async fn restore_wallet(
         network: Network,
-        lance_db: Weak<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Weak<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<Self, WalletError> {
-        let lance_db_strong = lance_db
+        let sqlite_manager_strong = sqlite_manager
             .upgrade()
-            .ok_or(WalletError::LanceDBError("LanceDB not found".to_string()))?;
+            .ok_or(WalletError::SqliteManagerError("SqliteManager not found".to_string()))?;
         let config = match config {
             Some(cfg) => cfg,
             None => {
-                let db = lance_db_strong.read().await;
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
-                let shinkai_tool = db
-                    .get_tool(tool_id)
-                    .await?
-                    .ok_or(WalletError::ToolNotFound(tool_id.to_string()))?;
+                let shinkai_tool = sqlite_manager_strong
+                    .get_tool_by_key(tool_id)
+                    .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
                 // Extract the required configuration from the JSTool
                 let mut name = String::new();
@@ -239,7 +237,7 @@ impl CoinbaseMPCWallet {
 
         let response = match Self::call_function(
             config.clone(),
-            lance_db.clone(),
+            sqlite_manager.clone(),
             ShinkaiToolCoinbase::GetMyAddress,
             params,
         )
@@ -271,7 +269,7 @@ impl CoinbaseMPCWallet {
                 public_key: None,
                 address_id,
             },
-            lance_db: Some(lance_db),
+            sqlite_manager: Some(sqlite_manager),
         };
 
         Ok(wallet)
@@ -279,19 +277,17 @@ impl CoinbaseMPCWallet {
 
     pub async fn call_function(
         config: CoinbaseMPCWalletConfig,
-        lance_db: Weak<RwLock<LanceShinkaiDb>>, // Changed to Weak
+        sqlite_manager: Weak<SqliteManager>, // Changed to Weak
         function_name: ShinkaiToolCoinbase,
         params: serde_json::Map<String, Value>,
     ) -> Result<Value, WalletError> {
-        let lance_db_strong = lance_db
+        let sqlite_manager_strong = sqlite_manager
             .upgrade()
-            .ok_or(WalletError::LanceDBError("LanceDB not found".to_string()))?;
-        let db = lance_db_strong.read().await;
+            .ok_or(WalletError::SqliteManagerError("SqliteManager not found".to_string()))?;
         let tool_id = function_name.definition_id();
-        let shinkai_tool = db
-            .get_tool(tool_id)
-            .await?
-            .ok_or(WalletError::LanceDBError("Tool not found".to_string()))?;
+        let shinkai_tool = sqlite_manager_strong
+            .get_tool_by_key(tool_id)
+            .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
         let function_config = shinkai_tool.get_config_from_env();
 
         // Convert function_config from String to Value
@@ -356,7 +352,10 @@ impl CommonActions for CoinbaseMPCWallet {
 
     fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
-        let lance_db = self.lance_db.clone().unwrap(); // Use the Weak reference
+        let sqlite_manager = match self.sqlite_manager.clone() {
+            Some(manager) => manager,
+            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+        };
 
         Box::pin(async move {
             let params = serde_json::json!({
@@ -367,7 +366,7 @@ impl CommonActions for CoinbaseMPCWallet {
             .to_owned();
 
             let response =
-                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
+                CoinbaseMPCWallet::call_function(config, sqlite_manager, ShinkaiToolCoinbase::GetBalance, params).await?;
 
             let balance_str = response
                 .get("balance")
@@ -387,7 +386,10 @@ impl CommonActions for CoinbaseMPCWallet {
         let config = self.config.clone();
         let network_id = self.network.id.clone();
         let network = self.network.clone();
-        let lance_db = self.lance_db.clone().unwrap(); // Use the Weak reference
+        let sqlite_manager = match self.sqlite_manager.clone() {
+            Some(manager) => manager,
+            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+        };
 
         Box::pin(async move {
             let params = serde_json::json!({
@@ -398,7 +400,7 @@ impl CommonActions for CoinbaseMPCWallet {
             .to_owned();
 
             let response =
-                CoinbaseMPCWallet::call_function(config.clone(), lance_db, ShinkaiToolCoinbase::GetBalance, params)
+                CoinbaseMPCWallet::call_function(config.clone(), sqlite_manager, ShinkaiToolCoinbase::GetBalance, params)
                     .await?;
 
             eprintln!("response: {:?}", response);
@@ -469,7 +471,10 @@ impl CommonActions for CoinbaseMPCWallet {
         asset: Asset,
     ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
-        let lance_db = self.lance_db.clone().unwrap(); // Use the Weak reference
+        let sqlite_manager = match self.sqlite_manager.clone() {
+            Some(manager) => manager,
+            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+        };
 
         Box::pin(async move {
             let params = serde_json::json!({
@@ -482,7 +487,8 @@ impl CommonActions for CoinbaseMPCWallet {
             .to_owned();
 
             let response =
-                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::GetBalance, params).await?;
+                CoinbaseMPCWallet::call_function(config, sqlite_manager.clone(), ShinkaiToolCoinbase::GetBalance, params)
+                    .await?;
 
             let data = response
                 .get("data")
@@ -541,7 +547,10 @@ impl SendActions for CoinbaseMPCWallet {
         };
 
         let config = self.config.clone();
-        let lance_db = self.lance_db.clone().unwrap(); // Use the Weak reference
+        let sqlite_manager = match self.sqlite_manager.clone() {
+            Some(manager) => manager,
+            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+        };
 
         // Normalize send_amount to the asset decimals e.g. Instead of 1000, it should be 0.001
         let normalized_amount = if let Some(asset) = &token {
@@ -563,7 +572,7 @@ impl SendActions for CoinbaseMPCWallet {
             .to_owned();
 
             let response =
-                CoinbaseMPCWallet::call_function(config, lance_db, ShinkaiToolCoinbase::SendTx, params).await?;
+                CoinbaseMPCWallet::call_function(config, sqlite_manager, ShinkaiToolCoinbase::SendTx, params).await?;
 
             let tx_hash = response
                 .get("data")

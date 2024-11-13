@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffe
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
-    argument::ToolArgument, deno_tools::DenoTool, internal_tools::InternalTool, js_toolkit_headers::ToolConfig,
+    argument::ToolArgument, deno_tools::DenoTool, internal_tools::InternalTool, tool_config::ToolConfig,
     network_tool::NetworkTool, python_tools::PythonTool,
 };
 

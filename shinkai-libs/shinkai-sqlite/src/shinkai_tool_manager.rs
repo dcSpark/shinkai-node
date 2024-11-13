@@ -14,6 +14,8 @@ pub enum SqliteManagerError {
     EmbeddingGenerationError(String),
     #[error("Serialization error: {0}")]
     SerializationError(String),
+    #[error("Tool not found with key: {0}")]
+    ToolNotFound(String),
     // Add other error variants as needed
 }
 
@@ -193,6 +195,7 @@ impl SqliteManager {
         self.tool_vector_search_with_vector(embedding, num_results)
     }
 
+    /// Retrieves a ShinkaiToolHeader based on its tool_key
     pub fn get_tool_header_by_key(&self, tool_key: &str) -> Result<ShinkaiToolHeader, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE tool_key = ?1")?;
@@ -200,8 +203,13 @@ impl SqliteManager {
         let tool_header_data: Vec<u8> = stmt
             .query_row(params![tool_key.to_lowercase()], |row| row.get(0))
             .map_err(|e| {
-                println!("Database error: {}", e);
-                SqliteManagerError::DatabaseError(e)
+                if e == rusqlite::Error::QueryReturnedNoRows {
+                    println!("Tool not found with key: {}", tool_key);
+                    SqliteManagerError::ToolNotFound(tool_key.to_string())
+                } else {
+                    println!("Database error: {}", e);
+                    SqliteManagerError::DatabaseError(e)
+                }
             })?;
 
         let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
@@ -212,7 +220,7 @@ impl SqliteManager {
         Ok(tool_header)
     }
 
-    // Retrieves a ShinkaiTool based on its tool_key
+    /// Retrieves a ShinkaiTool based on its tool_key
     pub fn get_tool_by_key(&self, tool_key: &str) -> Result<ShinkaiTool, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_key = ?1")?;
@@ -220,8 +228,13 @@ impl SqliteManager {
         let tool_data: Vec<u8> = stmt
             .query_row(params![tool_key.to_lowercase()], |row| row.get(0))
             .map_err(|e| {
-                println!("Database error: {}", e);
-                SqliteManagerError::DatabaseError(e)
+                if e == rusqlite::Error::QueryReturnedNoRows {
+                    println!("Tool not found with key: {}", tool_key);
+                    SqliteManagerError::ToolNotFound(tool_key.to_string())
+                } else {
+                    println!("Database error: {}", e);
+                    SqliteManagerError::DatabaseError(e)
+                }
             })?;
 
         // Deserialize the tool_data to get the ShinkaiTool
@@ -327,7 +340,7 @@ impl SqliteManager {
         Ok(tool)
     }
 
-    // Updates a ShinkaiTool entry by generating a new embedding
+    /// Updates a ShinkaiTool entry by generating a new embedding
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
@@ -344,7 +357,7 @@ impl SqliteManager {
         self.update_tool_with_vector(tool, embedding)
     }
 
-    // Retrieves all ShinkaiToolHeader entries from the shinkai_tools table
+    /// Retrieves all ShinkaiToolHeader entries from the shinkai_tools table
     pub fn get_all_tool_headers(&self) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools")?;
@@ -368,7 +381,7 @@ impl SqliteManager {
         Ok(headers)
     }
 
-    // Removes a ShinkaiTool entry from the shinkai_tools table
+    /// Removes a ShinkaiTool entry from the shinkai_tools table
     pub fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
         println!("Starting remove_tool with key: {}", tool_key);
 
@@ -404,6 +417,51 @@ impl SqliteManager {
         tx.commit()?;
         println!("Tool and embedding removed successfully");
         Ok(())
+    }
+
+    /// Checks if the shinkai_tools table is empty
+    pub fn is_empty(&self) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM shinkai_tools",
+            [],
+            |row| row.get(0),
+        ).map_err(|e| {
+            println!("Database error: {}", e);
+            SqliteManagerError::DatabaseError(e)
+        })?;
+
+        Ok(count == 0)
+    }
+
+    /// Checks if a tool exists in the shinkai_tools table by its tool_key
+    pub fn tool_exists(&self, tool_key: &str) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
+            params![tool_key.to_lowercase()],
+            |row| row.get(0),
+        ).map_err(|e| {
+            println!("Database error: {}", e);
+            SqliteManagerError::DatabaseError(e)
+        })?;
+
+        Ok(exists)
+    }
+
+    /// Checks if there are any JS tools in the shinkai_tools table
+    pub async fn has_any_js_tools(&self) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
+            [],
+            |row| row.get(0),
+        ).map_err(|e| {
+            println!("Database error: {}", e);
+            SqliteManagerError::DatabaseError(e)
+        })?;
+
+        Ok(exists)
     }
 }
 
