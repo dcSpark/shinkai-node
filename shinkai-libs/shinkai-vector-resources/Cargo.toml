@@ -29,7 +29,7 @@ utoipa = "4.2.3"
 num-traits = "0.2"
 umya-spreadsheet = { version = "2.1.1", optional = true }
 comrak = { version = "0.22.0", default-features = true, optional = true }
-reqwest = { workspace = true, default-features = false, features = [
+reqwest = { workspace = true, features = [
     "json",
     "tokio-native-tls",
     "blocking",

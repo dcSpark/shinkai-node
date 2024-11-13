@@ -121,8 +121,8 @@ impl DenoTool {
                             ),
                         }),
                     );
-                    // TODO: Fix this object wrap after update tools library to have th right typification
-                    tool.run(serde_json::Value::Object(parameters), None)
+                    // TODO: Fix this object wrap after update tools library to have the right typification
+                    tool.run(None, serde_json::Value::Object(parameters), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })

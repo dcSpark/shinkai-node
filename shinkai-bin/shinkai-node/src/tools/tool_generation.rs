@@ -159,37 +159,39 @@ pub async fn tool_implementation(
                 Language::Typescript => {
                     generate_code_prompt.push_str(&format!(
                         "
-RULE I:
+# RULE I:
 You may use any of the following tools if they are relevant and a good match for the task.
-Import them in the following way (do not rename with AS):
-import {{ xx }} as '@shinkai/local-tools'
+Import them in the following way (do not rename functions with AS):
+`import {{ xx }} as '@shinkai/local-tools'`
 
 This is the content of @shinkai/local-tools:
 ```{}
 {}
 ```
-================================================================
-RULE II:
+
+#RULE II:
 implement the task you can also update the CONFIG, INPUTS and OUTPUT types to match the tool's type 
 ```{}
-CONFIG = {{}}; 
+type CONFIG = {{}}; 
 type INPUTS = {{}}; 
 type OUTPUT = {{}}; 
-async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
+export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
     return {{}};
 }}
 ```
-================================================================
-RULE III:
-Write a single implementation file.
-This will be shared as a library, that will call the main(...) function.
-Do not examples how to execute it.
-The function signature MUST be: async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>;
-If you need to import other libraries, do it in the Deno NPM format: 'import axios from 'npm:axios' with the 'npm:' prefix.
 
-================================================================
-RULE IV:
-Implement the code in {} for the following task:
+# RULE III:
+* This will be shared as a library, that will call the run(...) function.
+* Do not include examples how to execute it.
+* The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
+* If you need to import other libraries, do it in the Deno NPM format, for example 'import axios from 'npm:axios' with the 'npm:' prefix.
+
+# RULE IV:
+* Output only the code, so it can be directly executed.
+* Write a single implementation file.
+* Implements the code in {} for the following INPUT:
+
+# INPUT:
 {}
 ",
                         language, tool_definitions, language, language, prompt_text
