@@ -57,8 +57,6 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        s if s == &String::from("local:::text_analyzer") => execute_text_analyzer(&parameters),
-        s if s == &String::from("local:::calculator") => execute_calculator(&parameters),
         _ => Ok(json!({})), // Not a custom tool
     }
 }
