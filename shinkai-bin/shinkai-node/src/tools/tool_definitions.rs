@@ -1,17 +1,15 @@
 pub mod definitions_built_in_tools;
 pub mod definitions_custom;
 
+use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
+use shinkai_sqlite::SqliteManager;
 use reqwest::StatusCode;
-use shinkai_http_api::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use shinkai_http_api::node_api_router::APIError;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
-use super::llm_language_support::generate_python::generate_python_definition;
 use super::llm_language_support::generate_typescript::generate_typescript_definition;
 use super::tool_definitions::definitions_built_in_tools::get_built_in_tools;
 use super::tool_definitions::definitions_custom::get_custom_tools;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 
 #[derive(Debug)]
 struct ToolExecutionResult {
@@ -30,17 +28,13 @@ fn generic_error_str(e: &str) -> APIError {
 
 pub async fn generate_tool_definitions(
     language: Language,
-    lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    sqlite_manager: Arc<SqliteManager>,
     only_headers: bool,
 ) -> Result<String, APIError> {
-    // let mut tools = get_built_in_tools();
-
-    let mut all_tools = lance_db
-        .read()
-        .await
-        .get_all_tools(true) // true to include network tools
-        .await
-        .map_err(|e| generic_error_str(&format!("Failed to fetch tools: {}", e)))?;
+    let mut all_tools = match sqlite_manager.get_all_tool_headers() {
+        Ok(data) => data,
+        Err(_) => Vec::new(),
+    };
 
     all_tools.extend(get_custom_tools());
 

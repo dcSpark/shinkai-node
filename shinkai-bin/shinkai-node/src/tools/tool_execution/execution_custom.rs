@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
-use shinkai_message_primitives::schemas::inbox_name;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::V2ChatMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_tools_primitives::tools::error::ToolError;
 
@@ -12,7 +10,6 @@ use reqwest::StatusCode;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;

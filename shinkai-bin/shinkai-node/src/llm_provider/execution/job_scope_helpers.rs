@@ -1,5 +1,5 @@
 use crate::llm_provider::job_manager::JobManager;
-use futures::stream::{Stream, StreamExt};
+use futures::stream::Stream;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;

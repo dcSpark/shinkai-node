@@ -23,7 +23,6 @@ use shinkai_db::schemas::inbox_permission::InboxPermission;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
 };
@@ -50,14 +49,14 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
-use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
+use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -1574,253 +1573,6 @@ impl Node {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub async fn api_add_toolkit(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
-        vector_fs: Arc<VectorFS>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        let validation_result = Self::validate_message(
-            encryption_secret_key,
-            identity_manager.clone(),
-            &node_name,
-            potentially_encrypted_msg,
-            Some(MessageSchemaType::APIAddToolkit),
-        )
-        .await;
-        let (msg, _) = match validation_result {
-            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let hex_blake3_hash = msg.get_message_content()?;
-
-        let files = {
-            match vector_fs.db.get_all_files_from_inbox(hex_blake3_hash) {
-                Ok(files) => files,
-                Err(err) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("{}", err),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            }
-        };
-
-        let definition_file = files.iter().find(|(name, _)| name.ends_with(".json"));
-
-        if definition_file.is_none() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Missing definition.json file".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        let definition_json = match String::from_utf8(definition_file.unwrap().1.clone()) {
-            Ok(json) => json,
-            Err(e) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: format!("Failed to parse definition file as UTF-8: {}", e),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
-
-        // Parse the toolkit file into ToolDefinition
-        let tool_definition: ToolDefinition = match serde_json::from_str(&definition_json) {
-            Ok(def) => def,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "User Error".to_string(),
-                    message: format!("Failed to parse JSON: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validate that the code field is not None
-        if tool_definition.code.is_none() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Tool definition is missing the code field".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Create JSToolkit
-        let toolkit = JSToolkit::new(&tool_definition.name.clone(), vec![tool_definition]);
-
-        // Add the toolkit using LanceShinkaiDb
-        let lance_db = lance_db.write().await;
-        for tool in toolkit.tools {
-            let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-            if let Err(err) = lance_db.set_tool(&shinkai_tool).await {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to install toolkit: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        }
-
-        let _ = res.send(Ok("Toolkit installed successfully".to_string())).await;
-        Ok(())
-    }
-
-    pub async fn api_list_toolkits(
-        db: Arc<RwLock<LanceShinkaiDb>>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        let validation_result = Self::validate_message(
-            encryption_secret_key,
-            identity_manager.clone(),
-            &node_name,
-            potentially_encrypted_msg,
-            Some(MessageSchemaType::APIListToolkits),
-        )
-        .await;
-        let (msg, _) = match validation_result {
-            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
-        if let Err(err) = profile {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: err.to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-        let profile = profile.unwrap();
-
-        // Fetch all toolkits for the user
-        let db = db.read().await;
-        let toolkits = match db.get_all_workflows().await {
-            // TODO: this is wrong
-            Ok(t) => t,
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to fetch toolkits: {}", err),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
-
-        // Convert the toolkits into a JSON string
-        let toolkits_json = match serde_json::to_string(&toolkits) {
-            Ok(json) => json,
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to convert toolkits to JSON: {}", err),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
-
-        let _ = res.send(Ok(toolkits_json)).await;
-        Ok(())
-    }
-
-    pub async fn api_remove_toolkit(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        let validation_result = Self::validate_message(
-            encryption_secret_key,
-            identity_manager.clone(),
-            &node_name,
-            potentially_encrypted_msg,
-            Some(MessageSchemaType::APIRemoveToolkit),
-        )
-        .await;
-        let (msg, _) = match validation_result {
-            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
-        if let Err(err) = profile {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: err.to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-        let profile = profile.unwrap();
-
-        // Get the toolkit name from the message content
-        let toolkit_name = msg.get_message_content()?;
-
-        // Remove the toolkit using LanceShinkaiDb
-        let lance_db = lance_db.write().await;
-        match lance_db.remove_tool(&toolkit_name).await {
-            Ok(_) => {
-                let _ = res.send(Ok("Toolkit removed successfully".to_string())).await;
-                Ok(())
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to remove toolkit: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
     pub async fn api_update_job_to_finished(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2953,86 +2705,6 @@ impl Node {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn api_search_workflows(
-        _db: Arc<ShinkaiDB>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        tool_router: Option<Arc<ToolRouter>>,
-        potentially_encrypted_msg: ShinkaiMessage,
-        _embedding_generator: Arc<RemoteEmbeddingGenerator>,
-        res: Sender<Result<JsonValue, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the message
-        let (search_query, requester_name) = match Self::validate_and_extract_payload::<String>(
-            node_name.clone(),
-            identity_manager.clone(),
-            encryption_secret_key,
-            potentially_encrypted_msg,
-            MessageSchemaType::SearchWorkflows,
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invalid node name provided".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Start the timer
-        let start_time = Instant::now();
-
-        // Perform the internal search using tool_router
-        if let Some(tool_router) = tool_router {
-            match tool_router.workflow_search(&search_query, 5).await {
-                Ok(workflows) => {
-                    let workflows_json = serde_json::to_value(workflows).map_err(|err| NodeError {
-                        message: format!("Failed to serialize workflows: {}", err),
-                    })?;
-                    // Log the elapsed time if LOG_ALL is set to 1
-                    if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
-                        let elapsed_time = start_time.elapsed();
-                        let result_count = workflows_json.as_array().map_or(0, |arr| arr.len());
-                        println!("Time taken for workflow search: {:?}", elapsed_time);
-                        println!("Number of workflow results: {}", result_count);
-                    }
-                    let _ = res.send(Ok(workflows_json)).await;
-                    Ok(())
-                }
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to search workflows: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    Ok(())
-                }
-            }
-        } else {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: "Tool router is not available".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            Ok(())
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
     pub async fn api_search_shinkai_tool(
         _db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -3113,7 +2785,7 @@ impl Node {
     }
 
     pub async fn api_list_all_shinkai_tools(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3149,8 +2821,7 @@ impl Node {
 
         // List all Shinkai tools
         let tools = {
-            let lance_db = lance_db.read().await;
-            match lance_db.get_all_tools(true).await {
+            match sqlite_manager.get_all_tool_headers() {
                 Ok(tools) => tools,
                 Err(err) => {
                     let api_error = APIError {
@@ -3170,7 +2841,7 @@ impl Node {
     }
 
     pub async fn api_set_shinkai_tool(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3206,9 +2877,9 @@ impl Node {
         }
 
         // Get the full tool from lance_db
-        let existing_tool = match lance_db.read().await.get_tool(&tool_router_key).await {
-            Ok(Some(tool)) => tool,
-            Ok(None) => {
+        let existing_tool = match sqlite_manager.get_tool_by_key(&tool_router_key) {
+            Ok(tool) => tool,
+            Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),
@@ -3260,26 +2931,20 @@ impl Node {
         };
 
         // Save the tool to the LanceShinkaiDb
-        let save_result = {
-            let lance_db_lock = lance_db.write().await;
-            lance_db_lock.set_tool(&merged_tool).await
-        };
+        let save_result = { sqlite_manager.update_tool(merged_tool).await };
 
         match save_result {
             Ok(_) => {
                 // Fetch the updated tool from the database
-                let updated_tool = {
-                    let lance_db_lock = lance_db.read().await;
-                    lance_db_lock.get_tool(&tool_router_key).await
-                };
+                let updated_tool = { sqlite_manager.get_tool_by_key(&tool_router_key) };
 
                 match updated_tool {
-                    Ok(Some(tool)) => {
+                    Ok(tool) => {
                         let response = serde_json::to_value(tool).unwrap_or_else(|_| json!({}));
                         let _ = res.send(Ok(response)).await;
                         Ok(())
                     }
-                    Ok(None) => {
+                    Err(SqliteManagerError::ToolNotFound(_)) => {
                         let api_error = APIError {
                             code: StatusCode::NOT_FOUND.as_u16(),
                             error: "Not Found".to_string(),
@@ -3312,7 +2977,7 @@ impl Node {
     }
 
     pub async fn api_get_shinkai_tool(
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3347,9 +3012,9 @@ impl Node {
         }
 
         // Fetch the tool from the LanceShinkaiDb
-        let tool = match lance_db.read().await.get_tool(&tool_key).await {
-            Ok(Some(tool)) => tool,
-            Ok(None) => {
+        let tool = match sqlite_manager.get_tool_by_key(&tool_key) {
+            Ok(tool) => tool,
+            Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),

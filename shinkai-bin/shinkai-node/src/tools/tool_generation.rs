@@ -4,13 +4,13 @@ use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -136,7 +136,7 @@ pub async fn tool_implementation(
     metadata: Option<String>,
     output: Option<String>,
     prompt: Option<String>,
-    lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    sqlite_manager: Arc<SqliteManager>,
     db_clone: Arc<ShinkaiDB>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -150,7 +150,7 @@ pub async fn tool_implementation(
     fetch_query: bool,
 ) -> Result<Value, APIError> {
     // Generate tool definitions first
-    let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone(), true).await?;
+    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
     let mut generate_code_prompt = String::new();
 
     if !raw {
@@ -241,7 +241,7 @@ pub async fn tool_metadata_implementation(
     code: Option<String>,
     metadata: Option<String>,
     output: Option<String>,
-    lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    sqlite_manager: Arc<SqliteManager>,
     db_clone: Arc<ShinkaiDB>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -253,7 +253,7 @@ pub async fn tool_metadata_implementation(
     signing_secret_key_clone: SigningKey,
 ) -> Result<Value, APIError> {
     // Generate tool definitions first
-    // let tool_definitions = generate_tool_definitions(language.clone(), lance_db.clone(), true).await?;
+    // let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
     let mut generate_code_prompt = String::new();
 
     match language {
@@ -493,9 +493,6 @@ These are two examples of METADATA:
         }
         Language::Python => {
             return Err(generic_error_str("NYI Python"));
-        }
-        _ => {
-            return Err(generic_error_str("Unknown Language"));
         }
     }
 

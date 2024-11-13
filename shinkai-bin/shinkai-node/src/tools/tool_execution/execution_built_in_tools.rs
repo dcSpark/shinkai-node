@@ -3,20 +3,19 @@ use async_channel::bounded;
 use serde_json::{json, Map, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolType;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 async fn get_shinkai_tool(
     db: Arc<ShinkaiDB>,
-    lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    sqlite_manager: Arc<SqliteManager>,
     bearer: String,
     tool_router_key: String,
 ) -> Result<ShinkaiTool, ToolError> {
     let (tool_res_sender, tool_res_receiver) = bounded(1);
-    Node::v2_api_get_shinkai_tool(db, lance_db, bearer, tool_router_key, tool_res_sender)
+    Node::v2_api_get_shinkai_tool(db, sqlite_manager, bearer, tool_router_key, tool_res_sender)
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
@@ -40,12 +39,12 @@ pub async fn execute_built_in_tool(
     parameters: Map<String, Value>,
     extra_config: Option<String>,
     db: Arc<ShinkaiDB>,
-    lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    sqlite_manager: Arc<SqliteManager>,
     bearer: String,
 ) -> Result<Value, ToolError> {
     match tool_type {
         ToolType::Deno => {
-            let tool: ShinkaiTool = get_shinkai_tool(db, lance_db, bearer, tool_router_key).await?;
+            let tool: ShinkaiTool = get_shinkai_tool(db, sqlite_manager, bearer, tool_router_key).await?;
             if let ShinkaiTool::Deno(js_tool, enabled) = tool {
                 if !enabled {
                     return Err(ToolError::ToolNotRunnable(
@@ -68,7 +67,6 @@ pub async fn execute_built_in_tool(
                 ))
             }
         }
-        ToolType::Deno => todo!(),
         ToolType::DenoDynamic => todo!(),
         ToolType::Python => todo!(),
         ToolType::PythonDynamic => todo!(),
