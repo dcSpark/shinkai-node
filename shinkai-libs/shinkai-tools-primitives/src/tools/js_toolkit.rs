@@ -1,18 +1,22 @@
+use crate::tools::deno_tools::DenoTool;
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit_headers::BasicConfig;
-use crate::tools::js_tools::JSTool;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig, js_tools::JSToolResult};
+use super::{
+    argument::{ToolArgument, ToolOutputArg},
+    deno_tools::JSToolResult,
+    js_toolkit_headers::ToolConfig,
+};
 
 /// A JSToolkit is a collection of JSTools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JSToolkit {
     pub name: String,
-    pub tools: Vec<JSTool>,
+    pub tools: Vec<DenoTool>,
     pub author: String,
     pub version: String,
 }
@@ -34,8 +38,9 @@ impl JSToolkit {
         }
     }
 
-    fn create_js_tool(toolkit_name: &str, definition: ToolDefinition) -> JSTool {
+    fn create_js_tool(toolkit_name: &str, definition: ToolDefinition) -> DenoTool {
         let input_args = Self::extract_input_args(&definition);
+        let output_arg = Self::extract_output_arg(&definition);
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
 
@@ -48,7 +53,7 @@ impl JSToolkit {
                 .unwrap_or_default(),
         };
 
-        JSTool {
+        DenoTool {
             toolkit_name: toolkit_name.to_string(),
             name: tool_name,
             author: definition.author.clone(),
@@ -57,18 +62,26 @@ impl JSToolkit {
             description: definition.description.clone(),
             keywords: definition.keywords.clone(),
             input_args,
+            output_arg,
             activated: false,
             embedding: definition.embedding_metadata.clone().map(|meta| Embedding {
                 id: "".to_string(),
                 vector: meta.embeddings,
             }),
             result,
+            output: definition.result.to_string(),
         }
     }
 
     fn generate_tool_name(name: &str) -> String {
         let name_pattern = Regex::new(r"[^a-zA-Z0-9_-]").unwrap();
         name_pattern.replace_all(name, "_").to_lowercase()
+    }
+
+    fn extract_output_arg(definition: &ToolDefinition) -> ToolOutputArg {
+        ToolOutputArg {
+            json: definition.result.to_string(),
+        }
     }
 
     fn extract_input_args(definition: &ToolDefinition) -> Vec<ToolArgument> {

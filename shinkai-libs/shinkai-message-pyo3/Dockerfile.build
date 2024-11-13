@@ -1,6 +1,0 @@
-FROM ghcr.io/pyo3/maturin:latest
-RUN yum install -y openssl-devel
-WORKDIR /app/
-COPY ./shinkai-libs ./shinkai-libs
-WORKDIR /app/shinkai-libs/shinkai-message-pyo3
-RUN maturin build --strip --interpreter /opt/python/cp311-cp311/bin/python3.11 --release 

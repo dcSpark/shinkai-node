@@ -14,7 +14,7 @@ use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
-use shinkai_sqlite::SqliteLogger;
+// use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::fmt;
@@ -76,7 +76,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
-    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>>;
+    // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>>;
     fn llm_stopper(&self) -> Arc<LLMStopper>;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
@@ -181,9 +181,9 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.ext_agent_payments_manager.clone()
     }
 
-    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
-        self.sqlite_logger.clone()
-    }
+    // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
+    //     self.sqlite_logger.clone()
+    // }
 
     fn llm_stopper(&self) -> Arc<LLMStopper> {
         self.llm_stopper.clone()
@@ -218,7 +218,7 @@ pub struct InferenceChainContext {
     pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-    pub sqlite_logger: Option<Arc<SqliteLogger>>,
+    // pub sqlite_logger: Option<Arc<SqliteLogger>>,
     pub llm_stopper: Arc<LLMStopper>,
 }
 
@@ -242,7 +242,7 @@ impl InferenceChainContext {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        sqlite_logger: Option<Arc<SqliteLogger>>,
+        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         Self {
@@ -265,7 +265,7 @@ impl InferenceChainContext {
             sheet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
-            sqlite_logger,
+            // sqlite_logger,
             llm_stopper,
         }
     }
@@ -303,7 +303,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("sheet_manager", &self.sheet_manager.is_some())
             .field("my_agent_payments_manager", &self.my_agent_payments_manager.is_some())
             .field("ext_agent_payments_manager", &self.ext_agent_payments_manager.is_some())
-            .field("sqlite_logger", &self.sqlite_logger.is_some())
+            // .field("sqlite_logger", &self.sqlite_logger.is_some())
             .finish()
     }
 }
@@ -495,9 +495,9 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).ext_agent_payments_manager()
     }
 
-    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
-        (**self).sqlite_logger()
-    }
+    // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
+    //     (**self).sqlite_logger()
+    // }
 
     fn llm_stopper(&self) -> Arc<LLMStopper> {
         (**self).llm_stopper()
@@ -678,9 +678,9 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         unimplemented!()
     }
 
-    fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
-        None
-    }
+    // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
+    //     None
+    // }
 
     fn llm_stopper(&self) -> Arc<LLMStopper> {
         self.llm_stopper.clone()

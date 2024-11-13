@@ -1664,28 +1664,6 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APISearchWorkflows { msg, res } => self.api_search_workflows(msg, res).await,
-            NodeCommand::APISearchWorkflows { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let tool_router_clone = self.tool_router.clone();
-                let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::api_search_workflows(
-                        db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        tool_router_clone,
-                        msg,
-                        embedding_generator_clone,
-                        res,
-                    )
-                    .await;
-                });
-            }
             NodeCommand::APISearchShinkaiTool { msg, res } => {
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
@@ -1702,97 +1680,6 @@ impl Node {
                         tool_router_clone,
                         msg,
                         embedding_generator_clone,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIAddWorkflow { msg, res } => self.api_add_workflow(msg, res).await,
-            NodeCommand::APIAddWorkflow { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_add_workflow(
-                        lance_db,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIUpdateWorkflow { msg, res } => self.api_update_workflow(msg, res).await,
-            NodeCommand::APIUpdateWorkflow { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    // Note: yes it's the same as above
-                    let _ = Node::api_add_workflow(
-                        lance_db,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIRemoveWorkflow { msg, res } => self.api_remove_workflow(msg, res).await,
-            NodeCommand::APIRemoveWorkflow { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_remove_workflow(
-                        lance_db,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIGetWorkflowInfo { msg, res } => self.api_get_workflow_info(msg, res).await,
-            NodeCommand::APIGetWorkflowInfo { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_get_workflow_info(
-                        lance_db,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIListAllWorkflows { msg, res } => self.api_list_all_workflows(msg, res).await,
-            NodeCommand::APIListAllWorkflows { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_list_all_workflows(
-                        lance_db,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
                         res,
                     )
                     .await;
@@ -2429,48 +2316,6 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiSearchWorkflows { bearer, query, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_search_workflows(db_clone, lance_db, bearer, query, res).await;
-                });
-            }
-            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_search_shinkai_tool(db_clone, lance_db, bearer, query, res).await;
-                });
-            }
-            NodeCommand::V2ApiSetWorkflow { bearer, payload, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_set_workflow(db_clone, lance_db, bearer, payload, res).await;
-                });
-            }
-            NodeCommand::V2ApiRemoveWorkflow { bearer, payload, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_workflow(db_clone, lance_db, bearer, payload, res).await;
-                });
-            }
-            NodeCommand::V2ApiGetWorkflowInfo { bearer, payload, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_get_workflow_info(db_clone, lance_db, bearer, payload, res).await;
-                });
-            }
-            NodeCommand::V2ApiListAllWorkflows { bearer, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let lance_db = self.lance_db.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_list_all_workflows(db_clone, lance_db, bearer, res).await;
-                });
-            }
             NodeCommand::V2ApiGetDefaultEmbeddingModel { bearer, res } => {
                 let db = self.db.clone();
                 tokio::spawn(async move {
@@ -3032,17 +2877,17 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetToolingLogs {
-                bearer,
-                message_id,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let sqlite_logger_clone = Arc::clone(&self.sqlite_logger);
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_get_tooling_logs(db_clone, sqlite_logger_clone, bearer, message_id, res).await;
-                });
-            }
+            // NodeCommand::V2ApiGetToolingLogs {
+            //     bearer,
+            //     message_id,
+            //     res,
+            // } => {
+            //     let db_clone = Arc::clone(&self.db);
+            //     let sqlite_logger_clone = Arc::clone(&self.sqlite_logger);
+            //     tokio::spawn(async move {
+            //         let _ = Node::v2_api_get_tooling_logs(db_clone, sqlite_logger_clone, bearer, message_id, res).await;
+            //     });
+            // }
             NodeCommand::V2ApiImportSheet { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let sheet_manager_clone = self.sheet_manager.clone();
@@ -3076,6 +2921,135 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::ExecuteCommand {
+                bearer,
+                tool_router_key,
+                tool_type,
+                parameters,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db_clone = self.lance_db.clone();
+                let job_manager = self.job_manager.clone().unwrap();
+                let node_name = self.node_name.clone();
+                let identity_manager = self.identity_manager.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+                let encryption_public_key = self.encryption_public_key;
+                let signing_secret_key = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::execute_command(
+                        bearer,
+                        db_clone,
+                        lance_db_clone,
+                        tool_router_key,
+                        tool_type,
+                        parameters,
+                        node_name,
+                        identity_manager,
+                        job_manager,
+                        encryption_secret_key,
+                        encryption_public_key,
+                        signing_secret_key,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::GenerateToolDefinitions { bearer, language, res } => {
+                let lance_db_clone = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::generate_tool_definitions(bearer, language, lance_db_clone, res).await;
+                });
+            }
+            NodeCommand::GenerateToolImplementation {
+                bearer,
+                language,
+                code,
+                metadata,
+                output,
+                prompt,
+                job_creation_info,
+                llm_provider,
+                raw,
+                fetch_query,
+                res,
+            } => {
+                let lance_db_clone = self.lance_db.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let node_name_clone = self.node_name.clone();
+                let db_clone = self.db.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::generate_tool_implementation(
+                        bearer,
+                        language,
+                        code,
+                        metadata,
+                        output,
+                        prompt,
+                        lance_db_clone,
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        job_creation_info,
+                        llm_provider,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        raw,
+                        fetch_query,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::GenerateToolMetadataImplementation {
+                bearer,
+                language,
+                code,
+                metadata,
+                output,
+                job_creation_info,
+                llm_provider,
+                res,
+            } => {
+                let lance_db_clone = self.lance_db.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let node_name_clone = self.node_name.clone();
+                let db_clone = self.db.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::generate_tool_metadata_implementation(
+                        bearer,
+                        language,
+                        code,
+                        metadata,
+                        output,
+                        lance_db_clone,
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        job_creation_info,
+                        llm_provider,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiExportMessagesFromInbox {
                 bearer,
                 inbox_name,
@@ -3088,6 +3062,13 @@ impl Node {
                     let _ =
                         Node::v2_export_messages_from_inbox(db_clone, vector_fs_clone, bearer, inbox_name, format, res)
                             .await;
+                });
+            }
+            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_search_shinkai_tool(db_clone, lance_db, bearer, query, res).await;
                 });
             }
             _ => (),

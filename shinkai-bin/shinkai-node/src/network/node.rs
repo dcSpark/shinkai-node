@@ -31,7 +31,6 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
-use rcgen::Certificate;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
@@ -48,7 +47,6 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_sqlite::{SqliteLogger, SqliteManager};
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -117,7 +115,7 @@ pub struct Node {
     // The LanceDB
     pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
     // Sqlite3
-    pub sqlite_logger: Arc<SqliteLogger>,
+    // pub sqlite_logger: Arc<SqliteLogger>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
@@ -338,10 +336,10 @@ impl Node {
         .unwrap();
         let lance_db = Arc::new(RwLock::new(lance_db));
 
-        // Initialize SqliteLogger
-        let sqlite_manager = SqliteManager::new(main_db_path).unwrap();
-        let sqlite_logger = SqliteLogger::new(Arc::new(sqlite_manager)).unwrap();
-        let sqlite_logger = Arc::new(sqlite_logger);
+        // // Initialize SqliteLogger
+        // let sqlite_manager = SqliteManager::new(main_db_path).unwrap();
+        // let sqlite_logger = SqliteLogger::new(Arc::new(sqlite_manager)).unwrap();
+        // let sqlite_logger = Arc::new(sqlite_logger);
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(lance_db.clone());
@@ -477,7 +475,7 @@ impl Node {
             initial_llm_providers,
             vector_fs: vector_fs_arc.clone(),
             lance_db,
-            sqlite_logger,
+            // sqlite_logger,
             embedding_generator,
             conn_limiter,
             ext_subscription_manager: ext_subscriber_manager,
@@ -520,7 +518,7 @@ impl Node {
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
-                Some(self.sqlite_logger.clone()),
+                // Some(self.sqlite_logger.clone()),
                 self.llm_stopper.clone(),
             )
             .await,

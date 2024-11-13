@@ -371,7 +371,7 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Failed to retrieve shinkai tool: {:?}", e),
                 };
 
-                if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(ref mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
                 }
 

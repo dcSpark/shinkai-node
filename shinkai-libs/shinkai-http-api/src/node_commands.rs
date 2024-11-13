@@ -3,7 +3,7 @@ use std::{collections::HashMap, net::SocketAddr};
 use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
         coinbase_mpc_config::CoinbaseMPCWalletConfig,
@@ -27,7 +27,7 @@ use shinkai_message_primitives::{
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, APIWorkflowKeyname, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
+            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
             JobMessage, RegistrationCodeType, V2ChatMessage,
         },
     },
@@ -42,6 +42,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
+use crate::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use crate::node_api_router::SendResponseBody;
 
 use super::{
@@ -729,25 +730,6 @@ pub enum NodeCommand {
         query: String,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiSetWorkflow {
-        bearer: String,
-        payload: APISetWorkflow,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiRemoveWorkflow {
-        bearer: String,
-        payload: APIWorkflowKeyname,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetWorkflowInfo {
-        bearer: String,
-        payload: APIWorkflowKeyname,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiListAllWorkflows {
-        bearer: String,
-        res: Sender<Result<Value, APIError>>,
-    },
     V2ApiListAllShinkaiTools {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
@@ -998,6 +980,41 @@ pub enum NodeCommand {
     V2ApiSetSheetUploadedFiles {
         bearer: String,
         payload: APISetSheetUploadedFilesPayload,
+        res: Sender<Result<Value, APIError>>,
+    },
+    ExecuteCommand {
+        bearer: String,
+        tool_router_key: String,
+        tool_type: ToolType,
+        parameters: Map<String, Value>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    GenerateToolDefinitions {
+        bearer: String,
+        language: Language,
+        res: Sender<Result<Value, APIError>>,
+    },
+    GenerateToolImplementation {
+        bearer: String,
+        language: Language,
+        prompt: String,
+        code: Option<String>,
+        metadata: Option<String>,
+        output: Option<String>,
+        job_creation_info: JobCreationInfo,
+        llm_provider: String,
+        raw: bool,
+        fetch_query: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    GenerateToolMetadataImplementation {
+        bearer: String,
+        language: Language,
+        code: Option<String>,
+        metadata: Option<String>,
+        output: Option<String>,
+        job_creation_info: JobCreationInfo,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {
