@@ -38,6 +38,8 @@ jobs:
       - name: run ./run-main-cargo-tests.sh
         run: ./run-main-cargo-tests.sh
         env:
+          IS_TESTING: 1
+          WELCOME_MESSAGE: false
           FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
 
@@ -47,8 +49,8 @@ jobs:
           FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
 
-      - name: run ./run-main-cargo-tests.sh
-        run: ./run-main-cargo-tests.sh
+      - name: run ./run-main-primitives-cargo-tests.sh
+        run: ./run-main-primitives-cargo-tests.sh
         env:
           FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
