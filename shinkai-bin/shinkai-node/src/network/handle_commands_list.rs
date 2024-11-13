@@ -3064,6 +3064,13 @@ impl Node {
                             .await;
                 });
             }
+            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let lance_db = self.lance_db.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_search_shinkai_tool(db_clone, lance_db, bearer, query, res).await;
+                });
+            }
             _ => (),
         }
     }
