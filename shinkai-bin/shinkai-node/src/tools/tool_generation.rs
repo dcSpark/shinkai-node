@@ -165,16 +165,16 @@ pub async fn tool_implementation(
 `import {{ xx }} from '@shinkai/local-tools'`
 
 * This is the content of '@shinkai/local-tools':
-```{}
-{}
+```{language}
+{tool_definitions}
 ```
 
 #RULE II:
 * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type: 
-```{}
-type CONFIG = {{}}; 
-type INPUTS = {{}}; 
-type OUTPUT = {{}}; 
+```{language}
+type CONFIG = {{}};
+type INPUTS = {{}};
+type OUTPUT = {{}};
 export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
     return {{}};
 }}
@@ -187,15 +187,14 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 
 # RULE IV:
 * Do not output, notes, ideas, explanations or examples.
-* Output only valid {} code, so the complete Output can be directly executed. 
+* Output only valid {language} code, so the complete Output can be directly executed. 
 * Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
 * Write a single implementation file.
-* Implements the code in {} for the following INPUT:
+* Implements the code in {language} for the following INPUT:
 
 # INPUT:
-{}
-",
-language, language, tool_definitions, language, language, prompt_text
+{prompt_text}
+"
                     ));
                 }
                 Language::Python => {
@@ -264,6 +263,7 @@ pub async fn tool_metadata_implementation(
 # RULE I: 
 These are two examples of METADATA:
 ## Example 1:
+```json
 {{
   id: 'shinkai-tool-coinbase-create-wallet',
   name: 'Shinkai: Coinbase Wallet Creator',
@@ -294,7 +294,10 @@ These are two examples of METADATA:
     required: [],
   }},
 }};
+```
+
 ## Example 2:
+```json
 {{
   id: 'shinkai-tool-download-pages',
   name: 'Shinkai: Download Pages',
@@ -326,18 +329,20 @@ These are two examples of METADATA:
     required: [{{'markdowns'}}],
   }},
 }};
+```
 
 # RULE II:
 * Following the format of the examples provided.
 * The METADATA must be in JSON format.
 * Output only the METADATA, so the complete Output it's a valid JSON string.
 * Any comments, notes, explanations or examples must be omitted in the Output.
-* Generate the METADATA for the following {} source code in the INPUT:
+* Generate the METADATA for the following {language} source code in the INPUT:
 
 # INPUT:
+```{language}
 {}
+```
 ",
-                language,
                 code.unwrap_or("".to_string())
             ));
         }
