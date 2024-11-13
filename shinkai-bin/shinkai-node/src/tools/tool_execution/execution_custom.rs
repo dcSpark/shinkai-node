@@ -42,7 +42,8 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     match tool_router_key {
-        s if s == "local:::llm" => {
+        // TODO this can be fetched from the tool definition
+        s if s == "local:::shinkai_custom:::llm_prompt_processor" => {
             execute_llm(
                 bearer,
                 db,

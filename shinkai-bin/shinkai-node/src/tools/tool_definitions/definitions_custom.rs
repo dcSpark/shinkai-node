@@ -9,7 +9,7 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
 
     // LLM Tool
     let llm_tool = ShinkaiToolHeader {
-        name: "Shinkai: LLM Prompt Processor".to_string(),
+        name: "Shinkai LLM Prompt Processor".to_string(),
         toolkit_name: "shinkai_custom".to_string(),
         description: "Generic tool for processing any prompt using an LLM, analyzing the request and returning a string as output".to_string(),
         tool_router_key: "local:::shinkai_custom:::llm_prompt_processor".to_string(),
