@@ -1,4 +1,5 @@
 use serde_json::{Map, Value};
+use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
@@ -8,6 +9,7 @@ pub fn execute_deno_tool(
     bearer: String,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
+    header_code: String,
 ) -> Result<Value, ToolError> {
     // Extract the JavaScript code from parameters
     let js_code = parameters
@@ -40,7 +42,7 @@ pub fn execute_deno_tool(
     execution_parameters.remove("code");
 
     // Run the tool and convert the RunResult to Value
-    match tool.run_on_demand(bearer, execution_parameters, extra_config) {
+    match tool.run_on_demand(bearer, header_code, execution_parameters, extra_config) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

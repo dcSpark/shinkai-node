@@ -53,12 +53,13 @@ impl DenoTool {
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
-        self.run_on_demand(String::new(), parameters, extra_config)
+        self.run_on_demand(String::new(), String::new(), parameters, extra_config)
     }
 
     pub fn run_on_demand(
         &self,
         bearer: String,
+        header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
@@ -103,10 +104,13 @@ impl DenoTool {
                     println!("Running DenoTool with config: {:?}", config);
                     println!("Running DenoTool with input: {:?}", parameters);
                     let final_code = if !bearer.is_empty() {
-                        code.replace("process.env.BEARER", &format!("\"{}\"", &bearer))
+                        let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
+                        let code_with_header = format!("{} {}", header_code, regex.replace_all(&code, "").into_owned());
+                        code_with_header.replace("process.env.BEARER", &format!("\"{}\"", &bearer))
                     } else {
                         code
                     };
+                    // println!("Final code: {}", final_code);
                     let tool = Tool::new(
                         final_code,
                         config_json,

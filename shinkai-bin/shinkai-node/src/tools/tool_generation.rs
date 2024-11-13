@@ -161,7 +161,7 @@ pub async fn tool_implementation(
                         "
 RULE I:
 You may use any of the following tools if they are relevant and a good match for the task.
-Import them in the following way:
+Import them in the following way (do not rename with AS):
 import {{ xx }} as '@shinkai/local-tools'
 
 This is the content of @shinkai/local-tools:

@@ -3,13 +3,12 @@ pub mod execution_custom;
 pub mod execution_deno_dynamic;
 pub mod execution_python_dynamic;
 
-use crate::{llm_provider::job_manager::JobManager, network::Node};
-use async_std::println;
+use crate::llm_provider::job_manager::JobManager;
+use crate::tools::generate_tool_definitions;
 use serde_json::{Map, Value};
-use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolType;
+use shinkai_http_api::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 
 use super::tool_execution::execution_built_in_tools::execute_built_in_tool;
 use super::tool_execution::execution_custom::execute_custom_tool;
@@ -57,7 +56,12 @@ pub async fn execute_tool(
             )
             .await
         }
-        ToolType::DenoDynamic => execute_deno_tool(bearer.clone(), parameters, extra_config),
+        ToolType::DenoDynamic => {
+            let header_code = generate_tool_definitions(Language::Typescript, lance_db, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            execute_deno_tool(bearer.clone(), parameters, extra_config, header_code)
+        }
         ToolType::PythonDynamic => execute_python_tool(tool_router_key.clone(), parameters, extra_config),
         ToolType::Internal => {
             execute_custom_tool(
