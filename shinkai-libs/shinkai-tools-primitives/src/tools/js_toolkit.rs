@@ -79,8 +79,6 @@ impl JSToolkit {
     }
 
     fn extract_output_arg(definition: &ToolDefinition) -> ToolOutputArg {
-        println!("definition: {:?}", definition.name);
-        println!("definition.result: {:?}", definition.result);
         ToolOutputArg {
             json: definition.result.to_string(),
         }
