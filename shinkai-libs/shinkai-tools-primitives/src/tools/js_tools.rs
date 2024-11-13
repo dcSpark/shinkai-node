@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::{env, thread};
 
 use super::tool_config::ToolConfig;
-use super::argument::ToolOutputArg;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -15,7 +14,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DenoTool {
+pub struct JSTool {
     pub toolkit_name: String,
     pub name: String,
     pub author: String,
@@ -24,47 +23,20 @@ pub struct DenoTool {
     pub description: String,
     pub keywords: Vec<String>,
     pub input_args: Vec<ToolArgument>,
-    pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: JSToolResult,
 }
 
-impl DenoTool {
-    /// Default name of the rust toolkit
-    pub fn toolkit_name(&self) -> String {
-        "deno-toolkit".to_string()
-    }
-
-    /// Convert to json
-    pub fn to_json(&self) -> Result<String, ToolError> {
-        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
-    }
-
-    /// Convert from json
-    pub fn from_json(json: &str) -> Result<Self, ToolError> {
-        let deserialized: Self = serde_json::from_str(json)?;
-        Ok(deserialized)
-    }
-
+impl JSTool {
     pub fn run(
         &self,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
-        self.run_on_demand(String::new(), String::new(), parameters, extra_config)
-    }
-
-    pub fn run_on_demand(
-        &self,
-        bearer: String,
-        header_code: String,
-        parameters: serde_json::Map<String, serde_json::Value>,
-        extra_config: Option<String>,
-    ) -> Result<RunResult, ToolError> {
-        println!("Running DenoTool named: {}", self.name);
-        println!("Running DenoTool with input: {:?}", parameters);
-        println!("Running DenoTool with extra_config: {:?}", extra_config);
+        println!("Running JSTool named: {}", self.name);
+        println!("Running JSTool with input: {:?}", parameters);
+        println!("Running JSTool with extra_config: {:?}", extra_config);
 
         let code = self.js_code.clone();
 
@@ -100,27 +72,18 @@ impl DenoTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("Running DenoTool with config: {:?}", config);
-                    println!("Running DenoTool with input: {:?}", parameters);
-                    let final_code = if !bearer.is_empty() {
-                        let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
-                        let code_with_header = format!("{} {}", header_code, regex.replace_all(&code, "").into_owned());
-                        code_with_header.replace("${process.env.BEARER}", &bearer)
-                    } else {
-                        code
-                    };
-                    // println!("Final code: {}", final_code);
+                    println!("Running JSTool with config: {:?}", config);
+                    println!("Running JSTool with input: {:?}", parameters);
                     let tool = Tool::new(
-                        final_code,
+                        code,
                         config_json,
                         Some(DenoRunnerOptions {
-                            binary_path: PathBuf::from(
-                                env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
-                                    .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
-                            ),
+                            binary_path: PathBuf::from(env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH").unwrap_or_else(
+                                |_| "./shinkai-tools-runner-resources/deno".to_string(),
+                            )),
                         }),
                     );
-                    // TODO: Fix this object wrap after update tools library to have the right typification
+                    // TODO: Fix this object wrap after update tools library to have th right typification
                     tool.run(None, serde_json::Value::Object(parameters), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
@@ -141,6 +104,11 @@ impl DenoTool {
             }
         }
         true
+    }
+
+    /// Convert to JSON string
+    pub fn to_json_string(&self) -> Result<String, ToolError> {
+        serde_json::to_string(self).map_err(|e| ToolError::SerializationError(e.to_string()))
     }
 }
 
@@ -198,5 +166,55 @@ impl JSToolResult {
             properties,
             required,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::tool_config::BasicConfig;
+    use serde_json::json;
+
+    #[test]
+    fn test_check_required_config_fields() {
+        // Tool without config
+        let tool_without_config = JSTool {
+            toolkit_name: "test_toolkit".to_string(),
+            name: "test_tool".to_string(),
+            author: "author".to_string(),
+            js_code: "console.log('Hello, world!');".to_string(),
+            config: vec![],
+            description: "A test tool".to_string(),
+            keywords: vec![],
+            input_args: vec![],
+            activated: false,
+            embedding: None,
+            result: JSToolResult::new("object".to_string(), json!({}), vec![]),
+        };
+        assert!(tool_without_config.check_required_config_fields());
+
+        // Tool with config but without the required params
+        let tool_with_missing_config = JSTool {
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "apiKey".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                key_value: None,
+            })],
+            ..tool_without_config.clone()
+        };
+        assert!(!tool_with_missing_config.check_required_config_fields());
+
+        // Tool with config and with the required params
+        let tool_with_config = JSTool {
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "apiKey".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                key_value: Some("12345".to_string()),
+            })],
+            ..tool_without_config.clone()
+        };
+        assert!(tool_with_config.check_required_config_fields());
     }
 }

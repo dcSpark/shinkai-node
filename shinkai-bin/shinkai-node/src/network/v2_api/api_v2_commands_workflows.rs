@@ -7,16 +7,15 @@ use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 
+use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use tokio::sync::RwLock;
 
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         query: String,
         res: Sender<Result<Value, APIError>>,
@@ -29,8 +28,9 @@ impl Node {
         // Start the timer
         let start_time = Instant::now();
 
-        // Perform the internal search using LanceShinkaiDb
-        match lance_db.read().await.vector_search_all_tools(&query, 5, true).await {
+        // Perform the internal search using SqliteManager
+        // TODO: implement something like BTS for tools
+        match sqlite_manager.prompt_vector_search(&query, 5).await {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
@@ -56,10 +56,10 @@ impl Node {
             }
         }
     }
-    
+
     pub async fn v2_api_list_all_shinkai_tools(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -69,7 +69,7 @@ impl Node {
         }
 
         // List all tools
-        match lance_db.read().await.get_all_tools(true).await {
+        match sqlite_manager.get_all_tool_headers() {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -89,7 +89,7 @@ impl Node {
 
     pub async fn v2_api_set_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         tool_router_key: String,
         input_value: Value,
@@ -100,29 +100,26 @@ impl Node {
             return Ok(());
         }
 
-        // Get the full tool from lance_db
-        let existing_tool = {
-            let lance_db_lock = lance_db.read().await;
-            match lance_db_lock.get_tool(&tool_router_key).await {
-                Ok(Some(tool)) => tool.clone(),
-                Ok(None) => {
-                    let api_error = APIError {
-                        code: StatusCode::NOT_FOUND.as_u16(),
-                        error: "Not Found".to_string(),
-                        message: "Tool not found in LanceShinkaiDb".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
+        // Get the full tool from sqlite_manager
+        let existing_tool = match sqlite_manager.get_tool_by_key(&tool_router_key) {
+            Ok(tool) => tool,
+            Err(SqliteManagerError::ToolNotFound(_)) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Tool not found in LanceShinkaiDb".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
             }
         };
 
@@ -158,43 +155,12 @@ impl Node {
         };
 
         // Save the tool to the LanceShinkaiDb
-        let save_result = {
-            let lance_db_lock = lance_db.write().await;
-            lance_db_lock.set_tool(&merged_tool).await
-        };
+        let save_result = sqlite_manager.update_tool(merged_tool).await;
 
         match save_result {
-            Ok(_) => {
-                // Fetch the updated tool from the database
-                let updated_tool = {
-                    let lance_db_lock = lance_db.read().await;
-                    lance_db_lock.get_tool(&tool_router_key).await
-                };
-
-                match updated_tool {
-                    Ok(Some(tool)) => {
-                        let _ = res.send(Ok(tool)).await;
-                        Ok(())
-                    }
-                    Ok(None) => {
-                        let api_error = APIError {
-                            code: StatusCode::NOT_FOUND.as_u16(),
-                            error: "Not Found".to_string(),
-                            message: "Tool not found in LanceShinkaiDb".to_string(),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        Ok(())
-                    }
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to fetch tool from LanceShinkaiDb: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        Ok(())
-                    }
-                }
+            Ok(tool) => {
+                let _ = res.send(Ok(tool)).await;
+                Ok(())
             }
             Err(err) => {
                 let api_error = APIError {
@@ -210,7 +176,7 @@ impl Node {
 
     pub async fn v2_api_add_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         new_tool: ShinkaiTool,
         res: Sender<Result<Value, APIError>>,
@@ -221,14 +187,11 @@ impl Node {
         }
 
         // Save the new tool to the LanceShinkaiDb
-        let save_result = {
-            let lance_db_lock = lance_db.write().await;
-            lance_db_lock.set_tool(&new_tool).await
-        };
+        let save_result = sqlite_manager.add_tool(new_tool).await;
 
         match save_result {
-            Ok(_) => {
-                let tool_key = new_tool.tool_router_key();
+            Ok(tool) => {
+                let tool_key = tool.tool_router_key();
                 let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key) });
                 let _ = res.send(Ok(response)).await;
                 Ok(())
@@ -247,7 +210,7 @@ impl Node {
 
     pub async fn v2_api_get_shinkai_tool(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         payload: String,
         res: Sender<Result<Value, APIError>>,
@@ -257,14 +220,14 @@ impl Node {
             return Ok(());
         }
 
-        // Get the tool from the database
-        match lance_db.read().await.get_tool(&payload).await {
-            Ok(Some(tool)) => {
+        // Get the tool from the database using get_tool_by_key
+        match sqlite_manager.get_tool_by_key(&payload) {
+            Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
-            Ok(None) => {
+            Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),
@@ -277,7 +240,7 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to get tool: {}", err),
+                    message: format!("Failed to get tool: {:?}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

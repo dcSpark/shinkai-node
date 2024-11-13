@@ -36,7 +36,6 @@ use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -47,6 +46,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -112,10 +112,8 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
-    // The LanceDB
-    pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
     // Sqlite3
-    // pub sqlite_logger: Arc<SqliteLogger>,
+    pub sqlite_manager: Arc<SqliteManager>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
@@ -324,25 +322,12 @@ impl Node {
             .await,
         ));
 
-        // LanceDB
-        let lance_db_path = format!("{}", main_db_path);
-        // Note: do we need to push this to start bc of the default embedding model?
-        let lance_db = LanceShinkaiDb::new(
-            &lance_db_path,
-            default_embedding_model.clone(),
-            embedding_generator.clone(),
-        )
-        .await
-        .unwrap();
-        let lance_db = Arc::new(RwLock::new(lance_db));
-
-        // // Initialize SqliteLogger
-        // let sqlite_manager = SqliteManager::new(main_db_path).unwrap();
-        // let sqlite_logger = SqliteLogger::new(Arc::new(sqlite_manager)).unwrap();
-        // let sqlite_logger = Arc::new(sqlite_logger);
+        // Initialize SqliteManager
+        let embedding_api_url = embedding_generator.api_url.clone();
+        let sqlite_manager = Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
 
         // Initialize ToolRouter
-        let tool_router = ToolRouter::new(lance_db.clone());
+        let tool_router = ToolRouter::new(sqlite_manager.clone());
 
         // Read wallet_manager from db if it exists, if not, None
         let mut wallet_manager: Option<WalletManager> = match db_arc.read_wallet_manager() {
@@ -360,14 +345,14 @@ impl Node {
         // Update LanceDB in CoinbaseMPCWallet if it exists
         if let Some(ref mut manager) = wallet_manager {
             if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
-                coinbase_wallet.update_lance_db(lance_db.clone());
+                coinbase_wallet.update_sqlite_manager(sqlite_manager.clone());
             }
             if let Some(coinbase_wallet) = manager
                 .receiving_wallet
                 .as_any_mut()
                 .downcast_mut::<CoinbaseMPCWallet>()
             {
-                coinbase_wallet.update_lance_db(lance_db.clone());
+                coinbase_wallet.update_sqlite_manager(sqlite_manager.clone());
             }
         }
 
@@ -474,8 +459,7 @@ impl Node {
             first_device_needs_registration_code,
             initial_llm_providers,
             vector_fs: vector_fs_arc.clone(),
-            lance_db,
-            // sqlite_logger,
+            sqlite_manager,
             embedding_generator,
             conn_limiter,
             ext_subscription_manager: ext_subscriber_manager,
@@ -576,8 +560,7 @@ impl Node {
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
-                let current_version = tool_router.get_current_lancedb_version().await.unwrap_or(None);
-                if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
+                if reinstall_tools {
                     if let Err(e) = tool_router.force_reinstall_all(&generator).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }

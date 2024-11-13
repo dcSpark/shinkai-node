@@ -10,7 +10,7 @@ use super::{
     argument::{ToolArgument, ToolOutputArg},
     deno_tools::DenoTool,
     internal_tools::InternalTool,
-    js_toolkit_headers::ToolConfig,
+    tool_config::ToolConfig,
     network_tool::NetworkTool,
     python_tools::PythonTool,
 };
@@ -89,6 +89,7 @@ impl ShinkaiTool {
                         ShinkaiTool::Rust(r, _) => r.toolkit_name(),
                         ShinkaiTool::Deno(j, _) => j.toolkit_name.to_string(),
                         ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
+                        ShinkaiTool::Deno(d, _) => d.toolkit_name.to_string(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );

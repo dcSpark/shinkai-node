@@ -1,5 +1,4 @@
 use ethers::{core::k256::elliptic_curve, utils::hex::FromHexError};
-use shinkai_lancedb::lance_db::shinkai_lancedb_error::ShinkaiLanceDBError;
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
@@ -35,7 +34,7 @@ pub enum WalletError {
     FunctionExecutionError(String),
     FunctionNotFound(String),
     ToolNotFound(String),
-    LanceDBError(String),
+    SqliteManagerError(String),
     ParsingError(String),
     MissingToAddress,
     InsufficientBalance(String),
@@ -76,7 +75,7 @@ impl fmt::Display for WalletError {
             WalletError::FunctionExecutionError(e) => write!(f, "FunctionExecutionError: {}", e),
             WalletError::FunctionNotFound(e) => write!(f, "FunctionNotFound: {}", e),
             WalletError::ToolNotFound(e) => write!(f, "ToolNotFound: {}", e),
-            WalletError::LanceDBError(e) => write!(f, "LanceDBError: {}", e),
+            WalletError::SqliteManagerError(e) => write!(f, "SqliteManagerError: {}", e),
             WalletError::ParsingError(e) => write!(f, "ParsingError: {}", e),
             WalletError::MissingToAddress => write!(f, "MissingToAddress"),
             WalletError::InsufficientBalance(e) => write!(f, "InsufficientBalance: {}", e),
@@ -113,7 +112,7 @@ impl Error for WalletError {
             WalletError::FunctionExecutionError(_) => None,
             WalletError::FunctionNotFound(_) => None,
             WalletError::ToolNotFound(_) => None,
-            WalletError::LanceDBError(_) => None,
+            WalletError::SqliteManagerError(_) => None,
             WalletError::ParsingError(_) => None,
             WalletError::MissingToAddress => None,
             WalletError::InsufficientBalance(_) => None,
@@ -137,12 +136,6 @@ impl From<elliptic_curve::Error> for WalletError {
 impl From<FromHexError> for WalletError {
     fn from(error: FromHexError) -> Self {
         WalletError::HexError(error)
-    }
-}
-
-impl From<ShinkaiLanceDBError> for WalletError {
-    fn from(error: ShinkaiLanceDBError) -> Self {
-        WalletError::FunctionExecutionError(error.to_string())
     }
 }
 

@@ -1,5 +1,4 @@
 use serde_json::{Map, Value};
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
@@ -33,7 +32,6 @@ pub fn execute_deno_tool(
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        output: "".to_string(),
         result: JSToolResult::new("object".to_string(), Value::Null, vec![]),
     };
 

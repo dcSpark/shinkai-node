@@ -15,7 +15,7 @@ members = [
   "shinkai-libs/shinkai-http-api",
   "shinkai-libs/shinkai-tools-primitives",
   "shinkai-libs/shinkai-mini-libs",
-  "shinkai-libs/shinkai-lancedb",
+  "shinkai-libs/shinkai-sqlite",
   "shinkai-libs/shinkai-spreadsheet-llm",
   "shinkai-bin/*",
 ]
@@ -42,10 +42,9 @@ shinkai_baml = { path = "./shinkai-libs/shinkai-baml" }
 shinkai_http_api = { path = "./shinkai-libs/shinkai-http-api" }
 shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
 shinkai_mini_libs = { path = "./shinkai-libs/shinkai-mini-libs" }
-shinkai_lancedb = { path = "./shinkai-libs/shinkai-lancedb" }
 shinkai_sqlite = { path = "./shinkai-libs/shinkai-sqlite" }
-futures = "0.3.30"
 
+futures = "0.3.30"
 tokio = { version = "1.36", features = ["full"] }
 tokio-util = "0.6"
 log = "0.4.20"
