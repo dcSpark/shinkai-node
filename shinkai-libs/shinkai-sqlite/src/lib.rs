@@ -10,7 +10,8 @@ use std::sync::Arc;
 pub mod embedding_function;
 pub mod prompt_manager;
 pub mod shinkai_prompt;
-pub mod tool_header_manager;
+pub mod shinkai_tool_manager;
+
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
@@ -111,6 +112,7 @@ impl SqliteManager {
                 tool_key TEXT NOT NULL,
                 embedding_seo TEXT NOT NULL,
                 tool_data BLOB NOT NULL,
+                tool_header BLOB NOT NULL,
                 tool_type TEXT NOT NULL,
                 author TEXT NOT NULL,
                 version TEXT NOT NULL,
@@ -134,7 +136,7 @@ impl SqliteManager {
     fn initialize_tools_vector_table(conn: &rusqlite::Connection) -> Result<()> {
         // Create a table for tool vector embeddings
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS tools_vec_items USING vec0(embedding float[384])",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(embedding float[384])",
             [],
         )?;
 
