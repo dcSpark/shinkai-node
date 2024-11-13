@@ -1,9 +1,0 @@
-*
-!Cargo.*
-!src
-!shinkai-libs/shinkai-message-primitives/src
-!shinkai-libs/shinkai-message-primitives/Cargo.*
-!shinkai-libs/shinkai-vector-resources/src
-!shinkai-libs/shinkai-vector-resources/Cargo.*
-!shinkai-libs/llama-tokenizer/src
-!shinkai-libs/llama-tokenizer/Cargo.*

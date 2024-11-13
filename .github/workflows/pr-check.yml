@@ -35,23 +35,11 @@ jobs:
       - name: build workspace
         run: cargo build --workspace
 
-      - name: run ./run-main-cargo-tests.sh
-        run: ./run-main-cargo-tests.sh
+      - name: run cargo test
+        run: cargo test --workspace
         env:
           IS_TESTING: 1
           WELCOME_MESSAGE: false
-          FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
-          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
-
-      - name: run ./run-main-mirror-cargo-tests.sh
-        run: ./run-main-mirror-cargo-tests.sh
-        env:
-          FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
-          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
-
-      - name: run ./run-main-primitives-cargo-tests.sh
-        run: ./run-main-primitives-cargo-tests.sh
-        env:
           FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
