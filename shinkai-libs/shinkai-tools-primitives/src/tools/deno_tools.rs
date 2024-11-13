@@ -106,7 +106,7 @@ impl DenoTool {
                     let final_code = if !bearer.is_empty() {
                         let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
                         let code_with_header = format!("{} {}", header_code, regex.replace_all(&code, "").into_owned());
-                        code_with_header.replace("process.env.BEARER", &format!("\"{}\"", &bearer))
+                        code_with_header.replace("${process.env.BEARER}", &bearer)
                     } else {
                         code
                     };

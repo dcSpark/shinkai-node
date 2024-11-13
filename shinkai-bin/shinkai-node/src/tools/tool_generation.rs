@@ -183,7 +183,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 # RULE III:
 * This will be shared as a library, when used it run(...) function will be called.
 * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
-* If you need to import other libraries, do it in the Deno NPM format, for example 'import axios from 'npm:axios' with the 'npm:' prefix.
+* If you need to import other libraries, do it in the Deno NPM format and with version, for example to import axios use 'import axios from 'npm:axios@1.6.2' with the 'npm:' prefix, and the exact version.
 
 # RULE IV:
 * Do not output, notes, ideas, explanations or examples.
