@@ -69,7 +69,7 @@ impl JSToolkit {
                 vector: meta.embeddings,
             }),
             result,
-            output: definition.result["type"].as_str().unwrap_or("object").to_string(),
+            output: definition.result.to_string(),
         }
     }
 
@@ -82,7 +82,7 @@ impl JSToolkit {
         println!("definition: {:?}", definition.name);
         println!("definition.result: {:?}", definition.result);
         ToolOutputArg {
-            json: definition.result["type"].as_str().unwrap_or("object").to_string(),
+            json: definition.result.to_string(),
         }
     }
 
