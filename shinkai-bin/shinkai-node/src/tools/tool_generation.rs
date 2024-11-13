@@ -161,7 +161,10 @@ pub async fn tool_implementation(
                         "
 RULE I:
 You may use any of the following tools if they are relevant and a good match for the task.
-They are defined in the global scope, so they must be used without importing them.
+Import them in the following way:
+import {{ xx }} as '@shinkai/local-tools'
+
+This is the content of @shinkai/local-tools:
 ```{}
 {}
 ```
@@ -172,7 +175,7 @@ implement the task you can also update the CONFIG, INPUTS and OUTPUT types to ma
 CONFIG = {{}}; 
 type INPUTS = {{}}; 
 type OUTPUT = {{}}; 
-async function main(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
+async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
     return {{}};
 }}
 ```
