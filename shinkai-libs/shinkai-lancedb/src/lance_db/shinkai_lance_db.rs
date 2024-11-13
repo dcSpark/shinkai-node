@@ -805,6 +805,7 @@ impl LanceShinkaiDb {
 
 #[cfg(test)]
 mod tests {
+    use shinkai_tools_primitives::tools::argument::ToolOutputArg;
     use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
     use shinkai_tools_primitives::tools::js_toolkit_headers::ToolConfig;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
