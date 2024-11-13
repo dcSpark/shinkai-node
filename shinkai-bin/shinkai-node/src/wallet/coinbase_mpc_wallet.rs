@@ -307,6 +307,7 @@ impl CoinbaseMPCWallet {
         if let Some(wallet_id) = config.wallet_id {
             function_config_value["walletId"] = Value::String(wallet_id);
         }
+        
 
         // Convert function_config_value back to String
         let function_config_str = serde_json::to_string(&function_config_value)
