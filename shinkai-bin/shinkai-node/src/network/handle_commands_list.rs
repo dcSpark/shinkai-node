@@ -2930,9 +2930,12 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let lance_db_clone = self.lance_db.clone();
-                let vector_fs_clone = self.vector_fs.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let sheet_manager_clone = self.sheet_manager.clone();
+                let job_manager = self.job_manager.clone().unwrap();
+                let node_name = self.node_name.clone();
+                let identity_manager = self.identity_manager.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+                let encryption_public_key = self.encryption_public_key;
+                let signing_secret_key = self.identity_secret_key.clone();
 
                 tokio::spawn(async move {
                     let _ = Node::execute_command(
@@ -2942,6 +2945,12 @@ impl Node {
                         tool_router_key,
                         tool_type,
                         parameters,
+                        node_name,
+                        identity_manager,
+                        job_manager,
+                        encryption_secret_key,
+                        encryption_public_key,
+                        signing_secret_key,
                         res,
                     )
                     .await;

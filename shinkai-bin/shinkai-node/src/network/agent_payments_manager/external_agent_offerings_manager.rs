@@ -10,7 +10,9 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
-use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::invoices::{
+    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -1064,7 +1066,7 @@ mod tests {
         for (name, definition) in tools {
             let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
             for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+                let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
                 eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
                 let embedding = generator
                     .generate_embedding_default(&shinkai_tool.format_embedding_string())

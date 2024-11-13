@@ -1,9 +1,43 @@
+use shinkai_tools_runner::tools::tool_definition::{EmbeddingMetadata, ToolDefinition};
 use std::collections::HashMap;
-use shinkai_tools_runner::tools::tool_definition::{ToolDefinition, EmbeddingMetadata};
 
 pub fn get_custom_tools() -> HashMap<String, ToolDefinition> {
     let mut custom_tools = HashMap::new();
-    
+    let llm_tool = ToolDefinition {
+        id: "shinkai-tool-llm-prompt-processor".to_string(),
+        name: "Shinkai: LLM Prompt Processor".to_string(),
+        description: "Generic tool for processing any prompt using an LLM, analyzing the request and returning a string as output".to_string(),
+        author: "Shinkai".to_string(),
+        keywords: vec![
+            "LLM".to_string(),
+            "prompt processing".to_string(),
+            "natural language generation".to_string(),
+            "text output".to_string(),
+        ],
+        configurations: serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        }),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "prompt": { "type": "string" }
+              },
+              "required": ["prompt"]
+        }),
+        result: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string", "nullable": true }
+              },
+              "required": ["output"]
+        }),
+        code: None,
+        embedding_metadata: None,
+    };
+    custom_tools.insert("llm".to_string(), llm_tool);
+
     // Example 1: Custom Calculator Tool
     let calculator = ToolDefinition {
         id: "shinkai-tool-calculator".to_string(),
@@ -115,4 +149,4 @@ pub fn get_custom_tools() -> HashMap<String, ToolDefinition> {
     custom_tools.insert("text_analyzer".to_string(), text_analyzer);
 
     custom_tools
-} 
+}

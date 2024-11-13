@@ -17,7 +17,9 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
-use shinkai_tools_primitives::tools::{network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::{
+    argument::ToolOutputArg, network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader,
+};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -570,6 +572,7 @@ impl MyAgentOfferingsManager {
             true, // Assuming the tool is activated by default
             tool_header.config.expect("Config is required"),
             vec![], // TODO: Fix input_args
+            ToolOutputArg { json: "".to_string() },
             None,
             None,
         );

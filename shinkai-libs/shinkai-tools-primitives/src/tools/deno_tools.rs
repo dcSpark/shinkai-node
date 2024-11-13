@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{env, thread};
 
+use super::argument::ToolOutputArg;
 use super::js_toolkit_headers::ToolConfig;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
@@ -23,6 +24,7 @@ pub struct DenoTool {
     pub description: String,
     pub keywords: Vec<String>,
     pub input_args: Vec<ToolArgument>,
+    pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: JSToolResult,
@@ -44,6 +46,14 @@ impl DenoTool {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         let deserialized: Self = serde_json::from_str(json)?;
         Ok(deserialized)
+    }
+
+    pub fn run(
+        &self,
+        parameters: serde_json::Map<String, serde_json::Value>,
+        extra_config: Option<String>,
+    ) -> Result<RunResult, ToolError> {
+        self.run_on_demand(String::new(), parameters, extra_config)
     }
 
     pub fn run_on_demand(
@@ -92,8 +102,13 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("Running DenoTool with config: {:?}", config);
                     println!("Running DenoTool with input: {:?}", parameters);
+                    let final_code = if !bearer.is_empty() {
+                        code.replace("process.env.BEARER", &format!("\"{}\"", &bearer))
+                    } else {
+                        code
+                    };
                     let tool = Tool::new(
-                        code.replace("process.env.BEARER", &format!("\"{}\"", &bearer)),
+                        final_code,
                         config_json,
                         Some(DenoRunnerOptions {
                             binary_path: PathBuf::from(
@@ -111,6 +126,18 @@ impl DenoTool {
             .unwrap()
             .join()
             .expect("Thread panicked")
+    }
+
+    /// Check if all required config fields are set
+    pub fn check_required_config_fields(&self) -> bool {
+        for config in &self.config {
+            if let ToolConfig::BasicConfig(basic_config) = config {
+                if basic_config.required && basic_config.key_value.is_none() {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
