@@ -468,6 +468,7 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_tools_primitives::tools::argument::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
     use shinkai_vector_resources::embeddings::Embedding;
@@ -504,6 +505,7 @@ mod tests {
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: vec![],
+            output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
             result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -564,7 +566,7 @@ mod tests {
             activated: true,
             embedding: None,
             result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            output: "".to_string(),
+            output_arg: ToolOutputArg::empty(),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -602,7 +604,7 @@ mod tests {
             activated: true,
             embedding: None,
             result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            output: "".to_string(),
+            output_arg: ToolOutputArg::empty(),
         };
 
         let deno_tool_2 = DenoTool {
@@ -617,7 +619,7 @@ mod tests {
             activated: true,
             embedding: None,
             result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            output: "".to_string(),
+            output_arg: ToolOutputArg::empty(),
         };
 
         let deno_tool_3 = DenoTool {
@@ -632,7 +634,7 @@ mod tests {
             activated: true,
             embedding: None,
             result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            output: "".to_string(),
+            output_arg: ToolOutputArg::empty(),
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants

@@ -7,6 +7,8 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
+use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
+use shinkai_sqlite::files::prompts_data;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 // use shinkai_lancedb::lance_db::prompts::prompts_data;
 // use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
@@ -80,16 +82,12 @@ impl ToolRouter {
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Add JS tools
         let _ = self.add_js_tools().await;
-
         let _ = self.add_static_prompts(generator).await;
-
-        // Set the latest version in the database
-        // self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
 
         Ok(())
     }
 
-    pub async fn add_static_prompts(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn add_static_prompts(&self, _generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Check if ONLY_TESTING_PROMPTS is set
         if env::var("ONLY_TESTING_PROMPTS").unwrap_or_default() == "1"
             || env::var("ONLY_TESTING_PROMPTS").unwrap_or_default().to_lowercase() == "true"
@@ -99,38 +97,28 @@ impl ToolRouter {
 
         let start_time = Instant::now();
 
-        // TODO: needs to be added again
-        // // Determine which set of prompts to use
-        // let prompts_data = if env::var("IS_TESTING").unwrap_or_default() == "1" {
-        //     prompts_data::PROMPTS_JSON_TESTING
-        // } else {
-        //     prompts_data::PROMPTS_JSON
-        // };
+        // Determine which set of prompts to use
+        let prompts_data = if env::var("IS_TESTING").unwrap_or_default() == "1" {
+            prompts_data::PROMPTS_JSON_TESTING
+        } else {
+            prompts_data::PROMPTS_JSON
+        };
 
-        // let json_value: Value = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
-        // let json_array = json_value
-        //     .as_array()
-        //     .expect("Expected prompts JSON data to be an array");
+        // Parse the JSON string into a Vec<Value>
+        let json_array: Vec<Value> = serde_json::from_str(prompts_data)
+            .expect("Failed to parse prompts JSON data");
 
-        // println!("Number of static prompts to add: {}", json_array.len());
+        println!("Number of static prompts to add: {}", json_array.len());
 
-        // for item in json_array {
-        //     let custom_prompt: Result<CustomPrompt, _> = serde_json::from_value(item.clone());
-        //     let mut custom_prompt = match custom_prompt {
-        //         Ok(prompt) => prompt,
-        //         Err(e) => {
-        //             eprintln!("Failed to parse custom_prompt: {}. JSON: {:?}", e, item);
-        //             continue; // Skip this item and continue with the next one
-        //         }
-        //     };
+        // Use the add_prompts_from_json_values method
+        self.sqlite_manager
+            .add_prompts_from_json_values(json_array)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        //     self.sqlite_manager.set_prompt(&custom_prompt).await?;
-        // }
-
-        // let duration = start_time.elapsed();
-        // if env::var("LOG_ALL").unwrap_or_default() == "1" {
-        //     println!("Time taken to add static prompts: {:?}", duration);
-        // }
+        let duration = start_time.elapsed();
+        if env::var("LOG_ALL").unwrap_or_default() == "1" {
+            println!("Time taken to add static prompts: {:?}", duration);
+        }
         Ok(())
     }
 

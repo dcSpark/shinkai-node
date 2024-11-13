@@ -227,7 +227,7 @@ impl Node {
         }
 
         // Update the prompt in the LanceShinkaiDb
-        match sqlite_manager.set_prompt(&prompt).await {
+        match sqlite_manager.update_prompt(&prompt).await {
             Ok(_) => {
                 let _ = res.send(Ok(prompt)).await;
                 Ok(())

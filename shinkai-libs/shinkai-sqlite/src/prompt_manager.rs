@@ -2,6 +2,7 @@ use crate::SqliteManager;
 use bytemuck::cast_slice;
 use rusqlite::{params, OptionalExtension, Result};
 use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
+use serde_json::Value;
 
 impl SqliteManager {
     pub async fn add_prompt(&self, prompt: &CustomPrompt) -> Result<CustomPrompt> {
@@ -111,13 +112,13 @@ impl SqliteManager {
         }
     }
 
-    pub async fn set_prompt(&self, prompt: &CustomPrompt) -> Result<()> {
+    pub async fn update_prompt(&self, prompt: &CustomPrompt) -> Result<()> {
         let embedding = self.generate_embeddings(&prompt.prompt).await?;
-        self.set_prompt_with_vector(prompt, embedding)
+        self.update_prompt_with_vector(prompt, embedding)
     }
 
     // Updates or inserts a CustomPrompt and its vector
-    pub fn set_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<()> {
+    pub fn update_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<()> {
         // TODO: add error handling
         // if prompt.rowid.is_none() {
         //     return ;
@@ -276,11 +277,48 @@ impl SqliteManager {
     pub fn get_all_prompts(&self) -> Result<Vec<CustomPrompt>> {
         self.get_prompts(None, None, None)
     }
+
+    /// Adds a list of prompts from a JSON value vector to the database
+    pub fn add_prompts_from_json_values(&self, prompts: Vec<Value>) -> Result<()> {
+        for prompt_value in prompts {
+            // Extract fields from JSON
+            let name = prompt_value["name"].as_str().unwrap().to_string();
+            let is_system = prompt_value["is_system"].as_bool().unwrap();
+            let is_enabled = prompt_value["is_enabled"].as_bool().unwrap();
+            let version = prompt_value["version"].as_str().unwrap().to_string();
+            let prompt_text = prompt_value["prompt"].as_str().unwrap().to_string();
+            let is_favorite = prompt_value["is_favorite"].as_bool().unwrap();
+            let embedding: Vec<f32> = prompt_value["embedding"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap() as f32)
+                .collect();
+
+            // Create a CustomPrompt object
+            let prompt = CustomPrompt {
+                rowid: None,
+                name,
+                is_system,
+                is_enabled,
+                version,
+                prompt: prompt_text,
+                is_favorite,
+            };
+
+            // Add the prompt to the database
+            self.add_prompt_with_vector(&prompt, embedding)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::files::prompts_data::PROMPTS_JSON_TESTING;
+
     use super::*;
+    use serde_json::Value;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -484,7 +522,7 @@ mod tests {
         };
 
         let updated_vector = generate_vector(0.7);
-        manager.set_prompt_with_vector(&updated_prompt, updated_vector).unwrap();
+        manager.update_prompt_with_vector(&updated_prompt, updated_vector).unwrap();
 
         // Retrieve the updated prompt
         let retrieved_prompt = manager.get_prompt(rowid_to_update.unwrap()).unwrap();
@@ -503,5 +541,27 @@ mod tests {
         // Retrieve the embedding for the updated prompt
         let retrieved_embedding = manager.get_prompt_embedding_by_rowid(rowid_to_update.unwrap()).unwrap();
         assert_eq!(retrieved_embedding, generate_vector(0.7));
+    }
+
+    #[test]
+    fn test_add_prompts_from_json() {
+        let manager = setup_test_db();
+
+        // Parse the JSON string into a Vec<Value>
+        let prompts: Vec<Value> = serde_json::from_str(PROMPTS_JSON_TESTING).expect("Failed to parse JSON");
+
+        // Measure the time taken to add prompts to the database
+        let start_time = std::time::Instant::now();
+        let result = manager.add_prompts_from_json_values(prompts.clone());
+        let duration = start_time.elapsed();
+
+        assert!(result.is_ok());
+
+        // Verify that the number of prompts in the database matches the number in the JSON
+        let all_prompts = manager.get_all_prompts().unwrap();
+        assert_eq!(all_prompts.len(), prompts.len());
+
+        // Print the duration
+        println!("Time taken to add prompts from JSON: {:?}", duration);
     }
 }

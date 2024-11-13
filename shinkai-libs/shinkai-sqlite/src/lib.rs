@@ -11,6 +11,7 @@ use std::time::Duration;
 pub mod embedding_function;
 pub mod prompt_manager;
 pub mod shinkai_tool_manager;
+pub mod files;
 
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {

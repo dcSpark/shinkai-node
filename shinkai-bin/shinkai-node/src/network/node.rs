@@ -557,20 +557,18 @@ impl Node {
         if let Some(tool_router) = &self.tool_router {
             let tool_router = tool_router.clone();
             let generator = Box::new(self.embedding_generator.clone()) as Box<dyn EmbeddingGenerator>;
-            // let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
+            let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
-                // TODO: re-enable this
-                // let current_version = tool_router.get_current_lancedb_version().await.unwrap_or(None);
-                // if reinstall_tools || current_version != Some(LATEST_ROUTER_DB_VERSION.to_string()) {
-                //     if let Err(e) = tool_router.force_reinstall_all(&generator).await {
-                //         eprintln!("ToolRouter force reinstall failed: {:?}", e);
-                //     }
-                // } else {
+                if reinstall_tools {
+                    if let Err(e) = tool_router.force_reinstall_all(&generator).await {
+                        eprintln!("ToolRouter force reinstall failed: {:?}", e);
+                    }
+                } else {
                     if let Err(e) = tool_router.initialization(generator).await {
                         eprintln!("ToolRouter initialization failed: {:?}", e);
                     }
-                // }
+                }
             });
         }
         eprintln!(">> Node start set variables successfully");
