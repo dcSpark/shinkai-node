@@ -97,3 +97,5 @@ logs.json
 example.db-shm
 example.db-wal
 libpdfium.dylib
+ocrs
+.DS_Store

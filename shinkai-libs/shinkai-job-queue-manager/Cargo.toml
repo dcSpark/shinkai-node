@@ -1,15 +1,16 @@
 [package]
 name = "shinkai_job_queue_manager"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { workspace = true }
 shinkai_db = { workspace = true }
-tokio = { version = "1.36", features = ["full"] }
-chrono = { version = "0.4", features = ["serde"] }
-serde_json = "1.0.117"
+tokio = { workspace = true, features = ["full"] }
+chrono = { workspace = true, features = ["serde"] }
+serde_json = { workspace = true }
 
 [dependencies.serde]
-version = "1.0.188"
+workspace = true
 features = ["derive"]

@@ -418,12 +418,12 @@ impl Prompt {
                 SubPrompt::Omni(prompt_type, _, _, _) => {
                     // Process the current sub-prompt
                     let new_message = sub_prompt.into_chat_completion_request_message();
-                    current_length +=
-                        sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
-
+                    
                     if let SubPromptType::UserLastMessage = prompt_type {
                         last_user_message = Some(new_message);
                     } else {
+                        current_length +=
+                        sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
                         tiktoken_messages.push(new_message);
                     }
                 }
