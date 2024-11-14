@@ -170,12 +170,12 @@ pub async fn tool_implementation(
 ```
 
 #RULE II:
-* To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type: 
+* To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
 ```{language}
 type CONFIG = {{}};
 type INPUTS = {{}};
 type OUTPUT = {{}};
-export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{ 
+export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
     return {{}};
 }}
 ```
@@ -187,9 +187,9 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 
 # RULE IV:
 * Do not output, notes, ideas, explanations or examples.
-* Output only valid {language} code, so the complete Output can be directly executed. 
+* Output only valid {language} code, so the complete Output can be directly executed.
 * Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
-* Write a single implementation file.
+* Write a single implementation file, only one typescript code block.
 * Implements the code in {language} for the following INPUT:
 
 # INPUT:
@@ -263,7 +263,7 @@ pub async fn tool_metadata_implementation(
 # RULE I:
 This is the SCHEMA for the METADATA:
 ```json
-META_SCHEMA = {{
+ {{
   "name": "metaschema",
   "schema": {{
     "type": "object",
@@ -396,7 +396,7 @@ META_SCHEMA = {{
 
 These are two examples of METADATA:
 ## Example 1:
-```json
+Output: ```json
 {{
   "id": "shinkai-tool-coinbase-create-wallet",
   "name": "Shinkai: Coinbase Wallet Creator",
@@ -423,7 +423,7 @@ These are two examples of METADATA:
   "parameters": {{
     "type": "object",
     "properties": {{}},
-    "required": [],
+    "required": []
   }},
   "result": {{
     "type": "object",
@@ -432,13 +432,13 @@ These are two examples of METADATA:
       "seed": {{ "type": "string", "nullable": true }},
       "address": {{ "type": "string", "nullable": true }},
     }},
-    "required": [],
+    "required": []
   }}
 }};
 ```
 
 ## Example 2:
-```json
+Output:```json
 {{
   "id": "shinkai-tool-download-pages",
   "name": "Shinkai: Download Pages",
@@ -453,7 +453,7 @@ These are two examples of METADATA:
   "configurations": {{
     "type": "object",
     "properties": {{}},
-    "required": [],
+    "required": []
   }},
   "parameters": {{
     "type": "object",
@@ -477,14 +477,14 @@ These are two examples of METADATA:
 ```
 
 # RULE II:
-* Return a valid schema for the described JSON.
-* The METADATA must be in JSON format.
+* Return a valid schema for the described JSON, remove trailing commas.
+* The METADATA must be in JSON valid format in only one JSON code block and nothing else.
 * Output only the METADATA, so the complete Output it's a valid JSON string.
 * Any comments, notes, explanations or examples must be omitted in the Output.
 * Generate the METADATA for the following {language} source code in the INPUT:
 
 # INPUT:
-```{language}
+```json
 {}
 ```
 "####,
