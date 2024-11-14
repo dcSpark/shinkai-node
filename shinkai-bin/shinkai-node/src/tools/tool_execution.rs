@@ -6,8 +6,9 @@ pub mod execution_python_dynamic;
 use crate::llm_provider::job_manager::JobManager;
 use crate::tools::generate_tool_definitions;
 use serde_json::{Map, Value};
-use shinkai_http_api::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_tools::Language;
+use shinkai_message_primitives::schemas::shinkai_tools::ToolType;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 

@@ -2422,7 +2422,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_shinkai_tool(db_clone, sqlite_manager, bearer, tool_key, payload, res).await;
+                    let _ =
+                        Node::v2_api_set_shinkai_tool(db_clone, sqlite_manager, bearer, tool_key, payload, res).await;
                 });
             }
             NodeCommand::V2ApiAddShinkaiTool {
@@ -2696,7 +2697,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_delete_custom_prompt(db_clone, sqlite_manager_clone, bearer, prompt_name, res).await;
+                    let _ = Node::v2_api_delete_custom_prompt(db_clone, sqlite_manager_clone, bearer, prompt_name, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiGetAllCustomPrompts { bearer, res } => {
@@ -2714,21 +2716,24 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_custom_prompt(db_clone, sqlite_manager_clone, bearer, prompt_name, res).await;
+                    let _ =
+                        Node::v2_api_get_custom_prompt(db_clone, sqlite_manager_clone, bearer, prompt_name, res).await;
                 });
             }
             NodeCommand::V2ApiSearchCustomPrompts { bearer, query, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_search_custom_prompts(db_clone, sqlite_manager_clone, bearer, query, res).await;
+                    let _ =
+                        Node::v2_api_search_custom_prompts(db_clone, sqlite_manager_clone, bearer, query, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateCustomPrompt { bearer, prompt, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_update_custom_prompt(db_clone, sqlite_manager_clone, bearer, prompt, res).await;
+                    let _ =
+                        Node::v2_api_update_custom_prompt(db_clone, sqlite_manager_clone, bearer, prompt, res).await;
                 });
             }
             NodeCommand::V2ApiStopLLM {
@@ -2902,8 +2907,11 @@ impl Node {
             }
             NodeCommand::GenerateToolDefinitions { bearer, language, res } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
+                let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
+
                 tokio::spawn(async move {
-                    let _ = Node::generate_tool_definitions(bearer, language, sqlite_manager_clone, res).await;
+                    let _ =
+                        Node::generate_tool_definitions(bearer, db_clone, language, sqlite_manager_clone, res).await;
                 });
             }
             NodeCommand::GenerateToolImplementation {

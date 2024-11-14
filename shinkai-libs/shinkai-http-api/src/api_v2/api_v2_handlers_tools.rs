@@ -1,53 +1,14 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
-use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::job_scope::JobScope};
+use shinkai_message_primitives::{schemas::shinkai_tools::{Language, ToolType}, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::job_scope::JobScope};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
 use std::collections::HashMap;
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
-use super::{api_v2_router::{create_success_response, with_sender}};
-
-#[derive(Deserialize, ToSchema, Clone)]
-pub enum Language {
-    Typescript,
-    Python,
-}
-
-impl std::fmt::Display for Language {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Language::Typescript => write!(f, "typescript"),
-            Language::Python => write!(f, "python"),
-        }
-    }
-}
-
-#[derive(Deserialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolType {
-    Deno,
-    DenoDynamic,
-    Python,
-    PythonDynamic,
-    Network,
-    Internal,
-}
-
-impl std::fmt::Display for ToolType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ToolType::Deno => write!(f, "Deno"),
-            ToolType::DenoDynamic => write!(f, "deno_dynamic"),
-            ToolType::Python => write!(f, "Python"),
-            ToolType::PythonDynamic => write!(f, "python_dynamic"),
-            ToolType::Network => write!(f, "Network"),
-            ToolType::Internal => write!(f, "Internal"),
-        }
-    }
-}
+use super::api_v2_router::{create_success_response, with_sender};
 
 pub fn tool_routes(
     node_commands_sender: Sender<NodeCommand>,
@@ -89,7 +50,7 @@ pub fn tool_routes(
     get,
     path = "/v2/tool_definitions",
     params(
-        ("language" = Option<String>, Query, description = "Output language (typescript or python)")
+        ("language" = String, Query, description = "Output language (typescript or python)")
     ),
     responses(
         (status = 200, description = "tool definitions", body = String),
@@ -110,15 +71,22 @@ pub async fn tool_definitions_handler(
             "typescript" => Some(Language::Typescript),
             "python" => Some(Language::Python),
             _ => None,
-        })
-        .unwrap_or(Language::Typescript); // Default to Typescript
+        });
+        
+    if language.is_none() {
+        return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid language".to_string(),
+            message: "Invalid language parameter".to_string(),
+        }));
+    }
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     sender
         .send(NodeCommand::GenerateToolDefinitions {
             bearer,
-            language,
+            language: language.unwrap(),
             res: res_sender,
         })
         .await
@@ -216,13 +184,15 @@ pub struct ToolMetadata {
 
 #[derive(Deserialize, ToSchema)]
 pub struct ToolImplementationRequest {
-    pub language: Option<Language>,
-    pub prompt: Option<String>,
-    pub raw: Option<bool>,
+    pub language: Language,
+    pub prompt: String,
+    pub llm_provider: String,
     pub code: Option<String>,
     pub metadata: Option<String>,
     pub output: Option<String>,
-    pub llm_provider: Option<String>,
+    // If trye execute prompt directly
+    pub raw: Option<bool>,
+    // If true, fetch complete prompt
     pub fetch_query: Option<bool>,
 }
 
@@ -245,8 +215,8 @@ pub async fn tool_implementation_handler(
     sender
         .send(NodeCommand::GenerateToolImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
-            language: payload.language.unwrap_or(Language::Typescript),
-            prompt: payload.prompt.unwrap_or("".to_string()),
+            language: payload.language,
+            prompt: payload.prompt,
             code: payload.code,
             metadata: payload.metadata,
             output: payload.output,
@@ -255,7 +225,7 @@ pub async fn tool_implementation_handler(
                 is_hidden: Some(false),
                 associated_ui: None,
             },
-            llm_provider: payload.llm_provider.unwrap_or("llama3_1_8b".to_string()),
+            llm_provider: payload.llm_provider,
             raw: payload.raw.unwrap_or(false),
             fetch_query: payload.fetch_query.unwrap_or(false),
             res: res_sender,
@@ -296,7 +266,7 @@ pub async fn tool_metadata_implementation_handler(
     sender
         .send(NodeCommand::GenerateToolMetadataImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
-            language: payload.language.unwrap_or(Language::Typescript),
+            language: payload.language,
             code: payload.code,
             metadata: payload.metadata,
             output: payload.output,
@@ -305,7 +275,7 @@ pub async fn tool_metadata_implementation_handler(
                 is_hidden: Some(false),
                 associated_ui: None,
             },
-            llm_provider: payload.llm_provider.unwrap_or("llama3_1_8b".to_string()),
+            llm_provider: payload.llm_provider,
             res: res_sender,
         })
         .await
