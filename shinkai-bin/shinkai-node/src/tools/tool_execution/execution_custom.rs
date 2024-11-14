@@ -24,7 +24,7 @@ use tokio::time::{sleep, Duration};
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
-    extra_config: Option<String>,
+    _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
     node_name: ShinkaiName,

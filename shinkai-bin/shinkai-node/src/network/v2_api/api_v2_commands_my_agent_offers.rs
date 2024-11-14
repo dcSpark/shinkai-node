@@ -8,7 +8,7 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
 use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::network::{
     agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node,
@@ -218,7 +218,9 @@ impl Node {
                 let error_message = e.to_string();
                 let human_readable_message = if let Ok(regex) = regex::Regex::new(r#"message: \\"(.*?)\\""#) {
                     if let Some(captures) = regex.captures(&error_message) {
-                        captures.get(1).map_or(error_message.clone(), |m| m.as_str().to_string())
+                        captures
+                            .get(1)
+                            .map_or(error_message.clone(), |m| m.as_str().to_string())
                     } else {
                         error_message.clone()
                     }

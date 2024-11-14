@@ -197,7 +197,7 @@ async fn test_vrkai_vrpack_vector_search() {
 async fn test_vector_fs_initializes_new_profile_automatically() {
     setup();
     let generator = RemoteEmbeddingGenerator::new_default();
-    let mut vector_fs = setup_default_vector_fs().await;
+    let vector_fs = setup_default_vector_fs().await;
 
     let fs_internals = vector_fs.get_profile_fs_internals_cloned(&default_test_profile()).await;
     assert!(fs_internals.is_ok())
@@ -215,7 +215,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     let folder_name = "first_folder";
-    vector_fs.create_new_folder(&writer, folder_name.clone()).await.unwrap();
+    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
     let writer = vector_fs
         .new_writer(
             default_test_profile(),

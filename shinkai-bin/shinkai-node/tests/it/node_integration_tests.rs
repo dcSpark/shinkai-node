@@ -8,7 +8,6 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
@@ -87,7 +86,7 @@ fn subidentity_registration() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -111,7 +110,7 @@ fn subidentity_registration() {
         .await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new(
+        let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
             clone_signature_secret_key(&node2_identity_sk),

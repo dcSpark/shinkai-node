@@ -1,7 +1,6 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
 use super::llm_stopper::LLMStopper;
-use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
@@ -138,7 +137,7 @@ impl JobManager {
              job_queue_manager,
              my_agent_payments_manager,
              ext_agent_payments_manager,
-            //  sqlite_logger,
+             //  sqlite_logger,
              llm_stopper| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
@@ -513,7 +512,8 @@ impl JobManager {
         std::mem::drop(db_arc);
 
         let message_hash_id = message.calculate_message_hash_for_pagination();
-        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id)).await?;
+        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id))
+            .await?;
 
         Ok(job_message.job_id.clone().to_string())
     }

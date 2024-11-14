@@ -35,7 +35,6 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_fs::welcome_files::welcome_message::WELCOME_MESSAGE;
 use shinkai_vector_resources::vector_resource::VRPath;
-use std::time::Instant;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;

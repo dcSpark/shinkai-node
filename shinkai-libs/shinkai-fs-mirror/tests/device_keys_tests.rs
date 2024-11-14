@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use shinkai_fs_mirror::shinkai::{shinkai_device_keys::ShinkaiDeviceKeys, shinkai_utils::decrypt_exported_keys};
-    use std::env;
 
     #[test]
     fn test_decrypt_message_with_passphrase() {

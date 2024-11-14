@@ -18,7 +18,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCre
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;

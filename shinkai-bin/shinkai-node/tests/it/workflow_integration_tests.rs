@@ -9,9 +9,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMes
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
-    init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
-};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,

@@ -635,25 +635,20 @@ mod tests {
     use super::*;
     use crate::managers::identity_manager::IdentityManagerTrait;
     use async_trait::async_trait;
-    use chrono::Utc;
+
     use shinkai_message_primitives::{
-        schemas::{
-            identity::{Identity, StandardIdentity, StandardIdentityType},
-            shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
-            wallet_mixed::{NetworkIdentifier, PublicAddress},
-        },
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
-    use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
+
     use shinkai_vector_resources::{
-        embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+        embedding_generator::RemoteEmbeddingGenerator,
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
-    use std::{fs, path::Path, sync::Arc};
-    use tokio::sync::{Mutex, RwLock};
+    use std::{fs, path::Path};
 
     #[derive(Clone, Debug)]
     struct MockIdentityManager {

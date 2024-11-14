@@ -1,4 +1,4 @@
-use std::fmt::{self, write};
+use std::fmt::{self};
 
 use shinkai_crypto_identities::ShinkaiRegistryError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;

@@ -11,7 +11,7 @@ use shinkai_message_primitives::schemas::{
     wallet_mixed::{Network, NetworkIdentifier},
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     network::{node_error::NodeError, Node},
@@ -215,7 +215,7 @@ impl Node {
                 ..cfg
             }
         });
-        
+
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to restore Coinbase MPC wallet

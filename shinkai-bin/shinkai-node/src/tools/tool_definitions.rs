@@ -8,7 +8,6 @@ use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 
 use super::llm_language_support::generate_typescript::generate_typescript_definition;
-use super::tool_definitions::definitions_built_in_tools::get_built_in_tools;
 use super::tool_definitions::definitions_custom::get_custom_tools;
 
 #[derive(Debug)]
