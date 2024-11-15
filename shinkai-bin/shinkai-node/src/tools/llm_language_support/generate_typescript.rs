@@ -32,12 +32,9 @@
         return response.data;
     }
 */
+use super::language_helpers::to_camel_case;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
-use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolType;
-use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
-
-use super::language_helpers::to_camel_case;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 
 fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> String {

@@ -6,15 +6,11 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
-use reqwest::StatusCode;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
-use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -28,7 +24,7 @@ use tokio::time::{sleep, Duration};
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
-    extra_config: Option<String>,
+    _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
     node_name: ShinkaiName,

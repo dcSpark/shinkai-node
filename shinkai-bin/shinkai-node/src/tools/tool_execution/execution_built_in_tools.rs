@@ -2,7 +2,7 @@ use crate::network::Node;
 use async_channel::bounded;
 use serde_json::{json, Map, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolType;
+use shinkai_message_primitives::schemas::shinkai_tools::ToolType;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;

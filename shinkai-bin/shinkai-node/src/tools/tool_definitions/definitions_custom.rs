@@ -1,4 +1,3 @@
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_tools_primitives::tools::{
     argument::{ToolArgument, ToolOutputArg},
     shinkai_tool::ShinkaiToolHeader,

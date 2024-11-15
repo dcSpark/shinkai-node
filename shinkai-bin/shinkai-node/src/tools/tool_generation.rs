@@ -2,9 +2,9 @@ use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_tools::Language;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -199,9 +199,6 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
                 }
                 Language::Python => {
                     return Err(generic_error_str("NYI Python"));
-                }
-                _ => {
-                    return Err(generic_error_str("Unknown Language"));
                 }
             }
         }

@@ -501,7 +501,7 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         // TODO: sync with Paul about format
         // // Send WS message indicating file processing is starting

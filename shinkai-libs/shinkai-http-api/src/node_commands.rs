@@ -14,6 +14,7 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        shinkai_tools::{Language, ToolType},
         smart_inbox::{SmartInbox, V2SmartInbox},
         wallet_complementary::{WalletRole, WalletSource},
         wallet_mixed::NetworkIdentifier,
@@ -23,12 +24,12 @@ use shinkai_message_primitives::{
         shinkai_message_schemas::{
             APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
             APICreateShareableFolder, APIExportSheetPayload, APIGetLastNotifications, APIGetMySubscribers,
-            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APISetWorkflow,
+            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload,
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
-            JobMessage, RegistrationCodeType, V2ChatMessage,
+            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
@@ -42,7 +43,6 @@ use shinkai_tools_primitives::tools::{playground_tool::PlaygroundTool, shinkai_t
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use crate::node_api_router::SendResponseBody;
 
 use super::{

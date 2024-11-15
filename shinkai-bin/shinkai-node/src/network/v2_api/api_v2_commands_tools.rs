@@ -9,11 +9,11 @@ use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{Map, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::{
-    api_v2::api_v2_handlers_tools::{Language, ToolType},
-    node_api_router::APIError,
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_message_primitives::schemas::{
+    shinkai_name::ShinkaiName,
+    shinkai_tools::{Language, ToolType},
 };
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
@@ -24,12 +24,17 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 impl Node {
     pub async fn generate_tool_definitions(
         bearer: String,
+        db: Arc<ShinkaiDB>,
         language: Language,
         sqlite_manager: Arc<SqliteManager>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
-        // Convert the String output to a Value
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
         let definitions = generate_tool_definitions(language, sqlite_manager, false).await;
+
         match definitions {
             Ok(definitions) => {
                 let _ = res.send(Ok(Value::String(definitions))).await;
@@ -56,6 +61,10 @@ impl Node {
         signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
         // Execute the tool directly
         let result = execute_tool(
             tool_router_key.clone(),
@@ -114,6 +123,12 @@ impl Node {
         fetch_query: bool,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
+            .await
+            .is_err()
+        {
+            return Ok(());
+        }
         // Generate the implementation
         let implementation = crate::tools::tool_generation::tool_implementation(
             bearer,
@@ -168,6 +183,12 @@ impl Node {
 
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
+            .await
+            .is_err()
+        {
+            return Ok(());
+        }
         // Generate the implementation
         let metadata = crate::tools::tool_generation::tool_metadata_implementation(
             bearer,

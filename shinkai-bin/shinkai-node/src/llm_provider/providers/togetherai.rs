@@ -16,7 +16,7 @@ use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{TogetherAI, LLMProviderInterface};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, TogetherAI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
 
@@ -29,19 +29,22 @@ impl LLMService for TogetherAI {
         api_key: Option<&String>,
         prompt: Prompt,
         model: LLMProviderInterface,
-        inbox_name: Option<InboxName>,
+        _inbox_name: Option<InboxName>,
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        config: Option<JobConfig>,
-        llm_stopper: Arc<LLMStopper>,
+        _config: Option<JobConfig>,
+        _llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/inference");
 
-                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
+                let _max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&model);
                 let max_output_tokens = ModelCapabilitiesManager::get_max_output_tokens(&model);
-                let messages_string = prompt.generate_genericapi_messages(Some(max_input_tokens), &ModelCapabilitiesManager::num_tokens_from_llama3)?;
+                let messages_string = prompt.generate_genericapi_messages(
+                    Some(max_input_tokens),
+                    &ModelCapabilitiesManager::num_tokens_from_llama3,
+                )?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,

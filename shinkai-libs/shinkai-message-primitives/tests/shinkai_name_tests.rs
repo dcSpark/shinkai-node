@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
     #[test]

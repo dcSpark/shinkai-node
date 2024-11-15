@@ -1,4 +1,4 @@
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
@@ -10,7 +10,6 @@ use shinkai_message_primitives::schemas::{
     wallet_mixed::{Asset, Balance, Network, PublicAddress},
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::{
@@ -175,8 +174,9 @@ impl WalletManager {
         sqlite_manager: Arc<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<WalletManager, WalletError> {
-        let payment_wallet: Box<dyn PaymentWallet> =
-            Box::new(CoinbaseMPCWallet::create_wallet(network.clone(), Arc::downgrade(&sqlite_manager), config.clone()).await?);
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(
+            CoinbaseMPCWallet::create_wallet(network.clone(), Arc::downgrade(&sqlite_manager), config.clone()).await?,
+        );
         let receiving_wallet: Box<dyn ReceivingWallet> =
             Box::new(CoinbaseMPCWallet::create_wallet(network, Arc::downgrade(&sqlite_manager), config).await?);
 
@@ -193,11 +193,17 @@ impl WalletManager {
         wallet_id: String,
     ) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> = Box::new(
-            CoinbaseMPCWallet::restore_wallet(network.clone(), Arc::downgrade(&sqlite_manager), config.clone(), wallet_id.clone())
-                .await?,
+            CoinbaseMPCWallet::restore_wallet(
+                network.clone(),
+                Arc::downgrade(&sqlite_manager),
+                config.clone(),
+                wallet_id.clone(),
+            )
+            .await?,
         );
-        let receiving_wallet: Box<dyn ReceivingWallet> =
-            Box::new(CoinbaseMPCWallet::restore_wallet(network, Arc::downgrade(&sqlite_manager), config, wallet_id).await?);
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(
+            CoinbaseMPCWallet::restore_wallet(network, Arc::downgrade(&sqlite_manager), config, wallet_id).await?,
+        );
 
         Ok(WalletManager {
             payment_wallet,

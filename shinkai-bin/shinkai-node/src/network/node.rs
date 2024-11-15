@@ -56,7 +56,7 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -324,7 +324,8 @@ impl Node {
 
         // Initialize SqliteManager
         let embedding_api_url = embedding_generator.api_url.clone();
-        let sqlite_manager = Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
+        let sqlite_manager =
+            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(sqlite_manager.clone());

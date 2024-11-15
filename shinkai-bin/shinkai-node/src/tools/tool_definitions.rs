@@ -1,10 +1,10 @@
 pub mod definitions_built_in_tools;
 pub mod definitions_custom;
 
-use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
-use shinkai_sqlite::SqliteManager;
 use reqwest::StatusCode;
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_message_primitives::schemas::shinkai_tools::Language;
+use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 
 use super::llm_language_support::generate_typescript::generate_typescript_definition;

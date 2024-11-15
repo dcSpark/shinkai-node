@@ -886,24 +886,17 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use shinkai_message_primitives::{
-        schemas::{
-            identity::{Identity, StandardIdentity, StandardIdentityType},
-            shinkai_tool_offering::{AssetPayment, ToolPrice},
-            wallet_mixed::{Asset, NetworkIdentifier},
-        },
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
-    use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
-    use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-    use shinkai_tools_runner::built_in_tools;
+
     use shinkai_vector_resources::{
-        embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+        embedding_generator::RemoteEmbeddingGenerator,
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
-    use tokio::sync::RwLock;
 
     #[derive(Clone, Debug)]
     struct MockIdentityManager {
@@ -1074,18 +1067,18 @@ mod tests {
     //             shinkai_tool.set_embedding(embedding);
 
     // --- merge conflict of commented code ---
-        // // Add tools to the database
-        // for (name, definition) in tools {
-        //     let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-        //     for tool in toolkit.tools {
-        //         let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-        //         eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
-        //         let embedding = generator
-        //             .generate_embedding_default(&shinkai_tool.format_embedding_string())
-        //             .await
-        //             .unwrap();
-        //         shinkai_tool.set_embedding(embedding);
-        // --- 
+    // // Add tools to the database
+    // for (name, definition) in tools {
+    //     let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+    //     for tool in toolkit.tools {
+    //         let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
+    //         eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
+    //         let embedding = generator
+    //             .generate_embedding_default(&shinkai_tool.format_embedding_string())
+    //             .await
+    //             .unwrap();
+    //         shinkai_tool.set_embedding(embedding);
+    // ---
 
     //             lance_db
     //                 .write()

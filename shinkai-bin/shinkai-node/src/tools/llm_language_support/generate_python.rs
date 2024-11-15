@@ -32,21 +32,21 @@ def get_weather(location: str, units: Optional[str] = None) -> GetWeatherRespons
     return response.json()
 */
 
-use serde_json::Value;
-use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use super::language_helpers::to_camel_case;
 use super::language_helpers::to_snake_case;
+use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
 pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> String {
     let mut python_output = String::new();
-    
-    let response_class = format!("{}Response", 
+
+    let response_class = format!(
+        "{}Response",
         to_camel_case(&runner_def.name)
             .replace(' ', "")
             .replace('-', "")
             .replace(':', "")
     );
-    
+
     python_output.push_str(&format!("class {}(TypedDict):\n", response_class));
     if let Some(properties) = runner_def.result.get("properties").and_then(|v| v.as_object()) {
         for (prop_name, prop_value) in properties {
@@ -64,23 +64,20 @@ pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> 
     }
     python_output.push_str("\n");
 
-    let function_name = to_snake_case(
-        &runner_def.name
-            .replace("Shinkai: ", "")
-            .replace(':', "_")
-    );
-    
+    let function_name = to_snake_case(&runner_def.name.replace("Shinkai: ", "").replace(':', "_"));
+
     python_output.push_str(&format!("def {}(", function_name));
-    
+
     if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        let required = runner_def.parameters.get("required")
+        let required = runner_def
+            .parameters
+            .get("required")
             .and_then(|r| r.as_array())
-            .map(|arr| arr.iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
             .unwrap_or_default();
 
-        let params: Vec<String> = properties.iter()
+        let params: Vec<String> = properties
+            .iter()
             .map(|(param_name, param_value)| {
                 let type_str = match param_value.get("type").and_then(|t| t.as_str()) {
                     Some("string") => "str",
@@ -91,7 +88,7 @@ pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> 
                     Some("object") => "dict",
                     _ => "any",
                 };
-                
+
                 if required.contains(&param_name.as_str()) {
                     format!("{}: {}", param_name, type_str)
                 } else {
@@ -105,12 +102,10 @@ pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> 
 
     python_output.push_str("    \"\"\"\n");
     python_output.push_str(&format!("    {}\n\n", runner_def.description));
-    
+
     if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
         for (param_name, param_value) in properties {
-            let desc = param_value.get("description")
-                .and_then(|d| d.as_str())
-                .unwrap_or("");
+            let desc = param_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
             python_output.push_str(&format!("    Args:\n        {}: {}\n", param_name, desc));
         }
     }
@@ -119,7 +114,8 @@ pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> 
     let url_function_name = function_name.replace(' ', "_");
     python_output.push_str(&format!("    url = 'http://localhost:9550/v2/tool_execution'\n"));
     python_output.push_str("    data = {\n");
-    python_output.push_str(&format!("        'tool_router_key': 'local:::shinkai-tool-{}:::shinkai__{}',\n",
+    python_output.push_str(&format!(
+        "        'tool_router_key': 'local:::shinkai-tool-{}:::shinkai__{}',\n",
         name.to_lowercase(),
         name.to_lowercase()
     ));
@@ -139,4 +135,4 @@ pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> 
     python_output.push_str("    return response.json()\n\n");
 
     python_output
-} 
+}

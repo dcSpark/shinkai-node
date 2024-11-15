@@ -115,7 +115,7 @@ impl ShinkaiManagerForSync {
                     Err("Failed to reach Shinkai node for health check")
                 }
             }
-            Err(e) => Err("Error verifying node health"),
+            Err(_) => Err("Error verifying node health"),
         }
     }
 
@@ -297,8 +297,8 @@ impl ShinkaiManagerForSync {
         }
     }
 
-      // Add a new function to delete an item
-      pub async fn delete_folder(&self, path: &str) -> Result<(), PostRequestError> {
+    // Add a new function to delete an item
+    pub async fn delete_folder(&self, path: &str) -> Result<(), PostRequestError> {
         let shinkai_message = ShinkaiMessageBuilder::vecfs_delete_folder(
             path,
             self.my_encryption_secret_key.clone(),
@@ -405,7 +405,7 @@ impl ShinkaiManagerForSync {
             Ok(_) => {
                 // println!("Folder creation successful: {:?}", response);
             }
-            Err(e) => {
+            Err(_) => {
                 return Err("Failed to create folder");
             }
         }
