@@ -84,6 +84,26 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(set_playground_tool_handler);
 
+    let list_playground_tools_route = warp::path("list_playground_tools")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_playground_tools_handler);
+
+    let remove_playground_tool_route = warp::path("remove_playground_tool")
+        .and(warp::delete())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(remove_playground_tool_handler);
+
+    let get_playground_tool_route = warp::path("get_playground_tool")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(get_playground_tool_handler);
+
     tool_execution_route
         .or(tool_definitions_route)
         .or(tool_implementation_route)
@@ -94,6 +114,9 @@ pub fn tool_routes(
         .or(search_shinkai_tool_route)
         .or(add_shinkai_tool_route)
         .or(set_playground_tool_route)
+        .or(list_playground_tools_route)
+        .or(remove_playground_tool_route)
+        .or(get_playground_tool_route)
 }
 
 #[utoipa::path(
@@ -610,6 +633,141 @@ pub async fn set_playground_tool_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/list_playground_tools",
+    responses(
+        (status = 200, description = "Successfully listed all playground tools", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn list_playground_tools_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiListPlaygroundTools {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v2/remove_playground_tool",
+    params(
+        ("tool_key" = String, Query, description = "Key of the playground tool to remove")
+    ),
+    responses(
+        (status = 200, description = "Successfully removed playground tool", body = bool),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn remove_playground_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_key = query_params
+        .get("tool_key")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRemovePlaygroundTool {
+            bearer,
+            tool_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_playground_tool",
+    params(
+        ("tool_key" = String, Query, description = "Key of the playground tool to retrieve")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved playground tool", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_playground_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_key = query_params
+        .get("tool_key")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetPlaygroundTool {
+            bearer,
+            tool_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -623,6 +781,9 @@ pub async fn set_playground_tool_handler(
         search_shinkai_tool_handler,
         add_shinkai_tool_handler,
         set_playground_tool_handler,
+        list_playground_tools_handler,
+        remove_playground_tool_handler,
+        get_playground_tool_handler,
     ),
     components(
         schemas(

@@ -3030,6 +3030,26 @@ impl Node {
                     let _ = Node::v2_api_set_playground_tool(db_clone, sqlite_manager_clone, bearer, payload, res).await;
                 });
             }
+            NodeCommand::V2ApiListPlaygroundTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_playground_tools(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiRemovePlaygroundTool { bearer, tool_key, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_remove_playground_tool(db_clone, sqlite_manager_clone, bearer, tool_key, res)
+                        .await;
+                });
+            }
+            NodeCommand::V2ApiGetPlaygroundTool { bearer, tool_key, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_playground_tool(db_clone, bearer, tool_key, res).await;
+                });
+            }
             _ => (),
         }
     }

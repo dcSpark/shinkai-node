@@ -4,7 +4,7 @@ use std::time::Instant;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use shinkai_db::db::ShinkaiDB;
+use shinkai_db::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use shinkai_http_api::node_api_router::APIError;
 
 use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
@@ -379,7 +379,7 @@ impl Node {
                         let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                             error: "Internal Server Error".to_string(),
-                            message: format!("Failed to update tool in LanceShinkaiDb: {}", err),
+                            message: format!("Failed to update tool in SqliteManager: {}", err),
                         };
                         let _ = res.send(Err(api_error)).await;
                         Ok(())
@@ -391,6 +391,119 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to add tool to SqliteManager: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_list_playground_tools(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // List all playground tools
+        match db.list_all_playground_tools() {
+            Ok(tools) => {
+                let response = json!(tools);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list playground tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_remove_playground_tool(
+        db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Remove the playground tool from the database
+        match db.remove_playground_tool(&tool_key) {
+            Ok(_) => {
+                // Also remove the underlying tool from the SqliteManager
+                match sqlite_manager.remove_tool(&tool_key) {
+                    Ok(_) => {
+                        let response = json!({ "status": "success", "message": "Tool and underlying data removed successfully" });
+                        let _ = res.send(Ok(response)).await;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to remove underlying tool: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove playground tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_get_playground_tool(
+        db: Arc<ShinkaiDB>,
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the playground tool
+        match db.get_playground_tool(&tool_key) {
+            Ok(tool) => {
+                let response = json!(tool);
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(ShinkaiDBError::ToolNotFound(_)) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Playground tool not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get playground tool: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

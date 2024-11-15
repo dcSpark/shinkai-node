@@ -1028,4 +1028,18 @@ pub enum NodeCommand {
         payload: PlaygroundTool,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiListPlaygroundTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemovePlaygroundTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetPlaygroundTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
