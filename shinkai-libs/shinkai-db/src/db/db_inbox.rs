@@ -543,11 +543,25 @@ impl ShinkaiDB {
                                     let job = self.get_job_with_options(&unique_id, false, false)?;
                                     let agent_id = job.parent_agent_or_llm_provider_id;
 
-                                    // TODO: add caching so we don't call this every time for the same agent_id
-                                    match self.get_llm_provider(&agent_id, &p) {
+                                    // Check if the agent_id is an LLM provider
+                                    let agent_subset = match self.get_llm_provider(&agent_id, &p) {
                                         Ok(agent) => agent.map(LLMProviderSubset::from_serialized_llm_provider),
-                                        Err(_) => None,
-                                    }
+                                        Err(_) => {
+                                            // If not found as an LLM provider, check if it exists as an agent
+                                            match self.get_agent(&agent_id) {
+                                                Ok(Some(agent)) => {
+                                                    // Fetch the serialized LLM provider
+                                                    if let Ok(Some(serialized_llm_provider)) = self.get_llm_provider(&agent.llm_provider_id, &p) {
+                                                        Some(LLMProviderSubset::from_agent(agent, serialized_llm_provider))
+                                                    } else {
+                                                        None
+                                                    }
+                                                }
+                                                _ => None,
+                                            }
+                                        }
+                                    };
+                                    agent_subset
                                 }
                                 _ => None,
                             }
