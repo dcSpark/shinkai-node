@@ -5,18 +5,14 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::{api_v2::api_v2_handlers_tools::Language, node_api_router::APIError};
+use shinkai_http_api::node_api_router::APIError;
 
 use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, error::ToolError, playground_tool::PlaygroundTool,
-    shinkai_tool::ShinkaiTool,
+    argument::ToolOutputArg, deno_tools::DenoTool, playground_tool::PlaygroundTool, shinkai_tool::ShinkaiTool,
 };
 
-use crate::{
-    network::{node_error::NodeError, Node},
-    tools::generate_tool_definitions,
-};
+use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
@@ -374,15 +370,11 @@ impl Node {
 
         // Save the tool to the LanceShinkaiDb
         match sqlite_manager.add_tool(shinkai_tool.clone()).await {
-            Ok(tool) => {
-                save_metadata_and_respond(&db, &res, updated_payload, tool).await
-            }
+            Ok(tool) => save_metadata_and_respond(&db, &res, updated_payload, tool).await,
             Err(SqliteManagerError::ToolAlreadyExists(_)) => {
                 // Tool already exists, update it instead
                 match sqlite_manager.update_tool(shinkai_tool).await {
-                    Ok(tool) => {
-                        save_metadata_and_respond(&db, &res, updated_payload, tool).await
-                    }
+                    Ok(tool) => save_metadata_and_respond(&db, &res, updated_payload, tool).await,
                     Err(err) => {
                         let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
