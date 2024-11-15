@@ -5,12 +5,18 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::node_api_router::APIError;
+use shinkai_http_api::{api_v2::api_v2_handlers_tools::Language, node_api_router::APIError};
 
 use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_tools_primitives::tools::{
+    argument::ToolOutputArg, deno_tools::DenoTool, error::ToolError, playground_tool::PlaygroundTool,
+    shinkai_tool::ShinkaiTool,
+};
 
-use crate::network::{node_error::NodeError, Node};
+use crate::{
+    network::{node_error::NodeError, Node},
+    tools::generate_tool_definitions,
+};
 
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
@@ -270,6 +276,135 @@ impl Node {
             (_, input) => input,
         }
     }
+
+    pub async fn v2_api_set_playground_tool(
+        db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
+        bearer: String,
+        payload: PlaygroundTool,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // TODO: check that job_id exists
+
+        // TODO: do i need this?
+        // let header_code = generate_tool_definitions(Language::Typescript, sqlite_manager.clone(), false)
+        //     .await
+        //     .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
+        let mut updated_payload = payload.clone();
+
+        // Create DenoTool
+        let tool = DenoTool {
+            toolkit_name: {
+                let name = format!(
+                    "{}_{}",
+                    payload
+                        .metadata
+                        .name
+                        .to_lowercase()
+                        .replace(" ", "_")
+                        .replace("-", "_")
+                        .replace(":", "_"),
+                    payload
+                        .metadata
+                        .author
+                        .to_lowercase()
+                        .replace(" ", "_")
+                        .replace("-", "_")
+                        .replace(":", "_")
+                );
+                // Use a regex to filter out unwanted characters
+                let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
+                re.replace_all(&name, "").to_string()
+            },
+            name: payload.metadata.name.clone(),
+            author: payload.metadata.author.clone(),
+            js_code: payload.code.clone(),
+            config: payload.metadata.configurations.clone(),
+            description: payload.metadata.description.clone(),
+            keywords: payload.metadata.keywords.clone(),
+            input_args: payload.metadata.parameters.clone(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: false, // TODO: maybe we want to add this as an option in the UI?
+            embedding: None,
+            result: payload.metadata.result,
+        };
+
+        let shinkai_tool = ShinkaiTool::Deno(tool, false); // Same as above
+        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
+
+        // Function to handle saving metadata and sending response
+        async fn save_metadata_and_respond(
+            db: &ShinkaiDB,
+            res: &Sender<Result<Value, APIError>>,
+            updated_payload: PlaygroundTool,
+            tool: ShinkaiTool,
+        ) -> Result<(), NodeError> {
+            if let Err(err) = db.save_playground_tool(updated_payload) {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to save playground tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            match serde_json::to_value(&tool) {
+                Ok(tool_json) => {
+                    let _ = res.send(Ok(tool_json)).await;
+                }
+                Err(_) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to serialize tool to JSON".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                }
+            }
+
+            Ok(())
+        }
+
+        // Save the tool to the LanceShinkaiDb
+        match sqlite_manager.add_tool(shinkai_tool.clone()).await {
+            Ok(tool) => {
+                save_metadata_and_respond(&db, &res, updated_payload, tool).await
+            }
+            Err(SqliteManagerError::ToolAlreadyExists(_)) => {
+                // Tool already exists, update it instead
+                match sqlite_manager.update_tool(shinkai_tool).await {
+                    Ok(tool) => {
+                        save_metadata_and_respond(&db, &res, updated_payload, tool).await
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to update tool in LanceShinkaiDb: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add tool to SqliteManager: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -277,6 +412,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // TODO: update to not use workflow
     #[test]
     fn test_merge_json() {
         let existing_tool_value = json!({

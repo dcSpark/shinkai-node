@@ -8582,6 +8582,7 @@ dependencies = [
  "serde_json",
  "shinkai_message_primitives",
  "shinkai_sheet",
+ "shinkai_tools_primitives",
  "shinkai_vector_resources",
  "tokio",
  "x25519-dalek",
@@ -8686,7 +8687,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.8.16"
+version = "0.8.15"
 dependencies = [
  "aes-gcm",
  "anyhow",

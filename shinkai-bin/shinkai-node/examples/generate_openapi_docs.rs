@@ -2,7 +2,7 @@ use shinkai_http_api::api_v2::{
     api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc,
     api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_subscriptions::SubscriptionsApiDoc,
     api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc,
-    api_v2_handlers_workflows::WorkflowsApiDoc,
+    api_v2_handlers_tools::ToolsApiDoc,
 };
 use utoipa::OpenApi;
 
@@ -14,7 +14,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         SubscriptionsApiDoc::openapi(),
         VecFsApiDoc::openapi(),
         WalletApiDoc::openapi(),
-        WorkflowsApiDoc::openapi(),
+        ToolsApiDoc::openapi(),
     ];
 
     let schemas_dir = std::path::PathBuf::from("docs/openapi");

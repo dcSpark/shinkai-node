@@ -3015,6 +3015,13 @@ impl Node {
                     let _ = Node::v2_api_search_shinkai_tool(db_clone, sqlite_manager_clone, bearer, query, res).await;
                 });
             }
+            NodeCommand::V2ApiSetPlaygroundTool { bearer, payload, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_playground_tool(db_clone, sqlite_manager_clone, bearer, payload, res).await;
+                });
+            }
             _ => (),
         }
     }

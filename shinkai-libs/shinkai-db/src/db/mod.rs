@@ -26,3 +26,4 @@ pub mod db_invoice;
 pub mod db_internal_invoice_request;
 pub mod db_wallets;
 pub mod db_agent;
+pub mod db_tool_creation;

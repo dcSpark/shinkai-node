@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{env, thread};
 
-use super::tool_config::ToolConfig;
 use super::argument::ToolOutputArg;
+use super::tool_config::ToolConfig;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -146,7 +146,7 @@ impl DenoTool {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JSToolResult {
-    pub result_type: String,
+    pub r#type: String,
     pub properties: serde_json::Value,
     pub required: Vec<String>,
 }
@@ -156,11 +156,9 @@ impl Serialize for JSToolResult {
     where
         S: Serializer,
     {
-        let properties_str = serde_json::to_string(&self.properties).map_err(serde::ser::Error::custom)?;
-
         let helper = Helper {
-            result_type: self.result_type.clone(),
-            properties: properties_str,
+            result_type: self.r#type.clone(),
+            properties: self.properties.clone(),
             required: self.required.clone(),
         };
 
@@ -174,11 +172,10 @@ impl<'de> Deserialize<'de> for JSToolResult {
         D: Deserializer<'de>,
     {
         let helper = Helper::deserialize(deserializer)?;
-        let properties: JsonValue = serde_json::from_str(&helper.properties).map_err(serde::de::Error::custom)?;
 
         Ok(JSToolResult {
-            result_type: helper.result_type,
-            properties,
+            r#type: helper.result_type,
+            properties: helper.properties,
             required: helper.required,
         })
     }
@@ -186,17 +183,65 @@ impl<'de> Deserialize<'de> for JSToolResult {
 
 #[derive(Serialize, Deserialize)]
 struct Helper {
+    #[serde(rename = "type", alias = "result_type")]
     result_type: String,
-    properties: String,
+    properties: JsonValue,
     required: Vec<String>,
 }
 
 impl JSToolResult {
     pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
         JSToolResult {
-            result_type,
+            r#type: result_type,
             properties,
             required,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_jstool_result_with_hashmap_properties() {
+        let json_data = r#"
+    {
+        "type": "object",
+        "properties": {
+            "walletId": {"type": "string", "nullable": true},
+            "seed": {"type": "string", "nullable": true},
+            "address": {"type": "string", "nullable": true}
+        },
+        "required": []
+    }
+    "#;
+
+        let deserialized: JSToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
+
+        assert_eq!(deserialized.r#type, "object");
+        assert!(deserialized.properties.is_object());
+        assert_eq!(deserialized.required, Vec::<String>::new());
+
+        if let Some(wallet_id) = deserialized.properties.get("walletId") {
+            assert_eq!(wallet_id.get("type").and_then(|v| v.as_str()), Some("string"));
+            assert_eq!(wallet_id.get("nullable").and_then(|v| v.as_bool()), Some(true));
+        } else {
+            panic!("walletId property missing");
+        }
+
+        if let Some(seed) = deserialized.properties.get("seed") {
+            assert_eq!(seed.get("type").and_then(|v| v.as_str()), Some("string"));
+            assert_eq!(seed.get("nullable").and_then(|v| v.as_bool()), Some(true));
+        } else {
+            panic!("seed property missing");
+        }
+
+        if let Some(address) = deserialized.properties.get("address") {
+            assert_eq!(address.get("type").and_then(|v| v.as_str()), Some("string"));
+            assert_eq!(address.get("nullable").and_then(|v| v.as_bool()), Some(true));
+        } else {
+            panic!("address property missing");
         }
     }
 }

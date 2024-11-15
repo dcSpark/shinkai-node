@@ -10,3 +10,4 @@ pub mod python_tools;
 pub mod rust_tools;
 pub mod shinkai_tool;
 pub mod tool_router_dep;
+pub mod playground_tool;

@@ -44,7 +44,7 @@ impl JSToolkit {
         let tool_name = Self::generate_tool_name(&definition.name);
 
         let result = JSToolResult {
-            result_type: definition.result["type"].as_str().unwrap_or("object").to_string(),
+            r#type: definition.result["type"].as_str().unwrap_or("object").to_string(),
             properties: definition.result["properties"].clone(),
             required: definition.result["required"]
                 .as_array()

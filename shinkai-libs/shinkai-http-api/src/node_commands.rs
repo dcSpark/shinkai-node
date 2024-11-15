@@ -34,7 +34,7 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::{playground_tool::PlaygroundTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}};
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
 //         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
@@ -1021,6 +1021,11 @@ pub enum NodeCommand {
         bearer: String,
         inbox_name: String,
         format: ExportInboxMessagesFormat,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetPlaygroundTool {
+        bearer: String,
+        payload: PlaygroundTool,
         res: Sender<Result<Value, APIError>>,
     },
 }
