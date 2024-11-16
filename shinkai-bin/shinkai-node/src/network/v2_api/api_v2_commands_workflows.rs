@@ -341,7 +341,7 @@ impl Node {
             updated_payload: PlaygroundTool,
             tool: ShinkaiTool,
         ) -> Result<(), NodeError> {
-            if let Err(err) = db.save_playground_tool(updated_payload) {
+            if let Err(err) = db.save_playground_tool(updated_payload.clone()) {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
@@ -353,7 +353,11 @@ impl Node {
 
             match serde_json::to_value(&tool) {
                 Ok(tool_json) => {
-                    let _ = res.send(Ok(tool_json)).await;
+                    let response = json!({
+                        "shinkai_tool": tool_json,
+                        "metadata": updated_payload
+                    });
+                    let _ = res.send(Ok(response)).await;
                 }
                 Err(_) => {
                     let api_error = APIError {
