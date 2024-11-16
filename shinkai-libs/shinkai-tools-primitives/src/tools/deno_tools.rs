@@ -102,14 +102,24 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("Running DenoTool with config: {:?}", config);
                     println!("Running DenoTool with input: {:?}", parameters);
+                    // TODO this is not a good solution; the bearer should not be used to detect if the headers should be added
+                    // This will be fixed when the code is executed in the folder struture.
                     let final_code = if !bearer.is_empty() {
+                        // Remove axios import, as it's also created in the header code
+                        let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
+                        let step_1 = regex_axios.replace_all(&code, "").into_owned();
+                        // Remove library import, it is expected to be provided, but might not be generated.
                         let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
-                        let code_with_header = format!("{} {}", header_code, regex.replace_all(&code, "").into_owned());
+                        let step_2 = regex.replace_all(&step_1, "").into_owned();
+                        // Add the library import and the header code in the beginning of the code
+                        let code_with_header = format!("{} {}", header_code, step_2);
                         code_with_header.replace("${process.env.BEARER}", &bearer)
                     } else {
                         code
                     };
-                    // println!("Final code: {}", final_code);
+                    println!("Final code: {}", final_code);
+                    println!("Config JSON: {}", config_json);
+                    println!("Parameters: {:?}", parameters);
                     let tool = Tool::new(
                         final_code,
                         config_json,
@@ -120,8 +130,11 @@ impl DenoTool {
                             ),
                         }),
                     );
-                    // TODO: Fix this object wrap after update tools library to have the right typification
-                    tool.run(None, serde_json::Value::Object(parameters), None)
+                    // This is just a workaround to fix the parameters object.
+                    // App is sending Parameters: {"0": Object {"url": String("https://jhftss.github.io/")}}
+                    let binding = serde_json::Value::Object(parameters.clone());
+                    let fixed_parameters = parameters.get("0").unwrap_or(&binding);
+                    tool.run(None, fixed_parameters.clone(), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
