@@ -79,7 +79,7 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
     }
 
     // Generate return type documentation
-    typescript_output.push_str(" * @returns {{\n");
+    typescript_output.push_str(" * @returns {\n");
     // Parse the output_arg.json to get the return type properties
     if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
         if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
@@ -102,7 +102,7 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
             }
         }
     }
-    typescript_output.push_str(" * }}\n");
+    typescript_output.push_str(" * }\n");
     typescript_output.push_str(" */\n");
 
     let function_name = to_camel_case(&tool.name);
