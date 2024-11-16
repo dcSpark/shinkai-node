@@ -10,9 +10,9 @@ use super::{
     argument::{ToolArgument, ToolOutputArg},
     deno_tools::DenoTool,
     internal_tools::InternalTool,
-    tool_config::ToolConfig,
     network_tool::NetworkTool,
     python_tools::PythonTool,
+    tool_config::ToolConfig,
 };
 
 pub type IsEnabled = bool;
@@ -99,10 +99,29 @@ impl ShinkaiTool {
 
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
+        // Replace any ':' in the components to avoid breaking the key format
+        let sanitized_source = source.replace(':', "_");
+        let sanitized_toolkit_name = toolkit_name.replace(':', "_");
+        let sanitized_name = name.replace(':', "_");
+
         // We replace any `/` in order to not have the names break VRPaths
-        format!("{}:::{}:::{}", source, toolkit_name, name)
+        let key = format!("{}:::{}:::{}", sanitized_source, sanitized_toolkit_name, sanitized_name)
             .replace('/', "|")
-            .to_lowercase()
+            .to_lowercase();
+
+        // Ensure the key fits the pattern [^a-z0-9_]+
+        let valid_key = key
+            .chars()
+            .map(|c| {
+                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+
+        valid_key
     }
 
     /// Tool name
@@ -382,5 +401,49 @@ impl From<DenoTool> for ShinkaiTool {
 impl From<NetworkTool> for ShinkaiTool {
     fn from(tool: NetworkTool) -> Self {
         ShinkaiTool::Network(tool, true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::deno_tools::{DenoTool, JSToolResult};
+    use serde_json::json;
+
+    #[test]
+    fn test_gen_router_key() {
+        // Create a mock DenoTool with all required fields
+        let deno_tool = DenoTool {
+            name: "Shinkai: Download Pages".to_string(),
+            toolkit_name: "deno-toolkit".to_string(),
+            description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
+            input_args: vec![],
+            output_arg: ToolOutputArg { json: "".to_string() },
+            config: vec![],
+            author: "unknown".to_string(),
+            js_code: "".to_string(),
+            keywords: vec![],
+            activated: false,
+            embedding: None,
+            result: JSToolResult::new(
+                "object".to_string(),
+                json!({
+                    "markdowns": { "type": "array", "items": { "type": "string" } }
+                }),
+                vec!["markdowns".to_string()],
+            ),
+        };
+
+        // Create a ShinkaiTool instance
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, false);
+
+        // Generate the router key
+        let router_key = shinkai_tool.tool_router_key();
+
+        // Expected pattern: [^a-z0-9_]+ (plus the :::)
+        let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
+
+        // Assert that the generated key matches the expected pattern
+        assert_eq!(router_key, expected_key);
     }
 }
