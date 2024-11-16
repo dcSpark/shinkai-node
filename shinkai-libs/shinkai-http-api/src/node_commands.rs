@@ -14,7 +14,7 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-        shinkai_tools::{Language, ToolType},
+        shinkai_tools::{CodeLanguage, DynamicToolType},
         smart_inbox::{SmartInbox, V2SmartInbox},
         wallet_complementary::{WalletRole, WalletSource},
         wallet_mixed::NetworkIdentifier,
@@ -982,21 +982,31 @@ pub enum NodeCommand {
         payload: APISetSheetUploadedFilesPayload,
         res: Sender<Result<Value, APIError>>,
     },
-    ExecuteCommand {
+    V2ApiExecuteTool {
         bearer: String,
         tool_router_key: String,
-        tool_type: ToolType,
         parameters: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     },
-    GenerateToolDefinitions {
+    V2ApiExecuteCode {
         bearer: String,
-        language: Language,
+        code: String,
+        tool_type: DynamicToolType,
+        parameters: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     },
-    GenerateToolImplementation {
+    V2ApiGenerateToolDefinitions {
         bearer: String,
-        language: Language,
+        language: CodeLanguage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolFetchQuery {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolImplementation {
+        bearer: String,
+        language: CodeLanguage,
         prompt: String,
         code: Option<String>,
         metadata: Option<String>,
@@ -1004,12 +1014,11 @@ pub enum NodeCommand {
         job_creation_info: JobCreationInfo,
         llm_provider: String,
         raw: bool,
-        fetch_query: bool,
         res: Sender<Result<Value, APIError>>,
     },
-    GenerateToolMetadataImplementation {
+    V2ApiGenerateToolMetadataImplementation {
         bearer: String,
-        language: Language,
+        language: CodeLanguage,
         code: Option<String>,
         metadata: Option<String>,
         output: Option<String>,

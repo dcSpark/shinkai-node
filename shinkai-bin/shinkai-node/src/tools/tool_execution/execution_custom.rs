@@ -76,7 +76,7 @@ async fn execute_llm(
         bearer.clone(),
         JobCreationInfo {
             scope: JobScope::new_default(),
-            is_hidden: Some(false),
+            is_hidden: Some(true),
             associated_ui: None,
         },
         llm_provider,
@@ -166,58 +166,4 @@ fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolErro
     Ok(json!({
         "result": result
     }))
-}
-
-fn execute_text_analyzer(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
-    // Extract parameters
-    let text = parameters
-        .get("text")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::SerializationError("Missing text parameter".to_string()))?;
-
-    let include_sentiment = parameters
-        .get("include_sentiment")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    // Calculate basic statistics
-    let word_count = text.split_whitespace().count();
-    let character_count = text.chars().count();
-
-    // Create response
-    let mut response = json!({
-        "word_count": word_count,
-        "character_count": character_count,
-    });
-
-    // Add sentiment analysis if requested
-    if include_sentiment {
-        let sentiment_score = calculate_mock_sentiment(text);
-        response
-            .as_object_mut()
-            .unwrap()
-            .insert("sentiment_score".to_string(), json!(sentiment_score));
-    }
-
-    Ok(response)
-}
-
-fn calculate_mock_sentiment(text: &str) -> f64 {
-    let positive_words = ["good", "great", "excellent", "happy", "wonderful"];
-    let negative_words = ["bad", "terrible", "awful", "sad", "horrible"];
-
-    let lowercase_text = text.to_lowercase();
-    let words: Vec<&str> = lowercase_text.split_whitespace().collect();
-    let mut score: f64 = 0.0;
-
-    for word in words {
-        if positive_words.contains(&word) {
-            score += 0.2;
-        }
-        if negative_words.contains(&word) {
-            score -= 0.2;
-        }
-    }
-
-    score.clamp(-1.0, 1.0)
 }

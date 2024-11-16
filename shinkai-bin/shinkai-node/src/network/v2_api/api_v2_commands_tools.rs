@@ -2,7 +2,11 @@ use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
-    tools::{execute_tool, generate_tool_definitions},
+    tools::{
+        tool_definitions::definition_generation::generate_tool_definitions,
+        tool_execution::execution_coordinator::{execute_code, execute_tool},
+        tool_generation::{tool_implementation, tool_metadata_implementation},
+    },
 };
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -12,7 +16,7 @@ use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName,
-    shinkai_tools::{Language, ToolType},
+    shinkai_tools::{CodeLanguage, DynamicToolType},
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_sqlite::SqliteManager;
@@ -21,11 +25,12 @@ use tokio::sync::Mutex;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
 impl Node {
     pub async fn generate_tool_definitions(
         bearer: String,
         db: Arc<ShinkaiDB>,
-        language: Language,
+        language: CodeLanguage,
         sqlite_manager: Arc<SqliteManager>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -46,14 +51,12 @@ impl Node {
         Ok(())
     }
 
-    pub async fn execute_command(
+    pub async fn execute_tool(
         bearer: String,
         db: Arc<ShinkaiDB>,
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
-        tool_type: ToolType,
         parameters: Map<String, Value>,
-        node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -67,14 +70,11 @@ impl Node {
 
         // Execute the tool directly
         let result = execute_tool(
-            tool_router_key.clone(),
-            tool_type,
-            parameters,
-            None,
             db,
             sqlite_manager,
-            bearer,
-            node_name,
+            tool_router_key.clone(),
+            parameters,
+            None,
             identity_manager,
             job_manager,
             encryption_secret_key,
@@ -102,9 +102,52 @@ impl Node {
         Ok(())
     }
 
+    pub async fn execute_code(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        tool_type: DynamicToolType,
+        code: String,
+        parameters: Map<String, Value>,
+        sqlite_manager: Arc<SqliteManager>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Execute the tool directly
+        let result = execute_code(
+            tool_type.clone(),
+            code,
+            parameters,
+            None,
+            sqlite_manager,
+            bearer,
+        )
+        .await;
+
+        match result {
+            Ok(result) => {
+                println!("[execute_command] Tool execution successful: {}", tool_type);
+                let _ = res.send(Ok(result)).await;
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error executing tool: {}", e),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn generate_tool_implementation(
         bearer: String,
-        language: Language,
+        language: CodeLanguage,
         code: Option<String>,
         metadata: Option<String>,
         output: Option<String>,
@@ -120,7 +163,6 @@ impl Node {
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
         raw: bool,
-        fetch_query: bool,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
@@ -130,25 +172,21 @@ impl Node {
             return Ok(());
         }
         // Generate the implementation
-        let implementation = crate::tools::tool_generation::tool_implementation(
+        let implementation = tool_implementation(
             bearer,
             language,
-            code,
-            metadata,
-            output,
-            Some(prompt),
-            sqlite_manager,
+            prompt,
             db_clone,
-            node_name_clone,
-            identity_manager_clone,
-            job_manager_clone,
             job_creation_info,
             llm_provider,
+            raw,
+            sqlite_manager,
+            node_name_clone,
+            identity_manager_clone,
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
-            raw,
-            fetch_query,
+            job_manager_clone,
         )
         .await;
 
@@ -166,7 +204,7 @@ impl Node {
 
     pub async fn generate_tool_metadata_implementation(
         bearer: String,
-        language: Language,
+        language: CodeLanguage,
         code: Option<String>,
         metadata: Option<String>,
         output: Option<String>,
@@ -190,13 +228,10 @@ impl Node {
             return Ok(());
         }
         // Generate the implementation
-        let metadata = crate::tools::tool_generation::tool_metadata_implementation(
+        let metadata = tool_metadata_implementation(
             bearer,
             language,
             code,
-            metadata,
-            output,
-            sqlite_manager,
             db_clone,
             node_name_clone,
             identity_manager_clone,

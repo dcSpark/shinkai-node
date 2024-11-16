@@ -1,7 +1,7 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
-use shinkai_message_primitives::{schemas::shinkai_tools::{Language, ToolType}, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::job_scope::JobScope};
+use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::job_scope::JobScope};
 use shinkai_tools_primitives::tools::{playground_tool::PlaygroundTool, shinkai_tool::ShinkaiTool};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
@@ -104,7 +104,21 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(get_playground_tool_handler);
 
+    let get_tool_implementation_prompt_route = warp::path("get_tool_implementation_prompt")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_tool_implementation_prompt_handler);
+
+    let code_execution_route = warp::path("code_execution")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(code_execution_handler);
+
     tool_execution_route
+        .or(code_execution_route)
         .or(tool_definitions_route)
         .or(tool_implementation_route)
         .or(tool_metadata_implementation_route)
@@ -117,6 +131,7 @@ pub fn tool_routes(
         .or(list_playground_tools_route)
         .or(remove_playground_tool_route)
         .or(get_playground_tool_route)
+        .or(get_tool_implementation_prompt_route)
 }
 
 #[utoipa::path(
@@ -141,8 +156,8 @@ pub async fn tool_definitions_handler(
     let language = query_params
         .get("language")
         .and_then(|s| match s.as_str() {
-            "typescript" => Some(Language::Typescript),
-            "python" => Some(Language::Python),
+            "typescript" => Some(CodeLanguage::Typescript),
+            "python" => Some(CodeLanguage::Python),
             _ => None,
         });
         
@@ -157,7 +172,7 @@ pub async fn tool_definitions_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     sender
-        .send(NodeCommand::GenerateToolDefinitions {
+        .send(NodeCommand::V2ApiGenerateToolDefinitions {
             bearer,
             language: language.unwrap(),
             res: res_sender,
@@ -182,7 +197,6 @@ pub async fn tool_definitions_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct ToolExecutionRequest {
-    pub tool_type: ToolType,
     pub tool_router_key: String,
     pub parameters: Value,
     #[serde(default)]
@@ -218,10 +232,9 @@ pub async fn tool_execution_handler(
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
-        .send(NodeCommand::ExecuteCommand {
+        .send(NodeCommand::V2ApiExecuteTool {
             bearer,
             tool_router_key: payload.tool_router_key.clone(),
-            tool_type: payload.tool_type,
             parameters,
             res: res_sender,
         })
@@ -257,16 +270,15 @@ pub struct ToolMetadata {
 
 #[derive(Deserialize, ToSchema)]
 pub struct ToolImplementationRequest {
-    pub language: Language,
+    pub language: CodeLanguage,
     pub prompt: String,
     pub llm_provider: String,
     pub code: Option<String>,
     pub metadata: Option<String>,
     pub output: Option<String>,
-    // If trye execute prompt directly
+    // If try to execute the code without the default prompt
     pub raw: Option<bool>,
-    // If true, fetch complete prompt
-    pub fetch_query: Option<bool>,
+
 }
 
 #[utoipa::path(
@@ -286,7 +298,7 @@ pub async fn tool_implementation_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     sender
-        .send(NodeCommand::GenerateToolImplementation {
+        .send(NodeCommand::V2ApiGenerateToolImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             language: payload.language,
             prompt: payload.prompt,
@@ -300,7 +312,6 @@ pub async fn tool_implementation_handler(
             },
             llm_provider: payload.llm_provider,
             raw: payload.raw.unwrap_or(false),
-            fetch_query: payload.fetch_query.unwrap_or(false),
             res: res_sender,
         })
         .await
@@ -337,7 +348,7 @@ pub async fn tool_metadata_implementation_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     sender
-        .send(NodeCommand::GenerateToolMetadataImplementation {
+        .send(NodeCommand::V2ApiGenerateToolMetadataImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             language: payload.language,
             code: payload.code,
@@ -768,6 +779,106 @@ pub async fn get_playground_tool_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/get_tool_implementation_prompt",
+    responses(
+        (status = 200, description = "Successfully retrieved tool implementation prompt", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_tool_implementation_prompt_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGenerateToolFetchQuery {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(prompt) => {
+            let response = create_success_response(prompt);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CodeExecutionRequest {
+    pub tool_type: DynamicToolType,
+    pub code: String,
+    pub parameters: Value,
+    #[serde(default)]
+    pub extra_config: Option<String>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/code_execution",
+    request_body = CodeExecutionRequest,
+    responses(
+        (status = 200, description = "Successfully executed code", body = Value),
+        (status = 400, description = "Invalid request parameters", body = APIError),
+        (status = 500, description = "Code execution failed", body = APIError)
+    )
+)]
+pub async fn code_execution_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: CodeExecutionRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    // Convert parameters to a Map if it isn't already
+    let parameters = match payload.parameters {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Parameters".to_string(),
+            message: "Parameters must be an object".to_string(),
+        })),
+    };
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiExecuteCode {
+            bearer,
+            tool_type: payload.tool_type,
+            code: payload.code,
+            parameters,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -784,6 +895,8 @@ pub async fn get_playground_tool_handler(
         list_playground_tools_handler,
         remove_playground_tool_handler,
         get_playground_tool_handler,
+        get_tool_implementation_prompt_handler,
+        code_execution_handler,
     ),
     components(
         schemas(

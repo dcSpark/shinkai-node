@@ -1,41 +1,33 @@
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum ToolType {
-    Deno,
+pub enum DynamicToolType {
     DenoDynamic,
-    Python,
     PythonDynamic,
-    Network,
-    Internal,
 }
 
-impl std::fmt::Display for ToolType {
+impl std::fmt::Display for DynamicToolType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ToolType::Deno => write!(f, "Deno"),
-            ToolType::DenoDynamic => write!(f, "deno_dynamic"),
-            ToolType::Python => write!(f, "Python"),
-            ToolType::PythonDynamic => write!(f, "python_dynamic"),
-            ToolType::Network => write!(f, "Network"),
-            ToolType::Internal => write!(f, "Internal"),
+            DynamicToolType::DenoDynamic => write!(f, "deno_dynamic"),
+            DynamicToolType::PythonDynamic => write!(f, "python_dynamic"),
         }
     }
 }
 
-#[derive(Deserialize, ToSchema, Clone)]
-pub enum Language {
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub enum CodeLanguage {
     Typescript,
     Python,
 }
 
-impl std::fmt::Display for Language {
+impl std::fmt::Display for CodeLanguage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Language::Typescript => write!(f, "typescript"),
-            Language::Python => write!(f, "python"),
+            CodeLanguage::Typescript => write!(f, "typescript"),
+            CodeLanguage::Python => write!(f, "python"),
         }
     }
 }

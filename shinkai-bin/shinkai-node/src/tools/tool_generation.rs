@@ -1,10 +1,9 @@
 use ed25519_dalek::SigningKey;
-use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_tools::Language;
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -18,50 +17,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use crate::managers::IdentityManager;
 use crate::{llm_provider::job_manager::JobManager, network::Node};
 
-use std::fmt;
-
-use super::generate_tool_definitions;
-
-// Define the ToolImplementationError type
-#[derive(Debug)]
-pub struct ToolImplementationError {
-    pub message: String,
-    pub code: Option<u16>, // Optional HTTP status code
-}
-
-// Implement the Display trait for ToolImplementationError
-impl fmt::Display for ToolImplementationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ToolImplementationError: {}", self.message)
-    }
-}
-
-// Implement the Error trait for ToolImplementationError
-impl std::error::Error for ToolImplementationError {}
-
-// Implement a constructor for ToolImplementationError
-impl ToolImplementationError {
-    pub fn new(message: String, code: Option<u16>) -> Self {
-        ToolImplementationError { message, code }
-    }
-
-    // You can add more methods as needed
-}
-
-fn generic_error(e: impl std::error::Error) -> APIError {
-    APIError {
-        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        error: "Internal Server Error".to_string(),
-        message: format!("Error receiving result: {:?}", e),
-    }
-}
-fn generic_error_str(e: &str) -> APIError {
-    APIError {
-        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        error: "Internal Server Error".to_string(),
-        message: format!("Error receiving result: {}", e),
-    }
-}
+use super::tool_definitions::definition_generation::generate_tool_definitions;
 
 pub async fn v2_create_and_send_job_message(
     bearer: String,
@@ -94,7 +50,10 @@ pub async fn v2_create_and_send_job_message(
     )
     .await;
 
-    let job_id = res_receiver.recv().await.map_err(|e| generic_error(e))??;
+    let job_id = res_receiver
+        .recv()
+        .await
+        .map_err(|e| Node::generic_api_error(&e.to_string()))??;
 
     // Send message
     let job_message = JobMessage {
@@ -125,40 +84,22 @@ pub async fn v2_create_and_send_job_message(
     )
     .await;
 
-    res_receiver.recv().await.map_err(|e| generic_error(e))??;
+    res_receiver
+        .recv()
+        .await
+        .map_err(|e| Node::generic_api_error(&e.to_string()))??;
     Ok(job_id)
 }
 
-pub async fn tool_implementation(
-    bearer: String,
-    language: Language,
-    code: Option<String>,
-    metadata: Option<String>,
-    output: Option<String>,
-    prompt: Option<String>,
-    sqlite_manager: Arc<SqliteManager>,
-    db_clone: Arc<ShinkaiDB>,
-    node_name_clone: ShinkaiName,
-    identity_manager_clone: Arc<Mutex<IdentityManager>>,
-    job_manager_clone: Arc<Mutex<JobManager>>,
-    job_creation_info: JobCreationInfo,
-    llm_provider: String,
-    encryption_secret_key_clone: EncryptionStaticKey,
-    encryption_public_key_clone: EncryptionPublicKey,
-    signing_secret_key_clone: SigningKey,
-    raw: bool,
-    fetch_query: bool,
-) -> Result<Value, APIError> {
-    // Generate tool definitions first
-    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
-    let mut generate_code_prompt = String::new();
-
-    if !raw {
-        if let Some(prompt_text) = prompt {
-            match language {
-                Language::Typescript => {
-                    generate_code_prompt.push_str(&format!(
-                        r####"
+async fn generate_code_prompt(
+    language: CodeLanguage,
+    prompt: String,
+    tool_definitions: String,
+) -> Result<String, APIError> {
+    match language {
+        CodeLanguage::Typescript => {
+            return Ok(format!(
+                r####"
 # RULE I:
 * You may use any of the following functions if they are relevant and a good match for the task.
 * Import them in the following way (do not rename functions with 'as'):
@@ -192,25 +133,45 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 * Write a single implementation file, only one typescript code block.
 * Implements the code in {language} for the following INPUT:
 
-# INPUT:
-{prompt_text}
+{prompt}
 "####
-                    ));
-                }
-                Language::Python => {
-                    return Err(generic_error_str("NYI Python"));
-                }
-            }
+            ));
         }
-    } else {
-        generate_code_prompt = prompt.unwrap_or("".to_string());
+        CodeLanguage::Python => {
+            return Err(Node::generic_api_error("NYI Python"));
+        }
     }
+}
 
-    if fetch_query {
-        return Ok(json!({
-            "query": generate_code_prompt,
-        }));
-    }
+pub async fn generate_tool_fetch_query(
+    language: CodeLanguage,
+    tool_definitions: String,
+) -> Result<String, APIError> {
+    Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
+}
+
+pub async fn tool_implementation(
+    bearer: String,
+    language: CodeLanguage,
+    prompt: String,
+    db_clone: Arc<ShinkaiDB>,
+    job_creation_info: JobCreationInfo,
+    llm_provider: String,
+    raw: bool,
+    sqlite_manager: Arc<SqliteManager>,
+    node_name_clone: ShinkaiName,
+    identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    encryption_secret_key_clone: EncryptionStaticKey,
+    encryption_public_key_clone: EncryptionPublicKey,
+    signing_secret_key_clone: SigningKey,
+    job_manager_clone: Arc<Mutex<JobManager>>,
+) -> Result<Value, APIError> {
+    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
+
+    let generate_code_prompt = match raw {
+        true => prompt,
+        false => generate_code_prompt(language, prompt, tool_definitions).await?,
+    };
 
     let job_id = v2_create_and_send_job_message(
         bearer,
@@ -227,18 +188,16 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
     )
     .await?;
 
-    Ok(json!({
-        "job_id": job_id,
-    }))
+    Ok(json!({ "job_id": job_id }))
 }
 
 pub async fn tool_metadata_implementation(
     bearer: String,
-    language: Language,
+    language: CodeLanguage,
     code: Option<String>,
-    metadata: Option<String>,
-    output: Option<String>,
-    sqlite_manager: Arc<SqliteManager>,
+    // metadata: Option<String>,
+    // output: Option<String>,
+    // sqlite_manager: Arc<SqliteManager>,
     db_clone: Arc<ShinkaiDB>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -254,7 +213,7 @@ pub async fn tool_metadata_implementation(
     let mut generate_code_prompt = String::new();
 
     match language {
-        Language::Typescript => {
+        CodeLanguage::Typescript => {
             generate_code_prompt.push_str(&format!(
                 r####"
 # RULE I:
@@ -488,8 +447,8 @@ Output:```json
                 code.unwrap_or("".to_string())
             ));
         }
-        Language::Python => {
-            return Err(generic_error_str("NYI Python"));
+        CodeLanguage::Python => {
+            return Err(Node::generic_api_error("NYI Python"));
         }
     }
 
