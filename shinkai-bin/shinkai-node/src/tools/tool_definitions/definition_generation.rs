@@ -1,6 +1,7 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_sqlite::SqliteManager;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::tools::llm_language_support::generate_typescript::generate_typescript_definition;
@@ -38,6 +39,8 @@ pub async fn generate_tool_definitions(
     all_tools.extend(get_custom_tools());
 
     let mut output = String::new();
+    let mut generated_names = HashSet::new();
+
     match language {
         CodeLanguage::Typescript => {
             if !only_headers {
@@ -46,12 +49,21 @@ pub async fn generate_tool_definitions(
         }
         CodeLanguage::Python => {
             output.push_str("import os\nimport requests\nfrom typing import TypedDict, Optional\n\n");
-            // output.push_str(&generate_python_definition(name, &runner_def));
         }
     }
+
     for tool in all_tools {
         match language {
             CodeLanguage::Typescript => {
+                let function_name = crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.name);
+                if generated_names.contains(&function_name) {
+                    eprintln!(
+                        "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",
+                        function_name, tool.name
+                    );
+                    continue;
+                }
+                generated_names.insert(function_name);
                 output.push_str(&generate_typescript_definition(tool, only_headers));
             }
             CodeLanguage::Python => {
