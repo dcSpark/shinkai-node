@@ -85,6 +85,7 @@ pub enum LLMProviderError {
     ToolRetrievalError(String),
     ToolSearchError(String),
     AgentNotFound(String),
+    MessageTooLargeForLLM { max_tokens: usize, used_tokens: usize },
 }
 
 impl fmt::Display for LLMProviderError {
@@ -175,6 +176,9 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::ToolRetrievalError(s) => write!(f, "Tool retrieval error: {}", s),
             LLMProviderError::ToolSearchError(s) => write!(f, "Tool search error: {}", s),
             LLMProviderError::AgentNotFound(s) => write!(f, "Agent not found: {}", s),
+            LLMProviderError::MessageTooLargeForLLM { max_tokens, used_tokens } => {
+                write!(f, "Message too large for LLM: Used {} tokens, but the maximum allowed is {}.", used_tokens, max_tokens)
+            }
         }
     }
 }
@@ -255,6 +259,7 @@ impl LLMProviderError {
             LLMProviderError::ToolRetrievalError(_) => "ToolRetrievalError",
             LLMProviderError::ToolSearchError(_) => "ToolSearchError",
             LLMProviderError::AgentNotFound(_) => "AgentNotFound",
+            LLMProviderError::MessageTooLargeForLLM { .. } => "MessageTooLargeForLLM",
         };
 
         let error_message = format!("{}", self);

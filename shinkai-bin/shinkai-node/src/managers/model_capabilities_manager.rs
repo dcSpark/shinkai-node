@@ -438,6 +438,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("qwen2.5:14b") => 128_000,
             model_type if model_type.starts_with("qwen2.5:32b") => 128_000,
             model_type if model_type.starts_with("qwen2.5:72b") => 128_000,
+            model_type if model_type.starts_with("qwen2.5-coder") => 128_000,
             model_type if model_type.starts_with("aya") => 32_000,
             model_type if model_type.starts_with("wizardlm2") => 8_000,
             model_type if model_type.starts_with("phi2") => 4_000,
