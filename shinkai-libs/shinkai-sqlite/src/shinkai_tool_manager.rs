@@ -689,4 +689,39 @@ mod tests {
         // Verify the vector in the shinkai_tools_vec_items table
         assert_eq!(db_vector, generate_vector(0.21).as_slice());
     }
+
+    #[tokio::test]
+    async fn test_add_duplicate_tool() {
+        let manager = setup_test_db();
+
+        // Create a DenoTool instance
+        let deno_tool = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Deno Duplicate Tool".to_string(),
+            author: "Deno Author".to_string(),
+            js_code: "console.log('Hello, Deno!');".to_string(),
+            config: vec![],
+            description: "A Deno tool for testing duplicates".to_string(),
+            keywords: vec!["deno".to_string(), "duplicate".to_string()],
+            input_args: vec![],
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+        };
+
+        // Wrap the DenoTool in a ShinkaiTool::Deno variant
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
+
+        // Add the tool to the database
+        let vector = generate_vector(0.1);
+        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone());
+        assert!(result.is_ok());
+
+        // Attempt to add the same tool again
+        let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
+
+        // Assert that the error is ToolAlreadyExists
+        assert!(matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))));
+    }
 }

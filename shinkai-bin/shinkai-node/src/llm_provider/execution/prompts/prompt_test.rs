@@ -104,7 +104,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust-toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({
@@ -235,7 +235,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust-toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({
