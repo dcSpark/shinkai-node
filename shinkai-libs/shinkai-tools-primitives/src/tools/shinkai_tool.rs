@@ -9,7 +9,6 @@ use shinkai_vector_resources::embeddings::Embedding;
 use super::{
     argument::{ToolArgument, ToolOutputArg},
     deno_tools::DenoTool,
-    internal_tools::InternalTool,
     network_tool::NetworkTool,
     python_tools::PythonTool,
     tool_config::ToolConfig,
@@ -24,7 +23,6 @@ pub enum ShinkaiTool {
     Network(NetworkTool, IsEnabled),
     Deno(DenoTool, IsEnabled),
     Python(PythonTool, IsEnabled),
-    Internal(InternalTool, IsEnabled),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -131,7 +129,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.name.clone(),
             ShinkaiTool::Deno(d, _) => d.name.clone(),
             ShinkaiTool::Python(p, _) => p.name.clone(),
-            ShinkaiTool::Internal(i, _) => i.name.clone(),
         }
     }
     /// Tool description
@@ -141,7 +138,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.description.clone(),
             ShinkaiTool::Deno(d, _) => d.description.clone(),
             ShinkaiTool::Python(p, _) => p.description.clone(),
-            ShinkaiTool::Internal(i, _) => i.description.clone(),
         }
     }
 
@@ -152,7 +148,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
             ShinkaiTool::Deno(d, _) => d.toolkit_name(),
             ShinkaiTool::Python(p, _) => p.toolkit_name(),
-            ShinkaiTool::Internal(i, _) => i.toolkit_name(),
         }
     }
 
@@ -163,7 +158,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
             ShinkaiTool::Deno(d, _) => d.input_args.clone(),
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
-            ShinkaiTool::Internal(i, _) => i.input_args.clone(),
         }
     }
 
@@ -174,7 +168,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.output_arg.clone(),
             ShinkaiTool::Deno(d, _) => d.output_arg.clone(),
             ShinkaiTool::Python(p, _) => p.output_arg.clone(),
-            ShinkaiTool::Internal(i, _) => i.output_arg.clone(),
         }
     }
 
@@ -185,7 +178,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => "Network",
             ShinkaiTool::Deno(_, _) => "Deno",
             ShinkaiTool::Python(_, _) => "Python",
-            ShinkaiTool::Internal(_, _) => "Internal",
         }
     }
 
@@ -206,7 +198,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
             ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
             ShinkaiTool::Python(p, _) => p.tool_embedding = Some(embedding),
-            ShinkaiTool::Internal(i, _) => i.tool_embedding = Some(embedding),
         }
     }
 
@@ -263,7 +254,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
             ShinkaiTool::Deno(d, _) => d.embedding.clone(),
             ShinkaiTool::Python(p, _) => p.tool_embedding.clone(),
-            ShinkaiTool::Internal(i, _) => i.tool_embedding.clone(),
         }
     }
 
@@ -282,7 +272,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
             ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
-            ShinkaiTool::Internal(_i, _) => "unknown".to_string(),
         }
     }
 
@@ -293,7 +282,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
-            ShinkaiTool::Internal(_i, _) => "unknown".to_string(),
         }
     }
 
@@ -313,7 +301,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled,
             ShinkaiTool::Deno(_, enabled) => *enabled,
             ShinkaiTool::Python(_, enabled) => *enabled,
-            ShinkaiTool::Internal(_, enabled) => *enabled,
         }
     }
 
@@ -324,7 +311,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = true,
             ShinkaiTool::Deno(_, enabled) => *enabled = true,
             ShinkaiTool::Python(_, enabled) => *enabled = true,
-            ShinkaiTool::Internal(_, enabled) => *enabled = true,
         }
     }
 
@@ -335,7 +321,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = false,
             ShinkaiTool::Deno(_, enabled) => *enabled = false,
             ShinkaiTool::Python(_, enabled) => *enabled = false,
-            ShinkaiTool::Internal(_, enabled) => *enabled = false,
         }
     }
 
@@ -355,7 +340,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.check_required_config_fields(),
             ShinkaiTool::Python(_, _) => true,
-            ShinkaiTool::Internal(_, _) => true,
         }
     }
 

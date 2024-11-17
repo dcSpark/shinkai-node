@@ -553,6 +553,7 @@ impl Node {
 
     pub async fn execute_tool(
         bearer: String,
+        node_name: ShinkaiName,
         db: Arc<ShinkaiDB>,
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
@@ -570,6 +571,8 @@ impl Node {
 
         // Execute the tool directly
         let result = execute_tool(
+            bearer,
+            node_name,
             db,
             sqlite_manager,
             tool_router_key.clone(),
