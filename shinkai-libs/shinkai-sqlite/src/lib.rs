@@ -101,7 +101,7 @@ impl SqliteManager {
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
-        Self::initialize_tool_playground_messages_table(conn)?;
+        Self::initialize_tool_playground_code_history_table(conn)?;
         Ok(())
     }
 
@@ -203,10 +203,10 @@ impl SqliteManager {
         Ok(())
     }
 
-    // New method to initialize the tool_playground_messages table
-    fn initialize_tool_playground_messages_table(conn: &rusqlite::Connection) -> Result<()> {
+    // New method to initialize the tool_playground_code_history table
+    fn initialize_tool_playground_code_history_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS tool_playground_messages (
+            "CREATE TABLE IF NOT EXISTS tool_playground_code_history (
                 message_id TEXT PRIMARY KEY,
                 tool_router_key TEXT NOT NULL,
                 code TEXT NOT NULL,

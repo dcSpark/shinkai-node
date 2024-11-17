@@ -87,7 +87,7 @@ impl SqliteManager {
 
         // Remove all messages associated with the tool_router_key
         tx.execute(
-            "DELETE FROM tool_playground_messages WHERE tool_router_key = ?1",
+            "DELETE FROM tool_playground_code_history WHERE tool_router_key = ?1",
             params![tool_router_key],
         )?;
 
@@ -210,8 +210,8 @@ impl SqliteManager {
         Ok(tools)
     }
 
-    // Adds a new entry to the tool_playground_messages table
-    pub fn add_tool_playground_message(
+    // Adds a new entry to the tool_playground_code_history table
+    pub fn add_tool_playground_code_history(
         &self,
         message_id: &str,
         tool_router_key: &str,
@@ -219,7 +219,7 @@ impl SqliteManager {
     ) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO tool_playground_messages (message_id, tool_router_key, code) VALUES (?1, ?2, ?3)",
+            "INSERT INTO tool_playground_code_history (message_id, tool_router_key, code) VALUES (?1, ?2, ?3)",
             params![message_id, tool_router_key, code],
         )
         .map_err(|e| {
@@ -455,18 +455,18 @@ mod tests {
         let tool_playground = create_test_tool_playground(shinkai_tool.tool_router_key().to_string());
         manager.set_tool_playground(&tool_playground).unwrap();
 
-        // Add a message to the tool_playground_messages table
+        // Add a message to the tool_playground_code_history table
         let message_id = "msg-001";
         let code = "console.log('Message Code');";
         manager
-            .add_tool_playground_message(message_id, &shinkai_tool.tool_router_key(), code)
+            .add_tool_playground_code_history(message_id, &shinkai_tool.tool_router_key(), code)
             .unwrap();
 
         // Verify the message was added
         let conn = manager.get_connection().unwrap();
         let retrieved_code: String = conn
             .query_row(
-                "SELECT code FROM tool_playground_messages WHERE message_id = ?1",
+                "SELECT code FROM tool_playground_code_history WHERE message_id = ?1",
                 params![message_id],
                 |row| row.get(0),
             )
@@ -483,7 +483,7 @@ mod tests {
 
         // Verify the message is removed
         let message_result: Result<String, _> = conn.query_row(
-            "SELECT code FROM tool_playground_messages WHERE message_id = ?1",
+            "SELECT code FROM tool_playground_code_history WHERE message_id = ?1",
             params![message_id],
             |row| row.get(0),
         );
