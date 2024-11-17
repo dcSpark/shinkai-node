@@ -350,6 +350,7 @@ impl SqliteManager {
     }
 
     /// Removes a ShinkaiTool entry from the shinkai_tools table
+    // Note: should we also auto-remove the tool from the tool_playground table?
     pub fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;

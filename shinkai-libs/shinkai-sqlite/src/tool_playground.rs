@@ -80,11 +80,18 @@ impl SqliteManager {
         Ok(())
     }
 
-    // Removes a ToolPlayground entry from the tool_playground table
+    // Removes a ToolPlayground entry and its associated messages from the tool_playground table
     pub fn remove_tool_playground(&self, tool_router_key: &str) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
+        // Remove all messages associated with the tool_router_key
+        tx.execute(
+            "DELETE FROM tool_playground_messages WHERE tool_router_key = ?1",
+            params![tool_router_key],
+        )?;
+
+        // Remove the tool playground entry
         tx.execute(
             "DELETE FROM tool_playground WHERE tool_router_key = ?1",
             params![tool_router_key],
@@ -201,6 +208,25 @@ impl SqliteManager {
         }
 
         Ok(tools)
+    }
+
+    // Adds a new entry to the tool_playground_messages table
+    pub fn add_tool_playground_message(
+        &self,
+        message_id: &str,
+        tool_router_key: &str,
+        code: &str,
+    ) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO tool_playground_messages (message_id, tool_router_key, code) VALUES (?1, ?2, ?3)",
+            params![message_id, tool_router_key, code],
+        )
+        .map_err(|e| {
+            eprintln!("Database error: {}", e);
+            SqliteManagerError::DatabaseError(e)
+        })?;
+        Ok(())
     }
 }
 
@@ -399,5 +425,69 @@ mod tests {
         );
         assert_eq!(retrieved_tool_playground.job_id, tool_playground.job_id);
         assert_eq!(retrieved_tool_playground.code, tool_playground.code);
+    }
+
+    #[tokio::test]
+    async fn test_add_and_remove_tool_playground_message() {
+        let manager = setup_test_db();
+
+        // Add a tool to ensure the tool_router_key exists
+        let deno_tool = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Deno Test Tool".to_string(),
+            author: "Deno Author".to_string(),
+            js_code: "console.log('Hello, Deno!');".to_string(),
+            config: vec![],
+            description: "A Deno tool for testing".to_string(),
+            keywords: vec!["deno".to_string(), "test".to_string()],
+            input_args: vec![],
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+        };
+
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
+        let vector = SqliteManager::generate_vector_for_testing(0.1);
+        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
+
+        // Create and add a ToolPlayground entry
+        let tool_playground = create_test_tool_playground(shinkai_tool.tool_router_key().to_string());
+        manager.set_tool_playground(&tool_playground).unwrap();
+
+        // Add a message to the tool_playground_messages table
+        let message_id = "msg-001";
+        let code = "console.log('Message Code');";
+        manager
+            .add_tool_playground_message(message_id, &shinkai_tool.tool_router_key(), code)
+            .unwrap();
+
+        // Verify the message was added
+        let conn = manager.get_connection().unwrap();
+        let retrieved_code: String = conn
+            .query_row(
+                "SELECT code FROM tool_playground_messages WHERE message_id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(retrieved_code, code);
+
+        // Remove the ToolPlayground and its messages
+        manager.remove_tool_playground(&shinkai_tool.tool_router_key()).unwrap();
+
+        // Verify the ToolPlayground is removed
+        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key());
+        assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
+
+        // Verify the message is removed
+        let message_result: Result<String, _> = conn.query_row(
+            "SELECT code FROM tool_playground_messages WHERE message_id = ?1",
+            params![message_id],
+            |row| row.get(0),
+        );
+
+        assert!(matches!(message_result, Err(rusqlite::Error::QueryReturnedNoRows)));
     }
 }

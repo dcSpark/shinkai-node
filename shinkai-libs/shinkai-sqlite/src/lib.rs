@@ -101,6 +101,7 @@ impl SqliteManager {
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
+        Self::initialize_tool_playground_messages_table(conn)?;
         Ok(())
     }
 
@@ -196,6 +197,20 @@ impl SqliteManager {
                 job_id_history TEXT, -- Store as a comma-separated list
                 code TEXT NOT NULL,
                 FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // New method to initialize the tool_playground_messages table
+    fn initialize_tool_playground_messages_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_playground_messages (
+                message_id TEXT PRIMARY KEY,
+                tool_router_key TEXT NOT NULL,
+                code TEXT NOT NULL,
+                FOREIGN KEY(tool_router_key) REFERENCES tool_playground(tool_router_key)
             );",
             [],
         )?;
