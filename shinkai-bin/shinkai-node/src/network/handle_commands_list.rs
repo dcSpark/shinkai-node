@@ -2958,9 +2958,6 @@ impl Node {
                     let _ = Node::generate_tool_implementation(
                         bearer,
                         language,
-                        code,
-                        metadata,
-                        output,
                         prompt,
                         sqlite_manager_clone,
                         db_clone,

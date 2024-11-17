@@ -143,12 +143,13 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
     }
 }
 
-pub async fn generate_tool_fetch_query(
-    language: CodeLanguage,
-    tool_definitions: String,
-) -> Result<String, APIError> {
-    Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
-}
+// TODO: move to commands_tools as an endpoint implementation
+// pub async fn generate_tool_fetch_query(
+//     language: CodeLanguage,
+//     tool_definitions: String,
+// ) -> Result<String, APIError> {
+//     Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
+// }
 
 pub async fn tool_implementation(
     bearer: String,
@@ -173,6 +174,10 @@ pub async fn tool_implementation(
         false => generate_code_prompt(language, prompt, tool_definitions).await?,
     };
 
+    // TODO: check if job already exists
+    // TODO: we need to accept an optional job_id in the request
+    // TODO: we also need to be able to move between messages
+    // TODO: we need to save the current state of the code for each message
     let job_id = v2_create_and_send_job_message(
         bearer,
         job_creation_info,
