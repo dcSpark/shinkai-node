@@ -7,7 +7,6 @@ use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -16,8 +15,6 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::managers::IdentityManager;
 use crate::{llm_provider::job_manager::JobManager, network::Node};
-
-use super::tool_definitions::definition_generation::generate_tool_definitions;
 
 pub async fn v2_create_and_send_job_message(
     bearer: String,
@@ -55,6 +52,36 @@ pub async fn v2_create_and_send_job_message(
         .await
         .map_err(|e| Node::generic_api_error(&e.to_string()))??;
 
+    // Use the new function to send the message
+    v2_send_job_message_for_existing_job(
+        bearer,
+        job_id.clone(),
+        content,
+        db_clone,
+        node_name_clone,
+        identity_manager_clone,
+        job_manager_clone,
+        encryption_secret_key_clone,
+        encryption_public_key_clone,
+        signing_secret_key_clone,
+    )
+    .await?;
+
+    Ok(job_id)
+}
+
+pub async fn v2_send_job_message_for_existing_job(
+    bearer: String,
+    job_id: String,
+    content: String,
+    db_clone: Arc<ShinkaiDB>,
+    node_name_clone: ShinkaiName,
+    identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    job_manager_clone: Arc<Mutex<JobManager>>,
+    encryption_secret_key_clone: EncryptionStaticKey,
+    encryption_public_key_clone: EncryptionPublicKey,
+    signing_secret_key_clone: SigningKey,
+) -> Result<(), APIError> {
     // Send message
     let job_message = JobMessage {
         job_id: job_id.clone(),
@@ -88,10 +115,10 @@ pub async fn v2_create_and_send_job_message(
         .recv()
         .await
         .map_err(|e| Node::generic_api_error(&e.to_string()))??;
-    Ok(job_id)
+    Ok(())
 }
 
-async fn generate_code_prompt(
+pub async fn generate_code_prompt(
     language: CodeLanguage,
     prompt: String,
     tool_definitions: String,
@@ -150,57 +177,6 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 // ) -> Result<String, APIError> {
 //     Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
 // }
-
-pub async fn tool_implementation(
-    bearer: String,
-    job_id: Option<String>,
-    language: CodeLanguage,
-    prompt: String,
-    db_clone: Arc<ShinkaiDB>,
-    job_creation_info: JobCreationInfo,
-    llm_provider: String,
-    raw: bool,
-    sqlite_manager: Arc<SqliteManager>,
-    node_name_clone: ShinkaiName,
-    identity_manager_clone: Arc<Mutex<IdentityManager>>,
-    encryption_secret_key_clone: EncryptionStaticKey,
-    encryption_public_key_clone: EncryptionPublicKey,
-    signing_secret_key_clone: SigningKey,
-    job_manager_clone: Arc<Mutex<JobManager>>,
-) -> Result<Value, APIError> {
-    let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
-
-    let generate_code_prompt = match raw {
-        true => prompt,
-        false => generate_code_prompt(language, prompt, tool_definitions).await?,
-    };
-
-    if let Some(job_id) = job_id {
-        // TODO: check if job already exists
-        // TODO: we need to accept an optional job_id in the request
-
-        // TODO: we also need to be able to move between messages
-        // TODO: we need to save the current state of the code for each message
-        Ok(json!({}))
-    } else {
-        let job_id = v2_create_and_send_job_message(
-            bearer,
-            job_creation_info,
-            llm_provider,
-            generate_code_prompt,
-            db_clone,
-            node_name_clone,
-            identity_manager_clone,
-            job_manager_clone,
-            encryption_secret_key_clone,
-            encryption_public_key_clone,
-            signing_secret_key_clone,
-        )
-        .await?;
-
-        Ok(json!({ "job_id": job_id }))
-    }
-}
 
 pub async fn tool_metadata_implementation(
     bearer: String,

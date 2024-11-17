@@ -5,14 +5,14 @@ use crate::{
     tools::{
         tool_definitions::definition_generation::generate_tool_definitions,
         tool_execution::execution_coordinator::{execute_code, execute_tool},
-        tool_generation::{tool_implementation, tool_metadata_implementation},
+        tool_generation::{generate_code_prompt, tool_metadata_implementation, v2_create_and_send_job_message, v2_send_job_message_for_existing_job},
     },
 };
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
-use shinkai_db::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName,
@@ -20,7 +20,9 @@ use shinkai_message_primitives::schemas::{
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_sqlite::{SqliteManager, SqliteManagerError};
-use shinkai_tools_primitives::tools::{argument::ToolOutputArg, deno_tools::DenoTool, tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
+use shinkai_tools_primitives::tools::{
+    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_playground::ToolPlayground,
+};
 use std::{sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 
@@ -666,34 +668,117 @@ impl Node {
         {
             return Ok(());
         }
-        // Generate the implementation
-        let implementation = tool_implementation(
-            bearer,
-            job_id,
-            language,
-            prompt,
-            db_clone,
-            job_creation_info,
-            llm_provider,
-            raw,
-            sqlite_manager,
-            node_name_clone,
-            identity_manager_clone,
-            encryption_secret_key_clone,
-            encryption_public_key_clone,
-            signing_secret_key_clone,
-            job_manager_clone,
-        )
-        .await;
 
-        match implementation {
-            Ok(implementation_) => {
-                let _ = res.send(Ok(implementation_)).await;
+        // Generate tool definitions
+        let tool_definitions = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await {
+            Ok(definitions) => definitions,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
             }
-            Err(e) => {
-                let _ = res.send(Err(e)).await;
+        };
+
+        // Determine the code generation prompt
+        let generate_code_prompt = match raw {
+            true => prompt,
+            false => match generate_code_prompt(language, prompt, tool_definitions).await {
+                Ok(prompt) => prompt,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate code prompt: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+        };
+
+        // Handle job creation or retrieval
+        if let Some(job_id) = job_id {
+            match db_clone.get_job_with_options(&job_id, false, false) {
+                Ok(_) => {}
+                Err(_) => {
+                    let api_error = APIError {
+                        code: StatusCode::NOT_FOUND.as_u16(),
+                        error: "Not Found".to_string(),
+                        message: format!("Job with ID {} not found", job_id),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
             }
-        }
+
+            // TODO: missing to extend to take extra content as a parameter
+            // TODO: missing to save the current state of the code for each message
+            // TODO: missing to be able to move between messages (:?)
+            
+            match v2_send_job_message_for_existing_job(
+                bearer,
+                job_id,
+                generate_code_prompt,
+                db_clone,
+                node_name_clone,
+                identity_manager_clone,
+                job_manager_clone,
+                encryption_secret_key_clone,
+                encryption_public_key_clone,
+                signing_secret_key_clone,
+            )
+            .await {
+                Ok(_) => {
+                    let response = json!({});
+                    let _ = res.send(Ok(response)).await;
+                    return Ok(());
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to send job message: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        } else {
+            match v2_create_and_send_job_message(
+                bearer,
+                job_creation_info,
+                llm_provider,
+                generate_code_prompt,
+                db_clone,
+                node_name_clone,
+                identity_manager_clone,
+                job_manager_clone,
+                encryption_secret_key_clone,
+                encryption_public_key_clone,
+                signing_secret_key_clone,
+            )
+            .await
+            {
+                Ok(job_id) => {
+                    let response = json!({ "job_id": job_id });
+                    let _ = res.send(Ok(response)).await;
+                    return Ok(());
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create and send job message: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
 
         Ok(())
     }
