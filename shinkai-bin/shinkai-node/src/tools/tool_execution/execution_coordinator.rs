@@ -1,14 +1,17 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
+use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::execute_deno_tool;
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use serde_json::json;
 use serde_json::{Map, Value};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::Mutex;
 
 use crate::managers::IdentityManager;
@@ -19,6 +22,8 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 pub async fn execute_tool(
+    bearer: String,
+    node_name: ShinkaiName,
     db: Arc<ShinkaiDB>,
     sqlite_manager: Arc<SqliteManager>,
     tool_router_key: String,
@@ -37,43 +42,30 @@ pub async fn execute_tool(
         .get_tool_by_key(&tool_router_key)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
-    Ok(json!({}))
-
-    // TODO: fix this
-    // // Match the tool type and execute the appropriate function
-    // match tool {
-    //     ShinkaiTool::Deno(_, _) => {
-    //         execute_built_in_tool(
-    //             "Deno",
-    //             tool_router_key,
-    //             parameters,
-    //             extra_config,
-    //             db,
-    //             sqlite_manager,
-    //             identity_manager,
-    //             job_manager,
-    //             encryption_secret_key,
-    //             encryption_public_key,
-    //             signing_secret_key,
-    //         )
-    //         .await
-    //     }
-    //     ShinkaiTool::Internal(_, _) => {
-    //         execute_custom_tool(
-    //             &tool_router_key,
-    //             parameters,
-    //             extra_config,
-    //             db,
-    //             identity_manager,
-    //             job_manager,
-    //             encryption_secret_key,
-    //             encryption_public_key,
-    //             signing_secret_key,
-    //         )
-    //         .await
-    //     }
-    //     _ => Err(ToolError::ExecutionError(format!("Unsupported tool type: {:?}", tool))),
-    // }
+    // Match the tool type and execute the appropriate function
+    match tool {
+        ShinkaiTool::Deno(deno_tool, _) => deno_tool
+            .run(parameters, extra_config)
+            .map(|result| json!(result))
+            .map_err(|e| ToolError::ExecutionError(e.to_string())),
+        ShinkaiTool::Rust(_, _) => {
+            execute_custom_tool(
+                &tool_router_key,
+                parameters,
+                extra_config,
+                bearer,
+                db,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+            )
+            .await
+        }
+        _ => Err(ToolError::ExecutionError(format!("Unsupported tool type: {:?}", tool))),
+    }
 }
 
 pub async fn execute_code(

@@ -21,6 +21,10 @@ use crate::{llm_provider::job_manager::JobManager, network::Node};
 
 use tokio::time::{sleep, Duration};
 
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
+
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
@@ -36,7 +40,8 @@ pub async fn execute_custom_tool(
 ) -> Result<Value, ToolError> {
     match tool_router_key {
         // TODO this can be fetched from the tool definition
-        s if s == "local:::shinkai_custom:::llm_prompt_processor" => {
+        s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => execute_sqlite_query(&parameters),
+        s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
             execute_llm(
                 bearer,
                 db,
@@ -50,6 +55,7 @@ pub async fn execute_custom_tool(
             )
             .await
         }
+        s if s == "local:::shinkai_custom:::sqlite_executor" => execute_sqlite_query(&parameters),
         _ => Ok(json!({})), // Not a custom tool
     }
 }
@@ -132,38 +138,40 @@ async fn execute_llm(
     Ok(json!({ "message": x.last().unwrap().last().unwrap().job_message.content.clone() }))
 }
 
-fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
-    // Extract parameters
-    let operation = parameters
-        .get("operation")
+fn execute_sqlite_query(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
+    let query = parameters
+        .get("query")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::SerializationError("Missing operation parameter".to_string()))?;
+        .ok_or_else(|| ToolError::ExecutionError("Query parameter is required".to_string()))?;
 
-    let x = parameters
-        .get("x")
-        .and_then(|v| v.as_f64())
-        .ok_or_else(|| ToolError::SerializationError("Missing or invalid x parameter".to_string()))?;
+    let relative_path = parameters
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolError::ExecutionError("Path parameter is required".to_string()))?;
 
-    let y = parameters
-        .get("y")
-        .and_then(|v| v.as_f64())
-        .ok_or_else(|| ToolError::SerializationError("Missing or invalid y parameter".to_string()))?;
+    // Create full path in temporary directory
+    let temp_dir = std::env::temp_dir();
+    let full_path = temp_dir.join(relative_path);
 
-    // Perform calculation
-    let result = match operation {
-        "add" => x + y,
-        "subtract" => x - y,
-        "multiply" => x * y,
-        "divide" => {
-            if y == 0.0 {
-                return Err(ToolError::ExecutionError("Division by zero".to_string()));
-            }
-            x / y
-        }
-        _ => return Err(ToolError::ExecutionError("Invalid operation".to_string())),
-    };
+    // Ensure parent directory exists
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
+    }
 
-    Ok(json!({
-        "result": result
-    }))
+    let manager = SqliteConnectionManager::file(full_path);
+    let pool = Pool::new(manager)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to create connection pool: {}", e)))?;
+
+    let conn = pool
+        .get()
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get connection: {}", e)))?;
+
+    // Execute the query
+    match conn.execute(query, params![]) {
+        Ok(rows_affected) => Ok(json!({
+            "result": format!("Query executed successfully. Rows affected: {}", rows_affected)
+        })),
+        Err(e) => Err(ToolError::ExecutionError(format!("Query execution failed: {}", e))),
+    }
 }

@@ -4,11 +4,10 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
+use crate::tools::tool_definitions::definitions_custom::get_custom_tools;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
-use shinkai_sqlite::files::prompts_data;
-use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
@@ -17,12 +16,15 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::error::ToolError;
+use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -62,12 +64,14 @@ impl ToolRouter {
         if is_empty {
             // Add JS tools
             let _ = self.add_js_tools().await;
+            let _ = self.add_rust_tools().await;
 
             // Add static prompts
             let _ = self.add_static_prompts(&generator).await;
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_js_tools().await;
+            let _ = self.add_rust_tools().await;
         }
 
         Ok(())
@@ -76,6 +80,7 @@ impl ToolRouter {
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Add JS tools
         let _ = self.add_js_tools().await;
+        let _ = self.add_rust_tools().await;
         let _ = self.add_static_prompts(generator).await;
 
         Ok(())
@@ -99,8 +104,7 @@ impl ToolRouter {
         };
 
         // Parse the JSON string into a Vec<Value>
-        let json_array: Vec<Value> = serde_json::from_str(prompts_data)
-            .expect("Failed to parse prompts JSON data");
+        let json_array: Vec<Value> = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
 
         println!("Number of static prompts to add: {}", json_array.len());
 
@@ -122,6 +126,18 @@ impl ToolRouter {
             .await
             .map(|_| ())
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
+    }
+
+    async fn add_rust_tools(&self) -> Result<(), ToolError> {
+        let rust_tools = get_custom_tools();
+        for tool in rust_tools {
+            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, None);
+            self.sqlite_manager
+                .add_tool(ShinkaiTool::Rust(rust_tool, true))
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        }
+        Ok(())
     }
 
     async fn add_js_tools(&self) -> Result<(), ToolError> {
@@ -379,12 +395,6 @@ impl ToolRouter {
 
         match shinkai_tool {
             ShinkaiTool::Python(_, _) => {
-                return Ok(ToolCallFunctionResponse {
-                    response: "Deno!".to_string(),
-                    function_call,
-                });
-            }
-            ShinkaiTool::Internal(_, _) => {
                 return Ok(ToolCallFunctionResponse {
                     response: "Deno!".to_string(),
                     function_call,

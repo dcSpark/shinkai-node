@@ -2877,6 +2877,7 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.clone();
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let job_manager = self.job_manager.clone().unwrap();
                 let identity_manager = self.identity_manager.clone();
@@ -2887,6 +2888,7 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::execute_tool(
                         bearer,
+                        node_name,
                         db_clone,
                         sqlite_manager_clone,
                         tool_router_key,
@@ -2912,16 +2914,9 @@ impl Node {
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::execute_code(
-                        bearer,
-                        db_clone,
-                        tool_type,
-                        code,
-                        parameters,
-                        sqlite_manager_clone,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::execute_code(bearer, db_clone, tool_type, code, parameters, sqlite_manager_clone, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolDefinitions { bearer, language, res } => {
