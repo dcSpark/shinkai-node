@@ -19,8 +19,8 @@ use shinkai_message_primitives::schemas::{
     shinkai_tools::{CodeLanguage, DynamicToolType},
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
-use shinkai_tools_primitives::tools::{argument::ToolOutputArg, deno_tools::DenoTool, playground_tool::PlaygroundTool, shinkai_tool::ShinkaiTool};
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
+use shinkai_tools_primitives::tools::{argument::ToolOutputArg, deno_tools::DenoTool, tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
 use std::{sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 
@@ -290,7 +290,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         sqlite_manager: Arc<SqliteManager>,
         bearer: String,
-        payload: PlaygroundTool,
+        payload: ToolPlayground,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -343,12 +343,12 @@ impl Node {
 
         // Function to handle saving metadata and sending response
         async fn save_metadata_and_respond(
-            db: &ShinkaiDB,
+            sqlite_manager: &SqliteManager,
             res: &Sender<Result<Value, APIError>>,
-            updated_payload: PlaygroundTool,
+            updated_payload: ToolPlayground,
             tool: ShinkaiTool,
         ) -> Result<(), NodeError> {
-            if let Err(err) = db.save_playground_tool(updated_payload.clone()) {
+            if let Err(err) = sqlite_manager.set_tool_playground(&updated_payload) {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
@@ -381,11 +381,11 @@ impl Node {
 
         // Save the tool to the LanceShinkaiDb
         match sqlite_manager.add_tool(shinkai_tool.clone()).await {
-            Ok(tool) => save_metadata_and_respond(&db, &res, updated_payload, tool).await,
+            Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
             Err(SqliteManagerError::ToolAlreadyExists(_)) => {
                 // Tool already exists, update it instead
                 match sqlite_manager.update_tool(shinkai_tool).await {
-                    Ok(tool) => save_metadata_and_respond(&db, &res, updated_payload, tool).await,
+                    Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
                     Err(err) => {
                         let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -411,6 +411,7 @@ impl Node {
 
     pub async fn v2_api_list_playground_tools(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -420,7 +421,7 @@ impl Node {
         }
 
         // List all playground tools
-        match db.list_all_playground_tools() {
+        match sqlite_manager.get_all_tool_playground() {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -450,8 +451,8 @@ impl Node {
             return Ok(());
         }
 
-        // Remove the playground tool from the database
-        match db.remove_playground_tool(&tool_key) {
+        // Remove the playground tool from the SqliteManager
+        match sqlite_manager.remove_tool_playground(&tool_key) {
             Ok(_) => {
                 // Also remove the underlying tool from the SqliteManager
                 match sqlite_manager.remove_tool(&tool_key) {
@@ -486,6 +487,7 @@ impl Node {
 
     pub async fn v2_api_get_playground_tool(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         tool_key: String,
         res: Sender<Result<Value, APIError>>,
@@ -496,13 +498,13 @@ impl Node {
         }
 
         // Get the playground tool
-        match db.get_playground_tool(&tool_key) {
+        match sqlite_manager.get_tool_playground(&tool_key) {
             Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
-            Err(ShinkaiDBError::ToolNotFound(_)) => {
+            Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => {
                 let api_error = APIError {
                     code: StatusCode::NOT_FOUND.as_u16(),
                     error: "Not Found".to_string(),
@@ -642,6 +644,7 @@ impl Node {
 
     pub async fn generate_tool_implementation(
         bearer: String,
+        job_id: Option<String>,
         language: CodeLanguage,
         prompt: String,
         sqlite_manager: Arc<SqliteManager>,
@@ -666,6 +669,7 @@ impl Node {
         // Generate the implementation
         let implementation = tool_implementation(
             bearer,
+            job_id,
             language,
             prompt,
             db_clone,

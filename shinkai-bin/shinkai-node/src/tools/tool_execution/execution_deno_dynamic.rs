@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
+use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 pub fn execute_deno_tool(
@@ -24,7 +24,7 @@ pub fn execute_deno_tool(
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        result: JSToolResult::new("object".to_string(), Value::Null, vec![]),
+        result: DenoToolResult::new("object".to_string(), Value::Null, vec![]),
     };
 
     // Run the tool and convert the RunResult to Value

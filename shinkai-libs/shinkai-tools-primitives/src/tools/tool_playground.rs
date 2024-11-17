@@ -1,17 +1,18 @@
-use super::{argument::ToolArgument, deno_tools::JSToolResult, tool_config::{BasicConfig, ToolConfig}};
+use super::{argument::ToolArgument, deno_tools::DenoToolResult, tool_config::{BasicConfig, ToolConfig}};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlaygroundTool {
-    pub metadata: PlaygroundToolMetadata,
+pub struct ToolPlayground {
+    pub metadata: ToolPlaygroundMetadata,
     pub tool_router_key: Option<String>,
     pub job_id: String,
+    pub job_id_history: Vec<String>,
     pub code: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlaygroundToolMetadata {
+pub struct ToolPlaygroundMetadata {
     pub name: String,
     pub description: String,
     pub author: String,
@@ -20,7 +21,7 @@ pub struct PlaygroundToolMetadata {
     pub configurations: Vec<ToolConfig>,
     #[serde(deserialize_with = "deserialize_parameters")]
     pub parameters: Vec<ToolArgument>,
-    pub result: JSToolResult,
+    pub result: DenoToolResult,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>
@@ -142,7 +143,7 @@ mod tests {
         }
         "#;
 
-        let deserialized: PlaygroundTool = serde_json::from_str(json_data).expect("Failed to deserialize");
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
         
         assert_eq!(deserialized.metadata.name, "Example Tool");
         assert_eq!(deserialized.tool_router_key, Some("example_key".to_string()));
@@ -215,7 +216,7 @@ mod tests {
         }
         "#;
 
-        let deserialized: PlaygroundTool = serde_json::from_str(json_data).expect("Failed to deserialize");
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
 
         assert_eq!(deserialized.metadata.name, "Shinkai: Coinbase Wallet Creator");
         assert_eq!(deserialized.metadata.description, "Tool for creating a Coinbase wallet");

@@ -2930,6 +2930,7 @@ impl Node {
             }
             NodeCommand::V2ApiGenerateToolImplementation {
                 bearer,
+                job_id,
                 language,
                 code,
                 metadata,
@@ -2952,6 +2953,7 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::generate_tool_implementation(
                         bearer,
+                        job_id,
                         language,
                         prompt,
                         sqlite_manager_clone,
@@ -3042,8 +3044,9 @@ impl Node {
             }
             NodeCommand::V2ApiListPlaygroundTools { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_playground_tools(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_list_playground_tools(db_clone, sqlite_manager_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiRemovePlaygroundTool { bearer, tool_key, res } => {
@@ -3056,8 +3059,10 @@ impl Node {
             }
             NodeCommand::V2ApiGetPlaygroundTool { bearer, tool_key, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_playground_tool(db_clone, bearer, tool_key, res).await;
+                    let _ = Node::v2_api_get_playground_tool(db_clone, sqlite_manager_clone, bearer, tool_key, res)
+                        .await;
                 });
             }
             _ => (),

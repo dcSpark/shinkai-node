@@ -1,23 +1,7 @@
-use crate::SqliteManager;
+use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
 use rusqlite::{params, Result};
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum SqliteManagerError {
-    #[error("Tool already exists with key: {0}")]
-    ToolAlreadyExists(String),
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] rusqlite::Error),
-    #[error("Embedding generation error: {0}")]
-    EmbeddingGenerationError(String),
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-    #[error("Tool not found with key: {0}")]
-    ToolNotFound(String),
-    // Add other error variants as needed
-}
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -25,11 +9,9 @@ impl SqliteManager {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
             Some(embedding) => {
-                println!("Using existing embedding");
                 embedding.vector
             }
             None => {
-                println!("Generating new embedding");
                 self.generate_embeddings(&tool.format_embedding_string()).await?
             }
         };
@@ -42,14 +24,12 @@ impl SqliteManager {
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
-        println!("Starting add_tool with tool: {:?}", tool);
 
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
         // Check if the tool already exists
         let tool_key = tool.tool_router_key().to_lowercase();
-        println!("Checking if tool exists with key: {}", tool_key);
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
             params![tool_key],
@@ -64,7 +44,6 @@ impl SqliteManager {
         let tool_seos = tool.format_embedding_string();
         let tool_type = tool.tool_type().to_string();
         let tool_header = serde_json::to_vec(&tool.to_header()).unwrap();
-        println!("Tool type: {}, SEO: {}", tool_type, tool_seos);
 
         // Clone the tool to make it mutable
         let mut tool_clone = tool.clone();
@@ -72,12 +51,11 @@ impl SqliteManager {
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
         if tool_clone.is_enabled() && !tool_clone.can_be_enabled() {
-            println!("Tool cannot be enabled, disabling");
             tool_clone.disable();
         }
 
         let tool_data = serde_json::to_vec(&tool_clone).map_err(|e| {
-            println!("Serialization error: {}", e);
+            eprintln!("Serialization error: {}", e);
             SqliteManagerError::SerializationError(e.to_string())
         })?;
 
@@ -90,7 +68,6 @@ impl SqliteManager {
             _ => (None, false),
         };
 
-        println!("Inserting tool into database");
         // Insert the tool into the database
         tx.execute(
             "INSERT INTO shinkai_tools (
@@ -124,14 +101,12 @@ impl SqliteManager {
         )?;
 
         // Insert the embedding into the shinkai_tools_vec_items table
-        println!("Inserting embedding into shinkai_tools_vec_items");
         tx.execute(
             "INSERT INTO shinkai_tools_vec_items (embedding) VALUES (?1)",
             params![cast_slice(&embedding)],
         )?;
 
         tx.commit()?;
-        println!("Tool and embedding added successfully");
         Ok(tool_clone)
     }
 
@@ -165,7 +140,7 @@ impl SqliteManager {
 
             // Deserialize the tool_header_data to get the ShinkaiToolHeader
             let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
-                println!("Deserialization error: {}", e);
+                eprintln!("Deserialization error: {}", e);
                 SqliteManagerError::SerializationError(e.to_string())
             })?;
 
@@ -187,7 +162,7 @@ impl SqliteManager {
 
         // Generate the embedding from the query string
         let embedding = self.generate_embeddings(query).await.map_err(|e| {
-            println!("Embedding generation error: {}", e);
+            eprintln!("Embedding generation error: {}", e);
             SqliteManagerError::EmbeddingGenerationError(e.to_string())
         })?;
 
@@ -204,16 +179,16 @@ impl SqliteManager {
             .query_row(params![tool_key.to_lowercase()], |row| row.get(0))
             .map_err(|e| {
                 if e == rusqlite::Error::QueryReturnedNoRows {
-                    println!("Tool not found with key: {}", tool_key);
+                    eprintln!("Tool not found with key: {}", tool_key);
                     SqliteManagerError::ToolNotFound(tool_key.to_string())
                 } else {
-                    println!("Database error: {}", e);
+                    eprintln!("Database error: {}", e);
                     SqliteManagerError::DatabaseError(e)
                 }
             })?;
 
         let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
-            println!("Deserialization error: {}", e);
+            eprintln!("Deserialization error: {}", e);
             SqliteManagerError::SerializationError(e.to_string())
         })?;
 
@@ -229,17 +204,17 @@ impl SqliteManager {
             .query_row(params![tool_key.to_lowercase()], |row| row.get(0))
             .map_err(|e| {
                 if e == rusqlite::Error::QueryReturnedNoRows {
-                    println!("Tool not found with key: {}", tool_key);
+                    eprintln!("Tool not found with key: {}", tool_key);
                     SqliteManagerError::ToolNotFound(tool_key.to_string())
                 } else {
-                    println!("Database error: {}", e);
+                    eprintln!("Database error: {}", e);
                     SqliteManagerError::DatabaseError(e)
                 }
             })?;
 
         // Deserialize the tool_data to get the ShinkaiTool
         let tool: ShinkaiTool = serde_json::from_slice(&tool_data).map_err(|e| {
-            println!("Deserialization error: {}", e);
+            eprintln!("Deserialization error: {}", e);
             SqliteManagerError::SerializationError(e.to_string())
         })?;
 
@@ -252,8 +227,6 @@ impl SqliteManager {
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
-        println!("Starting update_tool with tool: {:?}", tool);
-
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -266,13 +239,13 @@ impl SqliteManager {
                 |row| row.get(0),
             )
             .map_err(|e| {
-                println!("Tool not found with key: {}", tool_key);
+                eprintln!("Tool not found with key: {}", tool_key);
                 SqliteManagerError::DatabaseError(e)
             })?;
 
         // Serialize the updated tool data
         let tool_data = serde_json::to_vec(&tool).map_err(|e| {
-            println!("Serialization error: {}", e);
+            eprintln!("Serialization error: {}", e);
             SqliteManagerError::SerializationError(e.to_string())
         })?;
 
@@ -282,7 +255,7 @@ impl SqliteManager {
         // Determine if the tool can be enabled
         let is_enabled = tool.is_enabled() && tool.can_be_enabled();
         if tool.is_enabled() && !tool.can_be_enabled() {
-            println!("Tool cannot be enabled, disabling");
+            eprintln!("Tool cannot be enabled, disabling");
         }
 
         // Extract on_demand_price and is_network
@@ -295,7 +268,6 @@ impl SqliteManager {
         };
 
         // Update the tool in the database
-        println!("Updating tool in database");
         tx.execute(
             "UPDATE shinkai_tools SET 
                 name = ?1,
@@ -329,14 +301,12 @@ impl SqliteManager {
         )?;
 
         // Update the embedding in the shinkai_tools_vec_items table
-        println!("Updating embedding in shinkai_tools_vec_items");
         tx.execute(
             "UPDATE shinkai_tools_vec_items SET embedding = ?1 WHERE rowid = ?2",
             params![cast_slice(&embedding), rowid],
         )?;
 
         tx.commit()?;
-        println!("Tool and embedding updated successfully");
         Ok(tool)
     }
 
@@ -345,11 +315,9 @@ impl SqliteManager {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
             Some(embedding) => {
-                println!("Using existing embedding");
                 embedding.vector
             }
             None => {
-                println!("Generating new embedding");
                 self.generate_embeddings(&tool.format_embedding_string()).await?
             }
         };
@@ -365,7 +333,7 @@ impl SqliteManager {
         let header_iter = stmt.query_map([], |row| {
             let tool_header_data: Vec<u8> = row.get(0)?;
             serde_json::from_slice(&tool_header_data).map_err(|e| {
-                println!("Deserialization error: {}", e);
+                eprintln!("Deserialization error: {}", e);
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })
         })?;
@@ -373,7 +341,7 @@ impl SqliteManager {
         let mut headers = Vec::new();
         for header in header_iter {
             headers.push(header.map_err(|e| {
-                println!("Database error: {}", e);
+                eprintln!("Database error: {}", e);
                 SqliteManagerError::DatabaseError(e)
             })?);
         }
@@ -383,8 +351,6 @@ impl SqliteManager {
 
     /// Removes a ShinkaiTool entry from the shinkai_tools table
     pub fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
-        println!("Starting remove_tool with key: {}", tool_key);
-
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -396,26 +362,23 @@ impl SqliteManager {
                 |row| row.get(0),
             )
             .map_err(|e| {
-                println!("Tool not found with key: {}", tool_key);
+                eprintln!("Tool not found with key: {}", tool_key);
                 SqliteManagerError::DatabaseError(e)
             })?;
 
         // Delete the tool from the shinkai_tools table
-        println!("Deleting tool from shinkai_tools");
         tx.execute(
             "DELETE FROM shinkai_tools WHERE rowid = ?1",
             params![rowid],
         )?;
 
         // Delete the embedding from the shinkai_tools_vec_items table
-        println!("Deleting embedding from shinkai_tools_vec_items");
         tx.execute(
             "DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1",
             params![rowid],
         )?;
 
         tx.commit()?;
-        println!("Tool and embedding removed successfully");
         Ok(())
     }
 
@@ -427,7 +390,7 @@ impl SqliteManager {
             [],
             |row| row.get(0),
         ).map_err(|e| {
-            println!("Database error: {}", e);
+            eprintln!("Database error: {}", e);
             SqliteManagerError::DatabaseError(e)
         })?;
 
@@ -442,7 +405,7 @@ impl SqliteManager {
             params![tool_key.to_lowercase()],
             |row| row.get(0),
         ).map_err(|e| {
-            println!("Database error: {}", e);
+            eprintln!("Database error: {}", e);
             SqliteManagerError::DatabaseError(e)
         })?;
 
@@ -457,7 +420,7 @@ impl SqliteManager {
             [],
             |row| row.get(0),
         ).map_err(|e| {
-            println!("Database error: {}", e);
+            eprintln!("Database error: {}", e);
             SqliteManagerError::DatabaseError(e)
         })?;
 
@@ -470,7 +433,7 @@ mod tests {
     use super::*;
     use shinkai_tools_primitives::tools::argument::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-    use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
+    use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -484,11 +447,6 @@ mod tests {
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
-    }
-
-    // Utility function to generate a vector of length 384 filled with a specified value
-    fn generate_vector(value: f32) -> Vec<f32> {
-        vec![value; 384]
     }
 
     #[tokio::test]
@@ -508,7 +466,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -517,7 +475,7 @@ mod tests {
         // Debug: Print the tool before adding
         println!("Testing add_tool with: {:?}", shinkai_tool);
 
-        let vector = generate_vector(0.1);
+        let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
         let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
@@ -565,16 +523,16 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
-        let vector = generate_vector(0.1);
+        let vector = SqliteManager::generate_vector_for_testing(0.1);
         manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Generate an embedding vector for the query
-        let embedding_query = generate_vector(0.09);
+        let embedding_query = SqliteManager::generate_vector_for_testing(0.09);
 
         // Perform a vector search using the generated embedding
         let num_results = 1;
@@ -603,7 +561,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
         };
 
@@ -618,7 +576,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
         };
 
@@ -633,7 +591,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
         };
 
@@ -644,13 +602,13 @@ mod tests {
 
         // Add the tools to the database
         manager
-            .add_tool_with_vector(shinkai_tool_1.clone(), generate_vector(0.1))
+            .add_tool_with_vector(shinkai_tool_1.clone(), SqliteManager::generate_vector_for_testing(0.1))
             .unwrap();
         manager
-            .add_tool_with_vector(shinkai_tool_2.clone(), generate_vector(0.2))
+            .add_tool_with_vector(shinkai_tool_2.clone(), SqliteManager::generate_vector_for_testing(0.2))
             .unwrap();
         manager
-            .add_tool_with_vector(shinkai_tool_3.clone(), generate_vector(0.3))
+            .add_tool_with_vector(shinkai_tool_3.clone(), SqliteManager::generate_vector_for_testing(0.3))
             .unwrap();
 
         // Print out the name and key for each tool in the database
@@ -663,7 +621,7 @@ mod tests {
         let mut updated_tool_2 = shinkai_tool_2.clone();
         if let ShinkaiTool::Deno(ref mut deno_tool, _) = updated_tool_2 {
             deno_tool.description = "Updated second Deno tool".to_string();
-            deno_tool.embedding = Some(Embedding::new("test", generate_vector(0.21)));
+            deno_tool.embedding = Some(Embedding::new("test", SqliteManager::generate_vector_for_testing(0.21)));
         }
         eprintln!("Updating tool: {:?}", updated_tool_2);
 
@@ -687,7 +645,7 @@ mod tests {
         let db_vector: &[f32] = cast_slice(&embedding_bytes);
 
         // Verify the vector in the shinkai_tools_vec_items table
-        assert_eq!(db_vector, generate_vector(0.21).as_slice());
+        assert_eq!(db_vector, SqliteManager::generate_vector_for_testing(0.21).as_slice());
     }
 
     #[tokio::test]
@@ -707,14 +665,14 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: JSToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
 
         // Add the tool to the database
-        let vector = generate_vector(0.1);
+        let vector = SqliteManager::generate_vector_for_testing(0.1);
         let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone());
         assert!(result.is_ok());
 

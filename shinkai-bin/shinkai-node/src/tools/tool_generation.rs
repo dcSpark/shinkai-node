@@ -153,6 +153,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 
 pub async fn tool_implementation(
     bearer: String,
+    job_id: Option<String>,
     language: CodeLanguage,
     prompt: String,
     db_clone: Arc<ShinkaiDB>,
@@ -174,26 +175,31 @@ pub async fn tool_implementation(
         false => generate_code_prompt(language, prompt, tool_definitions).await?,
     };
 
-    // TODO: check if job already exists
-    // TODO: we need to accept an optional job_id in the request
-    // TODO: we also need to be able to move between messages
-    // TODO: we need to save the current state of the code for each message
-    let job_id = v2_create_and_send_job_message(
-        bearer,
-        job_creation_info,
-        llm_provider,
-        generate_code_prompt,
-        db_clone,
-        node_name_clone,
-        identity_manager_clone,
-        job_manager_clone,
-        encryption_secret_key_clone,
-        encryption_public_key_clone,
-        signing_secret_key_clone,
-    )
-    .await?;
+    if let Some(job_id) = job_id {
+        // TODO: check if job already exists
+        // TODO: we need to accept an optional job_id in the request
 
-    Ok(json!({ "job_id": job_id }))
+        // TODO: we also need to be able to move between messages
+        // TODO: we need to save the current state of the code for each message
+        Ok(json!({}))
+    } else {
+        let job_id = v2_create_and_send_job_message(
+            bearer,
+            job_creation_info,
+            llm_provider,
+            generate_code_prompt,
+            db_clone,
+            node_name_clone,
+            identity_manager_clone,
+            job_manager_clone,
+            encryption_secret_key_clone,
+            encryption_public_key_clone,
+            signing_secret_key_clone,
+        )
+        .await?;
+
+        Ok(json!({ "job_id": job_id }))
+    }
 }
 
 pub async fn tool_metadata_implementation(
