@@ -283,11 +283,6 @@ pub struct ToolMetadata {
 pub struct ToolImplementationRequest {
     pub message: JobMessage,
     pub language: CodeLanguage,
-    pub prompt: String,
-    pub llm_provider: String,
-    pub code: Option<String>,
-    pub metadata: Option<String>,
-    pub output: Option<String>,
     pub raw: Option<bool>,
 }
 
