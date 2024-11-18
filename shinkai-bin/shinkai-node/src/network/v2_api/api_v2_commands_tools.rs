@@ -607,7 +607,15 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_router_key);
-                let _ = res.send(Ok(result)).await;
+                if result.get("data").is_some() {
+                    let _ = res.send(Ok(result)).await;
+                } else {
+                    let _ = res
+                        .send(Ok(json!({
+                            "data": result
+                        })))
+                        .await;
+                }
             }
             Err(e) => {
                 let _ = res
@@ -654,7 +662,15 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_type);
-                let _ = res.send(Ok(result)).await;
+                if result.get("data").is_some() {
+                    let _ = res.send(Ok(result)).await;
+                } else {
+                    let _ = res
+                        .send(Ok(json!({
+                            "data": result
+                        })))
+                        .await;
+                }
             }
             Err(e) => {
                 let _ = res

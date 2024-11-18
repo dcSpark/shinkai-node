@@ -25,7 +25,7 @@ use tokio::time::{sleep, Duration};
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params;
+use rusqlite::params_from_iter;
 
 pub async fn execute_custom_tool(
     tool_router_key: &String,
@@ -142,7 +142,11 @@ async fn execute_llm(
     };
     println!("messages-llm-bot: {} {:?}", x.len(), x);
 
-    Ok(json!({ "message": x.last().unwrap().last().unwrap().job_message.content.clone() }))
+    Ok(json!({
+        "data": {
+            "message": x.last().unwrap().last().unwrap().job_message.content.clone()
+        }
+    }))
 }
 
 fn execute_sqlite_query(
@@ -169,6 +173,16 @@ fn execute_sqlite_query(
         .join(tool_path)
         .join("db.sqlite");
 
+    let query_params = parameters
+        .get("query_params")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|v| v.as_str().unwrap_or_default())
+                .collect::<Vec<&str>>()
+        })
+        .unwrap_or(vec![]);
+
     // Ensure parent directory exists
     if let Some(parent) = full_path.parent() {
         std::fs::create_dir_all(parent)
@@ -192,7 +206,7 @@ fn execute_sqlite_query(
         let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
 
         let rows = stmt
-            .query_map(params![], |row| {
+            .query_map(params_from_iter(query_params.iter()), |row| {
                 let mut map = Map::new();
                 for (i, column_name) in column_names.iter().enumerate() {
                     let value: Value = match row.get_ref(i) {
@@ -218,20 +232,24 @@ fn execute_sqlite_query(
             .map_err(|e| ToolError::ExecutionError(format!("Failed to collect results: {}", e)))?;
 
         Ok(json!({
-            "result": rows,
-            "type": "select",
-            "rowCount": rows.len()
+            "data": {
+                "result": rows,
+                "type": "select",
+                "rowCount": rows.len()
+            }
         }))
     } else {
         // For non-SELECT queries (INSERT, UPDATE, DELETE, etc)
         let rows_affected = stmt
-            .execute(params![])
+            .execute(params_from_iter(query_params.iter()))
             .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?;
 
         Ok(json!({
-            "result": format!("Query executed successfully"),
-            "type": "modify",
-            "rowsAffected": rows_affected
+            "data": {
+                "result": format!("Query executed successfully"),
+                "type": "modify",
+                "rowsAffected": rows_affected
+            }
         }))
     }
 }

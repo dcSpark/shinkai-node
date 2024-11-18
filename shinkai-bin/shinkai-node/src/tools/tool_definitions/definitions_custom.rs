@@ -70,7 +70,13 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
                 "string".to_string(),
                 "The SQL query to execute".to_string(),
                 true,
-            )
+            ),
+            ToolArgument::new(
+                "query_params".to_string(),
+                "any[]".to_string(),
+                "The parameters to bind to the query".to_string(),
+                false,
+            ),
         ],
         output_arg: ToolOutputArg {
             json: r#"{"type": "object", "properties": {"result": {"oneOf": [{"type": "string"},{"type": "array"}]}, "type": {"type": "string"}, "rowCount": {"type": "number"}, "rowsAffected": {"type": "number"}}}"#.to_string(),
