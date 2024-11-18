@@ -35,7 +35,10 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
-use shinkai_tools_primitives::tools::{tool_playground::ToolPlayground, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_playground::ToolPlayground,
+};
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
 //         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
@@ -986,6 +989,8 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         parameters: Map<String, Value>,
+        llm_provider: String,
+        extra_config: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -1006,25 +1011,15 @@ pub enum NodeCommand {
     },
     V2ApiGenerateToolImplementation {
         bearer: String,
-        job_id: Option<String>,
+        message: JobMessage,
         language: CodeLanguage,
-        prompt: String,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
         raw: bool,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     },
     V2ApiGenerateToolMetadataImplementation {
         bearer: String,
+        job_id: String,
         language: CodeLanguage,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {

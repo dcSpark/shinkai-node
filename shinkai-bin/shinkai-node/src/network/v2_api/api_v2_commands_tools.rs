@@ -5,7 +5,7 @@ use crate::{
     tools::{
         tool_definitions::definition_generation::generate_tool_definitions,
         tool_execution::execution_coordinator::{execute_code, execute_tool},
-        tool_generation::{generate_code_prompt, tool_metadata_implementation, v2_create_and_send_job_message, v2_send_job_message_for_existing_job},
+        tool_generation::{generate_code_prompt, tool_metadata_implementation, v2_create_and_send_job_message},
     },
 };
 use async_channel::Sender;
@@ -13,12 +13,19 @@ use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::node_api_router::APIError;
-use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName,
-    shinkai_tools::{CodeLanguage, DynamicToolType},
+use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_message_primitives::{
+    schemas::{inbox_name::InboxName, job::JobLike},
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
+    shinkai_utils::job_scope::JobScope,
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
+use shinkai_message_primitives::{
+    schemas::{
+        shinkai_name::ShinkaiName,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
+};
 use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::{
     argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_playground::ToolPlayground,
@@ -562,6 +569,8 @@ impl Node {
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
         parameters: Map<String, Value>,
+        llm_provider: String,
+        extra_config: Option<String>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -581,7 +590,8 @@ impl Node {
             sqlite_manager,
             tool_router_key.clone(),
             parameters,
-            None,
+            llm_provider,
+            extra_config,
             identity_manager,
             job_manager,
             encryption_secret_key,
@@ -646,29 +656,24 @@ impl Node {
 
     pub async fn generate_tool_implementation(
         bearer: String,
-        job_id: Option<String>,
+        db: Arc<ShinkaiDB>,
+        job_message: JobMessage,
         language: CodeLanguage,
-        prompt: String,
         sqlite_manager: Arc<SqliteManager>,
-        db_clone: Arc<ShinkaiDB>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
         raw: bool,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
-        if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
-            .await
-            .is_err()
-        {
+        // Note: Later (inside v2_job_message), we validate the bearer token again,
+        // we do it here to make sure we have a valid bearer token at this point
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-
         // Generate tool definitions
         let tool_definitions = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await {
             Ok(definitions) => definitions,
@@ -683,7 +688,9 @@ impl Node {
             }
         };
 
-        // Determine the code generation prompt
+        let prompt = job_message.content.clone();
+
+        // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
             false => match generate_code_prompt(language, prompt, tool_definitions).await {
@@ -700,106 +707,38 @@ impl Node {
             },
         };
 
-        // Handle job creation or retrieval
-        if let Some(job_id) = job_id {
-            match db_clone.get_job_with_options(&job_id, false, false) {
-                Ok(_) => {}
-                Err(_) => {
-                    let api_error = APIError {
-                        code: StatusCode::NOT_FOUND.as_u16(),
-                        error: "Not Found".to_string(),
-                        message: format!("Job with ID {} not found", job_id),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
+        // We copy the job message and update the content with the custom prompt
+        let mut job_message_clone = job_message.clone();
+        job_message_clone.content = generate_code_prompt;
 
-            // TODO: missing to extend to take extra content as a parameter
-            // TODO: missing to save the current state of the code for each message
-            // TODO: missing to be able to move between messages (:?)
-            
-            match v2_send_job_message_for_existing_job(
-                bearer,
-                job_id,
-                generate_code_prompt,
-                db_clone,
-                node_name_clone,
-                identity_manager_clone,
-                job_manager_clone,
-                encryption_secret_key_clone,
-                encryption_public_key_clone,
-                signing_secret_key_clone,
-            )
-            .await {
-                Ok(_) => {
-                    let response = json!({});
-                    let _ = res.send(Ok(response)).await;
-                    return Ok(());
-                }
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to send job message: {:?}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        } else {
-            match v2_create_and_send_job_message(
-                bearer,
-                job_creation_info,
-                llm_provider,
-                generate_code_prompt,
-                db_clone,
-                node_name_clone,
-                identity_manager_clone,
-                job_manager_clone,
-                encryption_secret_key_clone,
-                encryption_public_key_clone,
-                signing_secret_key_clone,
-            )
-            .await
-            {
-                Ok(job_id) => {
-                    let response = json!({ "job_id": job_id });
-                    let _ = res.send(Ok(response)).await;
-                    return Ok(());
-                }
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to create and send job message: {:?}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        };
-
-        Ok(())
+        // Send the job message
+        Node::v2_job_message(
+            db,
+            node_name_clone,
+            identity_manager_clone,
+            job_manager_clone,
+            bearer,
+            job_message_clone,
+            encryption_secret_key_clone,
+            encryption_public_key_clone,
+            signing_secret_key_clone,
+            res,
+        )
+        .await
     }
 
     pub async fn generate_tool_metadata_implementation(
         bearer: String,
+        job_id: String,
         language: CodeLanguage,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        sqlite_manager: Arc<SqliteManager>,
+        _sqlite_manager: Arc<SqliteManager>,
         db_clone: Arc<ShinkaiDB>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
-
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
@@ -808,33 +747,117 @@ impl Node {
         {
             return Ok(());
         }
+
+        // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
+        let job = match db_clone.get_job_with_options(&job_id, true, true) {
+            Ok(job) => job,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve job: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let last_message = {
+            let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+            let messages = match db_clone.get_last_messages_from_inbox(inbox_name.to_string(), 2, None) {
+                Ok(messages) => messages,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve last messages from inbox: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+            if messages.len() < 2 {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Most likely the LLM hasn't processed the code task yet".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            };
+
+            // Handle the last message safely
+            if let Some(last_message) = messages.last().and_then(|msg| msg.last()) {
+                // Use last_message here
+                last_message.clone()
+            } else {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Failed to retrieve the last message".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let code = match last_message.get_message_content() {
+            Ok(code) => code,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve the last message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Generate the implementation
-        let metadata = tool_metadata_implementation(
+        let metadata = match tool_metadata_implementation(language, code).await {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+                return Ok(());
+            }
+        };
+
+        // We auto create a new job with the same configuration as the one from job_id
+        let job_creation_info = JobCreationInfo {
+            scope: job.scope_with_files().cloned().unwrap_or(JobScope::new_default()),
+            is_hidden: Some(job.is_hidden()),
+            associated_ui: None,
+        };
+
+        match v2_create_and_send_job_message(
             bearer,
-            language,
-            code,
+            job_creation_info,
+            job.parent_agent_or_llm_provider_id.clone(),
+            metadata,
             db_clone,
             node_name_clone,
             identity_manager_clone,
             job_manager_clone,
-            job_creation_info,
-            llm_provider,
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
         )
-        .await;
-
-        match metadata {
-            Ok(metadata_) => {
-                let _ = res.send(Ok(metadata_)).await;
+        .await
+        {
+            Ok(job_id) => {
+                let _ = res
+                    .send(Ok(json!({
+                        "job_id": job_id,
+                    })))
+                    .await;
+                return Ok(());
             }
-            Err(e) => {
-                let _ = res.send(Err(e)).await;
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+                return Ok(());
             }
         }
-
-        Ok(())
     }
 }
 

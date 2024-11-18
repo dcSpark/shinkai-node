@@ -2874,6 +2874,8 @@ impl Node {
                 bearer,
                 tool_router_key,
                 parameters,
+                llm_provider,
+                extra_config,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2893,6 +2895,8 @@ impl Node {
                         sqlite_manager_clone,
                         tool_router_key,
                         parameters,
+                        llm_provider,
+                        extra_config,
                         identity_manager,
                         job_manager,
                         encryption_secret_key,
@@ -2930,14 +2934,8 @@ impl Node {
             }
             NodeCommand::V2ApiGenerateToolImplementation {
                 bearer,
-                job_id,
+                message,
                 language,
-                code,
-                metadata,
-                output,
-                prompt,
-                job_creation_info,
-                llm_provider,
                 raw,
                 res,
             } => {
@@ -2953,16 +2951,13 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::generate_tool_implementation(
                         bearer,
-                        job_id,
-                        language,
-                        prompt,
-                        sqlite_manager_clone,
                         db_clone,
+                        message,
+                        language,
+                        sqlite_manager_clone,
                         node_name_clone,
                         identity_manager_clone,
                         job_manager_clone,
-                        job_creation_info,
-                        llm_provider,
                         encryption_secret_key_clone,
                         encryption_public_key_clone,
                         signing_secret_key_clone,
@@ -2974,12 +2969,8 @@ impl Node {
             }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
                 bearer,
+                job_id,
                 language,
-                code,
-                metadata,
-                output,
-                job_creation_info,
-                llm_provider,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
@@ -2994,17 +2985,13 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::generate_tool_metadata_implementation(
                         bearer,
+                        job_id,
                         language,
-                        code,
-                        metadata,
-                        output,
                         sqlite_manager_clone,
                         db_clone,
                         node_name_clone,
                         identity_manager_clone,
                         job_manager_clone,
-                        job_creation_info,
-                        llm_provider,
                         encryption_secret_key_clone,
                         encryption_public_key_clone,
                         signing_secret_key_clone,
@@ -3061,8 +3048,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_playground_tool(db_clone, sqlite_manager_clone, bearer, tool_key, res)
-                        .await;
+                    let _ =
+                        Node::v2_api_get_playground_tool(db_clone, sqlite_manager_clone, bearer, tool_key, res).await;
                 });
             }
             _ => (),

@@ -1,5 +1,6 @@
 use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use crate::schemas::shinkai_tools::CodeLanguage;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
@@ -307,6 +308,7 @@ pub struct JobCreationInfo {
 pub enum CallbackAction {
     Job(JobMessage),
     Sheet(SheetManagerAction),
+    ToolPlayground(ToolPlaygroundAction),
     // Cron(CronManagerAction),
 }
 
@@ -370,6 +372,12 @@ pub struct SheetManagerAction {
     pub job_message_next: Option<JobMessage>,
     // TODO: should this be m0re complex and have the actual desired action?
     pub sheet_action: SheetJobAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
+pub struct ToolPlaygroundAction {
+    pub tool_router_key: String,
+    pub code: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]

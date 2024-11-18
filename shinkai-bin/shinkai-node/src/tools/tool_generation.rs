@@ -1,5 +1,4 @@
 use ed25519_dalek::SigningKey;
-use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -53,7 +52,7 @@ pub async fn v2_create_and_send_job_message(
         .map_err(|e| Node::generic_api_error(&e.to_string()))??;
 
     // Use the new function to send the message
-    v2_send_job_message_for_existing_job(
+    v2_send_basic_job_message_for_existing_job(
         bearer,
         job_id.clone(),
         content,
@@ -70,7 +69,7 @@ pub async fn v2_create_and_send_job_message(
     Ok(job_id)
 }
 
-pub async fn v2_send_job_message_for_existing_job(
+pub async fn v2_send_basic_job_message_for_existing_job(
     bearer: String,
     job_id: String,
     content: String,
@@ -179,21 +178,12 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 // }
 
 pub async fn tool_metadata_implementation(
-    bearer: String,
     language: CodeLanguage,
-    code: Option<String>,
-    db_clone: Arc<ShinkaiDB>,
-    node_name_clone: ShinkaiName,
-    identity_manager_clone: Arc<Mutex<IdentityManager>>,
-    job_manager_clone: Arc<Mutex<JobManager>>,
-    job_creation_info: JobCreationInfo,
-    llm_provider: String,
-    encryption_secret_key_clone: EncryptionStaticKey,
-    encryption_public_key_clone: EncryptionPublicKey,
-    signing_secret_key_clone: SigningKey,
-) -> Result<Value, APIError> {
+    code: String,
+) -> Result<String, APIError> {
     // Generate tool definitions first
     // let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
+
     let mut generate_code_prompt = String::new();
 
     match language {
@@ -421,37 +411,19 @@ Output:```json
 * The METADATA must be in JSON valid format in only one JSON code block and nothing else.
 * Output only the METADATA, so the complete Output it's a valid JSON string.
 * Any comments, notes, explanations or examples must be omitted in the Output.
-* Generate the METADATA for the following {language} source code in the INPUT:
+* Generate the METADATA for the following source code in the INPUT:
 
 # INPUT:
 ```json
 {}
 ```
 "####,
-                code.unwrap_or("".to_string())
+                code.clone()
             ));
+            return Ok(generate_code_prompt);
         }
         CodeLanguage::Python => {
             return Err(Node::generic_api_error("NYI Python"));
         }
     }
-
-    let job_id = v2_create_and_send_job_message(
-        bearer,
-        job_creation_info,
-        llm_provider,
-        generate_code_prompt,
-        db_clone,
-        node_name_clone,
-        identity_manager_clone,
-        job_manager_clone,
-        encryption_secret_key_clone,
-        encryption_public_key_clone,
-        signing_secret_key_clone,
-    )
-    .await?;
-
-    Ok(json!({
-        "job_id": job_id,
-    }))
 }

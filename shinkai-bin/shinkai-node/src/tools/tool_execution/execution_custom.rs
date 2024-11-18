@@ -28,9 +28,9 @@ use rusqlite::params;
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
-    _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
+    llm_provider: String,
     node_name: ShinkaiName,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
@@ -52,6 +52,7 @@ pub async fn execute_custom_tool(
                 encryption_public_key,
                 signing_secret_key,
                 &parameters,
+                llm_provider,
             )
             .await
         }
@@ -70,8 +71,8 @@ async fn execute_llm(
     encryption_public_key_clone: EncryptionPublicKey,
     signing_secret_key_clone: SigningKey,
     parameters: &Map<String, Value>,
+    llm_provider: String,
 ) -> Result<Value, ToolError> {
-    let llm_provider = "llama3_1_8b".to_string();
     let content = parameters
         .get("prompt")
         .and_then(|v| v.as_str())
