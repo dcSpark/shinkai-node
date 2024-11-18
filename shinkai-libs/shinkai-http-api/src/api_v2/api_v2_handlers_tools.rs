@@ -283,11 +283,6 @@ pub struct ToolMetadata {
 pub struct ToolImplementationRequest {
     pub message: JobMessage,
     pub language: CodeLanguage,
-    pub prompt: String,
-    pub llm_provider: String,
-    pub code: Option<String>,
-    pub metadata: Option<String>,
-    pub output: Option<String>,
     pub raw: Option<bool>,
 }
 
@@ -332,10 +327,16 @@ pub async fn tool_implementation_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct ToolMetadataImplementationRequest {
+    pub language: CodeLanguage,
+    pub job_id: String,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/tool_metadata_implementation",
-    request_body = ToolImplementationRequest,
+    request_body = ToolMetadataImplementationRequest,
     responses(
         (status = 200, description = "Tool metadata implementation", body = ToolImplementationResponse),
         (status = 400, description = "Invalid parameters", body = APIError),
@@ -344,7 +345,7 @@ pub async fn tool_implementation_handler(
 pub async fn tool_metadata_implementation_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: ToolImplementationRequest,
+    payload: ToolMetadataImplementationRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
@@ -352,7 +353,7 @@ pub async fn tool_metadata_implementation_handler(
         .send(NodeCommand::V2ApiGenerateToolMetadataImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             language: payload.language,
-            job_id: payload.message.job_id,
+            job_id: payload.job_id,
             res: res_sender,
         })
         .await
