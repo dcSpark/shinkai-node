@@ -2268,8 +2268,9 @@ impl Node {
             }
             NodeCommand::V2ApiGetSupportedEmbeddingModels { bearer, res } => {
                 let db = self.db.clone();
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_supported_embedding_models(db, bearer, res).await;
+                    let _ = Node::v2_api_get_supported_embedding_models(db, sqlite_manager_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateDefaultEmbeddingModel {
@@ -2284,11 +2285,13 @@ impl Node {
             }
             NodeCommand::V2ApiUpdateSupportedEmbeddingModels { bearer, models, res } => {
                 let db = self.db.clone();
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 let vector_fs = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_supported_embedding_models(
                         db,
+                        sqlite_manager_clone,
                         vector_fs,
                         identity_manager_clone,
                         bearer,
@@ -2501,8 +2504,9 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_tool_offering(db_clone, bearer, tool_key_name, res).await;
+                    let _ = Node::v2_api_get_tool_offering(db_clone, sqlite_manager, bearer, tool_key_name, res).await;
                 });
             }
             NodeCommand::V2ApiRemoveToolOffering {
@@ -2511,8 +2515,10 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_tool_offering(db_clone, bearer, tool_key_name, res).await;
+                    let _ =
+                        Node::v2_api_remove_tool_offering(db_clone, sqlite_manager, bearer, tool_key_name, res).await;
                 });
             }
             NodeCommand::V2ApiGetAllToolOfferings { bearer, res } => {
@@ -2541,10 +2547,12 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 let wallet_manager_clone = self.wallet_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_restore_local_ethers_wallet(
                         db_clone,
+                        sqlite_manager_clone,
                         wallet_manager_clone,
                         bearer,
                         network,
@@ -2562,10 +2570,12 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 let wallet_manager_clone = self.wallet_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_create_local_ethers_wallet(
                         db_clone,
+                        sqlite_manager_clone,
                         wallet_manager_clone,
                         bearer,
                         network,

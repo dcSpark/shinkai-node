@@ -28,6 +28,7 @@ use shinkai_message_primitives::{
         signatures::signature_public_key_to_string,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
@@ -311,6 +312,7 @@ impl Node {
 
     pub async fn v2_api_get_supported_embedding_models(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Vec<String>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -320,7 +322,7 @@ impl Node {
         }
 
         // Get the supported embedding models from the database
-        match db.get_supported_embedding_models() {
+        match sqlite_manager.get_supported_embedding_models() {
             Ok(models) => {
                 let model_names: Vec<String> = models.into_iter().map(|model| model.to_string()).collect();
                 let _ = res.send(Ok(model_names)).await;
@@ -385,6 +387,7 @@ impl Node {
 
     pub async fn v2_api_update_supported_embedding_models(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -416,7 +419,7 @@ impl Node {
             .collect();
 
         // Update the supported embedding models in the database
-        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
+        if let Err(err) = sqlite_manager.update_supported_embedding_models(new_supported_models.clone()) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),

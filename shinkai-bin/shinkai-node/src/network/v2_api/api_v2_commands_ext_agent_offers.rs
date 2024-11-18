@@ -14,6 +14,7 @@ use crate::network::{node_error::NodeError, Node};
 impl Node {
     pub async fn v2_api_get_tool_offering(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -24,7 +25,7 @@ impl Node {
         }
 
         // Fetch the tool offering
-        match db.get_tool_offering(&tool_key_name) {
+        match sqlite_manager.get_tool_offering(&tool_key_name) {
             Ok(tool_offering) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }
@@ -43,6 +44,7 @@ impl Node {
 
     pub async fn v2_api_remove_tool_offering(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -53,7 +55,7 @@ impl Node {
         }
 
         // Attempt to get the tool offering before removing it
-        let tool_offering = match db.get_tool_offering(&tool_key_name) {
+        let tool_offering = match sqlite_manager.get_tool_offering(&tool_key_name) {
             Ok(tool_offering) => tool_offering,
             Err(err) => {
                 let api_error = APIError {
@@ -67,7 +69,7 @@ impl Node {
         };
 
         // Remove the tool offering
-        match db.remove_tool_offering(&tool_key_name) {
+        match sqlite_manager.remove_tool_offering(&tool_key_name) {
             Ok(_) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }
@@ -96,7 +98,7 @@ impl Node {
         }
 
         // Fetch all tool offerings
-        let tool_offerings = match db.get_all_tool_offerings() {
+        let tool_offerings = match sqlite_manager.get_all_tool_offerings() {
             Ok(tool_offerings) => tool_offerings,
             Err(err) => {
                 let api_error = APIError {
@@ -183,7 +185,7 @@ impl Node {
         }
 
         // Save the tool offering
-        match db.set_tool_offering(tool_offering.clone()) {
+        match sqlite_manager.set_tool_offering(tool_offering.clone()) {
             Ok(_) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }

@@ -37,6 +37,7 @@ use super::external_agent_offerings_manager::AgentOfferingManagerError;
 
 pub struct MyAgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
+    pub sqlite_manager: Weak<SqliteManager>,
     pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     pub node_name: ShinkaiName,
@@ -57,6 +58,7 @@ impl MyAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
@@ -68,6 +70,7 @@ impl MyAgentOfferingsManager {
     ) -> Self {
         Self {
             db,
+            sqlite_manager,
             vector_fs,
             node_name,
             my_signature_secret_key,

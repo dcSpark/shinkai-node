@@ -26,17 +26,17 @@ use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
-use reqwest::StatusCode;
-use shinkai_http_api::node_api_router::APIError;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
+use reqwest::StatusCode;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -333,7 +333,7 @@ impl Node {
         let tool_router = ToolRouter::new(sqlite_manager.clone());
 
         // Read wallet_manager from db if it exists, if not, None
-        let mut wallet_manager: Option<WalletManager> = match db_arc.read_wallet_manager() {
+        let mut wallet_manager: Option<WalletManager> = match sqlite_manager.read_wallet_manager() {
             Ok(manager_value) => match serde_json::from_value::<WalletManager>(manager_value) {
                 Ok(manager) => Some(manager),
                 Err(e) => {
@@ -366,6 +366,7 @@ impl Node {
         let my_agent_payments_manager = Arc::new(Mutex::new(
             MyAgentOfferingsManager::new(
                 Arc::downgrade(&db_arc),
+                Arc::downgrade(&sqlite_manager),
                 Arc::downgrade(&vector_fs_arc),
                 Arc::downgrade(&identity_manager_trait),
                 node_name.clone(),
@@ -381,6 +382,7 @@ impl Node {
         let ext_agent_payments_manager = Arc::new(Mutex::new(
             ExtAgentOfferingsManager::new(
                 Arc::downgrade(&db_arc),
+                Arc::downgrade(&sqlite_manager),
                 Arc::downgrade(&vector_fs_arc),
                 Arc::downgrade(&identity_manager_trait),
                 node_name.clone(),

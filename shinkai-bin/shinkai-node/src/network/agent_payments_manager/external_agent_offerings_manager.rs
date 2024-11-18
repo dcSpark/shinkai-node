@@ -20,6 +20,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
@@ -67,6 +68,7 @@ impl From<InvoiceError> for AgentOfferingManagerError {
 
 pub struct ExtAgentOfferingsManager {
     pub db: Weak<ShinkaiDB>,
+    pub sqlite_manager: Weak<SqliteManager>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -107,6 +109,7 @@ impl ExtAgentOfferingsManager {
     /// * `Self` - A new instance of `ExtAgentOfferingsManager`.
     pub async fn new(
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
@@ -170,6 +173,7 @@ impl ExtAgentOfferingsManager {
 
         Self {
             db,
+            sqlite_manager,
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
@@ -424,7 +428,7 @@ impl ExtAgentOfferingsManager {
     /// * `Result<Vec<String>, AgentOfferingManagerError>` - A list of available tools or an error.
     pub async fn available_tools(&mut self) -> Result<Vec<String>, AgentOfferingManagerError> {
         let db = self
-            .db
+            .sqlite_manager
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
@@ -500,7 +504,7 @@ impl ExtAgentOfferingsManager {
     /// * `Result<bool, SubscriberManagerError>` - True if successful, otherwise an error.
     pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
         let db = self
-            .db
+            .sqlite_manager
             .upgrade()
             .ok_or_else(|| SubscriberManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
@@ -531,10 +535,14 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
+        let sqlite_manager = self.sqlite_manager.upgrade().ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Failed to upgrade sqlite_manager reference".to_string())
+        })?;
+
         // Validate and convert the tool_key_name
         let actual_tool_key_name = invoice_request.validate_and_convert_tool_key(&self.node_name)?;
 
-        let shinkai_offering = db
+        let shinkai_offering = sqlite_manager
             .get_tool_offering(&actual_tool_key_name)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
 

@@ -21,6 +21,7 @@ use crate::{
 impl Node {
     pub async fn v2_api_restore_local_ethers_wallet(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -65,7 +66,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -107,6 +108,7 @@ impl Node {
 
     pub async fn v2_api_create_local_ethers_wallet(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -150,7 +152,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -249,7 +251,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -337,7 +339,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),

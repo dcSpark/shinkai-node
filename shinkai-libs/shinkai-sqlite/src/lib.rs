@@ -11,9 +11,13 @@ use thiserror::Error;
 
 pub mod embedding_function;
 pub mod files;
+pub mod my_subscriptions_manager;
 pub mod prompt_manager;
+pub mod settings_manager;
 pub mod shinkai_tool_manager;
+pub mod tool_payment_req_manager;
 pub mod tool_playground;
+pub mod wallet_manager;
 
 #[derive(Error, Debug)]
 pub enum SqliteManagerError {
@@ -33,6 +37,8 @@ pub enum SqliteManagerError {
     ToolPlaygroundNotFound(String),
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+    #[error("Tool offering not found with key: {0}")]
+    ToolOfferingNotFound(String),
     // Add other error variants as needed
 }
 
@@ -96,12 +102,69 @@ impl SqliteManager {
 
     // Initializes the required tables in the SQLite database
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::initialize_my_subscriptions_table(conn)?;
+        Self::initialize_shinkai_names(conn)?;
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
+        Self::initialize_settings_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
+        Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
+        Self::initialize_wallets_table(conn)?;
+        Ok(())
+    }
+
+    fn initialize_my_subscriptions_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS my_subscriptions (
+                subscription_id TEXT NOT NULL UNIQUE,
+                shared_folder TEXT NOT NULL,
+                streaming_node TEXT NOT NULL,
+                streaming_profile TEXT NOT NULL,
+                subscription_description TEXT,
+                subscriber_destination_path TEXT,
+                subscriber_node TEXT NOT NULL,
+                subscriber_profile TEXT NOT NULL,
+                payment TEXT,
+                state TEXT NOT NULL,
+                date_created TEXT NOT NULL,
+                last_modified TEXT NOT NULL,
+                last_sync TEXT,
+                http_preferred INTEGER
+
+                FOREIGN KEY(streaming_node) REFERENCES shinkai_names(node_name),
+                FOREIGN KEY(subscriber_node) REFERENCES shinkai_names(node_name),
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    fn initialize_shinkai_names(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_names (
+                full_name TEXT NOT NULL UNIQUE,
+                node_name TEXT NOT NULL,
+                profile_name TEXT,
+                subidentity_type TEXT,
+                subidentity_name TEXT
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    fn initialize_settings_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                supported_embedding_models TEXT NOT NULL
+            );",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -214,6 +277,31 @@ impl SqliteManager {
             );",
             [],
         )?;
+        Ok(())
+    }
+
+    fn initialize_wallets_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_wallet (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wallet_data BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_tool_micropayments_requirements_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_micropayments_requirements (
+                tool_key TEXT NOT NULL UNIQUE,
+                usage_type TEXT NOT NULL,
+                meta_description TEXT
+            );",
+            [],
+        )?;
+
         Ok(())
     }
 
