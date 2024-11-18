@@ -139,6 +139,7 @@ mod tests {
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
+            "job_id_history": [],
             "code": "console.log('Hello, world!');"
         }
         "#;
@@ -148,6 +149,7 @@ mod tests {
         assert_eq!(deserialized.metadata.name, "Example Tool");
         assert_eq!(deserialized.tool_router_key, Some("example_key".to_string()));
         assert_eq!(deserialized.job_id, "job_123");
+        assert_eq!(deserialized.job_id_history, Vec::<String>::new());
         assert_eq!(deserialized.code, "console.log('Hello, world!');");
     }
 
@@ -212,6 +214,7 @@ mod tests {
                 }
             },
             "job_id": "123",
+            "job_id_history": [],
             "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }"
         }
         "#;
@@ -224,6 +227,7 @@ mod tests {
         assert_eq!(deserialized.metadata.keywords, vec!["coinbase", "wallet", "creator", "shinkai"]);
         assert_eq!(deserialized.tool_router_key, None);
         assert_eq!(deserialized.job_id, "123");
+        assert_eq!(deserialized.job_id_history, Vec::<String>::new());
         assert_eq!(deserialized.code, "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }");
     }
 }
