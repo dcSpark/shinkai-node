@@ -7,11 +7,34 @@ use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use thiserror::Error;
 
 pub mod embedding_function;
+pub mod files;
 pub mod prompt_manager;
 pub mod shinkai_tool_manager;
-pub mod files;
+pub mod tool_playground;
+
+#[derive(Error, Debug)]
+pub enum SqliteManagerError {
+    #[error("Tool already exists with key: {0}")]
+    ToolAlreadyExists(String),
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] rusqlite::Error),
+    #[error("Embedding generation error: {0}")]
+    EmbeddingGenerationError(String),
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+    #[error("Tool not found with key: {0}")]
+    ToolNotFound(String),
+    #[error("ToolPlayground already exists with job_id: {0}")]
+    ToolPlaygroundAlreadyExists(String),
+    #[error("ToolPlayground not found with job_id: {0}")]
+    ToolPlaygroundNotFound(String),
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    // Add other error variants as needed
+}
 
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
@@ -49,7 +72,7 @@ impl SqliteManager {
             .build(manager)
             .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
 
-        // Enable WAL mode and set some optimizations
+        // Enable WAL mode, set some optimizations, and enable foreign keys
         let conn = pool
             .get()
             .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
@@ -57,7 +80,8 @@ impl SqliteManager {
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
              PRAGMA temp_store=MEMORY;
-             PRAGMA mmap_size=262144000;", // 250 MB in bytes (250 * 1024 * 1024)
+             PRAGMA mmap_size=262144000; -- 250 MB in bytes (250 * 1024 * 1024)
+             PRAGMA foreign_keys = ON;", // Enable foreign key support
         )?;
 
         // Initialize tables
@@ -76,6 +100,8 @@ impl SqliteManager {
         Self::initialize_prompt_vector_tables(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
+        Self::initialize_tool_playground_table(conn)?;
+        Self::initialize_tool_playground_code_history_table(conn)?;
         Ok(())
     }
 
@@ -120,7 +146,7 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
-                tool_key TEXT NOT NULL,
+                tool_key TEXT NOT NULL UNIQUE,
                 embedding_seo TEXT NOT NULL,
                 tool_data BLOB NOT NULL,
                 tool_header BLOB NOT NULL,
@@ -154,6 +180,43 @@ impl SqliteManager {
         Ok(())
     }
 
+    // Updated method to initialize the tool_playground table with non-nullable and unique tool_router_key
+    fn initialize_tool_playground_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_playground (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                author TEXT,
+                keywords TEXT, -- Store as a comma-separated list
+                configurations TEXT, -- Store as a JSON string
+                parameters TEXT, -- Store as a JSON string
+                result TEXT, -- Store as a JSON string
+                tool_router_key TEXT NOT NULL UNIQUE, -- Non-nullable and unique
+                job_id TEXT, -- Allow NULL values
+                job_id_history TEXT, -- Store as a comma-separated list
+                code TEXT NOT NULL,
+                FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // New method to initialize the tool_playground_code_history table
+    fn initialize_tool_playground_code_history_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_playground_code_history (
+                message_id TEXT PRIMARY KEY,
+                tool_router_key TEXT NOT NULL,
+                code TEXT NOT NULL,
+                FOREIGN KEY(tool_router_key) REFERENCES tool_playground(tool_router_key)
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
     // Returns a connection from the pool
     pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
         self.pool.get().map_err(|e| {
@@ -183,5 +246,10 @@ impl SqliteManager {
     pub async fn generate_embeddings(&self, prompt: &str) -> Result<Vec<f32>> {
         let embedding_function = EmbeddingFunction::new(&self.api_url, self.model_type.clone());
         embedding_function.request_embeddings(prompt).await
+    }
+
+    // Utility function to generate a vector of length 384 filled with a specified value
+    pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
+        vec![value; 384]
     }
 }

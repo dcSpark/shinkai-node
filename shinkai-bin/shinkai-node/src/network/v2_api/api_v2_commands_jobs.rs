@@ -1083,48 +1083,6 @@ impl Node {
         }
     }
 
-    // pub async fn v2_api_get_tooling_logs(
-    //     db: Arc<ShinkaiDB>,
-    //     sqlite_logger: Arc<SqliteLogger>,
-    //     bearer: String,
-    //     message_id: String,
-    //     res: Sender<Result<Value, APIError>>,
-    // ) -> Result<(), NodeError> {
-    //     // Validate the bearer token
-    //     if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-    //         return Ok(());
-    //     }
-
-    //     // Retrieve logs for the given message_id using SqliteLogger
-    //     match sqlite_logger.get_logs(Some(&message_id), None, None) {
-    //         Ok(logs) => {
-    //             match serde_json::to_value(&logs) {
-    //                 Ok(logs_value) => {
-    //                     let _ = res.send(Ok(logs_value)).await;
-    //                 }
-    //                 Err(err) => {
-    //                     let api_error = APIError {
-    //                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-    //                         error: "Internal Server Error".to_string(),
-    //                         message: format!("Failed to serialize logs: {}", err),
-    //                     };
-    //                     let _ = res.send(Err(api_error)).await;
-    //                 }
-    //             }
-    //             Ok(())
-    //         }
-    //         Err(err) => {
-    //             let api_error = APIError {
-    //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-    //                 error: "Internal Server Error".to_string(),
-    //                 message: format!("Failed to retrieve logs: {}", err),
-    //             };
-    //             let _ = res.send(Err(api_error)).await;
-    //             Ok(())
-    //         }
-    //     }
-    // }
-
     pub async fn v2_fork_job_messages(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,

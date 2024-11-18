@@ -27,7 +27,7 @@ pub struct DenoTool {
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
-    pub result: JSToolResult,
+    pub result: DenoToolResult,
 }
 
 impl DenoTool {
@@ -157,13 +157,13 @@ impl DenoTool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct JSToolResult {
+pub struct DenoToolResult {
     pub r#type: String,
     pub properties: serde_json::Value,
     pub required: Vec<String>,
 }
 
-impl Serialize for JSToolResult {
+impl Serialize for DenoToolResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -178,14 +178,14 @@ impl Serialize for JSToolResult {
     }
 }
 
-impl<'de> Deserialize<'de> for JSToolResult {
+impl<'de> Deserialize<'de> for DenoToolResult {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let helper = Helper::deserialize(deserializer)?;
 
-        Ok(JSToolResult {
+        Ok(DenoToolResult {
             r#type: helper.result_type,
             properties: helper.properties,
             required: helper.required,
@@ -201,9 +201,9 @@ struct Helper {
     required: Vec<String>,
 }
 
-impl JSToolResult {
+impl DenoToolResult {
     pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
-        JSToolResult {
+        DenoToolResult {
             r#type: result_type,
             properties,
             required,
@@ -229,7 +229,7 @@ mod tests {
     }
     "#;
 
-        let deserialized: JSToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
+        let deserialized: DenoToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
 
         assert_eq!(deserialized.r#type, "object");
         assert!(deserialized.properties.is_object());

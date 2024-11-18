@@ -6,8 +6,8 @@ use reqwest::StatusCode;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
-use shinkai_sqlite::{shinkai_tool_manager::SqliteManagerError, SqliteManager};
 
 use crate::network::{node_error::NodeError, Node};
 

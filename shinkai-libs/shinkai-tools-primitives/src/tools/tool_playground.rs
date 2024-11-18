@@ -1,17 +1,18 @@
-use super::{argument::ToolArgument, deno_tools::JSToolResult, tool_config::{BasicConfig, ToolConfig}};
+use super::{argument::ToolArgument, deno_tools::DenoToolResult, tool_config::{BasicConfig, ToolConfig}};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlaygroundTool {
-    pub metadata: PlaygroundToolMetadata,
+pub struct ToolPlayground {
+    pub metadata: ToolPlaygroundMetadata,
     pub tool_router_key: Option<String>,
     pub job_id: String,
+    pub job_id_history: Vec<String>,
     pub code: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlaygroundToolMetadata {
+pub struct ToolPlaygroundMetadata {
     pub name: String,
     pub description: String,
     pub author: String,
@@ -20,7 +21,7 @@ pub struct PlaygroundToolMetadata {
     pub configurations: Vec<ToolConfig>,
     #[serde(deserialize_with = "deserialize_parameters")]
     pub parameters: Vec<ToolArgument>,
-    pub result: JSToolResult,
+    pub result: DenoToolResult,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>
@@ -138,15 +139,17 @@ mod tests {
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
+            "job_id_history": [],
             "code": "console.log('Hello, world!');"
         }
         "#;
 
-        let deserialized: PlaygroundTool = serde_json::from_str(json_data).expect("Failed to deserialize");
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
         
         assert_eq!(deserialized.metadata.name, "Example Tool");
         assert_eq!(deserialized.tool_router_key, Some("example_key".to_string()));
         assert_eq!(deserialized.job_id, "job_123");
+        assert_eq!(deserialized.job_id_history, Vec::<String>::new());
         assert_eq!(deserialized.code, "console.log('Hello, world!');");
     }
 
@@ -211,11 +214,12 @@ mod tests {
                 }
             },
             "job_id": "123",
+            "job_id_history": [],
             "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }"
         }
         "#;
 
-        let deserialized: PlaygroundTool = serde_json::from_str(json_data).expect("Failed to deserialize");
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
 
         assert_eq!(deserialized.metadata.name, "Shinkai: Coinbase Wallet Creator");
         assert_eq!(deserialized.metadata.description, "Tool for creating a Coinbase wallet");
@@ -223,6 +227,7 @@ mod tests {
         assert_eq!(deserialized.metadata.keywords, vec!["coinbase", "wallet", "creator", "shinkai"]);
         assert_eq!(deserialized.tool_router_key, None);
         assert_eq!(deserialized.job_id, "123");
+        assert_eq!(deserialized.job_id_history, Vec::<String>::new());
         assert_eq!(deserialized.code, "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }");
     }
 }

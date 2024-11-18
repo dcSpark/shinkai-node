@@ -36,8 +36,8 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_tools_primitives::tools::{
-    playground_tool::PlaygroundTool,
     shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_playground::ToolPlayground,
 };
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -991,6 +991,8 @@ pub enum NodeCommand {
         parameters: Map<String, Value>,
         tool_id: Option<String>,
         app_id: Option<String>,
+        llm_provider: String,
+        extra_config: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -1013,24 +1015,15 @@ pub enum NodeCommand {
     },
     V2ApiGenerateToolImplementation {
         bearer: String,
+        message: JobMessage,
         language: CodeLanguage,
-        prompt: String,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
         raw: bool,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     },
     V2ApiGenerateToolMetadataImplementation {
         bearer: String,
+        job_id: String,
         language: CodeLanguage,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {
@@ -1041,7 +1034,7 @@ pub enum NodeCommand {
     },
     V2ApiSetPlaygroundTool {
         bearer: String,
-        payload: PlaygroundTool,
+        payload: ToolPlayground,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListPlaygroundTools {

@@ -2,7 +2,6 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::execute_deno_tool;
-use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use serde_json::json;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -31,6 +30,7 @@ pub async fn execute_tool(
     parameters: Map<String, Value>,
     tool_id: Option<String>,
     app_id: Option<String>,
+    llm_provider: String,
     extra_config: Option<String>,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
@@ -67,6 +67,7 @@ pub async fn execute_tool(
                 extra_config,
                 bearer,
                 db,
+                llm_provider,
                 node_name,
                 identity_manager,
                 job_manager,

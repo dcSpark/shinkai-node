@@ -18,8 +18,7 @@ use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::files::prompts_data;
-use shinkai_sqlite::shinkai_tool_manager::SqliteManagerError;
-use shinkai_sqlite::SqliteManager;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::error::ToolError;

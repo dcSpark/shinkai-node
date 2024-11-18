@@ -1,8 +1,8 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
-use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::job_scope::JobScope};
-use shinkai_tools_primitives::tools::{playground_tool::PlaygroundTool, shinkai_tool::ShinkaiTool};
+use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobMessage};
+use shinkai_tools_primitives::tools::{tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
@@ -202,6 +202,7 @@ pub async fn tool_definitions_handler(
 #[derive(Deserialize, ToSchema)]
 pub struct ToolExecutionRequest {
     pub tool_router_key: String,
+    pub llm_provider: String,
     pub parameters: Value,
     #[serde(default)]
     pub extra_config: Option<String>,
@@ -244,6 +245,8 @@ pub async fn tool_execution_handler(
             parameters,
             tool_id,
             app_id,
+            llm_provider: payload.llm_provider.clone(),
+            extra_config: payload.extra_config,
             res: res_sender,
         })
         .await
@@ -266,7 +269,7 @@ pub async fn tool_execution_handler(
 #[derive(serde::Serialize, ToSchema)]
 pub struct ToolImplementationResponse {
     pub code: String,
-    pub metadata: ToolMetadata,
+    pub metadata: ToolMetadata, // TODO: is this actually being returned?
 }
 
 #[derive(serde::Serialize, ToSchema)]
@@ -278,6 +281,7 @@ pub struct ToolMetadata {
 
 #[derive(Deserialize, ToSchema)]
 pub struct ToolImplementationRequest {
+    pub message: JobMessage,
     pub language: CodeLanguage,
     pub prompt: String,
     pub llm_provider: String,
@@ -306,17 +310,8 @@ pub async fn tool_implementation_handler(
     sender
         .send(NodeCommand::V2ApiGenerateToolImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
+            message: payload.message,
             language: payload.language,
-            prompt: payload.prompt,
-            code: payload.code,
-            metadata: payload.metadata,
-            output: payload.output,
-            job_creation_info: JobCreationInfo {
-                scope: JobScope::new_default(),
-                is_hidden: Some(false),
-                associated_ui: None,
-            },
-            llm_provider: payload.llm_provider,
             raw: payload.raw.unwrap_or(false),
             res: res_sender,
         })
@@ -357,15 +352,7 @@ pub async fn tool_metadata_implementation_handler(
         .send(NodeCommand::V2ApiGenerateToolMetadataImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             language: payload.language,
-            code: payload.code,
-            metadata: payload.metadata,
-            output: payload.output,
-            job_creation_info: JobCreationInfo {
-                scope: JobScope::new_default(),
-                is_hidden: Some(false),
-                associated_ui: None,
-            },
-            llm_provider: payload.llm_provider,
+            job_id: payload.message.job_id,
             res: res_sender,
         })
         .await
@@ -627,7 +614,7 @@ pub async fn add_shinkai_tool_handler(
 pub async fn set_playground_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: PlaygroundTool,
+    payload: ToolPlayground,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
