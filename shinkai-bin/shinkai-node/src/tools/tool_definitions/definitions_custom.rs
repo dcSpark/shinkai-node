@@ -43,20 +43,20 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
         Table creation should always use 'CREATE TABLE IF NOT EXISTS'.
         
         Example table creation:
-        CREATE TABLE IF NOT EXISTS url_metrics (
+        CREATE TABLE IF NOT EXISTS table_name (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            parse_date DATETIME DEFAULT CURRENT_TIMESTAMP,in
-            parse_time_ms INTEGER,
-            url_raw_dump TEXT
+            field_1 TEXT NOT NULL,
+            field_2 DATETIME DEFAULT CURRENT_TIMESTAMP,
+            field_3 INTEGER,
+            field_4 TEXT
         );
         
         Example insert:
-        INSERT INTO url_metrics (url, parse_time_ms, url_raw_dump) VALUES ('https://example.com', 150, '<li>data</li>');
+        INSERT INTO table_name (field_1, field_3, field_4) VALUES ('value_1', 1, 'value_4');
         
         Example read:
-        SELECT * FROM url_metrics WHERE parse_date > datetime('now', '-1 day');
-        SELECT url, parse_time_ms FROM url_metrics WHERE parse_time_ms > 100 ORDER BY parse_date DESC LIMIT 10;"#
+        SELECT * FROM table_name WHERE field_2 > datetime('now', '-1 day');
+        SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DESC LIMIT 10;"#
             .to_string(),
         tool_router_key: "local:::rust_toolkit:::shinkai_sqlite_query_executor".to_string(),
         tool_type: "Rust".to_string(),
