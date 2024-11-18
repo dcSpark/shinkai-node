@@ -257,7 +257,7 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-            // TODO: I'm not sure about this one
+                // TODO: I'm not sure about this one
                 .queue_job_message(first_job_message, user_profile, "")
                 .await
                 .map_err(|e| e.to_string())?;
@@ -430,6 +430,26 @@ impl SheetManager {
         db_strong
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn add_values(&mut self, sheet_id: &str, values: Vec<Vec<String>>) -> Result<(), String> {
+        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+        let jobs = sheet.add_values(values).await.map_err(|e| e.to_string())?;
+
+        // Update the sheet in the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .save_sheet(sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
+
+        // Create and chain JobMessages, and add the first one to the job queue
+        if let Some(job_manager) = &self.job_manager {
+            Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
+        } else {
+            return Err("JobManager not set".to_string());
+        }
 
         Ok(())
     }

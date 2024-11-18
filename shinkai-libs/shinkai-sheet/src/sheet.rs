@@ -43,7 +43,7 @@ pub struct CellUpdateData {
 #[derive(Debug, Clone)]
 pub struct ProcessedInput {
     pub content: String,
-    pub local_files: Vec<(String, String)>, // (FilePath, FileName)
+    pub local_files: Vec<(String, String)>,    // (FilePath, FileName)
     pub uploaded_files: Vec<(String, String)>, // (FilePath, FileName)
 }
 
@@ -471,7 +471,8 @@ impl Sheet {
                                         if let Some(cell) = self.get_cell(row.clone(), col_uuid.clone()) {
                                             if let Some(value) = &cell.value {
                                                 // Assuming the value is a serialized list of file paths
-                                                let files: Vec<(String, String)> = serde_json::from_str(value).unwrap_or_default();
+                                                let files: Vec<(String, String)> =
+                                                    serde_json::from_str(value).unwrap_or_default();
                                                 local_files.extend(files);
                                             }
                                         }
@@ -484,7 +485,7 @@ impl Sheet {
                                                 // TODO: eventually if we want to support multiple files, we need to change this
                                                 // let file_names: Vec<String> = serde_json::from_str(value).unwrap_or_default();
                                                 // for file_name in file_names {
-                                                    uploaded_files.push((file_inbox_id.clone(), value.clone()));
+                                                uploaded_files.push((file_inbox_id.clone(), value.clone()));
                                                 // }
                                             }
                                         }
@@ -522,6 +523,11 @@ impl Sheet {
 
         self.uploaded_files.insert((row, col), files);
         Ok(())
+    }
+
+    pub async fn add_values(&mut self, values: Vec<Vec<String>>) -> Result<Vec<WorkflowSheetJobData>, String> {
+        let jobs = self.dispatch(SheetAction::AddValues(values)).await;
+        Ok(jobs)
     }
 
     fn compute_input_hash(
@@ -681,6 +687,7 @@ pub enum SheetAction {
     TriggerUpdateColumnValues(UuidString),
     RemoveRow(UuidString),
     AddRow(UuidString), // Add other actions as needed
+    AddValues(Vec<Vec<String>>),
 }
 
 // Implement the reducer function
@@ -1148,6 +1155,27 @@ pub fn sheet_reducer(
                     eprintln!("update_events New jobs: {:?}", new_jobs.len());
                     state = new_state;
                     jobs.append(&mut new_jobs);
+                }
+            }
+            SheetAction::AddValues(values) => {
+                for row in values {
+                    let row_uuid = Uuid::new_v4().to_string();
+                    let mut row_cells = HashMap::new();
+                    for (col_index, value) in row.iter().enumerate() {
+                        if let Some(col_uuid) = state.display_columns.get(col_index) {
+                            row_cells.insert(
+                                col_uuid.clone(),
+                                Cell {
+                                    value: Some(value.clone()),
+                                    last_updated: Utc::now(),
+                                    status: CellStatus::Ready,
+                                    input_hash: None,
+                                },
+                            );
+                        }
+                    }
+                    state.rows.insert(row_uuid.clone(), row_cells);
+                    state.display_rows.push(row_uuid.clone());
                 }
             }
         }
