@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde_json::{Map, Value};
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
@@ -7,6 +9,8 @@ use shinkai_tools_primitives::tools::error::ToolError;
 pub fn execute_deno_tool(
     bearer: String,
     parameters: Map<String, Value>,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     extra_config: Option<String>,
     header_code: String,
     code: String,
@@ -27,8 +31,11 @@ pub fn execute_deno_tool(
         result: JSToolResult::new("object".to_string(), Value::Null, vec![]),
     };
 
-    // Run the tool and convert the RunResult to Value
-    match tool.run_on_demand(bearer, header_code, parameters, extra_config) {
+    let mut envs = HashMap::new();
+    envs.insert("BEARER".to_string(), bearer);
+    envs.insert("x-shinkai-tool-id".to_string(), tool_id.unwrap_or("".to_owned()));
+    envs.insert("x-shinkai-app-id".to_string(), app_id.unwrap_or("".to_owned()));
+    match tool.run_on_demand(envs, header_code, parameters, extra_config) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

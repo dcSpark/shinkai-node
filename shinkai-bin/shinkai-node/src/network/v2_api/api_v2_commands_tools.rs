@@ -58,6 +58,8 @@ impl Node {
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
         parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -77,6 +79,8 @@ impl Node {
             sqlite_manager,
             tool_router_key.clone(),
             parameters,
+            tool_id,
+            app_id,
             None,
             identity_manager,
             job_manager,
@@ -112,6 +116,8 @@ impl Node {
         code: String,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<SqliteManager>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -119,7 +125,17 @@ impl Node {
         }
 
         // Execute the tool directly
-        let result = execute_code(tool_type.clone(), code, parameters, None, sqlite_manager, bearer).await;
+        let result = execute_code(
+            tool_type.clone(),
+            code,
+            parameters,
+            None,
+            sqlite_manager,
+            tool_id,
+            app_id,
+            bearer,
+        )
+        .await;
 
         match result {
             Ok(result) => {

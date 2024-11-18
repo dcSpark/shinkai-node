@@ -54,6 +54,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::header::optional::<String>("x-shinkai-tool-id"))
+        .and(warp::header::optional::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(tool_execution_handler);
     
@@ -114,6 +116,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::header::optional::<String>("x-shinkai-tool-id"))
+        .and(warp::header::optional::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(code_execution_handler);
 
@@ -216,6 +220,8 @@ pub struct ToolExecutionRequest {
 pub async fn tool_execution_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     payload: ToolExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {    
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -236,6 +242,8 @@ pub async fn tool_execution_handler(
             bearer,
             tool_router_key: payload.tool_router_key.clone(),
             parameters,
+            tool_id,
+            app_id,
             res: res_sender,
         })
         .await
@@ -276,9 +284,7 @@ pub struct ToolImplementationRequest {
     pub code: Option<String>,
     pub metadata: Option<String>,
     pub output: Option<String>,
-    // If try to execute the code without the default prompt
     pub raw: Option<bool>,
-
 }
 
 #[utoipa::path(
@@ -839,6 +845,8 @@ pub struct CodeExecutionRequest {
 pub async fn code_execution_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     payload: CodeExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -860,6 +868,8 @@ pub async fn code_execution_handler(
             tool_type: payload.tool_type,
             code: payload.code,
             parameters,
+            tool_id: tool_id,
+            app_id: app_id,
             res: res_sender,
         })
         .await

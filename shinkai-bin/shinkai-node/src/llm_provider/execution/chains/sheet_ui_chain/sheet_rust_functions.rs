@@ -4,7 +4,11 @@ use crate::managers::sheet_manager::SheetManager;
 use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
-use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
+use shinkai_tools_primitives::tools::{
+    argument::{ToolArgument, ToolOutputArg},
+    rust_tools::RustTool,
+    shinkai_tool::ShinkaiTool,
+};
 use tokio::sync::Mutex;
 use umya_spreadsheet::new_file;
 use uuid::Uuid;
@@ -563,6 +567,7 @@ impl SheetRustFunctions {
                     true,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         );
 
@@ -583,7 +588,8 @@ impl SheetRustFunctions {
                     "The values to update the column with, separated by commas".to_string(),
                     true,
                 ),
-            ],
+            ],            
+            ToolOutputArg::empty(),
             None,
         );
 
@@ -611,6 +617,7 @@ impl SheetRustFunctions {
                     true,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         );
 
@@ -624,6 +631,7 @@ impl SheetRustFunctions {
                 "The CSV data to populate the new columns".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         );
 
@@ -632,6 +640,7 @@ impl SheetRustFunctions {
             "get_table".to_string(),
             "Retrieves the entire table in ASCII format.".to_string(),
             vec![],
+            ToolOutputArg::empty(),
             None,
         );
 

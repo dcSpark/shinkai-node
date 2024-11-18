@@ -3,6 +3,7 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader,
 };
 
+// TODO keep in sync with execution_custom.rs
 pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
 
@@ -69,16 +70,10 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
                 "string".to_string(),
                 "The SQL query to execute".to_string(),
                 true,
-            ),
-            ToolArgument::new(
-                "path".to_string(),
-                "string".to_string(),
-                "Path to the SQLite database file".to_string(),
-                true,
-            ),
+            )
         ],
         output_arg: ToolOutputArg {
-            json: r#"{"type": "object", "properties": {"result": {"type": "string"}}}"#.to_string(),
+            json: r#"{"type": "object", "properties": {"result": {"oneOf": [{"type": "string"},{"type": "array"}]}, "type": {"type": "string"}, "rowCount": {"type": "number"}, "rowsAffected": {"type": "number"}}}"#.to_string(),
         },
         config: None,
         usage_type: None,

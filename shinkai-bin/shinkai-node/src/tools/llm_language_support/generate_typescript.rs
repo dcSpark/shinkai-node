@@ -164,7 +164,9 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         typescript_output.push_str("    };\n");
         typescript_output.push_str("    const response = await axios.post(_url, data, {\n");
         typescript_output.push_str("        headers: {\n");
-        typescript_output.push_str("            'Authorization': `Bearer ${process.env.BEARER}`\n");
+        typescript_output.push_str("            'Authorization': `Bearer ${process.env.BEARER}`,\n");
+        typescript_output.push_str("            'x-shinkai-tool-id': process.env.X_SHINKAI_TOOL_ID,\n");
+        typescript_output.push_str("            'x-shinkai-app-id': process.env.X_SHINKAI_APP_ID\n");
         typescript_output.push_str("        }\n");
         typescript_output.push_str("    });\n");
         typescript_output.push_str("    return response.data;\n");

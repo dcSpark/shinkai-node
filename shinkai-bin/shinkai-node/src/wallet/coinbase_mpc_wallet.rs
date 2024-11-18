@@ -5,8 +5,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -307,7 +308,6 @@ impl CoinbaseMPCWallet {
         if let Some(wallet_id) = config.wallet_id {
             function_config_value["walletId"] = Value::String(wallet_id);
         }
-        
 
         // Convert function_config_value back to String
         let function_config_str = serde_json::to_string(&function_config_value)
@@ -315,7 +315,7 @@ impl CoinbaseMPCWallet {
 
         if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
             let result = js_tool
-                .run(params, Some(function_config_str))
+                .run(HashMap::new(), "".to_string(), params, Some(function_config_str))
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
             let result_str =
                 serde_json::to_string(&result).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
@@ -355,7 +355,11 @@ impl CommonActions for CoinbaseMPCWallet {
         let config = self.config.clone();
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
-            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+            None => {
+                return Box::pin(
+                    async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) },
+                )
+            }
         };
 
         Box::pin(async move {
@@ -367,7 +371,8 @@ impl CommonActions for CoinbaseMPCWallet {
             .to_owned();
 
             let response =
-                CoinbaseMPCWallet::call_function(config, sqlite_manager, ShinkaiToolCoinbase::GetBalance, params).await?;
+                CoinbaseMPCWallet::call_function(config, sqlite_manager, ShinkaiToolCoinbase::GetBalance, params)
+                    .await?;
 
             let balance_str = response
                 .get("balance")
@@ -389,7 +394,11 @@ impl CommonActions for CoinbaseMPCWallet {
         let network = self.network.clone();
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
-            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+            None => {
+                return Box::pin(
+                    async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) },
+                )
+            }
         };
 
         Box::pin(async move {
@@ -400,9 +409,13 @@ impl CommonActions for CoinbaseMPCWallet {
             .unwrap()
             .to_owned();
 
-            let response =
-                CoinbaseMPCWallet::call_function(config.clone(), sqlite_manager, ShinkaiToolCoinbase::GetBalance, params)
-                    .await?;
+            let response = CoinbaseMPCWallet::call_function(
+                config.clone(),
+                sqlite_manager,
+                ShinkaiToolCoinbase::GetBalance,
+                params,
+            )
+            .await?;
 
             eprintln!("response: {:?}", response);
 
@@ -474,7 +487,11 @@ impl CommonActions for CoinbaseMPCWallet {
         let config = self.config.clone();
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
-            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+            None => {
+                return Box::pin(
+                    async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) },
+                )
+            }
         };
 
         Box::pin(async move {
@@ -487,9 +504,13 @@ impl CommonActions for CoinbaseMPCWallet {
             .unwrap()
             .to_owned();
 
-            let response =
-                CoinbaseMPCWallet::call_function(config, sqlite_manager.clone(), ShinkaiToolCoinbase::GetBalance, params)
-                    .await?;
+            let response = CoinbaseMPCWallet::call_function(
+                config,
+                sqlite_manager.clone(),
+                ShinkaiToolCoinbase::GetBalance,
+                params,
+            )
+            .await?;
 
             let data = response
                 .get("data")
@@ -550,7 +571,11 @@ impl SendActions for CoinbaseMPCWallet {
         let config = self.config.clone();
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
-            None => return Box::pin(async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) }),
+            None => {
+                return Box::pin(
+                    async move { Err(WalletError::SqliteManagerError("SqliteManager not found".to_string())) },
+                )
+            }
         };
 
         // Normalize send_amount to the asset decimals e.g. Instead of 1000, it should be 0.001

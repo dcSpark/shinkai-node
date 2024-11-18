@@ -35,7 +35,10 @@ use shinkai_message_primitives::{
     shinkai_utils::job_scope::JobScope,
 };
 
-use shinkai_tools_primitives::tools::{playground_tool::PlaygroundTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}};
+use shinkai_tools_primitives::tools::{
+    playground_tool::PlaygroundTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+};
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
 //         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
@@ -986,6 +989,8 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -993,6 +998,8 @@ pub enum NodeCommand {
         code: String,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolDefinitions {

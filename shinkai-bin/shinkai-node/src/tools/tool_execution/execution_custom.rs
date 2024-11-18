@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
@@ -17,6 +18,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::managers::IdentityManager;
 use crate::tools::tool_generation::v2_create_and_send_job_message;
+use crate::utils::environment::fetch_node_environment;
 use crate::{llm_provider::job_manager::JobManager, network::Node};
 
 use tokio::time::{sleep, Duration};
@@ -28,6 +30,8 @@ use rusqlite::params;
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
@@ -39,8 +43,10 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     match tool_router_key {
-        // TODO this can be fetched from the tool definition
-        s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => execute_sqlite_query(&parameters),
+        // TODO Keep in sync wiht definitions_custom.rs
+        s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => {
+            execute_sqlite_query(tool_id, app_id, &parameters)
+        }
         s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
             execute_llm(
                 bearer,
@@ -55,7 +61,6 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        s if s == "local:::shinkai_custom:::sqlite_executor" => execute_sqlite_query(&parameters),
         _ => Ok(json!({})), // Not a custom tool
     }
 }
@@ -138,20 +143,29 @@ async fn execute_llm(
     Ok(json!({ "message": x.last().unwrap().last().unwrap().job_message.content.clone() }))
 }
 
-fn execute_sqlite_query(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
+fn execute_sqlite_query(
+    tool_id: Option<String>,
+    app_id: Option<String>,
+    parameters: &Map<String, Value>,
+) -> Result<Value, ToolError> {
+    let tool_path = tool_id.ok_or_else(|| ToolError::ExecutionError("Tool ID or App ID is required".to_string()))?;
+    let app_path = app_id.ok_or_else(|| ToolError::ExecutionError("App ID is required".to_string()))?;
+
     let query = parameters
         .get("query")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ToolError::ExecutionError("Query parameter is required".to_string()))?;
 
-    let relative_path = parameters
-        .get("path")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::ExecutionError("Path parameter is required".to_string()))?;
-
-    // Create full path in temporary directory
-    let temp_dir = std::env::temp_dir();
-    let full_path = temp_dir.join(relative_path);
+    let node_env = fetch_node_environment();
+    let node_storage_path = node_env
+        .node_storage_path
+        .clone()
+        .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+    let full_path = Path::new(&node_storage_path)
+        .join("tools_db")
+        .join(app_path)
+        .join(tool_path)
+        .join("db.sqlite");
 
     // Ensure parent directory exists
     if let Some(parent) = full_path.parent() {
@@ -167,11 +181,55 @@ fn execute_sqlite_query(parameters: &Map<String, Value>) -> Result<Value, ToolEr
         .get()
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get connection: {}", e)))?;
 
-    // Execute the query
-    match conn.execute(query, params![]) {
-        Ok(rows_affected) => Ok(json!({
-            "result": format!("Query executed successfully. Rows affected: {}", rows_affected)
-        })),
-        Err(e) => Err(ToolError::ExecutionError(format!("Query execution failed: {}", e))),
+    let mut stmt = conn
+        .prepare(query)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?;
+
+    // For SELECT queries, fetch column names and rows
+    if query.trim().to_lowercase().starts_with("select") {
+        let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
+
+        let rows = stmt
+            .query_map(params![], |row| {
+                let mut map = Map::new();
+                for (i, column_name) in column_names.iter().enumerate() {
+                    let value: Value = match row.get_ref(i) {
+                        Ok(val) => match val {
+                            rusqlite::types::ValueRef::Null => Value::Null,
+                            rusqlite::types::ValueRef::Integer(i) => Value::Number(i.into()),
+                            rusqlite::types::ValueRef::Real(f) => {
+                                Value::Number(serde_json::Number::from_f64(f).unwrap_or(serde_json::Number::from(0)))
+                            }
+                            rusqlite::types::ValueRef::Text(s) => {
+                                Value::String(String::from_utf8_lossy(s).into_owned())
+                            }
+                            rusqlite::types::ValueRef::Blob(b) => Value::String(format!("<BLOB: {} bytes>", b.len())),
+                        },
+                        Err(_) => Value::Null,
+                    };
+                    map.insert(column_name.clone(), value);
+                }
+                Ok(map)
+            })
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to collect results: {}", e)))?;
+
+        Ok(json!({
+            "result": rows,
+            "type": "select",
+            "rowCount": rows.len()
+        }))
+    } else {
+        // For non-SELECT queries (INSERT, UPDATE, DELETE, etc)
+        let rows_affected = stmt
+            .execute(params![])
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?;
+
+        Ok(json!({
+            "result": format!("Query executed successfully"),
+            "type": "modify",
+            "rowsAffected": rows_affected
+        }))
     }
 }
