@@ -7,6 +7,7 @@ pub struct ToolPlayground {
     pub metadata: ToolPlaygroundMetadata,
     pub tool_router_key: Option<String>,
     pub job_id: String,
+    #[serde(default)]
     pub job_id_history: Vec<String>,
     pub code: String,
 }
