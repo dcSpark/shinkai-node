@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
 use shinkai_db::db::ShinkaiDB;
+use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -27,6 +28,8 @@ pub async fn execute_tool(
     sqlite_manager: Arc<SqliteManager>,
     tool_router_key: String,
     parameters: Map<String, Value>,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     llm_provider: String,
     extra_config: Option<String>,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -44,14 +47,24 @@ pub async fn execute_tool(
 
     // Match the tool type and execute the appropriate function
     match tool {
-        ShinkaiTool::Deno(deno_tool, _) => deno_tool
-            .run(parameters, extra_config)
-            .map(|result| json!(result))
-            .map_err(|e| ToolError::ExecutionError(e.to_string())),
+        ShinkaiTool::Deno(deno_tool, _) => {
+            let mut envs = HashMap::new();
+            envs.insert("BEARER".to_string(), bearer);
+            envs.insert("x-shinkai-tool-id".to_string(), tool_id.unwrap_or("".to_owned()));
+            envs.insert("x-shinkai-app-id".to_string(), app_id.unwrap_or("".to_owned()));
+            // TODO: add header_code
+            deno_tool
+                .run(envs, "".to_string(), parameters, extra_config)
+                .map(|result| json!(result))
+                .map_err(|e| ToolError::ExecutionError(e.to_string()))
+        }
         ShinkaiTool::Rust(_, _) => {
             execute_custom_tool(
                 &tool_router_key,
                 parameters,
+                tool_id,
+                app_id,
+                extra_config,
                 bearer,
                 db,
                 llm_provider,
@@ -74,6 +87,8 @@ pub async fn execute_code(
     parameters: Map<String, Value>,
     extra_config: Option<String>,
     sqlite_manager: Arc<SqliteManager>,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     bearer: String,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
@@ -84,7 +99,15 @@ pub async fn execute_code(
             let header_code = generate_tool_definitions(CodeLanguage::Typescript, sqlite_manager, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-            execute_deno_tool(bearer.clone(), parameters, extra_config, header_code, code)
+            execute_deno_tool(
+                bearer.clone(),
+                parameters,
+                tool_id,
+                app_id,
+                extra_config,
+                header_code,
+                code,
+            )
         }
         DynamicToolType::PythonDynamic => {
             return Err(ToolError::ExecutionError("NYI Python".to_string()));

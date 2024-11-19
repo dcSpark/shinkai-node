@@ -989,6 +989,8 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         llm_provider: String,
         extra_config: Option<String>,
         res: Sender<Result<Value, APIError>>,
@@ -998,6 +1000,8 @@ pub enum NodeCommand {
         code: String,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolDefinitions {

@@ -388,11 +388,10 @@ impl Node {
             Ok(())
         }
 
-        // Save the tool to the LanceShinkaiDb
-        match sqlite_manager.add_tool(shinkai_tool.clone()).await {
-            Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
-            Err(SqliteManagerError::ToolAlreadyExists(_)) => {
-                // Tool already exists, update it instead
+        // Check if the tool already exists
+        match sqlite_manager.tool_exists(&shinkai_tool.tool_router_key()) {
+            Ok(true) => {
+                // Tool already exists, update it
                 match sqlite_manager.update_tool(shinkai_tool).await {
                     Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
                     Err(err) => {
@@ -406,11 +405,26 @@ impl Node {
                     }
                 }
             }
+            Ok(false) => {
+                // Add the tool to the LanceShinkaiDb
+                match sqlite_manager.add_tool(shinkai_tool.clone()).await {
+                    Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to add tool to SqliteManager: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add tool to SqliteManager: {}", err),
+                    message: format!("Failed to check if tool exists: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -569,6 +583,8 @@ impl Node {
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
         parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         llm_provider: String,
         extra_config: Option<String>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -590,6 +606,8 @@ impl Node {
             sqlite_manager,
             tool_router_key.clone(),
             parameters,
+            tool_id,
+            app_id,
             llm_provider,
             extra_config,
             identity_manager,
@@ -603,7 +621,15 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_router_key);
-                let _ = res.send(Ok(result)).await;
+                if result.get("data").is_some() {
+                    let _ = res.send(Ok(result)).await;
+                } else {
+                    let _ = res
+                        .send(Ok(json!({
+                            "data": result
+                        })))
+                        .await;
+                }
             }
             Err(e) => {
                 let _ = res
@@ -626,6 +652,8 @@ impl Node {
         code: String,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<SqliteManager>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -633,12 +661,30 @@ impl Node {
         }
 
         // Execute the tool directly
-        let result = execute_code(tool_type.clone(), code, parameters, None, sqlite_manager, bearer).await;
+        let result = execute_code(
+            tool_type.clone(),
+            code,
+            parameters,
+            None,
+            sqlite_manager,
+            tool_id,
+            app_id,
+            bearer,
+        )
+        .await;
 
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_type);
-                let _ = res.send(Ok(result)).await;
+                if result.get("data").is_some() {
+                    let _ = res.send(Ok(result)).await;
+                } else {
+                    let _ = res
+                        .send(Ok(json!({
+                            "data": result
+                        })))
+                        .await;
+                }
             }
             Err(e) => {
                 let _ = res

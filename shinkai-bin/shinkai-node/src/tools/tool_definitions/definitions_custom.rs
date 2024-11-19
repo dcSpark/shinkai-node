@@ -3,6 +3,7 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader,
 };
 
+// TODO keep in sync with execution_custom.rs
 pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
 
@@ -42,20 +43,20 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
         Table creation should always use 'CREATE TABLE IF NOT EXISTS'.
         
         Example table creation:
-        CREATE TABLE IF NOT EXISTS url_metrics (
+        CREATE TABLE IF NOT EXISTS table_name (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            parse_date DATETIME DEFAULT CURRENT_TIMESTAMP,in
-            parse_time_ms INTEGER,
-            url_raw_dump TEXT
+            field_1 TEXT NOT NULL,
+            field_2 DATETIME DEFAULT CURRENT_TIMESTAMP,
+            field_3 INTEGER,
+            field_4 TEXT
         );
         
         Example insert:
-        INSERT INTO url_metrics (url, parse_time_ms, url_raw_dump) VALUES ('https://example.com', 150, '<li>data</li>');
+        INSERT INTO table_name (field_1, field_3, field_4) VALUES ('value_1', 1, 'value_4');
         
         Example read:
-        SELECT * FROM url_metrics WHERE parse_date > datetime('now', '-1 day');
-        SELECT url, parse_time_ms FROM url_metrics WHERE parse_time_ms > 100 ORDER BY parse_date DESC LIMIT 10;"#
+        SELECT * FROM table_name WHERE field_2 > datetime('now', '-1 day');
+        SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DESC LIMIT 10;"#
             .to_string(),
         tool_router_key: "local:::rust_toolkit:::shinkai_sqlite_query_executor".to_string(),
         tool_type: "Rust".to_string(),
@@ -71,14 +72,14 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
                 true,
             ),
             ToolArgument::new(
-                "path".to_string(),
-                "string".to_string(),
-                "Path to the SQLite database file".to_string(),
-                true,
+                "query_params".to_string(),
+                "any[]".to_string(),
+                "The parameters to bind to the query".to_string(),
+                false,
             ),
         ],
         output_arg: ToolOutputArg {
-            json: r#"{"type": "object", "properties": {"result": {"type": "string"}}}"#.to_string(),
+            json: r#"{"type": "object", "properties": {"result": {"oneOf": [{"type": "string"},{"type": "array"}]}, "type": {"type": "string"}, "rowCount": {"type": "number"}, "rowsAffected": {"type": "number"}}}"#.to_string(),
         },
         config: None,
         usage_type: None,

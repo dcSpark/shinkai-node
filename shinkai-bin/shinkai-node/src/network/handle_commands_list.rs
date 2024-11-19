@@ -2897,6 +2897,8 @@ impl Node {
                 bearer,
                 tool_router_key,
                 parameters,
+                tool_id,
+                app_id,
                 llm_provider,
                 extra_config,
                 res,
@@ -2918,6 +2920,8 @@ impl Node {
                         sqlite_manager_clone,
                         tool_router_key,
                         parameters,
+                        tool_id,
+                        app_id,
                         llm_provider,
                         extra_config,
                         identity_manager,
@@ -2935,15 +2939,26 @@ impl Node {
                 code,
                 tool_type,
                 parameters,
+                tool_id,
+                app_id,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ =
-                        Node::execute_code(bearer, db_clone, tool_type, code, parameters, sqlite_manager_clone, res)
-                            .await;
+                    let _ = Node::execute_code(
+                        bearer,
+                        db_clone,
+                        tool_type,
+                        code,
+                        parameters,
+                        sqlite_manager_clone,
+                        tool_id,
+                        app_id,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolDefinitions { bearer, language, res } => {

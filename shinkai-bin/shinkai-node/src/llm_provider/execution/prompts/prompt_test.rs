@@ -5,7 +5,11 @@ mod tests {
         prompts::Prompt,
         subprompts::{SubPrompt, SubPromptType},
     };
-    use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
+    use shinkai_tools_primitives::tools::{
+        argument::{ToolArgument, ToolOutputArg},
+        rust_tools::RustTool,
+        shinkai_tool::ShinkaiTool,
+    };
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
@@ -41,6 +45,7 @@ mod tests {
                     false,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
@@ -179,6 +184,7 @@ mod tests {
                     false,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);

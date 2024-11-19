@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
@@ -130,7 +131,7 @@ impl ToolRouter {
     async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_custom_tools();
         for tool in rust_tools {
-            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, None);
+            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None);
             self.sqlite_manager
                 .add_tool(ShinkaiTool::Rust(rust_tool, true))
                 .await
@@ -420,7 +421,7 @@ impl ToolRouter {
             ShinkaiTool::Deno(deno_tool, _) => {
                 let function_config = shinkai_tool.get_config_from_env();
                 let result = deno_tool
-                    .run(function_args, function_config)
+                    .run(HashMap::new(), "".to_string(), function_args, function_config)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -722,7 +723,7 @@ impl ToolRouter {
         };
 
         let result = js_tool
-            .run(function_args, function_config)
+            .run(HashMap::new(), "".to_string(), function_args, function_config)
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;

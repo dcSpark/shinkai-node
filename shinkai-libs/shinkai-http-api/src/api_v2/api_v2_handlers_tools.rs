@@ -54,6 +54,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::header::optional::<String>("x-shinkai-tool-id"))
+        .and(warp::header::optional::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(tool_execution_handler);
     
@@ -114,6 +116,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::header::optional::<String>("x-shinkai-tool-id"))
+        .and(warp::header::optional::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(code_execution_handler);
 
@@ -217,6 +221,8 @@ pub struct ToolExecutionRequest {
 pub async fn tool_execution_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     payload: ToolExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {    
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -237,6 +243,8 @@ pub async fn tool_execution_handler(
             bearer,
             tool_router_key: payload.tool_router_key.clone(),
             parameters,
+            tool_id,
+            app_id,
             llm_provider: payload.llm_provider.clone(),
             extra_config: payload.extra_config,
             res: res_sender,
@@ -319,10 +327,16 @@ pub async fn tool_implementation_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct ToolMetadataImplementationRequest {
+    pub language: CodeLanguage,
+    pub job_id: String,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/tool_metadata_implementation",
-    request_body = ToolImplementationRequest,
+    request_body = ToolMetadataImplementationRequest,
     responses(
         (status = 200, description = "Tool metadata implementation", body = ToolImplementationResponse),
         (status = 400, description = "Invalid parameters", body = APIError),
@@ -331,7 +345,7 @@ pub async fn tool_implementation_handler(
 pub async fn tool_metadata_implementation_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: ToolImplementationRequest,
+    payload: ToolMetadataImplementationRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
@@ -339,7 +353,7 @@ pub async fn tool_metadata_implementation_handler(
         .send(NodeCommand::V2ApiGenerateToolMetadataImplementation {
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             language: payload.language,
-            job_id: payload.message.job_id,
+            job_id: payload.job_id,
             res: res_sender,
         })
         .await
@@ -819,6 +833,8 @@ pub struct CodeExecutionRequest {
 pub async fn code_execution_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     payload: CodeExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -840,6 +856,8 @@ pub async fn code_execution_handler(
             tool_type: payload.tool_type,
             code: payload.code,
             parameters,
+            tool_id: tool_id,
+            app_id: app_id,
             res: res_sender,
         })
         .await

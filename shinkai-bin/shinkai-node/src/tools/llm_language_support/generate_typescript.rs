@@ -42,7 +42,19 @@ fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> S
         Some("array") => {
             if let Some(items) = items_value {
                 if let Some(item_type) = items.get("type") {
-                    format!("{}[]", json_type_to_typescript(item_type, items.get("items")))
+                    let base_type = match item_type.as_str() {
+                        Some("string") => "string",
+                        Some("number") => "number",
+                        Some("integer") => "number",
+                        Some("boolean") => "boolean",
+                        Some("object") => "object",
+                        Some("array") => "any[]",
+                        _ => "any",
+                    };
+                    format!("{}[]", base_type)
+                } else if let Some(ref_type) = items.get("$ref") {
+                    // Handle $ref types
+                    format!("{}[]", ref_type.as_str().unwrap_or("any"))
                 } else {
                     "any[]".to_string()
                 }
@@ -50,8 +62,37 @@ fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> S
                 "any[]".to_string()
             }
         }
+        Some("string") => "string".to_string(),
+        Some("number") => "number".to_string(),
+        Some("integer") => "number".to_string(),
+        Some("boolean") => "boolean".to_string(),
+        Some("object") => {
+            // Handle object types with properties if available
+            if let Some(properties) = type_value.get("properties") {
+                "object".to_string() // Could be expanded to generate interface
+            } else {
+                "object".to_string()
+            }
+        }
         Some(t) => t.to_string(),
         None => "any".to_string(),
+    }
+}
+
+// Add this helper function
+fn arg_type_to_typescript(arg_type: &str) -> String {
+    // Handle array types
+    if arg_type == "array" || arg_type.ends_with("[]") {
+        "any[]".to_string()
+    } else {
+        match arg_type {
+            "string" => "string".to_string(),
+            "number" => "number".to_string(),
+            "integer" => "number".to_string(),
+            "boolean" => "boolean".to_string(),
+            "object" => "object".to_string(),
+            _ => arg_type.to_string(),
+        }
     }
 }
 
@@ -119,7 +160,7 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         .input_args
         .iter()
         .map(|arg| {
-            let type_str = &arg.arg_type;
+            let type_str = arg_type_to_typescript(&arg.arg_type);
             if arg.is_required {
                 format!("{}: {}", arg.name, type_str)
             } else {
@@ -154,6 +195,7 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
             api_port
         ));
         typescript_output.push_str("    const data = {\n");
+        typescript_output.push_str("        llm_provider: 'llm_provider',\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
         typescript_output.push_str("        parameters: {\n");
@@ -164,10 +206,12 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         typescript_output.push_str("    };\n");
         typescript_output.push_str("    const response = await axios.post(_url, data, {\n");
         typescript_output.push_str("        headers: {\n");
-        typescript_output.push_str("            'Authorization': `Bearer ${process.env.BEARER}`\n");
+        typescript_output.push_str("            'Authorization': `Bearer ${Deno.env.get('BEARER')}`,\n");
+        typescript_output.push_str("            'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,\n");
+        typescript_output.push_str("            'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`\n");
         typescript_output.push_str("        }\n");
         typescript_output.push_str("    });\n");
-        typescript_output.push_str("    return response.data;\n");
+        typescript_output.push_str("    return response.data.data;\n");
         typescript_output.push_str("}\n");
     }
 

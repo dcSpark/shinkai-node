@@ -151,6 +151,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 * This will be shared as a library, when used it run(...) function will be called.
 * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
 * If you need to import other libraries, do it in the Deno NPM format and with version, for example to import axios use 'import axios from 'npm:axios@1.6.2' with the 'npm:' prefix, and the exact version.
+* If permanent memory is required, write to disk, store, sql always prioritize using shinkaiSqliteQueryExecutor.
 
 # RULE IV:
 * Do not output, notes, ideas, explanations or examples.
@@ -177,10 +178,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 //     Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
 // }
 
-pub async fn tool_metadata_implementation(
-    language: CodeLanguage,
-    code: String,
-) -> Result<String, APIError> {
+pub async fn tool_metadata_implementation(language: CodeLanguage, code: String) -> Result<String, APIError> {
     // Generate tool definitions first
     // let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
 
@@ -306,6 +304,40 @@ This is the SCHEMA for the METADATA:
           "type"
         ],
         "additionalProperties": false,
+        "sqlTables": {{
+          "type": "array",
+          "items": {{
+            "type": "object",
+            "properties": {{
+              "name": {{
+                "type": "string",
+                "description": "Name of the table"
+              }},
+              "definition": {{
+                "type": "string",
+                "description": "SQL CREATE TABLE statement"
+              }}
+            }},
+            "required": ["name", "definition"]
+          }}
+        }},
+        "sqlQueries": {{
+          "type": "array",
+          "items": {{
+            "type": "object",
+            "properties": {{
+              "name": {{
+                "type": "string",
+                "description": "Name/description of the query"
+              }},
+              "query": {{
+                "type": "string",
+                "description": "Example SQL query"
+              }}
+            }},
+            "required": ["name", "query"]
+          }}
+        }}
         "if": {{
           "properties": {{
             "type": {{
@@ -363,7 +395,19 @@ Output: ```json
       "address": {{ "type": "string", "nullable": true }},
     }},
     "required": []
-  }}
+  }},
+  "sqlTables": [
+    {{
+      "name": "wallets",
+      "definition": "CREATE TABLE wallets (id VARCHAR(255) PRIMARY KEY, name VARCHAR(255) NOT NULL, private_key TEXT NOT NULL, address VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+    }}
+  ],
+  "sqlQueries": [
+    {{
+      "name": "Get wallet by address",
+      "query": "SELECT * FROM wallets WHERE address = :address"
+    }}
+  ]
 }};
 ```
 
@@ -402,11 +446,28 @@ Output:```json
     "required": [
       "markdowns"
     ]
-  }}
+  }},
+  "sqlTables": [
+    {{
+      "name": "downloaded_pages",
+      "definition": "CREATE TABLE downloaded_pages (id SERIAL PRIMARY KEY, url TEXT NOT NULL, markdown_content TEXT, downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+    }}
+  ],
+  "sqlQueries": [
+    {{
+      "name": "Get page by URL",
+      "query": "SELECT * FROM downloaded_pages WHERE url = :url ORDER BY downloaded_at DESC LIMIT 1"
+    }}
+  ]
 }};
 ```
 
 # RULE II:
+If the code uses shinkaiSqliteQueryExecutor then fill the sqlTables and sqlQueries sections, otherwise these sections are empty.
+sqlTables contains the complete table structures, they should be same as in the code.
+sqlQueries contains from 1 to 3 examples that show how the data should be retrieved for usage.
+
+# RULE III:
 * Return a valid schema for the described JSON, remove trailing commas.
 * The METADATA must be in JSON valid format in only one JSON code block and nothing else.
 * Output only the METADATA, so the complete Output it's a valid JSON string.
@@ -414,9 +475,7 @@ Output:```json
 * Generate the METADATA for the following source code in the INPUT:
 
 # INPUT:
-```json
 {}
-```
 "####,
                 code.clone()
             ));

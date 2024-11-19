@@ -49,15 +49,17 @@ impl DenoTool {
 
     pub fn run(
         &self,
+        envs: HashMap<String, String>,
+        header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
-        self.run_on_demand(String::new(), String::new(), parameters, extra_config)
+        self.run_on_demand(envs, header_code, parameters, extra_config)
     }
 
     pub fn run_on_demand(
         &self,
-        bearer: String,
+        envs: HashMap<String, String>,
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
@@ -102,21 +104,18 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("Running DenoTool with config: {:?}", config);
                     println!("Running DenoTool with input: {:?}", parameters);
-                    // TODO this is not a good solution; the bearer should not be used to detect if the headers should be added
-                    // This will be fixed when the code is executed in the folder struture.
-                    let final_code = if !bearer.is_empty() {
-                        // Remove axios import, as it's also created in the header code
+                    // Remove axios import, as it's also created in the header code
+                    let step_1 = if !header_code.is_empty() {
                         let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
-                        let step_1 = regex_axios.replace_all(&code, "").into_owned();
-                        // Remove library import, it is expected to be provided, but might not be generated.
-                        let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
-                        let step_2 = regex.replace_all(&step_1, "").into_owned();
-                        // Add the library import and the header code in the beginning of the code
-                        let code_with_header = format!("{} {}", header_code, step_2);
-                        code_with_header.replace("${process.env.BEARER}", &bearer)
+                        regex_axios.replace_all(&code, "").into_owned()
                     } else {
                         code
                     };
+                    // Remove library import, it is expected to be provided, but might not be generated.
+                    let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
+                    let step_2 = regex.replace_all(&step_1, "").into_owned();
+                    // Add the library import and the header code in the beginning of the code
+                    let final_code = format!("{} {}", header_code, step_2);
                     println!("Final code: {}", final_code);
                     println!("Config JSON: {}", config_json);
                     println!("Parameters: {:?}", parameters);
@@ -134,7 +133,7 @@ impl DenoTool {
                     // App is sending Parameters: {"0": Object {"url": String("https://jhftss.github.io/")}}
                     let binding = serde_json::Value::Object(parameters.clone());
                     let fixed_parameters = parameters.get("0").unwrap_or(&binding);
-                    tool.run(None, fixed_parameters.clone(), None)
+                    tool.run(Some(envs), fixed_parameters.clone(), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
