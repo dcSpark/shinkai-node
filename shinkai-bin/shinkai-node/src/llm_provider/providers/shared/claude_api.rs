@@ -7,8 +7,6 @@ use shinkai_message_primitives::schemas::llm_message::LlmMessage;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 
-use super::shared_model_logic;
-
 pub fn claude_prepare_messages(
     model: &LLMProviderInterface,
     prompt: Prompt,

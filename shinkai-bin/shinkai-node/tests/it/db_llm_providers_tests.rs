@@ -1,4 +1,3 @@
-use mockito::Server;
 use std::fs;
 use std::path::Path;
 
@@ -9,14 +8,13 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
 
     use shinkai_db::db::{db_errors::ShinkaiDBError, ShinkaiDB};
     use shinkai_message_primitives::schemas::{
         llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     };
-    use shinkai_node::llm_provider::{llm_provider::LLMProvider, llm_stopper::LLMStopper};
+
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;

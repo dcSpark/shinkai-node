@@ -1,6 +1,5 @@
 use crate::tools::deno_tools::DenoTool;
 use crate::tools::error::ToolError;
-use crate::tools::js_toolkit_headers::BasicConfig;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
@@ -8,8 +7,8 @@ use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     argument::{ToolArgument, ToolOutputArg},
-    deno_tools::JSToolResult,
-    js_toolkit_headers::ToolConfig,
+    deno_tools::DenoToolResult,
+    tool_config::{BasicConfig, ToolConfig},
 };
 
 /// A JSToolkit is a collection of JSTools.
@@ -44,8 +43,8 @@ impl JSToolkit {
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
 
-        let result = JSToolResult {
-            result_type: definition.result["type"].as_str().unwrap_or("object").to_string(),
+        let result = DenoToolResult {
+            r#type: definition.result["type"].as_str().unwrap_or("object").to_string(),
             properties: definition.result["properties"].clone(),
             required: definition.result["required"]
                 .as_array()
@@ -69,7 +68,6 @@ impl JSToolkit {
                 vector: meta.embeddings,
             }),
             result,
-            output: definition.result.to_string(),
         }
     }
 

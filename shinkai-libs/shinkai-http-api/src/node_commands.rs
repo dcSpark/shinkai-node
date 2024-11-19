@@ -14,6 +14,7 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        shinkai_tools::{CodeLanguage, DynamicToolType},
         smart_inbox::{SmartInbox, V2SmartInbox},
         wallet_complementary::{WalletRole, WalletSource},
         wallet_mixed::NetworkIdentifier,
@@ -23,18 +24,21 @@ use shinkai_message_primitives::{
         shinkai_message_schemas::{
             APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
             APICreateShareableFolder, APIExportSheetPayload, APIGetLastNotifications, APIGetMySubscribers,
-            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APISetWorkflow,
+            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload,
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
-            JobMessage, RegistrationCodeType, V2ChatMessage,
+            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
 };
 
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_playground::ToolPlayground,
+};
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
 //         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
@@ -42,7 +46,6 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::api_v2::api_v2_handlers_tools::{Language, ToolType};
 use crate::node_api_router::SendResponseBody;
 
 use super::{
@@ -982,45 +985,70 @@ pub enum NodeCommand {
         payload: APISetSheetUploadedFilesPayload,
         res: Sender<Result<Value, APIError>>,
     },
-    ExecuteCommand {
+    V2ApiExecuteTool {
         bearer: String,
         tool_router_key: String,
-        tool_type: ToolType,
         parameters: Map<String, Value>,
-        res: Sender<Result<Value, APIError>>,
-    },
-    GenerateToolDefinitions {
-        bearer: String,
-        language: Language,
-        res: Sender<Result<Value, APIError>>,
-    },
-    GenerateToolImplementation {
-        bearer: String,
-        language: Language,
-        prompt: String,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        job_creation_info: JobCreationInfo,
+        tool_id: Option<String>,
+        app_id: Option<String>,
         llm_provider: String,
+        extra_config: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExecuteCode {
+        bearer: String,
+        code: String,
+        tool_type: DynamicToolType,
+        parameters: Map<String, Value>,
+        tool_id: Option<String>,
+        app_id: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolDefinitions {
+        bearer: String,
+        language: CodeLanguage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolFetchQuery {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolImplementation {
+        bearer: String,
+        message: JobMessage,
+        language: CodeLanguage,
         raw: bool,
-        fetch_query: bool,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     },
-    GenerateToolMetadataImplementation {
+    V2ApiGenerateToolMetadataImplementation {
         bearer: String,
-        language: Language,
-        code: Option<String>,
-        metadata: Option<String>,
-        output: Option<String>,
-        job_creation_info: JobCreationInfo,
-        llm_provider: String,
+        job_id: String,
+        language: CodeLanguage,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {
         bearer: String,
         inbox_name: String,
         format: ExportInboxMessagesFormat,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetPlaygroundTool {
+        bearer: String,
+        payload: ToolPlayground,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListPlaygroundTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemovePlaygroundTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetPlaygroundTool {
+        bearer: String,
+        tool_key: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

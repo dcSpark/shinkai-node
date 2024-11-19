@@ -56,6 +56,19 @@ pub fn ollama_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
 
+    // Check if the prompt is not empty but messages are empty
+    if !prompt.sub_prompts.is_empty() && chat_completion_messages.is_empty() {
+        // Calculate the number of tokens used by the prompt
+        let (_, used_tokens) = prompt.generate_chat_completion_messages(
+            Some("tool".to_string()),
+            &ModelCapabilitiesManager::num_tokens_from_llama3,
+        );
+        return Err(LLMProviderError::MessageTooLargeForLLM {
+            max_tokens: max_input_tokens,
+            used_tokens,
+        });
+    }
+
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
 

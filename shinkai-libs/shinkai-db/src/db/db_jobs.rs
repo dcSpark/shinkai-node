@@ -897,7 +897,6 @@ impl ShinkaiDB {
     /// Fetches all forked jobs for a specific Job from the DB
     fn get_forked_jobs(&self, job_id: &str) -> Result<Vec<ForkedJob>, ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
-        // TODO: this is wrong
         let forked_jobs_key = format!("jobinbox_{}_forked_jobs", job_id);
 
         match self.db.get_cf(cf_inbox, forked_jobs_key.as_bytes()) {

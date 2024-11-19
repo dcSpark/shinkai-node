@@ -8,6 +8,5 @@ pub mod api_v2_handlers_subscriptions;
 pub mod api_v2_handlers_swagger_ui;
 pub mod api_v2_handlers_vecfs;
 pub mod api_v2_handlers_wallets;
-pub mod api_v2_handlers_workflows;
 pub mod api_v2_handlers_tools;
 pub mod api_v2_router;

@@ -11,8 +11,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
+          # - arch: x86_64-unknown-linux-gnu
+          #   os: ubuntu-22.04
           - arch: aarch64-apple-darwin
             os: macos-14
           - arch: x86_64-pc-windows-msvc

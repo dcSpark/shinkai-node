@@ -1,4 +1,3 @@
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::CallbackAction;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

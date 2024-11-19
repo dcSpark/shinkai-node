@@ -1,25 +1,20 @@
+use std::collections::HashMap;
+
 use serde_json::{Map, Value};
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-use shinkai_tools_primitives::tools::deno_tools::JSToolResult;
+use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 pub fn execute_deno_tool(
     bearer: String,
     parameters: Map<String, Value>,
+    tool_id: Option<String>,
+    app_id: Option<String>,
     extra_config: Option<String>,
     header_code: String,
+    code: String,
 ) -> Result<Value, ToolError> {
-    // Extract the JavaScript code from parameters
-    let js_code = parameters
-        .get("code")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::ExecutionError("Missing 'code' parameter".to_string()))?
-        .to_string();
-
-    let code = format!("{}", js_code);
-
     // Create a minimal DenoTool instance
     let tool = DenoTool {
         toolkit_name: "deno".to_string(),
@@ -33,16 +28,14 @@ pub fn execute_deno_tool(
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        output: "".to_string(),
-        result: JSToolResult::new("object".to_string(), Value::Null, vec![]),
+        result: DenoToolResult::new("object".to_string(), Value::Null, vec![]),
     };
 
-    // Create a new parameters map without the code parameter
-    let mut execution_parameters = parameters.clone();
-    execution_parameters.remove("code");
-
-    // Run the tool and convert the RunResult to Value
-    match tool.run_on_demand(bearer, header_code, execution_parameters, extra_config) {
+    let mut envs = HashMap::new();
+    envs.insert("BEARER".to_string(), bearer);
+    envs.insert("x-shinkai-tool-id".to_string(), tool_id.unwrap_or("".to_owned()));
+    envs.insert("x-shinkai-app-id".to_string(), app_id.unwrap_or("".to_owned()));
+    match tool.run_on_demand(envs, header_code, parameters, extra_config) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

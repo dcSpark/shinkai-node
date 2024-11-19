@@ -22,3 +22,9 @@ impl ToolArgument {
 pub struct ToolOutputArg {
     pub json: String,
 }
+
+impl ToolOutputArg {
+    pub fn empty() -> Self {
+        Self { json: "".to_string() }
+    }
+}

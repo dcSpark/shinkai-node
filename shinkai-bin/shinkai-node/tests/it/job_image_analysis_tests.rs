@@ -2,6 +2,7 @@ use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider,
 };
@@ -12,10 +13,8 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_http_api::node_commands::NodeCommand;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -27,9 +26,8 @@ use mockito::Server;
 #[test]
 #[ignore]
 fn job_image_analysis() {
-
     let mut server = Server::new();
-    
+
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

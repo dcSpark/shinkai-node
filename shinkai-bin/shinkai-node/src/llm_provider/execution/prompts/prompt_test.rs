@@ -5,7 +5,11 @@ mod tests {
         prompts::Prompt,
         subprompts::{SubPrompt, SubPromptType},
     };
-    use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
+    use shinkai_tools_primitives::tools::{
+        argument::{ToolArgument, ToolOutputArg},
+        rust_tools::RustTool,
+        shinkai_tool::ShinkaiTool,
+    };
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
@@ -41,6 +45,7 @@ mod tests {
                     false,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
@@ -104,7 +109,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust-toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({
@@ -179,6 +184,7 @@ mod tests {
                     false,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
@@ -235,7 +241,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust-toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({

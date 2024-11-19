@@ -1,12 +1,10 @@
 use super::utils::test_boilerplate::run_test_one_node_network;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 
 use super::utils::node_test_api::api_initial_registration_with_no_code_for_device;
 
 #[test]
 fn simple_node_registration_test() {
-    
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

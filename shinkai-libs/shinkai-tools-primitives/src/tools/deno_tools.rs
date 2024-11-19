@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::{env, thread};
 
 use super::argument::ToolOutputArg;
-use super::js_toolkit_headers::ToolConfig;
+use super::tool_config::ToolConfig;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -27,8 +27,7 @@ pub struct DenoTool {
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
-    pub result: JSToolResult,
-    pub output: String,
+    pub result: DenoToolResult,
 }
 
 impl DenoTool {
@@ -50,15 +49,17 @@ impl DenoTool {
 
     pub fn run(
         &self,
+        envs: HashMap<String, String>,
+        header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
     ) -> Result<RunResult, ToolError> {
-        self.run_on_demand(String::new(), String::new(), parameters, extra_config)
+        self.run_on_demand(envs, header_code, parameters, extra_config)
     }
 
     pub fn run_on_demand(
         &self,
-        bearer: String,
+        envs: HashMap<String, String>,
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
@@ -103,14 +104,21 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("Running DenoTool with config: {:?}", config);
                     println!("Running DenoTool with input: {:?}", parameters);
-                    let final_code = if !bearer.is_empty() {
-                        let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
-                        let code_with_header = format!("{} {}", header_code, regex.replace_all(&code, "").into_owned());
-                        code_with_header.replace("${process.env.BEARER}", &bearer)
+                    // Remove axios import, as it's also created in the header code
+                    let step_1 = if !header_code.is_empty() {
+                        let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
+                        regex_axios.replace_all(&code, "").into_owned()
                     } else {
                         code
                     };
-                    // println!("Final code: {}", final_code);
+                    // Remove library import, it is expected to be provided, but might not be generated.
+                    let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
+                    let step_2 = regex.replace_all(&step_1, "").into_owned();
+                    // Add the library import and the header code in the beginning of the code
+                    let final_code = format!("{} {}", header_code, step_2);
+                    println!("Final code: {}", final_code);
+                    println!("Config JSON: {}", config_json);
+                    println!("Parameters: {:?}", parameters);
                     let tool = Tool::new(
                         final_code,
                         config_json,
@@ -121,8 +129,11 @@ impl DenoTool {
                             ),
                         }),
                     );
-                    // TODO: Fix this object wrap after update tools library to have the right typification
-                    tool.run(None, serde_json::Value::Object(parameters), None)
+                    // This is just a workaround to fix the parameters object.
+                    // App is sending Parameters: {"0": Object {"url": String("https://jhftss.github.io/")}}
+                    let binding = serde_json::Value::Object(parameters.clone());
+                    let fixed_parameters = parameters.get("0").unwrap_or(&binding);
+                    tool.run(Some(envs), fixed_parameters.clone(), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()))
                 })
@@ -146,22 +157,20 @@ impl DenoTool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct JSToolResult {
-    pub result_type: String,
+pub struct DenoToolResult {
+    pub r#type: String,
     pub properties: serde_json::Value,
     pub required: Vec<String>,
 }
 
-impl Serialize for JSToolResult {
+impl Serialize for DenoToolResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let properties_str = serde_json::to_string(&self.properties).map_err(serde::ser::Error::custom)?;
-
         let helper = Helper {
-            result_type: self.result_type.clone(),
-            properties: properties_str,
+            result_type: self.r#type.clone(),
+            properties: self.properties.clone(),
             required: self.required.clone(),
         };
 
@@ -169,17 +178,16 @@ impl Serialize for JSToolResult {
     }
 }
 
-impl<'de> Deserialize<'de> for JSToolResult {
+impl<'de> Deserialize<'de> for DenoToolResult {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let helper = Helper::deserialize(deserializer)?;
-        let properties: JsonValue = serde_json::from_str(&helper.properties).map_err(serde::de::Error::custom)?;
 
-        Ok(JSToolResult {
-            result_type: helper.result_type,
-            properties,
+        Ok(DenoToolResult {
+            r#type: helper.result_type,
+            properties: helper.properties,
             required: helper.required,
         })
     }
@@ -187,17 +195,65 @@ impl<'de> Deserialize<'de> for JSToolResult {
 
 #[derive(Serialize, Deserialize)]
 struct Helper {
+    #[serde(rename = "type", alias = "result_type")]
     result_type: String,
-    properties: String,
+    properties: JsonValue,
     required: Vec<String>,
 }
 
-impl JSToolResult {
+impl DenoToolResult {
     pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
-        JSToolResult {
-            result_type,
+        DenoToolResult {
+            r#type: result_type,
             properties,
             required,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_jstool_result_with_hashmap_properties() {
+        let json_data = r#"
+    {
+        "type": "object",
+        "properties": {
+            "walletId": {"type": "string", "nullable": true},
+            "seed": {"type": "string", "nullable": true},
+            "address": {"type": "string", "nullable": true}
+        },
+        "required": []
+    }
+    "#;
+
+        let deserialized: DenoToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
+
+        assert_eq!(deserialized.r#type, "object");
+        assert!(deserialized.properties.is_object());
+        assert_eq!(deserialized.required, Vec::<String>::new());
+
+        if let Some(wallet_id) = deserialized.properties.get("walletId") {
+            assert_eq!(wallet_id.get("type").and_then(|v| v.as_str()), Some("string"));
+            assert_eq!(wallet_id.get("nullable").and_then(|v| v.as_bool()), Some(true));
+        } else {
+            panic!("walletId property missing");
+        }
+
+        if let Some(seed) = deserialized.properties.get("seed") {
+            assert_eq!(seed.get("type").and_then(|v| v.as_str()), Some("string"));
+            assert_eq!(seed.get("nullable").and_then(|v| v.as_bool()), Some(true));
+        } else {
+            panic!("seed property missing");
+        }
+
+        if let Some(address) = deserialized.properties.get("address") {
+            assert_eq!(address.get("type").and_then(|v| v.as_str()), Some("string"));
+            assert_eq!(address.get("nullable").and_then(|v| v.as_bool()), Some(true));
+        } else {
+            panic!("address property missing");
         }
     }
 }

@@ -1,39 +1,41 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
-use shinkai_message_primitives::schemas::inbox_name;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::V2ChatMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
-use reqwest::StatusCode;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_http_api::api_v2::api_v2_handlers_tools::Language;
-use shinkai_http_api::node_api_router::APIError;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::managers::IdentityManager;
 use crate::tools::tool_generation::v2_create_and_send_job_message;
+use crate::utils::environment::fetch_node_environment;
 use crate::{llm_provider::job_manager::JobManager, network::Node};
 
 use tokio::time::{sleep, Duration};
 
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params_from_iter;
+
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
-    extra_config: Option<String>,
+    tool_id: Option<String>,
+    app_id: Option<String>,
+    _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
+    llm_provider: String,
     node_name: ShinkaiName,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
@@ -42,8 +44,11 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     match tool_router_key {
-        // TODO this can be fetched from the tool definition
-        s if s == "local:::shinkai_custom:::llm_prompt_processor" => {
+        // TODO Keep in sync wiht definitions_custom.rs
+        s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => {
+            execute_sqlite_query(tool_id, app_id, &parameters)
+        }
+        s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
             execute_llm(
                 bearer,
                 db,
@@ -54,6 +59,7 @@ pub async fn execute_custom_tool(
                 encryption_public_key,
                 signing_secret_key,
                 &parameters,
+                llm_provider,
             )
             .await
         }
@@ -71,8 +77,8 @@ async fn execute_llm(
     encryption_public_key_clone: EncryptionPublicKey,
     signing_secret_key_clone: SigningKey,
     parameters: &Map<String, Value>,
+    llm_provider: String,
 ) -> Result<Value, ToolError> {
-    let llm_provider = "llama3_1_8b".to_string();
     let content = parameters
         .get("prompt")
         .and_then(|v| v.as_str())
@@ -83,7 +89,7 @@ async fn execute_llm(
         bearer.clone(),
         JobCreationInfo {
             scope: JobScope::new_default(),
-            is_hidden: Some(false),
+            is_hidden: Some(true),
             associated_ui: None,
         },
         llm_provider,
@@ -136,95 +142,114 @@ async fn execute_llm(
     };
     println!("messages-llm-bot: {} {:?}", x.len(), x);
 
-    Ok(json!({ "message": x.last().unwrap().last().unwrap().job_message.content.clone() }))
-}
-
-fn execute_calculator(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
-    // Extract parameters
-    let operation = parameters
-        .get("operation")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::SerializationError("Missing operation parameter".to_string()))?;
-
-    let x = parameters
-        .get("x")
-        .and_then(|v| v.as_f64())
-        .ok_or_else(|| ToolError::SerializationError("Missing or invalid x parameter".to_string()))?;
-
-    let y = parameters
-        .get("y")
-        .and_then(|v| v.as_f64())
-        .ok_or_else(|| ToolError::SerializationError("Missing or invalid y parameter".to_string()))?;
-
-    // Perform calculation
-    let result = match operation {
-        "add" => x + y,
-        "subtract" => x - y,
-        "multiply" => x * y,
-        "divide" => {
-            if y == 0.0 {
-                return Err(ToolError::ExecutionError("Division by zero".to_string()));
-            }
-            x / y
-        }
-        _ => return Err(ToolError::ExecutionError("Invalid operation".to_string())),
-    };
-
     Ok(json!({
-        "result": result
+        "data": {
+            "message": x.last().unwrap().last().unwrap().job_message.content.clone()
+        }
     }))
 }
 
-fn execute_text_analyzer(parameters: &Map<String, Value>) -> Result<Value, ToolError> {
-    // Extract parameters
-    let text = parameters
-        .get("text")
+fn execute_sqlite_query(
+    tool_id: Option<String>,
+    app_id: Option<String>,
+    parameters: &Map<String, Value>,
+) -> Result<Value, ToolError> {
+    let tool_path = tool_id.ok_or_else(|| ToolError::ExecutionError("Tool ID or App ID is required".to_string()))?;
+    let app_path = app_id.ok_or_else(|| ToolError::ExecutionError("App ID is required".to_string()))?;
+
+    let query = parameters
+        .get("query")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::SerializationError("Missing text parameter".to_string()))?;
+        .ok_or_else(|| ToolError::ExecutionError("Query parameter is required".to_string()))?;
 
-    let include_sentiment = parameters
-        .get("include_sentiment")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let node_env = fetch_node_environment();
+    let node_storage_path = node_env
+        .node_storage_path
+        .clone()
+        .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+    let full_path = Path::new(&node_storage_path)
+        .join("tools_db")
+        .join(app_path)
+        .join(tool_path)
+        .join("db.sqlite");
 
-    // Calculate basic statistics
-    let word_count = text.split_whitespace().count();
-    let character_count = text.chars().count();
+    let query_params = parameters
+        .get("query_params")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|v| v.as_str().unwrap_or_default())
+                .collect::<Vec<&str>>()
+        })
+        .unwrap_or(vec![]);
 
-    // Create response
-    let mut response = json!({
-        "word_count": word_count,
-        "character_count": character_count,
-    });
-
-    // Add sentiment analysis if requested
-    if include_sentiment {
-        let sentiment_score = calculate_mock_sentiment(text);
-        response
-            .as_object_mut()
-            .unwrap()
-            .insert("sentiment_score".to_string(), json!(sentiment_score));
+    // Ensure parent directory exists
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
     }
 
-    Ok(response)
-}
+    let manager = SqliteConnectionManager::file(full_path);
+    let pool = Pool::new(manager)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to create connection pool: {}", e)))?;
 
-fn calculate_mock_sentiment(text: &str) -> f64 {
-    let positive_words = ["good", "great", "excellent", "happy", "wonderful"];
-    let negative_words = ["bad", "terrible", "awful", "sad", "horrible"];
+    let conn = pool
+        .get()
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get connection: {}", e)))?;
 
-    let lowercase_text = text.to_lowercase();
-    let words: Vec<&str> = lowercase_text.split_whitespace().collect();
-    let mut score: f64 = 0.0;
+    let mut stmt = conn
+        .prepare(query)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?;
 
-    for word in words {
-        if positive_words.contains(&word) {
-            score += 0.2;
-        }
-        if negative_words.contains(&word) {
-            score -= 0.2;
-        }
+    // For SELECT queries, fetch column names and rows
+    if query.trim().to_lowercase().starts_with("select") {
+        let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
+
+        let rows = stmt
+            .query_map(params_from_iter(query_params.iter()), |row| {
+                let mut map = Map::new();
+                for (i, column_name) in column_names.iter().enumerate() {
+                    let value: Value = match row.get_ref(i) {
+                        Ok(val) => match val {
+                            rusqlite::types::ValueRef::Null => Value::Null,
+                            rusqlite::types::ValueRef::Integer(i) => Value::Number(i.into()),
+                            rusqlite::types::ValueRef::Real(f) => {
+                                Value::Number(serde_json::Number::from_f64(f).unwrap_or(serde_json::Number::from(0)))
+                            }
+                            rusqlite::types::ValueRef::Text(s) => {
+                                Value::String(String::from_utf8_lossy(s).into_owned())
+                            }
+                            rusqlite::types::ValueRef::Blob(b) => Value::String(format!("<BLOB: {} bytes>", b.len())),
+                        },
+                        Err(_) => Value::Null,
+                    };
+                    map.insert(column_name.clone(), value);
+                }
+                Ok(map)
+            })
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to collect results: {}", e)))?;
+
+        Ok(json!({
+            "data": {
+                "result": rows,
+                "type": "select",
+                "rowCount": rows.len()
+            }
+        }))
+    } else {
+        // For non-SELECT queries (INSERT, UPDATE, DELETE, etc)
+        let rows_affected = stmt
+            .execute(params_from_iter(query_params.iter()))
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?;
+
+        Ok(json!({
+            "data": {
+                "result": format!("Query executed successfully"),
+                "type": "modify",
+                "rowsAffected": rows_affected
+            }
+        }))
     }
-
-    score.clamp(-1.0, 1.0)
 }

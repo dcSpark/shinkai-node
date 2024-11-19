@@ -2,8 +2,7 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::sheet::{
-    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, ColumnUuid, RowIndex, RowUuid, UuidString,
-    WorkflowSheetJobData,
+    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnUuid, RowUuid, UuidString, WorkflowSheetJobData,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -42,7 +41,7 @@ pub struct CellUpdateData {
 #[derive(Debug, Clone)]
 pub struct ProcessedInput {
     pub content: String,
-    pub local_files: Vec<(String, String)>, // (FilePath, FileName)
+    pub local_files: Vec<(String, String)>,    // (FilePath, FileName)
     pub uploaded_files: Vec<(String, String)>, // (FilePath, FileName)
 }
 
@@ -470,7 +469,8 @@ impl Sheet {
                                         if let Some(cell) = self.get_cell(row.clone(), col_uuid.clone()) {
                                             if let Some(value) = &cell.value {
                                                 // Assuming the value is a serialized list of file paths
-                                                let files: Vec<(String, String)> = serde_json::from_str(value).unwrap_or_default();
+                                                let files: Vec<(String, String)> =
+                                                    serde_json::from_str(value).unwrap_or_default();
                                                 local_files.extend(files);
                                             }
                                         }
@@ -483,7 +483,7 @@ impl Sheet {
                                                 // TODO: eventually if we want to support multiple files, we need to change this
                                                 // let file_names: Vec<String> = serde_json::from_str(value).unwrap_or_default();
                                                 // for file_name in file_names {
-                                                    uploaded_files.push((file_inbox_id.clone(), value.clone()));
+                                                uploaded_files.push((file_inbox_id.clone(), value.clone()));
                                                 // }
                                             }
                                         }
