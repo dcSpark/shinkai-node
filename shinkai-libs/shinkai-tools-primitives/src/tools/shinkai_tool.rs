@@ -107,11 +107,11 @@ impl ShinkaiTool {
             .replace('/', "|")
             .to_lowercase();
 
-        // Ensure the key fits the pattern [^a-z0-9_]+
+        // Ensure the key fits the pattern [^a-z0-9_@]+
         let valid_key = key
             .chars()
             .map(|c| {
-                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':' {
+                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':' || c == '@' {
                     c
                 } else {
                     '_'

@@ -388,11 +388,10 @@ impl Node {
             Ok(())
         }
 
-        // Save the tool to the LanceShinkaiDb
-        match sqlite_manager.add_tool(shinkai_tool.clone()).await {
-            Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
-            Err(SqliteManagerError::ToolAlreadyExists(_)) => {
-                // Tool already exists, update it instead
+        // Check if the tool already exists
+        match sqlite_manager.tool_exists(&shinkai_tool.tool_router_key()) {
+            Ok(true) => {
+                // Tool already exists, update it
                 match sqlite_manager.update_tool(shinkai_tool).await {
                     Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
                     Err(err) => {
@@ -406,11 +405,26 @@ impl Node {
                     }
                 }
             }
+            Ok(false) => {
+                // Add the tool to the LanceShinkaiDb
+                match sqlite_manager.add_tool(shinkai_tool.clone()).await {
+                    Ok(tool) => save_metadata_and_respond(&sqlite_manager, &res, updated_payload, tool).await,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to add tool to SqliteManager: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add tool to SqliteManager: {}", err),
+                    message: format!("Failed to check if tool exists: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
