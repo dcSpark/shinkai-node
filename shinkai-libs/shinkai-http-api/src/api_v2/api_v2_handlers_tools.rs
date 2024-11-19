@@ -54,8 +54,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::header::optional::<String>("x-shinkai-tool-id"))
-        .and(warp::header::optional::<String>("x-shinkai-app-id"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(tool_execution_handler);
     
@@ -116,8 +116,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::header::optional::<String>("x-shinkai-tool-id"))
-        .and(warp::header::optional::<String>("x-shinkai-app-id"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(code_execution_handler);
 
@@ -221,8 +221,8 @@ pub struct ToolExecutionRequest {
 pub async fn tool_execution_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    tool_id: Option<String>,
-    app_id: Option<String>,
+    tool_id: String,
+    app_id: String,
     payload: ToolExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {    
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -833,8 +833,8 @@ pub struct CodeExecutionRequest {
 pub async fn code_execution_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    tool_id: Option<String>,
-    app_id: Option<String>,
+    tool_id: String,
+    app_id: String,
     payload: CodeExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();

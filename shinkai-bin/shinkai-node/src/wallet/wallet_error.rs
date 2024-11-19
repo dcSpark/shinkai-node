@@ -51,15 +51,19 @@ impl fmt::Display for WalletError {
             WalletError::HexError(e) => write!(f, "HexError: {}", e),
             WalletError::ProviderError(e) => write!(f, "ProviderError: {}", e),
             WalletError::DetailedJsonRpcError { code, message, data } => {
-                write!(f, "JSON-RPC error: code {}, message: {}, data: {:?}", code, message, data)
-            },
+                write!(
+                    f,
+                    "JSON-RPC error: code {}, message: {}, data: {:?}",
+                    code, message, data
+                )
+            }
             WalletError::NetworkMismatch => write!(f, "NetworkMismatch"),
             WalletError::InvalidAmount(e) => write!(f, "InvalidAmount: {}", e),
             WalletError::InvalidAddress(e) => write!(f, "InvalidAddress: {}", e),
             WalletError::UnsupportedAsset(e) => write!(f, "UnsupportedAsset: {}", e),
             WalletError::UnsupportedAssetForNetwork(e, n) => {
                 write!(f, "UnsupportedAssetForNetwork: {} for network {}", e, n)
-            },
+            }
             WalletError::MissingContractAddress(e) => write!(f, "MissingContractAddress: {}", e),
             WalletError::AbiError(e) => write!(f, "AbiError: {}", e),
             WalletError::AbiEncodingError(e) => write!(f, "AbiEncodingError: {}", e),
@@ -144,34 +148,26 @@ impl From<ethers::providers::ProviderError> for WalletError {
         match error {
             ethers::providers::ProviderError::JsonRpcClientError(e) => {
                 WalletError::ProviderError(format!("JsonRpcClientError: {:?}", e))
-            },
-            ethers::providers::ProviderError::EnsError(e) => {
-                WalletError::ProviderError(format!("EnsError: {}", e))
-            },
+            }
+            ethers::providers::ProviderError::EnsError(e) => WalletError::ProviderError(format!("EnsError: {}", e)),
             ethers::providers::ProviderError::EnsNotOwned(e) => {
                 WalletError::ProviderError(format!("EnsNotOwned: {}", e))
-            },
-            ethers::providers::ProviderError::SerdeJson(e) => {
-                WalletError::ProviderError(format!("SerdeJson: {}", e))
-            },
-            ethers::providers::ProviderError::HexError(e) => {
-                WalletError::ProviderError(format!("HexError: {}", e))
-            },
-            ethers::providers::ProviderError::HTTPError(e) => {
-                WalletError::ProviderError(format!("HTTPError: {}", e))
-            },
+            }
+            ethers::providers::ProviderError::SerdeJson(e) => WalletError::ProviderError(format!("SerdeJson: {}", e)),
+            ethers::providers::ProviderError::HexError(e) => WalletError::ProviderError(format!("HexError: {}", e)),
+            ethers::providers::ProviderError::HTTPError(e) => WalletError::ProviderError(format!("HTTPError: {}", e)),
             ethers::providers::ProviderError::CustomError(e) => {
                 WalletError::ProviderError(format!("CustomError: {}", e))
-            },
+            }
             ethers::providers::ProviderError::UnsupportedRPC => {
                 WalletError::ProviderError("UnsupportedRPC".to_string())
-            },
+            }
             ethers::providers::ProviderError::UnsupportedNodeClient => {
                 WalletError::ProviderError("UnsupportedNodeClient".to_string())
-            },
+            }
             ethers::providers::ProviderError::SignerUnavailable => {
                 WalletError::ProviderError("SignerUnavailable".to_string())
-            },
+            }
         }
     }
 }

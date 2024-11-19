@@ -30,8 +30,8 @@ use rusqlite::params_from_iter;
 pub async fn execute_custom_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
-    tool_id: Option<String>,
-    app_id: Option<String>,
+    tool_id: String,
+    app_id: String,
     _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
@@ -143,20 +143,11 @@ async fn execute_llm(
     println!("messages-llm-bot: {} {:?}", x.len(), x);
 
     Ok(json!({
-        "data": {
-            "message": x.last().unwrap().last().unwrap().job_message.content.clone()
-        }
+        "message": x.last().unwrap().last().unwrap().job_message.content.clone()
     }))
 }
 
-fn execute_sqlite_query(
-    tool_id: Option<String>,
-    app_id: Option<String>,
-    parameters: &Map<String, Value>,
-) -> Result<Value, ToolError> {
-    let tool_path = tool_id.ok_or_else(|| ToolError::ExecutionError("Tool ID or App ID is required".to_string()))?;
-    let app_path = app_id.ok_or_else(|| ToolError::ExecutionError("App ID is required".to_string()))?;
-
+fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String, Value>) -> Result<Value, ToolError> {
     let query = parameters
         .get("query")
         .and_then(|v| v.as_str())
@@ -168,9 +159,10 @@ fn execute_sqlite_query(
         .clone()
         .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
     let full_path = Path::new(&node_storage_path)
-        .join("tools_db")
-        .join(app_path)
-        .join(tool_path)
+        .join("tools_storage")
+        .join(app_id)
+        .join("home")
+        .join(tool_id)
         .join("db.sqlite");
 
     let query_params = parameters
@@ -232,11 +224,10 @@ fn execute_sqlite_query(
             .map_err(|e| ToolError::ExecutionError(format!("Failed to collect results: {}", e)))?;
 
         Ok(json!({
-            "data": {
-                "result": rows,
-                "type": "select",
-                "rowCount": rows.len()
-            }
+            "result": rows,
+            "type": "select",
+            "rowCount": rows.len()
+
         }))
     } else {
         // For non-SELECT queries (INSERT, UPDATE, DELETE, etc)
@@ -245,11 +236,9 @@ fn execute_sqlite_query(
             .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?;
 
         Ok(json!({
-            "data": {
-                "result": format!("Query executed successfully"),
-                "type": "modify",
-                "rowsAffected": rows_affected
-            }
+            "result": format!("Query executed successfully"),
+            "type": "modify",
+            "rowsAffected": rows_affected
         }))
     }
 }

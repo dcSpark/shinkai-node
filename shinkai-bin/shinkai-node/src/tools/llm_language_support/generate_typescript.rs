@@ -208,10 +208,12 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         typescript_output.push_str("        headers: {\n");
         typescript_output.push_str("            'Authorization': `Bearer ${Deno.env.get('BEARER')}`,\n");
         typescript_output.push_str("            'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,\n");
-        typescript_output.push_str("            'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`\n");
+        typescript_output.push_str("            'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,\n");
+        typescript_output
+            .push_str("            'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`\n");
         typescript_output.push_str("        }\n");
         typescript_output.push_str("    });\n");
-        typescript_output.push_str("    return response.data.data;\n");
+        typescript_output.push_str("    return response.data;\n");
         typescript_output.push_str("}\n");
     }
 

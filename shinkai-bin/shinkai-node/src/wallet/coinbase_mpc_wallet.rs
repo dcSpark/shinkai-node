@@ -15,6 +15,7 @@ use std::sync::{Arc, Weak};
 
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
+use crate::utils::environment::fetch_node_environment;
 use crate::wallet::wallet_error::WalletError;
 use shinkai_message_primitives::schemas::wallet_mixed::{
     Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
@@ -314,8 +315,25 @@ impl CoinbaseMPCWallet {
             .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
 
         if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
+            let node_env = fetch_node_environment();
+            let node_storage_path = node_env
+                .node_storage_path
+                .clone()
+                .ok_or_else(|| WalletError::FunctionExecutionError("Node storage path is not set".to_string()))?;
+            let app_id = format!("coinbase_{}", uuid::Uuid::new_v4());
+            let tool_id = js_tool.name.clone();
+            let header_code = "";
             let result = js_tool
-                .run(HashMap::new(), "".to_string(), params, Some(function_config_str))
+                .run(
+                    HashMap::new(),
+                    header_code.to_string(),
+                    params,
+                    Some(function_config_str),
+                    node_storage_path,
+                    app_id,
+                    tool_id,
+                    false,
+                )
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
             let result_str =
                 serde_json::to_string(&result).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;

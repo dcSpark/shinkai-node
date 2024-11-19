@@ -81,6 +81,7 @@ subscriber.key
 shinkai-bin/shinkai-node/lance_db_tests
 storage_debug_serve_mode
 shinkai-tools-runner-resources
+shinkai-tools-runner-execution-storage
 shinkai-bin/shinkai-node/shinkai_db_tests
 shinkai-tools-runner-resources
 storage_debug_agent_provider

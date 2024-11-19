@@ -6,11 +6,13 @@ use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
 
+use crate::utils::environment::fetch_node_environment;
+
 pub fn execute_deno_tool(
     bearer: String,
     parameters: Map<String, Value>,
-    tool_id: Option<String>,
-    app_id: Option<String>,
+    tool_id: String,
+    app_id: String,
     extra_config: Option<String>,
     header_code: String,
     code: String,
@@ -33,9 +35,25 @@ pub fn execute_deno_tool(
 
     let mut envs = HashMap::new();
     envs.insert("BEARER".to_string(), bearer);
-    envs.insert("x-shinkai-tool-id".to_string(), tool_id.unwrap_or("".to_owned()));
-    envs.insert("x-shinkai-app-id".to_string(), app_id.unwrap_or("".to_owned()));
-    match tool.run_on_demand(envs, header_code, parameters, extra_config) {
+    envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
+    envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+
+    let node_env = fetch_node_environment();
+    let node_storage_path = node_env
+        .node_storage_path
+        .clone()
+        .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+
+    match tool.run_on_demand(
+        envs,
+        header_code,
+        parameters,
+        extra_config,
+        node_storage_path,
+        app_id.clone(),
+        tool_id.clone(),
+        false,
+    ) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

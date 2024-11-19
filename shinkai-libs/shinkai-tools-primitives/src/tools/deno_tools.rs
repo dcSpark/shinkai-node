@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use std::{env, thread};
 
 use super::argument::ToolOutputArg;
@@ -9,6 +10,7 @@ use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
 use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
+use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::tool::Tool;
 use shinkai_vector_resources::embeddings::Embedding;
@@ -53,8 +55,21 @@ impl DenoTool {
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
+        node_storage_path: String,
+        app_id: String,
+        tool_id: String,
+        is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
-        self.run_on_demand(envs, header_code, parameters, extra_config)
+        self.run_on_demand(
+            envs,
+            header_code,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id,
+            tool_id,
+            is_temporary,
+        )
     }
 
     pub fn run_on_demand(
@@ -63,6 +78,10 @@ impl DenoTool {
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
+        node_storage_path: String,
+        app_id: String,
+        tool_id: String,
+        is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
         println!("Running DenoTool named: {}", self.name);
         println!("Running DenoTool with input: {:?}", parameters);
@@ -119,14 +138,38 @@ impl DenoTool {
                     println!("Final code: {}", final_code);
                     println!("Config JSON: {}", config_json);
                     println!("Parameters: {:?}", parameters);
+
+                    let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
+
+                    // Ensure directory exists
+                    std::fs::create_dir_all(full_path.clone()).map_err(|e| {
+                        ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
+                    })?;
+
+                    if is_temporary {
+                        // Create .temporal file for temporary tools
+                        // TODO: Garbage collector will delete the tool folder after some time
+                        let temporal_path = full_path.join(".temporal");
+                        std::fs::write(temporal_path, "").map_err(|e| {
+                            ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
+                        })?;
+                    }
+
                     let tool = Tool::new(
                         final_code,
                         config_json,
                         Some(DenoRunnerOptions {
-                            binary_path: PathBuf::from(
+                            context: ExecutionContext {
+                                context_id: app_id.clone(),
+                                execution_id: tool_id.clone(),
+                                code_id: "".to_string(),
+                                storage: full_path.clone(),
+                            },
+                            deno_binary_path: PathBuf::from(
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
                                     .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
                             ),
+                            ..Default::default()
                         }),
                     );
                     // This is just a workaround to fix the parameters object.

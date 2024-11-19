@@ -583,8 +583,8 @@ impl Node {
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
         parameters: Map<String, Value>,
-        tool_id: Option<String>,
-        app_id: Option<String>,
+        tool_id: String,
+        app_id: String,
         llm_provider: String,
         extra_config: Option<String>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -621,15 +621,7 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_router_key);
-                if result.get("data").is_some() {
-                    let _ = res.send(Ok(result)).await;
-                } else {
-                    let _ = res
-                        .send(Ok(json!({
-                            "data": result
-                        })))
-                        .await;
-                }
+                let _ = res.send(Ok(result)).await;
             }
             Err(e) => {
                 let _ = res
@@ -652,8 +644,8 @@ impl Node {
         code: String,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<SqliteManager>,
-        tool_id: Option<String>,
-        app_id: Option<String>,
+        tool_id: String,
+        app_id: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -676,15 +668,7 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_type);
-                if result.get("data").is_some() {
-                    let _ = res.send(Ok(result)).await;
-                } else {
-                    let _ = res
-                        .send(Ok(json!({
-                            "data": result
-                        })))
-                        .await;
-                }
+                let _ = res.send(Ok(result)).await;
             }
             Err(e) => {
                 let _ = res
