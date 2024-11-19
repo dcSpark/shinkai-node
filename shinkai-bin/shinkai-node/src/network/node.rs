@@ -48,7 +48,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_sqlite::SqliteManager;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -296,6 +296,11 @@ impl Node {
             manager_trait
         });
 
+        // Initialize SqliteManager
+        let embedding_api_url = embedding_generator.api_url.clone();
+        let sqlite_manager =
+            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
+
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
                 Arc::downgrade(&db_arc),
@@ -313,6 +318,7 @@ impl Node {
         let my_subscription_manager = Arc::new(Mutex::new(
             MySubscriptionsManager::new(
                 Arc::downgrade(&db_arc),
+                Arc::downgrade(&sqlite_manager),
                 Arc::downgrade(&vector_fs_arc),
                 Arc::downgrade(&identity_manager),
                 node_name.clone(),
@@ -323,11 +329,6 @@ impl Node {
             )
             .await,
         ));
-
-        // Initialize SqliteManager
-        let embedding_api_url = embedding_generator.api_url.clone();
-        let sqlite_manager =
-            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(sqlite_manager.clone());
@@ -341,7 +342,7 @@ impl Node {
                     None
                 }
             },
-            Err(ShinkaiDBError::DataNotFound) => None,
+            Err(SqliteManagerError::WalletManagerNotFound) => None,
             Err(e) => panic!("Failed to read wallet manager from database: {}", e),
         };
 
@@ -491,11 +492,13 @@ impl Node {
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let db_weak = Arc::downgrade(&self.db);
+        let sqlite_manager_weak = Arc::downgrade(&self.sqlite_manager);
         let vector_fs_weak = Arc::downgrade(&self.vector_fs);
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
                 db_weak,
+                sqlite_manager_weak,
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_name.clone(),

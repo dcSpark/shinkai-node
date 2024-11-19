@@ -25,6 +25,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
@@ -41,6 +42,7 @@ impl JobManager {
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         identity_secret_key: SigningKey,
@@ -56,6 +58,10 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let sqlite_manager = sqlite_manager
+            .upgrade()
+            .ok_or("Failed to upgrade sqlite_manager")
+            .unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
         let job_id = job_message.job_message.job_id.clone();
         shinkai_log(
@@ -65,7 +71,9 @@ impl JobManager {
         );
 
         // Fetch data we need to execute job step
-        let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
+        let fetch_data_result =
+            JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone(), sqlite_manager.clone())
+                .await;
         let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
             Ok(data) => data,
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e, ws_manager).await,

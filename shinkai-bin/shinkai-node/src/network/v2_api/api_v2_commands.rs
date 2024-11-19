@@ -967,6 +967,7 @@ impl Node {
 
     pub async fn v2_api_add_agent(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         agent: Agent,
@@ -1016,7 +1017,7 @@ impl Node {
         match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
             Ok(Some(_)) => {
                 // Check if the agent_id already exists
-                match db.get_agent(&agent.agent_id) {
+                match sqlite_manager.get_agent(&agent.agent_id) {
                     Ok(Some(_)) => {
                         let api_error = APIError {
                             code: StatusCode::CONFLICT.as_u16(),
@@ -1027,7 +1028,7 @@ impl Node {
                     }
                     Ok(None) => {
                         // Add the agent to the database
-                        match db.add_agent(agent, &requester_name) {
+                        match sqlite_manager.add_agent(agent, &requester_name) {
                             Ok(_) => {
                                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
                             }
@@ -1074,6 +1075,7 @@ impl Node {
 
     pub async fn v2_api_remove_agent(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         agent_id: String,
         res: Sender<Result<String, APIError>>,
@@ -1084,7 +1086,7 @@ impl Node {
         }
 
         // Remove the agent from the database
-        match db.remove_agent(&agent_id) {
+        match sqlite_manager.remove_agent(&agent_id) {
             Ok(_) => {
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;
             }
@@ -1103,6 +1105,7 @@ impl Node {
 
     pub async fn v2_api_update_agent(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         partial_agent: serde_json::Value,
         res: Sender<Result<Agent, APIError>>,
@@ -1127,7 +1130,7 @@ impl Node {
         };
 
         // Retrieve the existing agent from the database
-        let existing_agent = match db.get_agent(&agent_id) {
+        let existing_agent = match sqlite_manager.get_agent(&agent_id) {
             Ok(Some(agent)) => agent,
             Ok(None) => {
                 let api_error = APIError {
@@ -1219,7 +1222,7 @@ impl Node {
         };
 
         // Update the agent in the database
-        match db.update_agent(updated_agent.clone()) {
+        match sqlite_manager.update_agent(updated_agent.clone()) {
             Ok(_) => {
                 let _ = res.send(Ok(updated_agent)).await;
             }
@@ -1238,6 +1241,7 @@ impl Node {
 
     pub async fn v2_api_get_agent(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         agent_id: String,
         res: Sender<Result<Agent, APIError>>,
@@ -1248,7 +1252,7 @@ impl Node {
         }
 
         // Retrieve the agent from the database
-        match db.get_agent(&agent_id) {
+        match sqlite_manager.get_agent(&agent_id) {
             Ok(Some(agent)) => {
                 let _ = res.send(Ok(agent)).await;
             }
@@ -1275,6 +1279,7 @@ impl Node {
 
     pub async fn v2_api_get_all_agents(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Vec<Agent>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1284,7 +1289,7 @@ impl Node {
         }
 
         // Retrieve all agents from the database
-        match db.get_all_agents() {
+        match sqlite_manager.get_all_agents() {
             Ok(agents) => {
                 let _ = res.send(Ok(agents)).await;
             }

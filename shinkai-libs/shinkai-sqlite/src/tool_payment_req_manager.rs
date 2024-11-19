@@ -95,6 +95,7 @@ impl SqliteManager {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::{

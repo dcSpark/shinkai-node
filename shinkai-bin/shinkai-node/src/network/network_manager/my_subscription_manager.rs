@@ -24,11 +24,16 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
 use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
-use shinkai_subscription_manager::subscription_manager::http_manager::http_download_manager::{HttpDownloadJob, HttpDownloadManager};
+use shinkai_subscription_manager::subscription_manager::http_manager::http_download_manager::{
+    HttpDownloadJob, HttpDownloadManager,
+};
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
-use shinkai_subscription_manager::subscription_manager::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
+use shinkai_subscription_manager::subscription_manager::shared_folder_sm::{
+    ExternalNodeState, SharedFoldersExternalNodeSM,
+};
 use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_types::FSEntry;
@@ -54,6 +59,7 @@ const SOFT_REFRESH_THRESHOLD_MINUTES: usize = 2;
 
 pub struct MySubscriptionsManager {
     pub db: Weak<ShinkaiDB>,
+    pub sqlite_manager: Weak<SqliteManager>,
     pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
@@ -80,6 +86,7 @@ impl MySubscriptionsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
@@ -113,13 +120,15 @@ impl MySubscriptionsManager {
         let subscription_queue_handler = MySubscriptionsManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
             db.clone(),
+            sqlite_manager.clone(),
             vector_fs.clone(),
             external_node_shared_folders.clone(),
             http_download_manager.clone(),
-            |job_queue_manager, db, vector_fs, external_node_shared_folders, http_download_manager| {
+            |job_queue_manager, db, sqlite_manager, vector_fs, external_node_shared_folders, http_download_manager| {
                 Box::pin(MySubscriptionsManager::process_subscription_job_message_queued(
                     job_queue_manager,
                     db,
+                    sqlite_manager,
                     vector_fs,
                     external_node_shared_folders,
                     http_download_manager,
@@ -130,6 +139,7 @@ impl MySubscriptionsManager {
 
         let subscription_update_cache_task = MySubscriptionsManager::process_subscription_shared_folder_cache_updates(
             db.clone(),
+            sqlite_manager.clone(),
             identity_manager.clone(),
             proxy_connection_info.clone(),
             node_name.clone(),
@@ -140,6 +150,7 @@ impl MySubscriptionsManager {
 
         MySubscriptionsManager {
             db,
+            sqlite_manager,
             vector_fs,
             identity_manager,
             subscriptions_queue_manager,
@@ -320,7 +331,7 @@ impl MySubscriptionsManager {
         // Check locally if I'm already subscribed to the folder using the DB
         let subscription_id = {
             let db_lock = self
-                .db
+                .sqlite_manager
                 .upgrade()
                 .ok_or(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()))?;
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
@@ -334,7 +345,7 @@ impl MySubscriptionsManager {
             // Check if the subscription exists in the DB
             match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(_) => subscription_id, // Subscription exists, proceed with unsubscribe
-                Err(ShinkaiDBError::DataNotFound) => {
+                Err(SqliteManagerError::SubscriptionNotFound(_)) => {
                     // Subscription does not exist, cannot unsubscribe
                     shinkai_log(
                         ShinkaiLogOption::MySubscriptions,
@@ -380,8 +391,17 @@ impl MySubscriptionsManager {
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
-            if let Some(db_lock) = self.db.upgrade() {
-                db_lock.remove_my_subscription(subscription_id.get_unique_id())?;
+            if let Some(db_lock) = self.sqlite_manager.upgrade() {
+                db_lock
+                    .remove_my_subscription(subscription_id.get_unique_id())
+                    .map_err(|e| {
+                        shinkai_log(
+                            ShinkaiLogOption::MySubscriptions,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to remove subscription: {:?}", e),
+                        );
+                        SubscriberManagerError::DatabaseError(e.to_string())
+                    })?;
             } else {
                 return Err(SubscriberManagerError::DatabaseError(
                     "Unable to access DB for updating".to_string(),
@@ -436,7 +456,7 @@ impl MySubscriptionsManager {
             .as_str(),
         );
         // Check locally if I'm already subscribed to the folder using the DB
-        if let Some(db_lock) = self.db.upgrade() {
+        if let Some(db_lock) = self.sqlite_manager.upgrade() {
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
             let subscription_id = SubscriptionId::new(
                 streamer_node_name.clone(),
@@ -448,7 +468,16 @@ impl MySubscriptionsManager {
             match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(subscription) => {
                     // Force
-                    db_lock.remove_my_subscription(subscription_id.get_unique_id())?;
+                    db_lock
+                        .remove_my_subscription(subscription_id.get_unique_id())
+                        .map_err(|e| {
+                            shinkai_log(
+                                ShinkaiLogOption::MySubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to remove subscription: {:?}", e),
+                            );
+                            SubscriberManagerError::DatabaseError(e.to_string())
+                        })?;
 
                     match subscription.get_streamer_with_profile() {
                         Ok(streamer_full_name) => {
@@ -463,7 +492,7 @@ impl MySubscriptionsManager {
                         }
                     };
                 }
-                Err(ShinkaiDBError::DataNotFound) => {
+                Err(SqliteManagerError::SubscriptionNotFound(_)) => {
                     // Subscription doesn't exist. Continue with the subscription process
                 }
                 Err(e) => {
@@ -522,8 +551,15 @@ impl MySubscriptionsManager {
 
             new_subscription.update_http_preferred(http_preferred);
 
-            if let Some(db_lock) = self.db.upgrade() {
-                db_lock.add_my_subscription(new_subscription.clone())?;
+            if let Some(db_lock) = self.sqlite_manager.upgrade() {
+                db_lock.add_my_subscription(new_subscription.clone()).map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to add subscription: {:?}", e),
+                    );
+                    SubscriberManagerError::DatabaseError(e.to_string())
+                })?;
 
                 // Write notification to the DB
                 let notification_message = if let Some(http) = http_preferred {
@@ -549,7 +585,16 @@ impl MySubscriptionsManager {
                 };
 
                 let user_profile = new_subscription.get_subscriber_with_profile()?;
-                db_lock.write_notification(user_profile, notification_message)?;
+                db_lock
+                    .write_notification(user_profile, notification_message)
+                    .map_err(|e| {
+                        shinkai_log(
+                            ShinkaiLogOption::MySubscriptions,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write notification: {:?}", e),
+                        );
+                        SubscriberManagerError::DatabaseError(e.to_string())
+                    })?;
             } else {
                 return Err(SubscriberManagerError::DatabaseError(
                     "Unable to access DB for updating".to_string(),
@@ -610,10 +655,19 @@ impl MySubscriptionsManager {
             MessageSchemaType::SubscribeToSharedFolderResponse => {
                 // Validate that we requested the subscription
                 let db = self
-                    .db
+                    .sqlite_manager
                     .upgrade()
                     .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
-                let subscription_result = db.get_my_subscription(subscription_id.get_unique_id())?;
+                let subscription_result =
+                    db.get_my_subscription(subscription_id.get_unique_id())
+                        .map_err(|e| match e {
+                            SqliteManagerError::SubscriptionNotFound(_) => {
+                                SubscriberManagerError::SubscriptionNotFound(
+                                    subscription_id.get_unique_id().to_string(),
+                                )
+                            }
+                            _ => SubscriberManagerError::DatabaseError(e.to_string()),
+                        })?;
                 if subscription_result.state != ShinkaiSubscriptionStatus::SubscriptionRequested {
                     // return error
                     return Err(SubscriberManagerError::SubscriptionFailed(
@@ -622,7 +676,14 @@ impl MySubscriptionsManager {
                 }
                 // Update the subscription status in the db
                 let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
-                db.update_my_subscription(new_subscription.clone())?;
+                db.update_my_subscription(new_subscription.clone()).map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to update subscription: {:?}", e),
+                    );
+                    SubscriberManagerError::DatabaseError(e.to_string())
+                })?;
 
                 // Trigger get_shared_folder so we can indirectly trigger a download sync
                 self.get_shared_folder(&streamer_node_name).await?;
@@ -634,7 +695,14 @@ impl MySubscriptionsManager {
                     streamer_node_name.get_node_name_string()
                 );
                 let user_profile = new_subscription.get_subscriber_with_profile()?;
-                db.write_notification(user_profile, notification_message)?;
+                db.write_notification(user_profile, notification_message).map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to write notification: {:?}", e),
+                    );
+                    SubscriberManagerError::DatabaseError(e.to_string())
+                })?;
             }
             _ => {
                 // For other actions, do nothing
@@ -667,8 +735,15 @@ impl MySubscriptionsManager {
         if was_none {
             // Check if we have a subscription for this folder
             // If we do, trigger a get_shared_folder to indirectly trigger a download sync
-            if let Some(db_lock) = self.db.upgrade() {
-                let subscriptions = db_lock.list_all_my_subscriptions()?;
+            if let Some(db_lock) = self.sqlite_manager.upgrade() {
+                let subscriptions = db_lock.list_all_my_subscriptions().map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to list all subscriptions: {:?}", e),
+                    );
+                    SubscriberManagerError::DatabaseError(e.to_string())
+                })?;
                 for subscription in subscriptions {
                     let streamer_full_name = match subscription.get_streamer_with_profile() {
                         Ok(streamer_full_name) => streamer_full_name,
@@ -683,7 +758,8 @@ impl MySubscriptionsManager {
                     };
                     if streamer_full_name == shared_folder_name {
                         // Count the number of files for the specific subscription folder
-                        let file_count = shared_folder_infos.iter()
+                        let file_count = shared_folder_infos
+                            .iter()
                             .filter(|info| info.path == subscription.shared_folder)
                             .map(|info| info.tree.count_files())
                             .sum::<usize>();
@@ -699,7 +775,16 @@ impl MySubscriptionsManager {
                             subscription.shared_folder
                         );
                         let user_profile = subscription.get_subscriber_with_profile()?;
-                        db_lock.write_notification(user_profile, notification_message)?;
+                        db_lock
+                            .write_notification(user_profile, notification_message)
+                            .map_err(|e| {
+                                shinkai_log(
+                                    ShinkaiLogOption::MySubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to write notification: {:?}", e),
+                                );
+                                SubscriberManagerError::DatabaseError(e.to_string())
+                            })?;
 
                         break;
                     }
@@ -900,7 +985,19 @@ impl MySubscriptionsManager {
                         subscriber_node.get_node_name_string(),
                         subscriber_profile.clone(),
                     )?;
-                    db.write_notification(user_profile, notification_message)?;
+
+                    let db = self
+                        .sqlite_manager
+                        .upgrade()
+                        .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
+                    db.write_notification(user_profile, notification_message).map_err(|e| {
+                        shinkai_log(
+                            ShinkaiLogOption::MySubscriptions,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write notification: {:?}", e),
+                        );
+                        SubscriberManagerError::DatabaseError(e.to_string())
+                    })?;
                 }
                 Err(e) => {
                     return Err(SubscriberManagerError::OperationFailed(format!(
@@ -989,6 +1086,7 @@ impl MySubscriptionsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_shared_folder_cache_updates(
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         node_name: ShinkaiName,
@@ -1015,7 +1113,7 @@ impl MySubscriptionsManager {
 
             loop {
                 let subscriptions = {
-                    let db = match db.upgrade() {
+                    let db = match sqlite_manager.upgrade() {
                         Some(db) => db,
                         None => {
                             shinkai_log(
@@ -1123,12 +1221,14 @@ impl MySubscriptionsManager {
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
         process_job: impl Fn(
                 Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
                 Weak<ShinkaiDB>,
+                Weak<SqliteManager>,
                 Weak<VectorFS>,
                 Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
                 Arc<Mutex<HttpDownloadManager>>,
@@ -1150,6 +1250,7 @@ impl MySubscriptionsManager {
                 if let Err(e) = process_job(
                     job_queue_manager.clone(),
                     db.clone(),
+                    sqlite_manager.clone(),
                     vector_fs.clone(),
                     external_node_shared_folders.clone(),
                     http_download_manager.clone(),
@@ -1168,13 +1269,16 @@ impl MySubscriptionsManager {
     pub async fn process_subscription_job_message_queued(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
     ) -> Result<(), SubscriberManagerError> {
         // Read all subscriptions from the database
-        if let Some(db_lock) = db.upgrade() {
-            let all_subscriptions = db_lock.list_all_my_subscriptions()?;
+        if let Some(db_lock) = sqlite_manager.upgrade() {
+            let all_subscriptions = db_lock.list_all_my_subscriptions().map_err(|e| {
+                SubscriberManagerError::DatabaseError(format!("Failed to list all subscriptions: {:?}", e))
+            })?;
             let http_preferred_subscriptions: Vec<ShinkaiSubscription> = all_subscriptions
                 .into_iter()
                 .filter(|sub| sub.http_preferred.unwrap_or(false))
@@ -1219,7 +1323,16 @@ impl MySubscriptionsManager {
                                 subscription.streaming_node.get_node_name_string(),
                             );
                             let user_profile = subscription.get_subscriber_with_profile()?;
-                            db_lock.write_notification(user_profile, notification_message)?;
+                            db_lock
+                                .write_notification(user_profile, notification_message)
+                                .map_err(|e| {
+                                    shinkai_log(
+                                        ShinkaiLogOption::MySubscriptions,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Failed to write notification: {:?}", e),
+                                    );
+                                    SubscriberManagerError::DatabaseError(e.to_string())
+                                })?;
                         }
                     }
                 } else {
@@ -1398,7 +1511,9 @@ impl MySubscriptionsManager {
                 // Extracted the last 8 bytes of the merkle hash
                 if let Some(web_link) = &tree.web_link {
                     let last8_in_streamer = &web_link.file.last_8_hash;
-                    let last8_in_streamer = last8_in_streamer.get(last8_in_streamer.len().saturating_sub(8)..).unwrap_or("");
+                    let last8_in_streamer = last8_in_streamer
+                        .get(last8_in_streamer.len().saturating_sub(8)..)
+                        .unwrap_or("");
                     return last_8_bytes == last8_in_streamer;
                 }
             }
@@ -1410,6 +1525,7 @@ impl MySubscriptionsManager {
         MySubscriptionsManager::process_subscription_job_message_queued(
             self.subscriptions_queue_manager.clone(),
             self.db.clone(),
+            self.sqlite_manager.clone(),
             self.vector_fs.clone(),
             self.external_node_shared_folders.clone(),
             self.http_download_manager.clone(),

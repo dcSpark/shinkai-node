@@ -9,9 +9,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
+pub mod agent_manager;
 pub mod embedding_function;
 pub mod files;
 pub mod my_subscriptions_manager;
+pub mod network_notifications_manager;
 pub mod prompt_manager;
 pub mod settings_manager;
 pub mod shinkai_tool_manager;
@@ -39,6 +41,18 @@ pub enum SqliteManagerError {
     JsonError(#[from] serde_json::Error),
     #[error("Tool offering not found with key: {0}")]
     ToolOfferingNotFound(String),
+    #[error("DateTime parse error: {0}")]
+    DateTimeParseError(String),
+    #[error("Subscription not found with id: {0}")]
+    SubscriptionNotFound(String),
+    #[error("Wallet manager not found")]
+    WalletManagerNotFound,
+    #[error("Data not found")]
+    DataNotFound,
+    #[error("Data already exists")]
+    DataAlreadyExists,
+    #[error("Invalid identity name: {0}")]
+    InvalidIdentityName(String),
     // Add other error variants as needed
 }
 
@@ -102,8 +116,9 @@ impl SqliteManager {
 
     // Initializes the required tables in the SQLite database
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::initialize_agents_table(conn)?;
         Self::initialize_my_subscriptions_table(conn)?;
-        Self::initialize_shinkai_names(conn)?;
+        Self::initialize_network_notifications_table(conn)?;
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
         Self::initialize_settings_table(conn)?;
@@ -116,16 +131,37 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_agents_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_agents (
+                agent_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                full_identity_name TEXT NOT NULL, -- Store as a JSON string
+                llm_provider_id TEXT NOT NULL,
+                ui_description TEXT NOT NULL,
+                knowledge TEXT NOT NULL,
+                storage_path TEXT NOT NULL,
+                tools TEXT NOT NULL,
+                debug_mode INTEGER NOT NULL,
+                config TEXT -- Store as a JSON string
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     fn initialize_my_subscriptions_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS my_subscriptions (
                 subscription_id TEXT NOT NULL UNIQUE,
+                subscription_id_data BLOB NOT NULL,
                 shared_folder TEXT NOT NULL,
-                streaming_node TEXT NOT NULL,
+                streaming_node TEXT NOT NULL, -- Store as a JSON string
                 streaming_profile TEXT NOT NULL,
                 subscription_description TEXT,
                 subscriber_destination_path TEXT,
-                subscriber_node TEXT NOT NULL,
+                subscriber_node TEXT NOT NULL, -- Store as a JSON string
                 subscriber_profile TEXT NOT NULL,
                 payment TEXT,
                 state TEXT NOT NULL,
@@ -133,26 +169,29 @@ impl SqliteManager {
                 last_modified TEXT NOT NULL,
                 last_sync TEXT,
                 http_preferred INTEGER
-
-                FOREIGN KEY(streaming_node) REFERENCES shinkai_names(node_name),
-                FOREIGN KEY(subscriber_node) REFERENCES shinkai_names(node_name),
             );",
             [],
         )?;
+
+        // Create indexes for the my_subscriptions table if needed
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_my_subscriptions_subscription_id ON my_subscriptions (subscription_id);",
+            [],
+        )?;
+
         Ok(())
     }
 
-    fn initialize_shinkai_names(conn: &rusqlite::Connection) -> Result<()> {
+    fn initialize_network_notifications_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS shinkai_names (
-                full_name TEXT NOT NULL UNIQUE,
-                node_name TEXT NOT NULL,
-                profile_name TEXT,
-                subidentity_type TEXT,
-                subidentity_name TEXT
+            "CREATE TABLE IF NOT EXISTS network_notifications (
+                full_name TEXT NOT NULL,
+                message TEXT NOT NULL,
+                timestamp TEXT NOT NULL
             );",
             [],
         )?;
+
         Ok(())
     }
 

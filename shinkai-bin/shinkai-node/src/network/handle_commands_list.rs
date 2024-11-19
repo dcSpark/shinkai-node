@@ -2759,15 +2759,25 @@ impl Node {
             }
             NodeCommand::V2ApiAddAgent { bearer, agent, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_agent(db_clone, identity_manager_clone, bearer, agent, res).await;
+                    let _ = Node::v2_api_add_agent(
+                        db_clone,
+                        sqlite_manager_clone,
+                        identity_manager_clone,
+                        bearer,
+                        agent,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiRemoveAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_agent(db_clone, bearer, agent_id, res).await;
+                    let _ = Node::v2_api_remove_agent(db_clone, sqlite_manager_clone, bearer, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateAgent {
@@ -2776,20 +2786,23 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_update_agent(db_clone, bearer, partial_agent, res).await;
+                    let _ = Node::v2_api_update_agent(db_clone, sqlite_manager_clone, bearer, partial_agent, res).await;
                 });
             }
             NodeCommand::V2ApiGetAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_agent(db_clone, bearer, agent_id, res).await;
+                    let _ = Node::v2_api_get_agent(db_clone, sqlite_manager_clone, bearer, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiGetAllAgents { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_all_agents(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_get_all_agents(db_clone, sqlite_manager_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiRetryMessage {

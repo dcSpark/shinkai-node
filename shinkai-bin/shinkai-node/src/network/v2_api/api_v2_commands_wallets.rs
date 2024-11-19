@@ -223,7 +223,8 @@ impl Node {
         // Logic to restore Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let restored_wallet_manager =
-            WalletManager::recover_coinbase_mpc_wallet_manager(network, sqlite_manager, config, wallet_id).await;
+            WalletManager::recover_coinbase_mpc_wallet_manager(network, sqlite_manager.clone(), config, wallet_id)
+                .await;
 
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -311,7 +312,7 @@ impl Node {
         // Logic to create Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let created_wallet_manager =
-            WalletManager::create_coinbase_mpc_wallet_manager(network, sqlite_manager, config).await;
+            WalletManager::create_coinbase_mpc_wallet_manager(network, sqlite_manager.clone(), config).await;
 
         match created_wallet_manager {
             Ok(new_wallet_manager) => {

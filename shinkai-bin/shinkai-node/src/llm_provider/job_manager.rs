@@ -23,6 +23,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
+use shinkai_sqlite::SqliteManager;
 // use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -55,6 +56,7 @@ pub trait JobManagerTrait {
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     pub db: Weak<ShinkaiDB>,
+    pub sqlite_manager: Weak<SqliteManager>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub identity_secret_key: SigningKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
@@ -68,6 +70,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
@@ -111,6 +114,7 @@ impl JobManager {
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
             db.clone(),
+            sqlite_manager.clone(),
             vector_fs.clone(),
             node_profile_name.clone(),
             thread_number,
@@ -126,6 +130,7 @@ impl JobManager {
             llm_stopper.clone(),
             |job,
              db,
+             sqlite_manager,
              vector_fs,
              node_profile_name,
              identity_sk,
@@ -142,6 +147,7 @@ impl JobManager {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
+                    sqlite_manager,
                     vector_fs,
                     node_profile_name,
                     identity_sk,
@@ -162,6 +168,7 @@ impl JobManager {
 
         Self {
             db: db.clone(),
+            sqlite_manager,
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             node_profile_name,
             jobs: jobs_map,
@@ -176,6 +183,7 @@ impl JobManager {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<ShinkaiDB>,
+        sqlite_manager: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
@@ -192,6 +200,7 @@ impl JobManager {
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
+                Weak<SqliteManager>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -213,6 +222,7 @@ impl JobManager {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
+        let sqlite_manager_clone = sqlite_manager.clone();
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
@@ -274,6 +284,7 @@ impl JobManager {
                         let processing_jobs = Arc::clone(&processing_jobs);
                         let semaphore = Arc::clone(&semaphore);
                         let db_clone_2 = db_clone.clone();
+                        let sqlite_manager_clone_2 = sqlite_manager_clone.clone();
                         let vector_fs_clone_2 = vector_fs_clone.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_processing_fn = Arc::clone(&job_processing_fn);
@@ -304,6 +315,7 @@ impl JobManager {
                                         let result = (job_processing_fn)(
                                             job,
                                             db_clone_2,
+                                            sqlite_manager_clone_2,
                                             vector_fs_clone_2,
                                             node_profile_name,
                                             identity_sk_clone,

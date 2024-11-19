@@ -25,19 +25,27 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT wallet_data FROM shinkai_wallet LIMIT 1")?;
 
-        let wallet_data = stmt.query_row([], |row| {
-            let wallet_data: Vec<u8> = row.get(0)?;
-            let wallet_data: Value = serde_json::from_slice(&wallet_data).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?;
+        let wallet_data = stmt
+            .query_row([], |row| {
+                let wallet_data: Vec<u8> = row.get(0)?;
+                let wallet_data: Value = serde_json::from_slice(&wallet_data).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                        e.to_string(),
+                    )))
+                })?;
 
-            Ok(wallet_data)
-        })?;
+                Ok(wallet_data)
+            })
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => SqliteManagerError::WalletManagerNotFound,
+                _ => SqliteManagerError::from(e),
+            })?;
 
         Ok(wallet_data)
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};

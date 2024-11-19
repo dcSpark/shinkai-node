@@ -17,6 +17,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     argument::ToolOutputArg, network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader,
 };

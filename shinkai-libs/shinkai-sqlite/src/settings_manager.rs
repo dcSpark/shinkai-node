@@ -38,6 +38,7 @@ impl SqliteManager {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
