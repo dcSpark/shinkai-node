@@ -201,6 +201,7 @@ impl SqliteManager {
     // New method to initialize FTS tables
     fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_tools_fts_table(conn)?;
+        Self::initialize_prompts_fts_table(conn)?;
         Ok(())
     }
 
@@ -208,6 +209,15 @@ impl SqliteManager {
     fn initialize_tools_fts_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_fts USING fts5(name)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Initialize the FTS table for prompt names
+    fn initialize_prompts_fts_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_prompts_fts USING fts5(name)",
             [],
         )?;
         Ok(())

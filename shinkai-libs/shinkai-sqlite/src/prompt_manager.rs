@@ -1,4 +1,4 @@
-use crate::SqliteManager;
+use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
 use rusqlite::{params, OptionalExtension, Result};
 use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
@@ -311,6 +311,108 @@ impl SqliteManager {
         }
         Ok(())
     }
+
+    // Update the FTS table when inserting or updating a prompt
+    pub fn update_prompts_fts(&mut self, prompt: &CustomPrompt) -> Result<(), SqliteManagerError> {
+        // Acquire a write lock on the fts_conn
+        let mut fts_conn = self.fts_conn.write().map_err(|e| {
+            eprintln!("Failed to acquire write lock: {}", e);
+            SqliteManagerError::LockError
+        })?;
+
+        // Start a single transaction
+        let tx = fts_conn.transaction()?;
+
+        // Delete the existing entry
+        tx.execute(
+            "DELETE FROM shinkai_prompts_fts WHERE name = ?1",
+            params![prompt.name],
+        )?;
+
+        // Insert the updated prompt name
+        tx.execute(
+            "INSERT INTO shinkai_prompts_fts(name) VALUES (?1)",
+            params![prompt.name],
+        )?;
+
+        // Commit the transaction
+        tx.commit()?;
+
+        Ok(())
+    }
+
+    // Search the FTS table
+    pub fn search_prompts_by_name(&self, query: &str) -> Result<Vec<CustomPrompt>, SqliteManagerError> {
+        // Acquire a read lock on the fts_conn
+        let fts_conn = self.fts_conn.read().map_err(|e| {
+            eprintln!("Failed to acquire read lock: {}", e);
+            SqliteManagerError::LockError
+        })?;
+
+        // Use the in-memory connection for FTS operations
+        let mut stmt = fts_conn.prepare(
+            "SELECT name FROM shinkai_prompts_fts WHERE shinkai_prompts_fts MATCH ?1",
+        )?;
+
+        let name_iter = stmt.query_map(params![query], |row| {
+            let name: String = row.get(0)?;
+            Ok(name)
+        })?;
+
+        let mut prompts = Vec::new();
+        let conn = self.get_connection()?;
+
+        for name_result in name_iter {
+            let name = name_result.map_err(|e| {
+                eprintln!("FTS query error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
+
+            // Query the persistent database for the full prompt data
+            let mut stmt = conn.prepare("SELECT * FROM shinkai_prompts WHERE name = ?1")?;
+            let prompt = stmt.query_row(params![name], |row| {
+                Ok(CustomPrompt {
+                    rowid: Some(row.get(0)?),
+                    name: row.get(1)?,
+                    is_system: row.get::<_, i32>(2)? != 0,
+                    is_enabled: row.get::<_, i32>(3)? != 0,
+                    version: row.get(4)?,
+                    prompt: row.get(5)?,
+                    is_favorite: row.get::<_, i32>(6)? != 0,
+                })
+            })?;
+
+            prompts.push(prompt);
+        }
+
+        Ok(prompts)
+    }
+
+    // Synchronize the FTS table with the main database
+    pub fn sync_prompts_fts_table(&self) -> Result<(), SqliteManagerError> {
+        // Use the pooled connection to access the shinkai_prompts table
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_prompts")?;
+        let mut rows = stmt.query([])?;
+
+        // Acquire a write lock on the fts_conn
+        let fts_conn = self.fts_conn.write().map_err(|e| {
+            eprintln!("Failed to acquire write lock: {}", e);
+            SqliteManagerError::LockError
+        })?;
+
+        // Use the in-memory connection for FTS operations
+        while let Some(row) = rows.next()? {
+            let rowid: i64 = row.get(0)?;
+            let name: String = row.get(1)?;
+            fts_conn.execute(
+                "INSERT INTO shinkai_prompts_fts(rowid, name) VALUES (?1, ?2)
+                 ON CONFLICT(rowid) DO UPDATE SET name = excluded.name",
+                params![rowid, name],
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -563,5 +665,71 @@ mod tests {
 
         // Print the duration
         println!("Time taken to add prompts from JSON: {:?}", duration);
+    }
+
+    #[test]
+    fn test_add_and_search_prompts_with_fts() {
+        let mut manager = setup_test_db();
+
+        // Add three prompts
+        let prompts = vec![
+            CustomPrompt {
+                rowid: None,
+                name: "Prompt Alpha".to_string(),
+                is_system: false,
+                is_enabled: true,
+                version: "1.0".to_string(),
+                prompt: "This is a test prompt for Alpha.".to_string(),
+                is_favorite: false,
+            },
+            CustomPrompt {
+                rowid: None,
+                name: "Prompt Beta".to_string(),
+                is_system: false,
+                is_enabled: true,
+                version: "1.0".to_string(),
+                prompt: "This is a test prompt for Beta.".to_string(),
+                is_favorite: false,
+            },
+            CustomPrompt {
+                rowid: None,
+                name: "Prompt Gamma".to_string(),
+                is_system: false,
+                is_enabled: true,
+                version: "1.0".to_string(),
+                prompt: "This is a test prompt for Gamma.".to_string(),
+                is_favorite: false,
+            },
+        ];
+
+        for prompt in &prompts {
+            let vector = generate_vector(0.1);
+            let result = manager.add_prompt_with_vector(prompt, vector);
+            assert!(result.is_ok());
+
+            // Update FTS table
+            manager.update_prompts_fts(prompt).unwrap();
+        }
+
+        // Perform an FTS search for "Alpha"
+        let search_results = manager.search_prompts_by_name("Alpha").unwrap();
+
+        // Assert that the search results contain "Prompt Alpha"
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].name, "Prompt Alpha");
+
+        // Perform an FTS search for "Beta"
+        let search_results = manager.search_prompts_by_name("Beta").unwrap();
+
+        // Assert that the search results contain "Prompt Beta"
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].name, "Prompt Beta");
+
+        // Perform an FTS search for "Gamma"
+        let search_results = manager.search_prompts_by_name("Gamma").unwrap();
+
+        // Assert that the search results contain "Prompt Gamma"
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].name, "Prompt Gamma");
     }
 }
