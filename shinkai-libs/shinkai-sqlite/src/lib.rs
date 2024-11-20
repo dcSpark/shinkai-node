@@ -59,7 +59,7 @@ impl std::fmt::Debug for SqliteManager {
 
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
-    pub fn new<P: AsRef<Path>>(
+    pub async fn new<P: AsRef<Path>>(
         db_path: P,
         api_url: String,
         model_type: EmbeddingModelType,
@@ -112,7 +112,7 @@ impl SqliteManager {
             api_url,
             model_type,
         };
-        manager.sync_fts_table()?;
+        manager.sync_fts_table().await?;
 
         Ok(manager)
     }

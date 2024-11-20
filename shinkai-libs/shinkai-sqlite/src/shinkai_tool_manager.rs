@@ -12,10 +12,10 @@ impl SqliteManager {
             None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
-        self.add_tool_with_vector(tool, embedding)
+        self.add_tool_with_vector(tool, embedding).await
     }
 
-    pub fn add_tool_with_vector(
+    pub async fn add_tool_with_vector(
         &mut self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
@@ -102,7 +102,7 @@ impl SqliteManager {
         )?;
 
         // Update the FTS table using the in-memory connection
-        self.update_tools_fts(&tool)?;
+        self.update_tools_fts(&tool).await?;
 
         tx.commit()?;
 
@@ -221,7 +221,7 @@ impl SqliteManager {
     }
 
     // Updates a ShinkaiTool entry in the shinkai_tools table with a new embedding
-    pub fn update_tool_with_vector(
+    pub async fn update_tool_with_vector(
         &mut self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
@@ -307,7 +307,7 @@ impl SqliteManager {
 
         eprintln!("Updating FTS table");
         // Update the FTS table using the in-memory connection
-        self.update_tools_fts(&tool)?;
+        self.update_tools_fts(&tool).await?;
 
         tx.commit()?;
 
@@ -326,7 +326,7 @@ impl SqliteManager {
             }
         };
 
-        self.update_tool_with_vector(tool, embedding)
+        self.update_tool_with_vector(tool, embedding).await
     }
 
     /// Retrieves all ShinkaiToolHeader entries from the shinkai_tools table
@@ -355,7 +355,7 @@ impl SqliteManager {
 
     /// Removes a ShinkaiTool entry from the shinkai_tools table
     // Note: should we also auto-remove the tool from the tool_playground table?
-    pub fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
+    pub async fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -386,10 +386,7 @@ impl SqliteManager {
         tx.commit()?;
 
         // Acquire a write lock on the fts_conn
-        let fts_conn = self.fts_conn.write().map_err(|e| {
-            eprintln!("Failed to acquire write lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let fts_conn = self.fts_conn.write().await;
 
         fts_conn.execute(
             "DELETE FROM shinkai_tools_fts WHERE rowid = ?1",
@@ -445,12 +442,9 @@ impl SqliteManager {
     }
 
     // Update the FTS table when inserting or updating a tool
-    pub fn update_tools_fts(&mut self, tool: &ShinkaiTool) -> Result<(), SqliteManagerError> {
+    pub async fn update_tools_fts(&self, tool: &ShinkaiTool) -> Result<(), SqliteManagerError> {
         // Acquire a write lock on the fts_conn
-        let mut fts_conn = self.fts_conn.write().map_err(|e| {
-            eprintln!("Failed to acquire write lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let mut fts_conn = self.fts_conn.write().await;
 
         // Start a single transaction
         let tx = fts_conn.transaction()?;
@@ -474,12 +468,9 @@ impl SqliteManager {
     }
 
     // Search the FTS table
-    pub fn search_tools_by_name(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
+    pub async fn search_tools_by_name(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
         // Acquire a read lock on the fts_conn
-        let fts_conn = self.fts_conn.read().map_err(|e| {
-            eprintln!("Failed to acquire read lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let fts_conn = self.fts_conn.read().await;
 
         // Use the in-memory connection for FTS operations
         let mut stmt = fts_conn.prepare(
@@ -519,17 +510,14 @@ impl SqliteManager {
     }
 
     // Synchronize the FTS table with the main database
-    pub fn sync_fts_table(&self) -> Result<(), SqliteManagerError> {
+    pub async fn sync_fts_table(&self) -> Result<(), SqliteManagerError> {
         // Use the pooled connection to access the shinkai_tools table
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_tools")?;
         let mut rows = stmt.query([])?;
 
         // Acquire a write lock on the fts_conn
-        let fts_conn = self.fts_conn.write().map_err(|e| {
-            eprintln!("Failed to acquire write lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let fts_conn = self.fts_conn.write().await;
 
         // Use the in-memory connection for FTS operations
         while let Some(row) = rows.next()? {
@@ -556,19 +544,19 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
-    fn setup_test_db() -> SqliteManager {
+    async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        SqliteManager::new(db_path, api_url, model_type).unwrap()
+        SqliteManager::new(db_path, api_url, model_type).await.unwrap()
     }
 
     #[tokio::test]
     async fn test_add_deno_tool() {
-        let mut manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -595,7 +583,7 @@ mod tests {
         let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
-        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
+        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector).await;
         assert!(result.is_ok());
 
         // Retrieve the tool using the new method
@@ -607,7 +595,7 @@ mod tests {
         assert_eq!(retrieved_tool.author(), shinkai_tool.author());
 
         // Remove the tool from the database
-        manager.remove_tool(&shinkai_tool.tool_router_key()).unwrap();
+        manager.remove_tool(&shinkai_tool.tool_router_key()).await.unwrap();
 
         // Verify that the tool is removed from the shinkai_tools table
         let tool_removal_result = manager.get_tool_by_key(&shinkai_tool.tool_router_key());
@@ -626,7 +614,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search() {
-        let mut manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create and add a DenoTool instance
         let deno_tool = DenoTool {
@@ -646,7 +634,7 @@ mod tests {
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
+        manager.add_tool_with_vector(shinkai_tool.clone(), vector).await.unwrap();
 
         // Generate an embedding vector for the query
         let embedding_query = SqliteManager::generate_vector_for_testing(0.09);
@@ -664,7 +652,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_middle_tool() {
-        let mut manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create three DenoTool instances
         let deno_tool_1 = DenoTool {
@@ -720,12 +708,15 @@ mod tests {
         // Add the tools to the database
         manager
             .add_tool_with_vector(shinkai_tool_1.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .await
             .unwrap();
         manager
             .add_tool_with_vector(shinkai_tool_2.clone(), SqliteManager::generate_vector_for_testing(0.2))
+            .await
             .unwrap();
         manager
             .add_tool_with_vector(shinkai_tool_3.clone(), SqliteManager::generate_vector_for_testing(0.3))
+            .await
             .unwrap();
 
         // Print out the name and key for each tool in the database
@@ -767,7 +758,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_duplicate_tool() {
-        let mut manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -790,11 +781,11 @@ mod tests {
 
         // Add the tool to the database
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone());
+        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone()).await;
         assert!(result.is_ok());
 
         // Attempt to add the same tool again
-        let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
+        let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector).await;
 
         // Assert that the error is ToolAlreadyExists
         assert!(matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))));
@@ -802,7 +793,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search() {
-        let mut manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create multiple tools with different names
         let tools = vec![
@@ -854,7 +845,7 @@ mod tests {
         for (i, tool) in tools.into_iter().enumerate() {
             let shinkai_tool = ShinkaiTool::Deno(tool, true);
             let vector = SqliteManager::generate_vector_for_testing(0.1 * (i + 1) as f32);
-            if let Err(e) = manager.add_tool_with_vector(shinkai_tool, vector) {
+            if let Err(e) = manager.add_tool_with_vector(shinkai_tool, vector).await {
                 eprintln!("Failed to add tool: {:?}", e);
             } else {
                 eprintln!("Successfully added tool with index: {}", i);
@@ -862,7 +853,7 @@ mod tests {
         }
 
         // Test exact match
-        match manager.search_tools_by_name("Text Analysis") {
+        match manager.search_tools_by_name("Text Analysis").await {
             Ok(results) => {
                 eprintln!("Search results: {:?}", results);
                 assert_eq!(results.len(), 1);
@@ -872,17 +863,17 @@ mod tests {
         }
 
         // Test partial match
-        let results = manager.search_tools_by_name("visualization").unwrap();
+        let results = manager.search_tools_by_name("visualization").await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Data Visualization Tool");
 
         // Test case insensitive match
-        let results = manager.search_tools_by_name("IMAGE").unwrap();
+        let results = manager.search_tools_by_name("IMAGE").await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Image Processing Tool");
 
         // Test no match
-        let results = manager.search_tools_by_name("nonexistent").unwrap();
+        let results = manager.search_tools_by_name("nonexistent").await.unwrap();
         assert_eq!(results.len(), 0);
     }
 }

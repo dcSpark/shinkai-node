@@ -242,17 +242,17 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
-    fn setup_test_db() -> SqliteManager {
+    async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        SqliteManager::new(db_path, api_url, model_type).unwrap()
+        SqliteManager::new(db_path, api_url, model_type).await.unwrap()
     }
 
-    fn add_tool_to_db(manager: &mut SqliteManager) -> String {
+    async fn add_tool_to_db(manager: &mut SqliteManager) -> String {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
@@ -272,7 +272,10 @@ mod tests {
         let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
-        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool.clone(), vector)
+            .await
+            .unwrap();
 
         // Return the tool_router_key generated from the DenoTool
         shinkai_tool.tool_router_key().to_string()
@@ -296,10 +299,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_set_and_get_tool_playground() {
-        let mut manager = setup_test_db();
-        let tool_router_key = add_tool_to_db(&mut manager);
+    #[tokio::test]
+    async fn test_set_and_get_tool_playground() {
+        let mut manager = setup_test_db().await;
+        let tool_router_key = add_tool_to_db(&mut manager).await;
         let tool = create_test_tool_playground(tool_router_key.clone());
 
         // Set the tool playground
@@ -318,10 +321,10 @@ mod tests {
         assert_eq!(retrieved_tool.code, tool.code);
     }
 
-    #[test]
-    fn test_remove_tool_playground() {
-        let mut manager = setup_test_db();
-        let tool_router_key = add_tool_to_db(&mut manager);
+    #[tokio::test]
+    async fn test_remove_tool_playground() {
+        let mut manager = setup_test_db().await;
+        let tool_router_key = add_tool_to_db(&mut manager).await;
         let tool = create_test_tool_playground(tool_router_key.clone());
 
         // Set the tool playground
@@ -335,15 +338,15 @@ mod tests {
         assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
     }
 
-    #[test]
-    fn test_get_all_tool_playground() {
-        let mut manager = setup_test_db();
+    #[tokio::test]
+    async fn test_get_all_tool_playground() {
+        let mut manager = setup_test_db().await;
 
         // Add the first tool to the database and get its tool_router_key
-        let tool_router_key1 = add_tool_to_db_with_unique_name(&mut manager, "Deno Test Tool 1");
+        let tool_router_key1 = add_tool_to_db_with_unique_name(&mut manager, "Deno Test Tool 1").await;
 
         // Add the second tool to the database and get its tool_router_key
-        let tool_router_key2 = add_tool_to_db_with_unique_name(&mut manager, "Deno Test Tool 2");
+        let tool_router_key2 = add_tool_to_db_with_unique_name(&mut manager, "Deno Test Tool 2").await;
 
         // Create ToolPlayground entries using the tool_router_keys
         let tool1 = create_test_tool_playground(tool_router_key1.clone());
@@ -365,7 +368,7 @@ mod tests {
     }
 
     // Helper function to add a tool with a unique name
-    fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
+    async fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: name.to_string(),
@@ -385,7 +388,10 @@ mod tests {
         let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
-        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool.clone(), vector)
+            .await
+            .unwrap();
 
         // Return the tool_router_key generated from the DenoTool
         shinkai_tool.tool_router_key().to_string()
@@ -393,8 +399,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tool_and_tool_playground() {
-        let mut manager = setup_test_db();
-        let tool_router_key = add_tool_to_db(&mut manager);
+        let mut manager = setup_test_db().await;
+        let tool_router_key = add_tool_to_db(&mut manager).await;
 
         // Step 2: Add a ToolPlayground that references the tool
         let tool_playground = create_test_tool_playground(tool_router_key.clone());
@@ -429,7 +435,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_and_remove_tool_playground_message() {
-        let mut manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Add a tool to ensure the tool_router_key exists
         let deno_tool = DenoTool {
@@ -449,7 +455,10 @@ mod tests {
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool.clone(), vector)
+            .await
+            .unwrap();
 
         // Create and add a ToolPlayground entry
         let tool_playground = create_test_tool_playground(shinkai_tool.tool_router_key().to_string());

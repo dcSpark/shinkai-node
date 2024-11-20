@@ -313,12 +313,9 @@ impl SqliteManager {
     }
 
     // Update the FTS table when inserting or updating a prompt
-    pub fn update_prompts_fts(&mut self, prompt: &CustomPrompt) -> Result<(), SqliteManagerError> {
+    pub async fn update_prompts_fts(&self, prompt: &CustomPrompt) -> Result<(), SqliteManagerError> {
         // Acquire a write lock on the fts_conn
-        let mut fts_conn = self.fts_conn.write().map_err(|e| {
-            eprintln!("Failed to acquire write lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let mut fts_conn = self.fts_conn.write().await;
 
         // Start a single transaction
         let tx = fts_conn.transaction()?;
@@ -342,12 +339,9 @@ impl SqliteManager {
     }
 
     // Search the FTS table
-    pub fn search_prompts_by_name(&self, query: &str) -> Result<Vec<CustomPrompt>, SqliteManagerError> {
+    pub async fn search_prompts_by_name(&self, query: &str) -> Result<Vec<CustomPrompt>, SqliteManagerError> {
         // Acquire a read lock on the fts_conn
-        let fts_conn = self.fts_conn.read().map_err(|e| {
-            eprintln!("Failed to acquire read lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let fts_conn = self.fts_conn.read().await;
 
         // Use the in-memory connection for FTS operations
         let mut stmt = fts_conn.prepare(
@@ -389,17 +383,14 @@ impl SqliteManager {
     }
 
     // Synchronize the FTS table with the main database
-    pub fn sync_prompts_fts_table(&self) -> Result<(), SqliteManagerError> {
+    pub async fn sync_prompts_fts_table(&self) -> Result<(), SqliteManagerError> {
         // Use the pooled connection to access the shinkai_prompts table
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_prompts")?;
         let mut rows = stmt.query([])?;
 
         // Acquire a write lock on the fts_conn
-        let fts_conn = self.fts_conn.write().map_err(|e| {
-            eprintln!("Failed to acquire write lock: {}", e);
-            SqliteManagerError::LockError
-        })?;
+        let fts_conn = self.fts_conn.write().await;
 
         // Use the in-memory connection for FTS operations
         while let Some(row) = rows.next()? {
@@ -425,14 +416,14 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
-    fn setup_test_db() -> SqliteManager {
+    async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        SqliteManager::new(db_path, api_url, model_type).unwrap()
+        SqliteManager::new(db_path, api_url, model_type).await.unwrap()
     }
 
     // Utility function to generate a vector of length 384 filled with a specified value
@@ -440,9 +431,9 @@ mod tests {
         vec![value; 384]
     }
 
-    #[test]
-    fn test_add_prompt_with_vector() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_add_prompt_with_vector() {
+        let manager = setup_test_db().await;
         let prompt = CustomPrompt {
             rowid: None,
             name: "Test Prompt".to_string(),
@@ -458,9 +449,9 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_get_prompt_with_vector() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_get_prompt_with_vector() {
+        let manager = setup_test_db().await;
         let prompt = CustomPrompt {
             rowid: None,
             name: "Test Prompt".to_string(),
@@ -485,9 +476,9 @@ mod tests {
         assert_eq!(retrieved_prompts_by_name[0].name, "Test Prompt");
     }
 
-    #[test]
-    fn test_remove_prompt_with_vector() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_remove_prompt_with_vector() {
+        let manager = setup_test_db().await;
         let prompt = CustomPrompt {
             rowid: None,
             name: "Test Prompt".to_string(),
@@ -505,9 +496,9 @@ mod tests {
         assert!(retrieved_prompt.is_none());
     }
 
-    #[test]
-    fn test_list_prompts_with_vector() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_list_prompts_with_vector() {
+        let manager = setup_test_db().await;
 
         let prompt1 = CustomPrompt {
             rowid: None,
@@ -541,9 +532,9 @@ mod tests {
         assert!(prompts.iter().any(|p| p.name == "Prompt Two"));
     }
 
-    #[test]
-    fn test_add_and_search_prompt_with_vector() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_add_and_search_prompt_with_vector() {
+        let manager = setup_test_db().await;
 
         // Create five CustomPrompts with different vectors
         let prompts = vec![
@@ -586,9 +577,9 @@ mod tests {
         assert!(search_results[2].name == "Prompt 0.5" || search_results[2].name == "Prompt 0.3");
     }
 
-    #[test]
-    fn test_update_prompt_and_embedding() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_update_prompt_and_embedding() {
+        let manager = setup_test_db().await;
 
         // Add three prompts
         let prompts = vec![("Prompt 0.1", 0.1), ("Prompt 0.2", 0.2), ("Prompt 0.3", 0.3)];
@@ -645,9 +636,9 @@ mod tests {
         assert_eq!(retrieved_embedding, generate_vector(0.7));
     }
 
-    #[test]
-    fn test_add_prompts_from_json() {
-        let manager = setup_test_db();
+    #[tokio::test]
+    async fn test_add_prompts_from_json() {
+        let manager = setup_test_db().await;
 
         // Parse the JSON string into a Vec<Value>
         let prompts: Vec<Value> = serde_json::from_str(PROMPTS_JSON_TESTING).expect("Failed to parse JSON");
@@ -667,9 +658,9 @@ mod tests {
         println!("Time taken to add prompts from JSON: {:?}", duration);
     }
 
-    #[test]
-    fn test_add_and_search_prompts_with_fts() {
-        let mut manager = setup_test_db();
+    #[tokio::test]
+    async fn test_add_and_search_prompts_with_fts() {
+        let manager = setup_test_db().await;
 
         // Add three prompts
         let prompts = vec![
@@ -708,25 +699,25 @@ mod tests {
             assert!(result.is_ok());
 
             // Update FTS table
-            manager.update_prompts_fts(prompt).unwrap();
+            manager.update_prompts_fts(prompt).await.unwrap();
         }
 
         // Perform an FTS search for "Alpha"
-        let search_results = manager.search_prompts_by_name("Alpha").unwrap();
+        let search_results = manager.search_prompts_by_name("Alpha").await.unwrap();
 
         // Assert that the search results contain "Prompt Alpha"
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].name, "Prompt Alpha");
 
         // Perform an FTS search for "Beta"
-        let search_results = manager.search_prompts_by_name("Beta").unwrap();
+        let search_results = manager.search_prompts_by_name("Beta").await.unwrap();
 
         // Assert that the search results contain "Prompt Beta"
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].name, "Prompt Beta");
 
         // Perform an FTS search for "Gamma"
-        let search_results = manager.search_prompts_by_name("Gamma").unwrap();
+        let search_results = manager.search_prompts_by_name("Gamma").await.unwrap();
 
         // Assert that the search results contain "Prompt Gamma"
         assert_eq!(search_results.len(), 1);
