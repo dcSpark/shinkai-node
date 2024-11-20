@@ -5,8 +5,9 @@ use rusqlite::Connection;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use sqlite_vec::sqlite3_vec_init;
+use tokio::sync::RwLock;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -58,7 +59,11 @@ impl std::fmt::Debug for SqliteManager {
 
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
-    pub fn new<P: AsRef<Path>>(db_path: P, api_url: String, model_type: EmbeddingModelType) -> Result<Self, SqliteManagerError> {
+    pub fn new<P: AsRef<Path>>(
+        db_path: P,
+        api_url: String,
+        model_type: EmbeddingModelType,
+    ) -> Result<Self, SqliteManagerError> {
         // Register the sqlite-vec extension
         unsafe {
             sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));

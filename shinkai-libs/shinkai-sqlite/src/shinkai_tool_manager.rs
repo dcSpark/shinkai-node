@@ -2,7 +2,6 @@ use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
 use rusqlite::{params, Result};
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use std::sync::{Arc, RwLock};
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
