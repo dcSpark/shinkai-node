@@ -8734,7 +8734,6 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "shinkai_baml",
  "shinkai_crypto_identities",
  "shinkai_db",
  "shinkai_fs_mirror",
