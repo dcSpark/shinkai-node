@@ -12,12 +12,6 @@ impl SqliteManager {
         let subscription_id_data = serde_json::to_vec(&subscription.subscription_id).map_err(|e| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
         })?;
-        let streaming_node = serde_json::to_string(&subscription.streaming_node).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-        })?;
-        let subscriber_node = serde_json::to_string(&subscription.subscriber_node).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-        })?;
         let payment = serde_json::to_string(&subscription.payment).map_err(|e| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
         })?;
@@ -47,11 +41,11 @@ impl SqliteManager {
                 subscription_id,
                 subscription_id_data,
                 subscription.shared_folder,
-                streaming_node,
+                subscription.streaming_node.full_name,
                 subscription.streaming_profile,
                 subscription.subscription_description,
                 subscription.subscriber_destination_path,
-                subscriber_node,
+                subscription.subscriber_node.full_name,
                 subscription.subscriber_profile,
                 payment,
                 state,
@@ -100,12 +94,12 @@ impl SqliteManager {
                 let last_sync: Option<String> = row.get(13)?;
                 let http_preferred: Option<bool> = row.get(14)?;
 
-                let streaming_node = serde_json::from_str(&streaming_node).map_err(|e| {
+                let streaming_node = ShinkaiName::new(streaming_node).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))
                 })?;
-                let subscriber_node = serde_json::from_str(&subscriber_node).map_err(|e| {
+                let subscriber_node = ShinkaiName::new(subscriber_node).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))
@@ -166,12 +160,6 @@ impl SqliteManager {
         let subscription_id_data = serde_json::to_vec(&new_subscription.subscription_id).map_err(|e| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
         })?;
-        let streaming_node = serde_json::to_string(&new_subscription.streaming_node).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-        })?;
-        let subscriber_node = serde_json::to_string(&new_subscription.subscriber_node).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-        })?;
         let payment = serde_json::to_string(&new_subscription.payment).map_err(|e| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
         })?;
@@ -200,11 +188,11 @@ impl SqliteManager {
                 subscription_id,
                 subscription_id_data,
                 new_subscription.shared_folder,
-                streaming_node,
+                new_subscription.streaming_node.full_name,
                 new_subscription.streaming_profile,
                 new_subscription.subscription_description,
                 new_subscription.subscriber_destination_path,
-                subscriber_node,
+                new_subscription.subscriber_node.full_name,
                 new_subscription.subscriber_profile,
                 payment,
                 state,
@@ -245,12 +233,12 @@ impl SqliteManager {
                 let last_sync: Option<String> = row.get(13)?;
                 let http_preferred: Option<bool> = row.get(14)?;
 
-                let streaming_node = serde_json::from_str(&streaming_node).map_err(|e| {
+                let streaming_node = ShinkaiName::new(streaming_node).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))
                 })?;
-                let subscriber_node = serde_json::from_str(&subscriber_node).map_err(|e| {
+                let subscriber_node = ShinkaiName::new(subscriber_node).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))

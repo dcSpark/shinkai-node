@@ -12,6 +12,9 @@ use thiserror::Error;
 pub mod agent_manager;
 pub mod embedding_function;
 pub mod files;
+pub mod identity_manager;
+pub mod invoice_manager;
+pub mod llm_provider_manager;
 pub mod my_subscriptions_manager;
 pub mod network_notifications_manager;
 pub mod prompt_manager;
@@ -53,6 +56,10 @@ pub enum SqliteManagerError {
     DataAlreadyExists,
     #[error("Invalid identity name: {0}")]
     InvalidIdentityName(String),
+    #[error("Invoice not found with id: {0}")]
+    InvoiceNotFound(String),
+    #[error("Network error not found with id: {0}")]
+    InvoiceNetworkErrorNotFound(String),
     // Add other error variants as needed
 }
 
@@ -117,6 +124,9 @@ impl SqliteManager {
     // Initializes the required tables in the SQLite database
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_agents_table(conn)?;
+        Self::initialize_device_identities_table(conn)?;
+        Self::initialize_standard_identities_table(conn)?;
+        Self::initialize_llm_providers_table(conn)?;
         Self::initialize_my_subscriptions_table(conn)?;
         Self::initialize_network_notifications_table(conn)?;
         Self::initialize_prompt_table(conn)?;
@@ -125,6 +135,8 @@ impl SqliteManager {
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
         Self::initialize_tool_micropayments_requirements_table(conn)?;
+        Self::initialize_tool_micropayments_tool_invoice_table(conn)?;
+        Self::initialize_tool_micropayments_tool_invoice_network_errors_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_wallets_table(conn)?;
@@ -136,7 +148,7 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS shinkai_agents (
                 agent_id TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
-                full_identity_name TEXT NOT NULL, -- Store as a JSON string
+                full_identity_name TEXT NOT NULL,
                 llm_provider_id TEXT NOT NULL,
                 ui_description TEXT NOT NULL,
                 knowledge TEXT NOT NULL,
@@ -151,17 +163,69 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_device_identities_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS device_identities (
+                full_identity_name TEXT NOT NULL UNIQUE,
+                node_encryption_public_key BLOB NOT NULL,
+                node_signature_public_key BLOB NOT NULL,
+                profile_encryption_public_key BLOB NOT NULL,
+                profile_signature_public_key BLOB NOT NULL,
+                device_encryption_public_key BLOB NOT NULL,
+                device_signature_public_key BLOB NOT NULL,
+                permission_type TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_standard_identities_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS standard_identities (
+                full_identity_name TEXT NOT NULL UNIQUE,
+                addr BLOB,
+                node_encryption_public_key BLOB NOT NULL,
+                node_signature_public_key BLOB NOT NULL,
+                profile_encryption_public_key BLOB,
+                profile_signature_public_key BLOB,
+                identity_type TEXT NOT NULL,
+                permission_type TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_llm_providers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS llm_providers (
+                db_llm_provider_id TEXT NOT NULL UNIQUE,
+                id TEXT NOT NULL,
+                full_identity_name TEXT NOT NULL,
+                external_url TEXT,
+                api_key TEXT,
+                model TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     fn initialize_my_subscriptions_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS my_subscriptions (
                 subscription_id TEXT NOT NULL UNIQUE,
                 subscription_id_data BLOB NOT NULL,
                 shared_folder TEXT NOT NULL,
-                streaming_node TEXT NOT NULL, -- Store as a JSON string
+                streaming_node TEXT NOT NULL,
                 streaming_profile TEXT NOT NULL,
                 subscription_description TEXT,
                 subscriber_destination_path TEXT,
-                subscriber_node TEXT NOT NULL, -- Store as a JSON string
+                subscriber_node TEXT NOT NULL,
                 subscriber_profile TEXT NOT NULL,
                 payment TEXT,
                 state TEXT NOT NULL,
@@ -337,6 +401,49 @@ impl SqliteManager {
                 tool_key TEXT NOT NULL UNIQUE,
                 usage_type TEXT NOT NULL,
                 meta_description TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_tool_micropayments_tool_invoice_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_micropayments_tool_invoices (
+                invoice_id TEXT NOT NULL UNIQUE,
+                provider_name TEXT NOT NULL,
+                requester_name TEXT NOT NULL,
+                usage_type_inquiry TEXT NOT NULL,
+                shinkai_offering_key TEXT NOT NULL,
+                request_date_time TEXT NOT NULL,
+                invoice_date_time TEXT NOT NULL,
+                expiration_time TEXT NOT NULL,
+                status TEXT NOT NULL,
+                payment TEXT, -- Store as a JSON string
+                address TEXT NOT NULL, -- Store as a JSON string
+                tool_data BLOB,
+                response_date_time TEXT,
+                result_str TEXT,
+
+                FOREIGN KEY(shinkai_offering_key) REFERENCES tool_micropayments_requirements(tool_key)
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_tool_micropayments_tool_invoice_network_errors_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_micropayments_tool_invoice_network_errors (
+                invoice_id TEXT NOT NULL UNIQUE,
+                provider_name TEXT NOT NULL,
+                requester_name TEXT NOT NULL,
+                request_date_time TEXT NOT NULL,
+                response_date_time TEXT NOT NULL,
+                user_error_message TEXT,
+                error_message TEXT NOT NULL
             );",
             [],
         )?;

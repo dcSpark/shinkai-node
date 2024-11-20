@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
+use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
@@ -252,7 +253,7 @@ impl LLMProvider {
 
     pub fn from_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
     ) -> Result<Self, LLMProviderError> {
         match provider_or_agent {
             ProviderOrAgent::LLMProvider(serialized_llm_provider) => {

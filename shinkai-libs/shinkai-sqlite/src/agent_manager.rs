@@ -28,7 +28,6 @@ impl SqliteManager {
         let _agent_name = ShinkaiName::new(agent_name_str.clone())
             .map_err(|_| SqliteManagerError::InvalidIdentityName(format!("Invalid ShinkaiName: {}", agent_name_str)))?;
 
-        let full_identity_name = serde_json::to_string(&agent.full_identity_name).unwrap();
         let knowledge = serde_json::to_string(&agent.knowledge).unwrap();
         let config = agent.config.map(|c| serde_json::to_string(&c).unwrap());
         let tools = serde_json::to_string(&agent.tools).unwrap();
@@ -39,7 +38,7 @@ impl SqliteManager {
             params![
                 agent.name,
                 agent.agent_id,
-                full_identity_name,
+                agent.full_identity_name.full_name,
                 agent.llm_provider_id,
                 agent.ui_description,
                 knowledge,
@@ -86,7 +85,7 @@ impl SqliteManager {
             Ok(Agent {
                 agent_id: row.get(0)?,
                 name: row.get(1)?,
-                full_identity_name: serde_json::from_str(&full_identity_name).map_err(|e| {
+                full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))
@@ -136,7 +135,7 @@ impl SqliteManager {
             Ok(Agent {
                 agent_id: row.get(0)?,
                 name: row.get(1)?,
-                full_identity_name: serde_json::from_str(&full_identity_name).map_err(|e| {
+                full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))
@@ -187,7 +186,6 @@ impl SqliteManager {
             return Err(SqliteManagerError::DataNotFound);
         }
 
-        let full_identity_name = serde_json::to_string(&updated_agent.full_identity_name).unwrap();
         let knowledge = serde_json::to_string(&updated_agent.knowledge).unwrap();
         let config = updated_agent.config.map(|c| serde_json::to_string(&c).unwrap());
         let tools = serde_json::to_string(&updated_agent.tools).unwrap();
@@ -198,7 +196,7 @@ impl SqliteManager {
             WHERE agent_id = ?10",
             params![
                 updated_agent.name,
-                full_identity_name,
+                updated_agent.full_identity_name.full_name,
                 updated_agent.llm_provider_id,
                 updated_agent.ui_description,
                 knowledge,

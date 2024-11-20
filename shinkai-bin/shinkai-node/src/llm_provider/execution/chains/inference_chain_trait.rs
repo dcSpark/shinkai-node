@@ -199,6 +199,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
 #[derive(Clone)]
 pub struct InferenceChainContext {
     pub db: Arc<ShinkaiDB>,
+    pub sqlite_manager: Arc<SqliteManager>,
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
@@ -226,6 +227,7 @@ impl InferenceChainContext {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
@@ -247,6 +249,7 @@ impl InferenceChainContext {
     ) -> Self {
         Self {
             db,
+            sqlite_manager,
             vector_fs,
             full_job,
             user_message,

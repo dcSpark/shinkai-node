@@ -1,16 +1,17 @@
 use super::identity_network_manager::IdentityNetworkManager;
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use crate::network::network_manager::network_handlers::verify_message_signature;
 use crate::network::node_error::NodeError;
 use async_trait::async_trait;
 use shinkai_crypto_identities::ShinkaiRegistryError;
+use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 
@@ -39,7 +40,10 @@ impl Clone for Box<dyn IdentityManagerTrait + Send> {
 }
 
 impl IdentityManager {
-    pub async fn new(db: Weak<ShinkaiDB>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        db: Weak<SqliteManager>,
+        local_node_name: ShinkaiName,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
@@ -330,10 +334,7 @@ impl IdentityManagerTrait for IdentityManager {
         Box::new(self.clone())
     }
 
-    async fn external_profile_to_global_identity(
-        &self,
-        full_profile_name: &str,
-    ) -> Result<StandardIdentity, String> {
+    async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Result<StandardIdentity, String> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,

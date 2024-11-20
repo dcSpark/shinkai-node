@@ -2350,10 +2350,12 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager = self.sqlite_manager.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_remove_llm_provider(
                         db_clone,
+                        sqlite_manager,
                         identity_manager_clone,
                         bearer,
                         llm_provider_id,
@@ -2364,10 +2366,18 @@ impl Node {
             }
             NodeCommand::V2ApiModifyLlmProvider { bearer, agent, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let sqlite_manager = self.sqlite_manager.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_modify_llm_provider(db_clone, identity_manager_clone, bearer, agent, res).await;
+                    let _ = Node::v2_api_modify_llm_provider(
+                        db_clone,
+                        sqlite_manager,
+                        identity_manager_clone,
+                        bearer,
+                        agent,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiChangeNodesName { bearer, new_name, res } => {

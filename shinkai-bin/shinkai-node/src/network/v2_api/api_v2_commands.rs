@@ -523,6 +523,7 @@ impl Node {
 
     pub async fn v2_api_remove_llm_provider(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         llm_provider_id: String,
@@ -547,7 +548,7 @@ impl Node {
         };
 
         let mut identity_manager = identity_manager.lock().await;
-        match db.remove_llm_provider(&llm_provider_id, &requester_name) {
+        match sqlite_manager.remove_llm_provider(&llm_provider_id, &requester_name) {
             Ok(_) => match identity_manager.remove_agent_subidentity(&llm_provider_id).await {
                 Ok(_) => {
                     let _ = res.send(Ok("Agent removed successfully".to_string())).await;
@@ -577,6 +578,7 @@ impl Node {
 
     pub async fn v2_api_modify_llm_provider(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         agent: SerializedLLMProvider,
@@ -600,7 +602,7 @@ impl Node {
             }
         };
 
-        match db.update_llm_provider(agent.clone(), &requester_name) {
+        match sqlite_manager.update_llm_provider(agent.clone(), &requester_name) {
             Ok(_) => {
                 let mut identity_manager = identity_manager.lock().await;
                 match identity_manager.modify_llm_provider_subidentity(agent).await {

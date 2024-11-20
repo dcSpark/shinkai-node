@@ -20,6 +20,7 @@ use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
@@ -60,6 +61,7 @@ impl InferenceChain for SheetUIInferenceChain {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = SheetUIInferenceChain::start_chain(
             self.context.db.clone(),
+            self.context.sqlite_manager.clone(),
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
@@ -104,6 +106,7 @@ impl SheetUIInferenceChain {
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
@@ -306,7 +309,7 @@ impl SheetUIInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
-                db.clone(),
+                sqlite_manager.clone(),
             )
             .await;
 
@@ -372,6 +375,7 @@ impl SheetUIInferenceChain {
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
                     let context = InferenceChainContext::new(
                         db.clone(),
+                        sqlite_manager.clone(),
                         vector_fs.clone(),
                         full_job.clone(),
                         parsed_message,

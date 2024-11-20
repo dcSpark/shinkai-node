@@ -130,6 +130,7 @@ impl JobManager {
         // 3.- *If* a sheet job is found, processing job message is taken over by this alternate logic
         let sheet_job_found = JobManager::process_sheet_job(
             db.clone(),
+            sqlite_manager.clone(),
             vector_fs.clone(),
             &job_message.job_message,
             job_message.message_hash_id.clone(),
@@ -154,6 +155,7 @@ impl JobManager {
         // Otherwise proceed forward with rest of logic.
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
+            sqlite_manager.clone(),
             vector_fs.clone(),
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
@@ -224,6 +226,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
@@ -289,6 +292,7 @@ impl JobManager {
         // Call the inference chain router to choose which chain to use, and call it
         let inference_response = JobManager::inference_chain_router(
             db.clone(),
+            sqlite_manager.clone(),
             vector_fs.clone(),
             llm_provider_found,
             full_job,
@@ -361,6 +365,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_sheet_job(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
@@ -442,6 +447,7 @@ impl JobManager {
 
             let inference_result = JobManager::inference_chain_router(
                 db.clone(),
+                sqlite_manager.clone(),
                 vector_fs.clone(),
                 llm_provider_found,
                 mutable_job.clone(),
@@ -501,7 +507,7 @@ impl JobManager {
 
     /// Helper function to process files and update the job scope.
     async fn process_files_and_update_scope(
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         files: Vec<(String, Vec<u8>)>,
         agent_found: Option<ProviderOrAgent>,
@@ -660,7 +666,7 @@ impl JobManager {
     /// Processes the files sent together with the current job_message into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_files_for_vector_resources(
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         agent_found: Option<ProviderOrAgent>,
@@ -710,7 +716,7 @@ impl JobManager {
     /// Processes the specified files into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_specified_files_for_vector_resources(
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         files_inbox: String,
         file_names: Vec<String>,
@@ -812,7 +818,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
         _vector_fs: Arc<VectorFS>,
         agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,

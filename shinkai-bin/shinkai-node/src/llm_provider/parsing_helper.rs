@@ -5,6 +5,7 @@ use super::llm_stopper::LLMStopper;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
@@ -22,7 +23,7 @@ impl ParsingHelper {
         text_groups: &Vec<TextGroup>,
         agent: ProviderOrAgent,
         max_node_text_size: u64,
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
     ) -> Result<String, LLMProviderError> {
         let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
@@ -80,7 +81,7 @@ impl ParsingHelper {
         agent: Option<ProviderOrAgent>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
     ) -> Result<BaseVectorResource, LLMProviderError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -125,7 +126,7 @@ impl ParsingHelper {
         files: Vec<(String, Vec<u8>, DistributionInfo)>,
         generator: &dyn EmbeddingGenerator,
         agent: Option<ProviderOrAgent>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<SqliteManager>,
     ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
         #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (

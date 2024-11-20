@@ -22,6 +22,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
@@ -64,6 +65,7 @@ impl InferenceChain for GenericInferenceChain {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = GenericInferenceChain::start_chain(
             self.context.db.clone(),
+            self.context.sqlite_manager.clone(),
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
@@ -102,6 +104,7 @@ impl GenericInferenceChain {
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
@@ -251,13 +254,18 @@ impl GenericInferenceChain {
             }
         });
 
-        let custom_system_prompt = job_config.and_then(|config| config.custom_system_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_system_prompt.clone())
-            } else {
-                None
-            }
-        });
+        let custom_system_prompt = job_config
+            .and_then(|config| config.custom_system_prompt.clone())
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent
+                        .config
+                        .as_ref()
+                        .and_then(|config| config.custom_system_prompt.clone())
+                } else {
+                    None
+                }
+            });
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_system_prompt,
@@ -294,7 +302,7 @@ impl GenericInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
-                db.clone(),
+                sqlite_manager.clone(),
             )
             .await;
 
@@ -313,6 +321,7 @@ impl GenericInferenceChain {
                 let image_files = HashMap::new();
                 let context = InferenceChainContext::new(
                     db.clone(),
+                    sqlite_manager.clone(),
                     vector_fs.clone(),
                     full_job.clone(),
                     parsed_message,

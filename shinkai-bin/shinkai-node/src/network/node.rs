@@ -207,13 +207,20 @@ impl Node {
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
 
-        // Setup Identity Manager
-        let db_weak = Arc::downgrade(&db_arc);
-        let subidentity_manager = IdentityManager::new(db_weak.clone(), node_name.clone()).await.unwrap();
-        let identity_manager = Arc::new(Mutex::new(subidentity_manager));
-
         // Initialize default RemoteEmbeddingGenerator if none provided
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
+
+        // Initialize SqliteManager
+        let embedding_api_url = embedding_generator.api_url.clone();
+        let sqlite_manager =
+            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
+
+        // Setup Identity Manager
+        let db_weak = Arc::downgrade(&db_arc);
+        let subidentity_manager = IdentityManager::new(Arc::downgrade(&sqlite_manager), node_name.clone())
+            .await
+            .unwrap();
+        let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         // Fetch list of existing profiles from the node to push into the VectorFS
         let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
@@ -295,11 +302,6 @@ impl Node {
             let manager_trait: Arc<Mutex<dyn WSUpdateHandler + Send>> = manager.clone();
             manager_trait
         });
-
-        // Initialize SqliteManager
-        let embedding_api_url = embedding_generator.api_url.clone();
-        let sqlite_manager =
-            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
 
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
