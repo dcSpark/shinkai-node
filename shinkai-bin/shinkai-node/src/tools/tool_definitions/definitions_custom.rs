@@ -39,7 +39,7 @@ pub fn get_custom_tools() -> Vec<ShinkaiToolHeader> {
     let sqlite_tool = ShinkaiToolHeader {
         name: "Shinkai SQLite Query Executor".to_string(),
         toolkit_name: "shinkai_custom".to_string(),
-        description: r#"Tool for executing SQLite queries on a specified database file. 
+        description: r#"Tool for executing SQL queries on a specified database file. 
         Table creation should always use 'CREATE TABLE IF NOT EXISTS'.
         
         Example table creation:

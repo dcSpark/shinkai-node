@@ -325,7 +325,7 @@ impl CoinbaseMPCWallet {
             let header_code = "";
             let result = js_tool
                 .run(
-                    HashMap::new(),
+                    HashMap::new(), // Note: we don't need envs for this function - as it doesn't call other tools
                     header_code.to_string(),
                     params,
                     Some(function_config_str),

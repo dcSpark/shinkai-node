@@ -124,6 +124,8 @@ pub async fn generate_code_prompt(
 ) -> Result<String, APIError> {
     match language {
         CodeLanguage::Typescript => {
+            // This function name must match the generated code for the language specific SQL Query Function
+            let shinkai_sqlite_query_executor = "localRustToolkitShinkaiSqliteQueryExecutor";
             return Ok(format!(
                 r####"
 # RULE I:
@@ -151,7 +153,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 * This will be shared as a library, when used it run(...) function will be called.
 * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
 * If you need to import other libraries, do it in the Deno NPM format and with version, for example to import axios use 'import axios from 'npm:axios@1.6.2' with the 'npm:' prefix, and the exact version.
-* If permanent memory is required, write to disk, store, sql always prioritize using shinkaiSqliteQueryExecutor.
+* If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.
 
 # RULE IV:
 * Do not output, notes, ideas, explanations or examples.

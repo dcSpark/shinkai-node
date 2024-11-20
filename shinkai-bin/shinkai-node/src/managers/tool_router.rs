@@ -435,6 +435,12 @@ impl ToolRouter {
                     generate_tool_definitions(CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                let mut envs = HashMap::new();
+                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
                 let result = deno_tool
                     .run(
                         HashMap::new(),
@@ -754,6 +760,13 @@ impl ToolRouter {
         let header_code = generate_tool_definitions(CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
             .await
             .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+        let mut envs = HashMap::new();
+        envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+        envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+
         let result = js_tool
             .run(
                 HashMap::new(),

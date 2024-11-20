@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 use std::{env, thread};
 
 use super::argument::ToolOutputArg;
 use super::tool_config::ToolConfig;
+use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -30,6 +30,8 @@ pub struct DenoTool {
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: DenoToolResult,
+    pub sql_tables: Option<Vec<SqlTable>>,
+    pub sql_queries: Option<Vec<SqlQuery>>,
 }
 
 impl DenoTool {
