@@ -252,7 +252,7 @@ mod tests {
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
-    fn add_tool_to_db(manager: &SqliteManager) -> String {
+    fn add_tool_to_db(manager: &mut SqliteManager) -> String {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
@@ -298,8 +298,8 @@ mod tests {
 
     #[test]
     fn test_set_and_get_tool_playground() {
-        let manager = setup_test_db();
-        let tool_router_key = add_tool_to_db(&manager);
+        let mut manager = setup_test_db();
+        let tool_router_key = add_tool_to_db(&mut manager);
         let tool = create_test_tool_playground(tool_router_key.clone());
 
         // Set the tool playground
@@ -320,8 +320,8 @@ mod tests {
 
     #[test]
     fn test_remove_tool_playground() {
-        let manager = setup_test_db();
-        let tool_router_key = add_tool_to_db(&manager);
+        let mut manager = setup_test_db();
+        let tool_router_key = add_tool_to_db(&mut manager);
         let tool = create_test_tool_playground(tool_router_key.clone());
 
         // Set the tool playground
@@ -337,13 +337,13 @@ mod tests {
 
     #[test]
     fn test_get_all_tool_playground() {
-        let manager = setup_test_db();
+        let mut manager = setup_test_db();
 
         // Add the first tool to the database and get its tool_router_key
-        let tool_router_key1 = add_tool_to_db_with_unique_name(&manager, "Deno Test Tool 1");
+        let tool_router_key1 = add_tool_to_db_with_unique_name(&mut manager, "Deno Test Tool 1");
 
         // Add the second tool to the database and get its tool_router_key
-        let tool_router_key2 = add_tool_to_db_with_unique_name(&manager, "Deno Test Tool 2");
+        let tool_router_key2 = add_tool_to_db_with_unique_name(&mut manager, "Deno Test Tool 2");
 
         // Create ToolPlayground entries using the tool_router_keys
         let tool1 = create_test_tool_playground(tool_router_key1.clone());
@@ -365,7 +365,7 @@ mod tests {
     }
 
     // Helper function to add a tool with a unique name
-    fn add_tool_to_db_with_unique_name(manager: &SqliteManager, name: &str) -> String {
+    fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: name.to_string(),
@@ -393,8 +393,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_tool_and_tool_playground() {
-        let manager = setup_test_db();
-        let tool_router_key = add_tool_to_db(&manager);
+        let mut manager = setup_test_db();
+        let tool_router_key = add_tool_to_db(&mut manager);
 
         // Step 2: Add a ToolPlayground that references the tool
         let tool_playground = create_test_tool_playground(tool_router_key.clone());
@@ -429,7 +429,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_and_remove_tool_playground_message() {
-        let manager = setup_test_db();
+        let mut manager = setup_test_db();
 
         // Add a tool to ensure the tool_router_key exists
         let deno_tool = DenoTool {
