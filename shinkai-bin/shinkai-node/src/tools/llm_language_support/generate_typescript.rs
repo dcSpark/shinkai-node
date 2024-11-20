@@ -4,11 +4,11 @@
      * Analyzes text and provides statistics
      * @param text - (required, The text to analyze)
      * @param include_sentiment - (optional, Whether to include sentiment analysis) , default: undefined
-     * @returns {{
+     * @returns {
      *   word_count: integer - Number of words in the text
      *   character_count: integer - Number of characters in the text
      *   sentiment_score: number - Sentiment score (-1 to 1) if requested
-     * }}
+     * }
      */
     async function textAnalyzer(text: string, include_sentiment?: boolean): Promise<{
         word_count: integer;
@@ -35,7 +35,7 @@
 use super::language_helpers::to_camel_case;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
 
 fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> String {
     match type_value.as_str() {
@@ -144,9 +144,31 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         }
     }
     typescript_output.push_str(" * }\n");
+
+    // Add SQL documentation if available
+    if let Some(sql_tables) = &tool.sql_tables {
+        if !sql_tables.is_empty() {
+            typescript_output.push_str(" * This function stores it's previous results in the following SQL Tables:\n");
+            for table in &playground.metadata.sql_tables {
+                typescript_output.push_str(&format!(" * - `{}`\n", table.name));
+                typescript_output.push_str(&format!(" * ```sql\n * {}\n * ```\n", table.definition));
+            }
+        }
+    }
+
+    if let Some(sql_queries) = &tool.sql_queries {
+        if !sql_queries.is_empty() {
+            typescript_output.push_str(" * \n");
+            typescript_output.push_str(" * To access these results, you can use the following reference SQL Queries in `localRustToolkitShinkaiSqliteQueryExecutor(...)`:\n");
+            for query in &sql_queries {
+            typescript_output.push_str(&format!(" * - `{}`\n", query.name));
+            typescript_output.push_str(&format!(" * ```sql\n * {}\n * ```\n", query.query));
+        }
+    }
+
     typescript_output.push_str(" */\n");
 
-    let function_name = to_camel_case(&tool.name);
+    let function_name = to_camel_case(&tool.tool_router_key);
 
     // Add 'export' and 'declare' for .d.ts files
     if generate_dts {

@@ -53,17 +53,22 @@ pub async fn execute_tool(
             envs.insert("BEARER".to_string(), bearer);
             envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
             envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+            envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+            envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
 
             let node_env = fetch_node_environment();
             let node_storage_path = node_env
                 .node_storage_path
                 .clone()
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-            // TODO: add header_code
+            let header_code = generate_tool_definitions(CodeLanguage::Typescript, sqlite_manager, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
             deno_tool
                 .run(
                     envs,
-                    "".to_string(),
+                    header_code,
                     parameters,
                     extra_config,
                     node_storage_path,

@@ -192,7 +192,7 @@ fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String
     let mut stmt = conn
         .prepare(query)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?;
-
+    println!("[execute_sqlite_query] query: {} {:?}", query, query_params);
     // For SELECT queries, fetch column names and rows
     if query.trim().to_lowercase().starts_with("select") {
         let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();

@@ -416,6 +416,8 @@ mod tests {
                 }),
                 vec!["markdowns".to_string()],
             ),
+            sql_tables: None,
+            sql_queries: None,
         };
 
         // Create a ShinkaiTool instance

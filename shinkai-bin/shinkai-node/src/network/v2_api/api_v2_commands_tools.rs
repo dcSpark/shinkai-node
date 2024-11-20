@@ -345,6 +345,8 @@ impl Node {
             activated: false, // TODO: maybe we want to add this as an option in the UI?
             embedding: None,
             result: payload.metadata.result,
+            sql_tables: Some(payload.metadata.sql_tables),
+            sql_queries: Some(payload.metadata.sql_queries),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(tool, false); // Same as above
@@ -624,6 +626,7 @@ impl Node {
                 let _ = res.send(Ok(result)).await;
             }
             Err(e) => {
+                println!("[execute_command] Tool execution failed {}: {}", tool_router_key, e);
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

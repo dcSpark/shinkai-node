@@ -1,6 +1,7 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
-use shinkai_sqlite::SqliteManager;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
+use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -55,7 +56,8 @@ pub async fn generate_tool_definitions(
     for tool in all_tools {
         match language {
             CodeLanguage::Typescript => {
-                let function_name = crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.name);
+                let function_name =
+                    crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.tool_router_key);
                 if generated_names.contains(&function_name) {
                     eprintln!(
                         "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",

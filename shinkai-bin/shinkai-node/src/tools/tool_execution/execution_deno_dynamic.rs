@@ -31,12 +31,16 @@ pub fn execute_deno_tool(
         activated: true,
         embedding: None,
         result: DenoToolResult::new("object".to_string(), Value::Null, vec![]),
+        sql_tables: None,
+        sql_queries: None,
     };
 
     let mut envs = HashMap::new();
     envs.insert("BEARER".to_string(), bearer);
     envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
     envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+    envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+    envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
 
     let node_env = fetch_node_environment();
     let node_storage_path = node_env
