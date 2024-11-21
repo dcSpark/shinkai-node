@@ -181,7 +181,7 @@ fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String
             .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
     }
 
-    let manager = SqliteConnectionManager::file(full_path);
+    let manager = SqliteConnectionManager::file(full_path.clone());
     let pool = Pool::new(manager)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to create connection pool: {}", e)))?;
 
@@ -192,7 +192,17 @@ fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String
     let mut stmt = conn
         .prepare(query)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?;
-    println!("[execute_sqlite_query] query: {} {:?}", query, query_params);
+    println!("[execute_sqlite_query] path: {:?}", full_path.clone());
+    println!(
+        "[execute_sqlite_query] query: {} {:?}",
+        if query.len() > 200 {
+            format!("{}...{}", &query[..100], &query[query.len() - 100..])
+        } else {
+            query.to_string()
+        },
+        query_params
+    );
+
     // For SELECT queries, fetch column names and rows
     if query.trim().to_lowercase().starts_with("select") {
         let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
@@ -227,7 +237,6 @@ fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String
             "result": rows,
             "type": "select",
             "rowCount": rows.len()
-
         }))
     } else {
         // For non-SELECT queries (INSERT, UPDATE, DELETE, etc)

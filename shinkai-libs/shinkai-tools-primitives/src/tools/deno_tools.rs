@@ -85,9 +85,10 @@ impl DenoTool {
         tool_id: String,
         is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
-        println!("Running DenoTool named: {}", self.name);
-        println!("Running DenoTool with input: {:?}", parameters);
-        println!("Running DenoTool with extra_config: {:?}", extra_config);
+        println!(
+            "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
+            self.name, parameters, extra_config
+        );
 
         let code = self.js_code.clone();
 
@@ -123,8 +124,7 @@ impl DenoTool {
             .spawn(move || {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("Running DenoTool with config: {:?}", config);
-                    println!("Running DenoTool with input: {:?}", parameters);
+                    println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
                     // Remove axios import, as it's also created in the header code
                     let step_1 = if !header_code.is_empty() {
                         let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
@@ -137,9 +137,15 @@ impl DenoTool {
                     let step_2 = regex.replace_all(&step_1, "").into_owned();
                     // Add the library import and the header code in the beginning of the code
                     let final_code = format!("{} {}", header_code, step_2);
-                    println!("Final code: {}", final_code);
-                    println!("Config JSON: {}", config_json);
-                    println!("Parameters: {:?}", parameters);
+                    println!(
+                        "[Running DenoTool] Final Code: {} ... {} ",
+                        &final_code[..120.min(final_code.len())],
+                        &final_code[final_code.len().saturating_sub(400)..]
+                    );
+                    println!(
+                        "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
+                        config_json, parameters
+                    );
 
                     let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
 
