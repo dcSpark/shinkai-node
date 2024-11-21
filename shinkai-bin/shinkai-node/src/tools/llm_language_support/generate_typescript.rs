@@ -223,6 +223,7 @@ pub fn generate_typescript_definition(
         typescript_output.push_str("        llm_provider: 'llm_provider',\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
+        typescript_output.push_str("        llm_provider: `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`,\n");
         typescript_output.push_str("        parameters: {\n");
         for arg in &tool.input_args {
             typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));

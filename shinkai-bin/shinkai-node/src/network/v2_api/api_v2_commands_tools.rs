@@ -5,7 +5,8 @@ use crate::{
     tools::{
         tool_definitions::definition_generation::generate_tool_definitions,
         tool_execution::execution_coordinator::{execute_code, execute_tool},
-        tool_generation::{generate_code_prompt, tool_metadata_implementation, v2_create_and_send_job_message},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation},
     },
 };
 use async_channel::Sender;
@@ -649,6 +650,7 @@ impl Node {
         sqlite_manager: Arc<SqliteManager>,
         tool_id: String,
         app_id: String,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -664,6 +666,7 @@ impl Node {
             sqlite_manager,
             tool_id,
             app_id,
+            llm_provider,
             bearer,
         )
         .await;

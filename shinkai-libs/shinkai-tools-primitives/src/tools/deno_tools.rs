@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::{env, result, thread};
+use std::{env, thread};
 
 use super::argument::ToolOutputArg;
 use super::tool_config::ToolConfig;

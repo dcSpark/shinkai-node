@@ -2918,6 +2918,7 @@ impl Node {
                 parameters,
                 tool_id,
                 app_id,
+                llm_provider,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
@@ -2933,6 +2934,7 @@ impl Node {
                         sqlite_manager_clone,
                         tool_id,
                         app_id,
+                        llm_provider,
                         res,
                     )
                     .await;
