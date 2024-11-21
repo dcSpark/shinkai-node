@@ -9,7 +9,7 @@ baml-runtime = { git = "https://github.com/BoundaryML/baml.git", tag = "0.56.1",
     "internal",
 ] }
 baml-types = { git = "https://github.com/BoundaryML/baml.git", tag = "0.56.1", package = "baml-types" }
-env_logger = "0.9"
+env_logger = { workspace = true }
 log = { workspace = true }
 anyhow = { workspace = true }
 indexmap = { version = "2.1.0", features = ["serde"] }

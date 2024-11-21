@@ -89,6 +89,7 @@ r2d2 = "0.8.10"
 r2d2_sqlite = "0.25"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 async-std = { version = "1.5.0", features = ["unstable"] }
+env_logger = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.0.2"
