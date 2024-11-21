@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::{env, thread};
+use std::{env, result, thread};
 
 use super::argument::ToolOutputArg;
 use super::tool_config::ToolConfig;
@@ -122,6 +122,13 @@ impl DenoTool {
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         js_tool_thread
             .spawn(move || {
+                fn print_result(result: &Result<RunResult, ToolError>) {
+                    match result {
+                        Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
+                        Err(e) => println!("[Running DenoTool] Error: {:?}", e),
+                    }
+                }
+
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
                     println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
@@ -153,6 +160,10 @@ impl DenoTool {
                     std::fs::create_dir_all(full_path.clone()).map_err(|e| {
                         ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
                     })?;
+                    println!(
+                        "[Running DenoTool] Full path: {:?}. App ID: {}. Tool ID: {}",
+                        full_path, app_id, tool_id
+                    );
 
                     if is_temporary {
                         // Create .temporal file for temporary tools
@@ -184,9 +195,12 @@ impl DenoTool {
                     // App is sending Parameters: {"0": Object {"url": String("https://jhftss.github.io/")}}
                     let binding = serde_json::Value::Object(parameters.clone());
                     let fixed_parameters = parameters.get("0").unwrap_or(&binding);
-                    tool.run(Some(envs), fixed_parameters.clone(), None)
+                    let result = tool
+                        .run(Some(envs), fixed_parameters.clone(), None)
                         .await
-                        .map_err(|e| ToolError::ExecutionError(e.to_string()))
+                        .map_err(|e| ToolError::ExecutionError(e.to_string()));
+                    print_result(&result);
+                    result
                 })
             })
             .unwrap()

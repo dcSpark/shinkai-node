@@ -193,6 +193,7 @@ fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String
         .prepare(query)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?;
     println!("[execute_sqlite_query] path: {:?}", full_path.clone());
+    let qp: String = format!("{:?}", query_params);
     println!(
         "[execute_sqlite_query] query: {} {:?}",
         if query.len() > 200 {
@@ -200,7 +201,11 @@ fn execute_sqlite_query(tool_id: String, app_id: String, parameters: &Map<String
         } else {
             query.to_string()
         },
-        query_params
+        if qp.len() > 200 {
+            format!("{}...{}", &qp[..100], &qp[qp.len() - 100..])
+        } else {
+            qp
+        }
     );
 
     // For SELECT queries, fetch column names and rows
