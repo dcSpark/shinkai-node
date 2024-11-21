@@ -822,7 +822,7 @@ impl fmt::Display for IdentityPermissions {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum RegistrationCodeType {
     Device(String),
     Profile,

@@ -10,9 +10,11 @@ use std::time::Duration;
 use thiserror::Error;
 
 pub mod agent_manager;
+pub mod cron_task_manager;
 pub mod embedding_function;
 pub mod files;
 pub mod identity_manager;
+pub mod identity_registration;
 pub mod invoice_manager;
 pub mod llm_provider_manager;
 pub mod my_subscriptions_manager;
@@ -60,6 +62,22 @@ pub enum SqliteManagerError {
     InvoiceNotFound(String),
     #[error("Network error not found with id: {0}")]
     InvoiceNetworkErrorNotFound(String),
+    #[error("Profile does not exist: {0}")]
+    ProfileDoesNotExist(String),
+    #[error("Profile name already exists")]
+    ProfileNameAlreadyExists,
+    #[error("Invalid profile name: {0}")]
+    InvalidProfileName(String),
+    #[error("Invalid attribute name: {0}")]
+    InvalidAttributeName(String),
+    #[error("Registration code does not exist")]
+    CodeNonExistent,
+    #[error("Registration code already used")]
+    CodeAlreadyUsed,
+    #[error("Error: {0}")]
+    SomeError(String),
+    #[error("Missing value: {0}")]
+    MissingValue(String),
     // Add other error variants as needed
 }
 
@@ -124,13 +142,16 @@ impl SqliteManager {
     // Initializes the required tables in the SQLite database
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_agents_table(conn)?;
+        Self::initialize_cron_task_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
         Self::initialize_llm_providers_table(conn)?;
+        Self::initialize_local_node_keys_table(conn)?;
         Self::initialize_my_subscriptions_table(conn)?;
         Self::initialize_network_notifications_table(conn)?;
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
+        Self::initialize_registration_code_table(conn)?;
         Self::initialize_settings_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
@@ -163,12 +184,29 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_cron_task_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cron_tasks (
+                full_identity_name TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                cron TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                subprompt TEXT NOT NULL,
+                url TEXT NOT NULL,
+                crawl_links INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                llm_provider_id TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     fn initialize_device_identities_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS device_identities (
-                full_identity_name TEXT NOT NULL UNIQUE,
-                node_encryption_public_key BLOB NOT NULL,
-                node_signature_public_key BLOB NOT NULL,
+                device_name TEXT NOT NULL UNIQUE,
                 profile_encryption_public_key BLOB NOT NULL,
                 profile_signature_public_key BLOB NOT NULL,
                 device_encryption_public_key BLOB NOT NULL,
@@ -184,10 +222,8 @@ impl SqliteManager {
     fn initialize_standard_identities_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS standard_identities (
-                full_identity_name TEXT NOT NULL UNIQUE,
+                profile_name TEXT NOT NULL UNIQUE,
                 addr BLOB,
-                node_encryption_public_key BLOB NOT NULL,
-                node_signature_public_key BLOB NOT NULL,
                 profile_encryption_public_key BLOB,
                 profile_signature_public_key BLOB,
                 identity_type TEXT NOT NULL,
@@ -208,6 +244,19 @@ impl SqliteManager {
                 external_url TEXT,
                 api_key TEXT,
                 model TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_local_node_keys_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS local_node_keys (
+                node_name TEXT NOT NULL UNIQUE,
+                node_encryption_public_key BLOB NOT NULL,
+                node_signature_public_key BLOB NOT NULL
             );",
             [],
         )?;
@@ -252,6 +301,18 @@ impl SqliteManager {
                 full_name TEXT NOT NULL,
                 message TEXT NOT NULL,
                 timestamp TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_registration_code_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS registration_code (
+                code TEXT NOT NULL UNIQUE,
+                code_data BLOB NOT NULL
             );",
             [],
         )?;

@@ -1,35 +1,34 @@
-use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 use ed25519_dalek::VerifyingKey;
 use rand::RngCore;
-use shinkai_message_primitives::schemas::identity::{DeviceIdentity, StandardIdentity, StandardIdentityType};
-use shinkai_message_primitives::schemas::identity_registration::{RegistrationCodeInfo, RegistrationCodeStatus};
-use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key,
-};
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    signature_public_key_to_string, string_to_signature_public_key,
+use rusqlite::params;
+use shinkai_message_primitives::{
+    schemas::{
+        identity::{DeviceIdentity, StandardIdentity, StandardIdentityType},
+        identity_registration::{RegistrationCodeInfo, RegistrationCodeStatus},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+    },
+    shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
+    shinkai_utils::{
+        encryption::{encryption_public_key_to_string, string_to_encryption_public_key},
+        signatures::{signature_public_key_to_string, string_to_signature_public_key},
+    },
 };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-impl ShinkaiDB {
+use crate::{SqliteManager, SqliteManagerError};
+
+impl SqliteManager {
     pub fn generate_registration_new_code(
         &self,
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
-    ) -> Result<String, ShinkaiDBError> {
+    ) -> Result<String, SqliteManagerError> {
+        let conn = self.get_connection()?;
+
         let mut rng = rand::thread_rng();
         let mut random_bytes = [0u8; 64];
         rng.fill_bytes(&mut random_bytes);
         let new_code = hex::encode(random_bytes);
-
-        let cf = self
-            .db
-            .cf_handle(Topic::NodeAndUsers.as_str())
-            .ok_or(ShinkaiDBError::SomeError(
-                "Column family NodeAndUsers not found".to_string(),
-            ))?;
 
         let code_info = RegistrationCodeInfo {
             status: RegistrationCodeStatus::Unused,
@@ -37,20 +36,19 @@ impl ShinkaiDB {
             code_type,
         };
 
-        let prefixed_new_code = format!("registration_code_{}", new_code);
-
-        self.db.put_cf(cf, prefixed_new_code.as_bytes(), code_info.as_bytes())?;
+        let mut stmt = conn.prepare("INSERT INTO registration_code (code, code_data) VALUES (?, ?)")?;
+        stmt.execute(params![new_code, code_info.as_bytes()])?;
 
         Ok(new_code)
     }
 
-    pub fn main_profile_exists(&self, node_name: &str) -> Result<bool, ShinkaiDBError> {
+    pub fn main_profile_exists(&self, node_name: &str) -> Result<bool, SqliteManagerError> {
         let profile_name = "main".to_string();
         let current_identity_name =
             match ShinkaiName::from_node_and_profile_names(node_name.to_string(), profile_name.to_lowercase()) {
                 Ok(name) => name,
                 Err(_) => {
-                    return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                    return Err(SqliteManagerError::InvalidIdentityName(format!(
                         "{}/{}",
                         node_name, profile_name
                     )))
@@ -72,25 +70,28 @@ impl ShinkaiDB {
         profile_encryption_public_key: &str,
         device_identity_public_key: Option<&str>,
         device_encryption_public_key: Option<&str>,
-    ) -> Result<(), ShinkaiDBError> {
-        let cf_codes = self
-            .db
-            .cf_handle(Topic::NodeAndUsers.as_str())
-            .ok_or(ShinkaiDBError::SomeError(
-                "Column family NodeAndUsers not found".to_string(),
-            ))?;
-        let prefixed_registration_code = format!("registration_code_{}", registration_code);
-        let code_info: RegistrationCodeInfo = match self.db.get_cf(cf_codes, prefixed_registration_code.as_bytes())? {
-            Some(value) => RegistrationCodeInfo::from_slice(&value),
-            None => return Err(ShinkaiDBError::CodeNonExistent),
+    ) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+
+        let mut stmt = conn.prepare("SELECT code_data FROM registration_code WHERE code = ?")?;
+        let mut rows = stmt.query(params![registration_code])?;
+
+        let code_info: RegistrationCodeInfo = match rows.next()? {
+            Some(row) => {
+                let code_data: Vec<u8> = row.get(0)?;
+                RegistrationCodeInfo::from_slice(&code_data)
+            }
+            None => {
+                return Err(SqliteManagerError::CodeNonExistent);
+            }
         };
 
         if code_info.status != RegistrationCodeStatus::Unused {
-            return Err(ShinkaiDBError::CodeAlreadyUsed);
+            return Err(SqliteManagerError::CodeAlreadyUsed);
         }
 
         if !new_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Err(ShinkaiDBError::InvalidProfileName(new_name.to_string()));
+            return Err(SqliteManagerError::InvalidProfileName(new_name.to_string()));
         }
 
         match code_info.code_type {
@@ -99,7 +100,7 @@ impl ShinkaiDB {
                     match ShinkaiName::from_node_and_profile_names(node_name.to_string(), new_name.to_lowercase()) {
                         Ok(name) => name,
                         Err(_) => {
-                            return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                            return Err(SqliteManagerError::InvalidIdentityName(format!(
                                 "{}/{}",
                                 node_name, new_name
                             )))
@@ -110,12 +111,13 @@ impl ShinkaiDB {
                     None => {
                         let (node_encryption_public_key, node_signature_public_key) =
                             self.get_local_node_keys(current_identity_name)?;
+
                         let full_identity_name =
                             match ShinkaiName::from_node_and_profile_names(node_name.to_string(), new_name.to_string())
                             {
                                 Ok(name) => name,
                                 Err(_) => {
-                                    return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                                    return Err(SqliteManagerError::InvalidIdentityName(format!(
                                         "{}/{}",
                                         node_name, new_name
                                     )))
@@ -126,12 +128,16 @@ impl ShinkaiDB {
                             addr: None,
                             node_encryption_public_key,
                             node_signature_public_key,
-                            profile_encryption_public_key: Some(string_to_encryption_public_key(
-                                profile_encryption_public_key,
-                            )?),
-                            profile_signature_public_key: Some(string_to_signature_public_key(
-                                profile_identity_public_key,
-                            )?),
+                            profile_encryption_public_key: Some(
+                                string_to_encryption_public_key(profile_encryption_public_key).map_err(|_| {
+                                    SqliteManagerError::SomeError("Invalid profile encryption public key".to_string())
+                                })?,
+                            ),
+                            profile_signature_public_key: Some(
+                                string_to_signature_public_key(profile_identity_public_key).map_err(|_| {
+                                    SqliteManagerError::SomeError("Invalid profile signature public key".to_string())
+                                })?,
+                            ),
                             identity_type: StandardIdentityType::Profile,
                             permission_type: code_info.permission.clone(),
                         };
@@ -140,7 +146,7 @@ impl ShinkaiDB {
                     }
                     Some(_) => {
                         // Profile already exists, send an error
-                        return Err(ShinkaiDBError::ProfileNameAlreadyExists);
+                        return Err(SqliteManagerError::ProfileNameAlreadyExists);
                     }
                 }
             }
@@ -151,7 +157,7 @@ impl ShinkaiDB {
                 ) {
                     Ok(name) => name,
                     Err(_) => {
-                        return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                        return Err(SqliteManagerError::InvalidIdentityName(format!(
                             "{}/{}",
                             node_name, new_name
                         )))
@@ -168,7 +174,7 @@ impl ShinkaiDB {
                             match ShinkaiName::from_node_and_profile_names(node_name.to_string(), "main".to_string()) {
                                 Ok(name) => name,
                                 Err(_) => {
-                                    return Err(ShinkaiDBError::InvalidIdentityName(format!("{}/main", node_name)))
+                                    return Err(SqliteManagerError::InvalidIdentityName(format!("{}/main", node_name)))
                                 }
                             };
 
@@ -177,12 +183,16 @@ impl ShinkaiDB {
                             addr: None,
                             node_encryption_public_key,
                             node_signature_public_key,
-                            profile_encryption_public_key: Some(string_to_encryption_public_key(
-                                profile_encryption_public_key,
-                            )?),
-                            profile_signature_public_key: Some(string_to_signature_public_key(
-                                profile_identity_public_key,
-                            )?),
+                            profile_encryption_public_key: Some(
+                                string_to_encryption_public_key(profile_encryption_public_key).map_err(|_| {
+                                    SqliteManagerError::SomeError("Invalid profile encryption public key".to_string())
+                                })?,
+                            ),
+                            profile_signature_public_key: Some(
+                                string_to_signature_public_key(profile_identity_public_key).map_err(|_| {
+                                    SqliteManagerError::SomeError("Invalid profile signature public key".to_string())
+                                })?,
+                            ),
                             identity_type: StandardIdentityType::Profile,
                             permission_type: IdentityPermissions::Admin,
                         };
@@ -192,7 +202,7 @@ impl ShinkaiDB {
                     }
                     None => {
                         // send error. profile not found
-                        return Err(ShinkaiDBError::ProfileNotFound(current_identity_name.to_string()));
+                        return Err(SqliteManagerError::ProfileDoesNotExist(current_identity_name.full_name));
                     }
                     Some(existing_profile) => existing_profile,
                 };
@@ -205,7 +215,7 @@ impl ShinkaiDB {
                 ) {
                     Ok(name) => name,
                     Err(_) => {
-                        return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                        return Err(SqliteManagerError::InvalidIdentityName(format!(
                             "{}/{}",
                             node_name, new_name
                         )))
@@ -216,13 +226,13 @@ impl ShinkaiDB {
                     Some(key) => match string_to_encryption_public_key(key) {
                         Ok(parsed_key) => parsed_key,
                         Err(_) => {
-                            return Err(ShinkaiDBError::SomeError(
+                            return Err(SqliteManagerError::SomeError(
                                 "Invalid device encryption public key".to_string(),
                             ))
                         }
                     },
                     None => {
-                        return Err(ShinkaiDBError::SomeError(
+                        return Err(SqliteManagerError::SomeError(
                             "Device encryption public key is missing".to_string(),
                         ))
                     }
@@ -232,13 +242,13 @@ impl ShinkaiDB {
                     Some(key) => match string_to_signature_public_key(key) {
                         Ok(parsed_key) => parsed_key,
                         Err(_) => {
-                            return Err(ShinkaiDBError::SomeError(
+                            return Err(SqliteManagerError::SomeError(
                                 "Invalid device signature public key".to_string(),
                             ))
                         }
                     },
                     None => {
-                        return Err(ShinkaiDBError::SomeError(
+                        return Err(SqliteManagerError::SomeError(
                             "Device signature public key is missing".to_string(),
                         ))
                     }
@@ -247,7 +257,7 @@ impl ShinkaiDB {
                 let profile_encryption_public_key = match profile.profile_encryption_public_key {
                     Some(key) => key,
                     None => {
-                        return Err(ShinkaiDBError::SomeError(
+                        return Err(SqliteManagerError::SomeError(
                             "Profile encryption public key is missing".to_string(),
                         ))
                     }
@@ -256,7 +266,7 @@ impl ShinkaiDB {
                 let profile_signature_public_key = match profile.profile_signature_public_key {
                     Some(key) => key,
                     None => {
-                        return Err(ShinkaiDBError::SomeError(
+                        return Err(SqliteManagerError::SomeError(
                             "Profile signature public key is missing".to_string(),
                         ))
                     }
@@ -280,34 +290,21 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_registration_code_info(&self, registration_code: &str) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
-        let cf_codes = self
-            .db
-            .cf_handle(Topic::NodeAndUsers.as_str())
-            .ok_or(ShinkaiDBError::SomeError(
-                "Column family NodeAndUsers not found".to_string(),
-            ))?;
+    pub fn get_registration_code_info(
+        &self,
+        registration_code: &str,
+    ) -> Result<RegistrationCodeInfo, SqliteManagerError> {
+        let conn = self.get_connection()?;
 
-        let prefixed_registration_code = format!("registration_code_{}", registration_code);
-        match self.db.get_cf(cf_codes, prefixed_registration_code.as_bytes())? {
-            Some(value) => Ok(RegistrationCodeInfo::from_slice(&value)),
-            None => Err(ShinkaiDBError::CodeNonExistent),
-        }
-    }
+        let mut stmt = conn.prepare("SELECT code_data FROM registration_code WHERE code = ?")?;
+        let mut rows = stmt.query(params![registration_code])?;
 
-    pub fn check_profile_existence(&self, profile_name: &str) -> Result<(), ShinkaiDBError> {
-        let cf_node_and_users = self
-            .db
-            .cf_handle(Topic::NodeAndUsers.as_str())
-            .ok_or(ShinkaiDBError::SomeError(
-                "Column family NodeAndUsers not found".to_string(),
-            ))?;
-
-        // Check if the profile exists by looking for its associated encryption public key
-        let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
-        match self.db.get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())? {
-            Some(_) => Ok(()),
-            None => Err(ShinkaiDBError::ProfileNotFound(profile_name.to_string())),
+        match rows.next()? {
+            Some(row) => {
+                let code_data: Vec<u8> = row.get(0)?;
+                Ok(RegistrationCodeInfo::from_slice(&code_data))
+            }
+            None => Err(SqliteManagerError::CodeNonExistent),
         }
     }
 
@@ -316,39 +313,18 @@ impl ShinkaiDB {
         my_node_identity_name: ShinkaiName,
         encryption_pk: EncryptionPublicKey,
         signature_pk: VerifyingKey,
-    ) -> Result<(), ShinkaiDBError> {
+    ) -> Result<(), SqliteManagerError> {
         let node_name = my_node_identity_name.get_node_name_string().to_string();
 
-        // Use Topic::NodeAndUsers with appropriate prefixes for node keys
-        let cf_node_and_users = self
-            .db
-            .cf_handle(Topic::NodeAndUsers.as_str())
-            .ok_or(ShinkaiDBError::SomeError(
-                "Column family NodeAndUsers not found".to_string(),
-            ))?;
-
-        let mut batch = rocksdb::WriteBatch::default();
-
-        // Convert public keys to hex encoded strings
-        let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
-        let signature_pk_string = signature_public_key_to_string(signature_pk);
-
-        // Use specific prefixes for encryption and signature public keys
-        let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
-        let signature_key_prefix = format!("node_signature_key_{}", node_name);
-
-        batch.put_cf(
-            cf_node_and_users,
-            encryption_key_prefix.as_bytes(),
-            encryption_pk_string.as_bytes(),
-        );
-        batch.put_cf(
-            cf_node_and_users,
-            signature_key_prefix.as_bytes(),
-            signature_pk_string.as_bytes(),
-        );
-
-        self.db.write(batch)?;
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO local_node_keys (node_name, node_encryption_public_key, node_signature_public_key) VALUES (?, ?, ?)",
+        )?;
+        stmt.execute(params![
+            node_name,
+            encryption_public_key_to_string(encryption_pk),
+            signature_public_key_to_string(signature_pk)
+        ])?;
 
         Ok(())
     }
@@ -356,45 +332,74 @@ impl ShinkaiDB {
     pub fn get_local_node_keys(
         &self,
         my_node_identity_name: ShinkaiName,
-    ) -> Result<(EncryptionPublicKey, VerifyingKey), ShinkaiDBError> {
+    ) -> Result<(EncryptionPublicKey, VerifyingKey), SqliteManagerError> {
         let node_name = my_node_identity_name.get_node_name_string().to_string();
 
-        // Use Topic::NodeAndUsers for both encryption and signature keys with specific prefixes
-        let cf_node_and_users = self
-            .db
-            .cf_handle(Topic::NodeAndUsers.as_str())
-            .ok_or(ShinkaiDBError::SomeError(
-                "Column family NodeAndUsers not found".to_string(),
-            ))?;
+        let conn = self.get_connection()?;
 
-        // Prefixes for node encryption and signature keys
-        let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
-        let signature_key_prefix = format!("node_signature_key_{}", node_name);
+        let mut stmt = conn.prepare(
+            "SELECT node_encryption_public_key, node_signature_public_key FROM local_node_keys WHERE node_name = ?",
+        )?;
+        let mut rows = stmt.query(params![node_name])?;
 
-        // Get the encryption key
-        let encryption_pk_string = self
-            .db
-            .get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())?
-            .ok_or(ShinkaiDBError::MissingValue(format!(
-                "Missing encryption key for node {}",
+        match rows.next()? {
+            Some(row) => {
+                let node_encryption_public_key: Vec<u8> = row.get(0)?;
+                let node_signature_public_key: Vec<u8> = row.get(1)?;
+
+                Ok((
+                    string_to_encryption_public_key(std::str::from_utf8(&node_encryption_public_key).map_err(|e| {
+                        rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                            e.to_string(),
+                        )))
+                    })?)
+                    .map_err(|_| SqliteManagerError::SomeError("Invalid node encryption public key".to_string()))?,
+                    string_to_signature_public_key(std::str::from_utf8(&node_signature_public_key).map_err(|e| {
+                        rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                            e.to_string(),
+                        )))
+                    })?)
+                    .map_err(|_| SqliteManagerError::SomeError("Invalid node signature public key".to_string()))?,
+                ))
+            }
+            None => Err(SqliteManagerError::MissingValue(format!(
+                "Missing encryption and signature keys for node {}",
                 &node_name
-            )))?
-            .to_vec();
+            ))),
+        }
+    }
+}
 
-        let encryption_pk = string_to_encryption_public_key(std::str::from_utf8(&encryption_pk_string)?)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
-        // Get the signature key
-        let signature_pk_string = self
-            .db
-            .get_cf(cf_node_and_users, signature_key_prefix.as_bytes())?
-            .ok_or(ShinkaiDBError::MissingValue(format!(
-                "Missing signature key for node {}",
-                &my_node_identity_name
-            )))?
-            .to_vec();
+    fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        let signature_pk = string_to_signature_public_key(std::str::from_utf8(&signature_pk_string)?)?;
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
 
-        Ok((encryption_pk, signature_pk))
+    #[test]
+    fn test_generate_and_get_registration_code() {
+        let manager = setup_test_db();
+
+        let permissions = IdentityPermissions::Admin;
+        let code_type = RegistrationCodeType::Profile;
+
+        let code = manager
+            .generate_registration_new_code(permissions.clone(), code_type.clone())
+            .unwrap();
+        let code_info = manager.get_registration_code_info(&code).unwrap();
+
+        assert_eq!(code_info.permission, permissions);
+        assert_eq!(code_info.code_type, code_type);
     }
 }

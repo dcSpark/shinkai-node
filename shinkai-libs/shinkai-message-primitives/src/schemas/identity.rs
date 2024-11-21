@@ -86,7 +86,7 @@ pub struct RegistrationCode {
     pub permission_type: IdentityPermissions,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Identity {
     // IdentityType::Global or IdentityType::Profile
     Standard(StandardIdentity),

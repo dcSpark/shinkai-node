@@ -1,34 +1,9 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
 
-use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CronTask {
-    pub task_id: String,
-    pub cron: String,
-    pub prompt: String,
-    pub subprompt: String,
-    pub url: String,
-    pub crawl_links: bool,
-    pub created_at: String,
-    pub llm_provider_id: String,
-}
-
-impl PartialOrd for CronTask {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for CronTask {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.task_id.cmp(&other.task_id)
-    }
-}
+use shinkai_message_primitives::schemas::{cron_task::CronTask, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
     #[allow(clippy::too_many_arguments)]
