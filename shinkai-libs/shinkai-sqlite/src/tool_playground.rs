@@ -484,6 +484,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
