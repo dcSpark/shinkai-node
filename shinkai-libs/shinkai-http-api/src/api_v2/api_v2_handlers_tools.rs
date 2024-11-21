@@ -818,6 +818,7 @@ pub struct CodeExecutionRequest {
     pub parameters: Value,
     #[serde(default)]
     pub extra_config: Option<String>,
+    pub llm_provider: String,
 }
 
 #[utoipa::path(
@@ -858,6 +859,7 @@ pub async fn code_execution_handler(
             parameters,
             tool_id: tool_id,
             app_id: app_id,
+            llm_provider: payload.llm_provider,
             res: res_sender,
         })
         .await
