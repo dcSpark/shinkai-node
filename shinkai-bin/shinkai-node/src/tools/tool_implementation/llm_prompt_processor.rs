@@ -38,7 +38,10 @@ impl LmPromptProcessorTool {
             tool: ShinkaiToolHeader {
                 name: "Shinkai LLM Prompt Processor".to_string(),
                 toolkit_name: "shinkai_custom".to_string(),
-                description: "Generic tool for processing any prompt using an LLM, analyzing the request and returning a string as output".to_string(),
+                description: r#"Tool for processing any prompt using an AI LLM. 
+Analyzing the input prompt and returning a string with the result of the prompt.
+This can be used to process complex requests, text analysis, text matching, text generation, and any other AI LLM task."#
+                    .to_string(),
                 tool_router_key: "local:::rust_toolkit:::shinkai_llm_prompt_processor".to_string(),
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Tool for processing prompts with LLM".to_string(),
@@ -46,6 +49,12 @@ impl LmPromptProcessorTool {
                 version: "1.0".to_string(),
                 enabled: true,
                 input_args: vec![
+                    ToolArgument::new(
+                        "format".to_string(),
+                        "string".to_string(),
+                        "The output format. Only 'text' is supported".to_string(),
+                        true,
+                    ),
                     ToolArgument::new(
                         "prompt".to_string(),
                         "string".to_string(),
@@ -59,7 +68,7 @@ impl LmPromptProcessorTool {
                 config: None,
                 usage_type: None,
                 tool_offering: None,
-            }
+            },
         }
     }
 }

@@ -37,7 +37,8 @@ impl SQLProcessorTool {
             tool: ShinkaiToolHeader {
                 name: "Shinkai SQLite Query Executor".to_string(),
                 toolkit_name: "shinkai_custom".to_string(),
-                description: r#"Tool for executing SQL queries on a specified database file. 
+                description: r#"Tool for executing a single SQL query on a specified database file. 
+                If this tool is used, you need to create if not exists the tables used other queries.
                 Table creation should always use 'CREATE TABLE IF NOT EXISTS'.
                 
                 Example table creation:
@@ -63,6 +64,12 @@ impl SQLProcessorTool {
                 version: "1.0".to_string(),
                 enabled: true,
                 input_args: vec![
+                    ToolArgument::new(
+                        "database_name".to_string(),
+                        "string".to_string(),
+                        "Database name. Use 'default' to use default database".to_string(),
+                        true,
+                    ),
                     ToolArgument::new(
                         "query".to_string(),
                         "string".to_string(),
