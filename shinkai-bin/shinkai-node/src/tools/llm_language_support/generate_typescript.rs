@@ -149,26 +149,6 @@ pub fn generate_typescript_definition(
     }
     typescript_output.push_str(" * }\n");
 
-    // Add SQL documentation if available
-    if let Some(playground) = &tool_playground {
-        if !playground.metadata.sql_tables.is_empty() {
-            typescript_output.push_str(" * This function stores it's previous results in the following SQL Tables:\n");
-            for table in &playground.metadata.sql_tables {
-                typescript_output.push_str(&format!(" * - `{}`\n", table.name));
-                typescript_output.push_str(&format!(" * ```sql\n * {}\n * ```\n", table.definition));
-            }
-        }
-
-        if !playground.metadata.sql_queries.is_empty() {
-            typescript_output.push_str(" * \n");
-            typescript_output.push_str(" * To access these results, you can use the following reference SQL Queries in `localRustToolkitShinkaiSqliteQueryExecutor(...)`:\n");
-            for query in &playground.metadata.sql_queries {
-                typescript_output.push_str(&format!(" * - `{}`\n", query.name));
-                typescript_output.push_str(&format!(" * ```sql\n * {}\n * ```\n", query.query));
-            }
-        }
-    }
-
     typescript_output.push_str(" */\n");
 
     let function_name = to_camel_case(&tool.tool_router_key);
@@ -220,7 +200,6 @@ pub fn generate_typescript_definition(
             api_port
         ));
         typescript_output.push_str("    const data = {\n");
-        typescript_output.push_str("        llm_provider: 'llm_provider',\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
         typescript_output.push_str("        llm_provider: `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`,\n");
@@ -241,6 +220,51 @@ pub fn generate_typescript_definition(
         typescript_output.push_str("    });\n");
         typescript_output.push_str("    return response.data;\n");
         typescript_output.push_str("}\n");
+    }
+
+    // If SQL tables exist, generate a query function
+    if let Some(playground) = &tool_playground {
+        if !playground.metadata.sql_tables.is_empty() {
+            typescript_output.push_str("\n");
+            typescript_output.push_str("/**\n");
+            typescript_output.push_str(&format!(
+                " * Query the SQL database for results from {}\n",
+                function_name
+            ));
+            typescript_output.push_str(" * \n");
+            typescript_output.push_str(" * Available SQL Tables:\n");
+            for table in &playground.metadata.sql_tables {
+                typescript_output.push_str(&format!(" * {}\n", table.name));
+                typescript_output.push_str(&format!(" * {}\n", table.definition));
+            }
+
+            if !playground.metadata.sql_queries.is_empty() {
+                typescript_output.push_str(" * \n");
+                typescript_output.push_str(" * Example / Reference SQL Queries:\n");
+                for query in &playground.metadata.sql_queries {
+                    typescript_output.push_str(&format!(" * {}\n", query.name));
+                    typescript_output.push_str(&format!(" * {}\n", query.query));
+                }
+            }
+            typescript_output.push_str(" * \n");
+            typescript_output.push_str(" * @param query - SQL query to execute\n");
+            typescript_output.push_str(" * @param params - Optional array of parameters for the query\n");
+            typescript_output.push_str(" * @returns Query results\n");
+            typescript_output.push_str(" */\n");
+
+            let function_name = to_camel_case(&tool.tool_router_key);
+            typescript_output.push_str(&format!(
+                "async function query_{}(query: string, params?: any[]) {{\n",
+                function_name
+            ));
+            // TODO: make this dynamic. This should be defined by the tool key path (?)
+            let db_name = "default";
+            typescript_output.push_str(&format!(
+                "    return localRustToolkitShinkaiSqliteQueryExecutor('{}', query, params);\n",
+                db_name
+            ));
+            typescript_output.push_str("}\n");
+        }
     }
 
     typescript_output.push_str("\n");
