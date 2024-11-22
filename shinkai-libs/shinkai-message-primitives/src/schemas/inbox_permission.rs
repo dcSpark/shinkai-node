@@ -1,7 +1,5 @@
 use core::fmt;
-use std::str::FromStr;
-
-use crate::db::db_errors::ShinkaiDBError;
+use std::{error::Error, str::FromStr};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum InboxPermission {
@@ -19,12 +17,12 @@ impl InboxPermission {
         }
     }
 
-    pub fn from_i32(val: i32) -> Result<Self, ShinkaiDBError> {
+    pub fn from_i32(val: i32) -> Result<Self, Box<dyn Error>> {
         match val {
             1 => Ok(InboxPermission::Read),
             2 => Ok(InboxPermission::Write),
             3 => Ok(InboxPermission::Admin),
-            _ => Err(ShinkaiDBError::InvalidInboxPermission(format!("Invalid permission string: {}", val).to_string())),
+            _ => Err(Box::<dyn Error>::from(format!("Invalid permission string: {}", val))),
         }
     }
 }
@@ -40,14 +38,16 @@ impl fmt::Display for InboxPermission {
 }
 
 impl FromStr for InboxPermission {
-    type Err = ShinkaiDBError;
+    type Err = Box<dyn Error + Send + Sync>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Read" => Ok(InboxPermission::Read),
             "Write" => Ok(InboxPermission::Write),
             "Admin" => Ok(InboxPermission::Admin),
-            _ => Err(ShinkaiDBError::InvalidInboxPermission(format!("Invalid permission string: {}", s).to_string())),
+            _ => Err(Box::<dyn Error + Send + Sync>::from(
+                format!("Invalid permission string: {}", s).to_string(),
+            )),
         }
     }
 }

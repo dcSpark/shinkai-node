@@ -5,7 +5,7 @@ use crate::{SqliteManager, SqliteManagerError};
 impl SqliteManager {
     pub fn get_supported_embedding_models(&self) -> Result<Vec<EmbeddingModelType>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT supported_embedding_models FROM shinkai_settings LIMIT 1")?;
+        let mut stmt = conn.prepare("SELECT value FROM shinkai_settings WHERE key = 'supported_embedding_models'")?;
 
         let models = stmt.query_row([], |row| {
             let models: String = row.get(0)?;
@@ -21,13 +21,8 @@ impl SqliteManager {
 
     pub fn update_supported_embedding_models(&self, models: Vec<EmbeddingModelType>) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare(
-            "INSERT INTO shinkai_settings (id, supported_embedding_models)
-                VALUES (1, ?)
-                ON CONFLICT (id)
-                DO UPDATE SET
-                supported_embedding_models = excluded.supported_embedding_models",
-        )?;
+        let mut stmt = conn
+            .prepare("INSERT OR REPLACE INTO shinkai_settings (key, value) VALUES ('supported_embedding_models', ?)")?;
 
         let models = serde_json::to_string(&models).map_err(|e| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
@@ -35,6 +30,23 @@ impl SqliteManager {
         stmt.execute([models])?;
 
         Ok(())
+    }
+
+    pub fn set_api_v2_key(&self, key: &str) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("INSERT OR REPLACE INTO shinkai_settings (key, value) VALUES ('api_v2_key', ?)")?;
+        stmt.execute([key])?;
+
+        Ok(())
+    }
+
+    pub fn read_api_v2_key(&self) -> Result<Option<String>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let stmt = conn.prepare("SELECT value FROM shinkai_settings WHERE key = 'api_v2_key'");
+
+        let key = stmt?.query_row([], |row| row.get(0)).ok();
+
+        Ok(key)
     }
 }
 
@@ -80,12 +92,26 @@ mod tests {
 
         let updated_models = manager.get_supported_embedding_models().unwrap();
         assert_eq!(new_models, updated_models);
+    }
 
-        // Verify that shinkai_settings table has only one row
-        let conn = manager.get_connection().unwrap();
-        let mut stmt = conn.prepare("SELECT COUNT(*) FROM shinkai_settings").unwrap();
+    #[tokio::test]
+    async fn test_set_and_read_api_v2_key() {
+        let manager = setup_test_db();
+        let key = "test_key";
 
-        let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
-        assert_eq!(count, 1);
+        // Insert the key
+        let result = manager.set_api_v2_key(key);
+        assert!(result.is_ok());
+
+        let read_key = manager.read_api_v2_key().unwrap();
+        assert_eq!(Some(key.to_string()), read_key);
+
+        // Update the key
+        let new_key = "new_test_key";
+        let result = manager.set_api_v2_key(new_key);
+        assert!(result.is_ok());
+
+        let read_key = manager.read_api_v2_key().unwrap();
+        assert_eq!(Some(new_key.to_string()), read_key);
     }
 }

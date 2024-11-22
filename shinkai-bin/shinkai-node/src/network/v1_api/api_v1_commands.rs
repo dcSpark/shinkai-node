@@ -19,13 +19,13 @@ use reqwest::StatusCode;
 use serde_json::{json, Value as JsonValue};
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::inbox_permission::InboxPermission;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
 };
+use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::{
     schemas::{

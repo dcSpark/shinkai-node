@@ -202,7 +202,7 @@ impl SqliteManager {
                     }
                     None => {
                         // send error. profile not found
-                        return Err(SqliteManagerError::ProfileDoesNotExist(current_identity_name.full_name));
+                        return Err(SqliteManagerError::ProfileNotFound(current_identity_name.full_name));
                     }
                     Some(existing_profile) => existing_profile,
                 };

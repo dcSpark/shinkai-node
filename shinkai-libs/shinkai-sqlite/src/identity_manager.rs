@@ -250,7 +250,7 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn does_identity_exists(&self, profile: &ShinkaiName) -> Result<bool, SqliteManagerError> {
+    pub fn does_identity_exist(&self, profile: &ShinkaiName) -> Result<bool, SqliteManagerError> {
         let profile_name = profile
             .get_profile_name_string()
             .ok_or(SqliteManagerError::InvalidIdentityName(profile.to_string()))?;
@@ -447,7 +447,7 @@ impl SqliteManager {
 
             // Check if the profile exists
             if !profile_names.iter().any(|name| *name == profile_name) {
-                return Err(SqliteManagerError::ProfileDoesNotExist(profile_name));
+                return Err(SqliteManagerError::ProfileNotFound(profile_name));
             }
         }
 

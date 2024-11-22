@@ -5,6 +5,7 @@ pub mod file_links;
 pub mod identity;
 pub mod identity_registration;
 pub mod inbox_name;
+pub mod inbox_permission;
 pub mod invoices;
 pub mod job;
 pub mod job_config;

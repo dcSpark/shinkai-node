@@ -15,12 +15,16 @@ pub mod embedding_function;
 pub mod files;
 pub mod identity_manager;
 pub mod identity_registration;
+pub mod inbox_manager;
 pub mod invoice_manager;
+pub mod invoice_request_manager;
 pub mod llm_provider_manager;
 pub mod my_subscriptions_manager;
 pub mod network_notifications_manager;
 pub mod prompt_manager;
 pub mod settings_manager;
+pub mod shared_folder_req_manager;
+pub mod sheet_manager;
 pub mod shinkai_tool_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
@@ -63,7 +67,7 @@ pub enum SqliteManagerError {
     #[error("Network error not found with id: {0}")]
     InvoiceNetworkErrorNotFound(String),
     #[error("Profile does not exist: {0}")]
-    ProfileDoesNotExist(String),
+    ProfileNotFound(String),
     #[error("Profile name already exists")]
     ProfileNameAlreadyExists,
     #[error("Invalid profile name: {0}")]
@@ -78,6 +82,8 @@ pub enum SqliteManagerError {
     SomeError(String),
     #[error("Missing value: {0}")]
     MissingValue(String),
+    #[error("Inbox not found: {0}")]
+    InboxNotFound(String),
     // Add other error variants as needed
 }
 
@@ -144,7 +150,12 @@ impl SqliteManager {
         Self::initialize_agents_table(conn)?;
         Self::initialize_cron_task_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
+        Self::initialize_folder_subscriptions_requirements_table(conn)?;
+        Self::initialize_folder_subscriptions_upload_credentials_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
+        Self::initialize_inboxes_table(conn)?;
+        Self::initialize_inbox_messages_table(conn)?;
+        Self::initialize_inbox_profile_permissions_table(conn)?;
         Self::initialize_llm_providers_table(conn)?;
         Self::initialize_local_node_keys_table(conn)?;
         Self::initialize_my_subscriptions_table(conn)?;
@@ -153,8 +164,10 @@ impl SqliteManager {
         Self::initialize_prompt_vector_tables(conn)?;
         Self::initialize_registration_code_table(conn)?;
         Self::initialize_settings_table(conn)?;
+        Self::initialize_sheets_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
+        Self::initialize_tool_micropayments_invoice_requests_table(conn)?;
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_micropayments_tool_invoice_table(conn)?;
         Self::initialize_tool_micropayments_tool_invoice_network_errors_table(conn)?;
@@ -235,6 +248,50 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS inboxes (
+                inbox_name TEXT NOT NULL UNIQUE,
+                smart_inbox_name TEXT NOT NULL,
+                read_up_to_message_hash TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_inbox_messages_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS inbox_messages (
+                message_id TEXT NOT NULL UNIQUE,
+                inbox_name TEXT NOT NULL,
+                shinkai_message BLOB NOT NULL,
+                parent_message_id TEXT,
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_inbox_profile_permissions_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS inbox_profile_permissions (
+                inbox_name TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                permission TEXT NOT NULL,
+
+                PRIMARY KEY (inbox_name, profile_name),
+                FOREIGN KEY (inbox_name) REFERENCES inboxes(inbox_name),
+                FOREIGN KEY (profile_name) REFERENCES standard_identities(profile_name)
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     fn initialize_llm_providers_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS llm_providers (
@@ -257,6 +314,40 @@ impl SqliteManager {
                 node_name TEXT NOT NULL UNIQUE,
                 node_encryption_public_key BLOB NOT NULL,
                 node_signature_public_key BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_folder_subscriptions_requirements_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS folder_subscriptions_requirements (
+                path TEXT NOT NULL UNIQUE,
+                minimum_token_delegation INTEGER,
+                minimum_time_delegated_hours INTEGER,
+                monthly_payment TEXT,
+                is_free INTEGER NOT NULL,
+                has_web_alternative INTEGER,
+                folder_description TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_folder_subscriptions_upload_credentials_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS folder_subscriptions_upload_credentials (
+                path TEXT NOT NULL,
+                profile TEXT NOT NULL,
+                source TEXT NOT NULL,
+                access_key_id TEXT NOT NULL,
+                secret_access_key TEXT NOT NULL,
+                endpoint_uri TEXT NOT NULL,
+                bucket TEXT NOT NULL
             );",
             [],
         )?;
@@ -323,12 +414,26 @@ impl SqliteManager {
     fn initialize_settings_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                supported_embedding_models TEXT NOT NULL
+                key TEXT NOT NULL UNIQUE,
+                value TEXT
             );",
             [],
         )?;
 
+        Ok(())
+    }
+
+    fn initialize_sheets_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_sheets (
+                profile_hash TEXT NOT NULL,
+                sheet_uuid TEXT NOT NULL,
+                sheet_data BLOB NOT NULL,
+
+                PRIMARY KEY (profile_hash, sheet_uuid)
+            );",
+            [],
+        )?;
         Ok(())
     }
 
@@ -464,6 +569,23 @@ impl SqliteManager {
                 tool_key TEXT NOT NULL UNIQUE,
                 usage_type TEXT NOT NULL,
                 meta_description TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_tool_micropayments_invoice_requests_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_micropayments_invoice_requests (
+                unique_id TEXT NOT NULL UNIQUE,
+                provider_name TEXT NOT NULL,
+                requester_name TEXT NOT NULL,
+                tool_key_name TEXT NOT NULL,
+                usage_type_inquiry TEXT NOT NULL,
+                date_time TEXT NOT NULL,
+                secret_prehash TEXT NOT NULL
             );",
             [],
         )?;

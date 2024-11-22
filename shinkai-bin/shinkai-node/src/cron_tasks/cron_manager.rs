@@ -32,12 +32,13 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::{
     db::{db_errors::ShinkaiDBError, ShinkaiDB},
-    schemas::{inbox_permission::InboxPermission, ws_types::WSUpdateHandler},
+    schemas::ws_types::WSUpdateHandler,
 };
 use shinkai_message_primitives::{
     schemas::{
         cron_task::CronTask,
         inbox_name::{InboxName, InboxNameError},
+        inbox_permission::InboxPermission,
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},

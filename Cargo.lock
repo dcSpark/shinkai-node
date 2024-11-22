@@ -8786,6 +8786,7 @@ name = "shinkai_sqlite"
 version = "0.8.15"
 dependencies = [
  "bincode",
+ "blake3",
  "bytemuck",
  "chrono",
  "ed25519-dalek",
@@ -8797,9 +8798,11 @@ dependencies = [
  "regex",
  "reqwest 0.11.27",
  "rusqlite",
+ "rust_decimal",
  "serde",
  "serde_json",
  "shinkai_message_primitives",
+ "shinkai_sheet",
  "shinkai_tools_primitives",
  "shinkai_vector_resources",
  "sqlite-vec",
