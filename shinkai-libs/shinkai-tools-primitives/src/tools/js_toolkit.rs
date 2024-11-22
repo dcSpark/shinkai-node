@@ -68,6 +68,8 @@ impl JSToolkit {
                 vector: meta.embeddings,
             }),
             result,
+            sql_tables: None,
+            sql_queries: None,
         }
     }
 

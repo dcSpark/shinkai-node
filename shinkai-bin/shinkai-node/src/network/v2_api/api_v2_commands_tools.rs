@@ -5,7 +5,8 @@ use crate::{
     tools::{
         tool_definitions::definition_generation::generate_tool_definitions,
         tool_execution::execution_coordinator::{execute_code, execute_tool},
-        tool_generation::{generate_code_prompt, tool_metadata_implementation, v2_create_and_send_job_message},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation},
     },
 };
 use async_channel::Sender;
@@ -345,6 +346,8 @@ impl Node {
             activated: false, // TODO: maybe we want to add this as an option in the UI?
             embedding: None,
             result: payload.metadata.result,
+            sql_tables: Some(payload.metadata.sql_tables),
+            sql_queries: Some(payload.metadata.sql_queries),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(tool, false); // Same as above
@@ -583,8 +586,8 @@ impl Node {
         sqlite_manager: Arc<SqliteManager>,
         tool_router_key: String,
         parameters: Map<String, Value>,
-        tool_id: Option<String>,
-        app_id: Option<String>,
+        tool_id: String,
+        app_id: String,
         llm_provider: String,
         extra_config: Option<String>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -621,17 +624,10 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_router_key);
-                if result.get("data").is_some() {
-                    let _ = res.send(Ok(result)).await;
-                } else {
-                    let _ = res
-                        .send(Ok(json!({
-                            "data": result
-                        })))
-                        .await;
-                }
+                let _ = res.send(Ok(result)).await;
             }
             Err(e) => {
+                println!("[execute_command] Tool execution failed {}: {}", tool_router_key, e);
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -652,8 +648,9 @@ impl Node {
         code: String,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<SqliteManager>,
-        tool_id: Option<String>,
-        app_id: Option<String>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -669,6 +666,7 @@ impl Node {
             sqlite_manager,
             tool_id,
             app_id,
+            llm_provider,
             bearer,
         )
         .await;
@@ -676,15 +674,7 @@ impl Node {
         match result {
             Ok(result) => {
                 println!("[execute_command] Tool execution successful: {}", tool_type);
-                if result.get("data").is_some() {
-                    let _ = res.send(Ok(result)).await;
-                } else {
-                    let _ = res
-                        .send(Ok(json!({
-                            "data": result
-                        })))
-                        .await;
-                }
+                let _ = res.send(Ok(result)).await;
             }
             Err(e) => {
                 let _ = res

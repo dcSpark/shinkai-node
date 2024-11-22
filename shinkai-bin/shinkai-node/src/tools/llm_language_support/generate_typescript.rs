@@ -4,11 +4,11 @@
      * Analyzes text and provides statistics
      * @param text - (required, The text to analyze)
      * @param include_sentiment - (optional, Whether to include sentiment analysis) , default: undefined
-     * @returns {{
+     * @returns {
      *   word_count: integer - Number of words in the text
      *   character_count: integer - Number of characters in the text
      *   sentiment_score: number - Sentiment score (-1 to 1) if requested
-     * }}
+     * }
      */
     async function textAnalyzer(text: string, include_sentiment?: boolean): Promise<{
         word_count: integer;
@@ -35,7 +35,7 @@
 use super::language_helpers::to_camel_case;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
 
 fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> String {
     match type_value.as_str() {
@@ -96,7 +96,11 @@ fn arg_type_to_typescript(arg_type: &str) -> String {
     }
 }
 
-pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: bool) -> String {
+pub fn generate_typescript_definition(
+    tool: ShinkaiToolHeader,
+    generate_dts: bool,
+    tool_playground: Option<ToolPlayground>,
+) -> String {
     let mut typescript_output = String::new();
     let node_env = fetch_node_environment();
     let api_port = node_env.api_listen_address.port();
@@ -144,9 +148,10 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         }
     }
     typescript_output.push_str(" * }\n");
+
     typescript_output.push_str(" */\n");
 
-    let function_name = to_camel_case(&tool.name);
+    let function_name = to_camel_case(&tool.tool_router_key);
 
     // Add 'export' and 'declare' for .d.ts files
     if generate_dts {
@@ -195,9 +200,9 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
             api_port
         ));
         typescript_output.push_str("    const data = {\n");
-        typescript_output.push_str("        llm_provider: 'llm_provider',\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
+        typescript_output.push_str("        llm_provider: `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`,\n");
         typescript_output.push_str("        parameters: {\n");
         for arg in &tool.input_args {
             typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));
@@ -208,11 +213,58 @@ pub fn generate_typescript_definition(tool: ShinkaiToolHeader, generate_dts: boo
         typescript_output.push_str("        headers: {\n");
         typescript_output.push_str("            'Authorization': `Bearer ${Deno.env.get('BEARER')}`,\n");
         typescript_output.push_str("            'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,\n");
-        typescript_output.push_str("            'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`\n");
+        typescript_output.push_str("            'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,\n");
+        typescript_output
+            .push_str("            'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`\n");
         typescript_output.push_str("        }\n");
         typescript_output.push_str("    });\n");
-        typescript_output.push_str("    return response.data.data;\n");
+        typescript_output.push_str("    return response.data;\n");
         typescript_output.push_str("}\n");
+    }
+
+    // If SQL tables exist, generate a query function
+    if let Some(playground) = &tool_playground {
+        if !playground.metadata.sql_tables.is_empty() {
+            typescript_output.push_str("\n");
+            typescript_output.push_str("/**\n");
+            typescript_output.push_str(&format!(
+                " * Query the SQL database for results from {}\n",
+                function_name
+            ));
+            typescript_output.push_str(" * \n");
+            typescript_output.push_str(" * Available SQL Tables:\n");
+            for table in &playground.metadata.sql_tables {
+                typescript_output.push_str(&format!(" * {}\n", table.name));
+                typescript_output.push_str(&format!(" * {}\n", table.definition));
+            }
+
+            if !playground.metadata.sql_queries.is_empty() {
+                typescript_output.push_str(" * \n");
+                typescript_output.push_str(" * Example / Reference SQL Queries:\n");
+                for query in &playground.metadata.sql_queries {
+                    typescript_output.push_str(&format!(" * {}\n", query.name));
+                    typescript_output.push_str(&format!(" * {}\n", query.query));
+                }
+            }
+            typescript_output.push_str(" * \n");
+            typescript_output.push_str(" * @param query - SQL query to execute\n");
+            typescript_output.push_str(" * @param params - Optional array of parameters for the query\n");
+            typescript_output.push_str(" * @returns Query results\n");
+            typescript_output.push_str(" */\n");
+
+            let function_name = to_camel_case(&tool.tool_router_key);
+            typescript_output.push_str(&format!(
+                "async function query_{}(query: string, params?: any[]) {{\n",
+                function_name
+            ));
+            // TODO: make this dynamic. This should be defined by the tool key path (?)
+            let db_name = "default";
+            typescript_output.push_str(&format!(
+                "    return localRustToolkitShinkaiSqliteQueryExecutor('{}', query, params);\n",
+                db_name
+            ));
+            typescript_output.push_str("}\n");
+        }
     }
 
     typescript_output.push_str("\n");

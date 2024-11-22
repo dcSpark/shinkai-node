@@ -1,6 +1,7 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
-use shinkai_sqlite::SqliteManager;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
+use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -53,9 +54,16 @@ pub async fn generate_tool_definitions(
     }
 
     for tool in all_tools {
+        let tool_playground: Option<ToolPlayground> = match sqlite_manager.get_tool_playground(&tool.tool_router_key) {
+            Ok(tool_playground) => Some(tool_playground),
+            Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
+            Err(e) => return Err(APIError::from(e.to_string())),
+        };
+
         match language {
             CodeLanguage::Typescript => {
-                let function_name = crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.name);
+                let function_name =
+                    crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.tool_router_key);
                 if generated_names.contains(&function_name) {
                     eprintln!(
                         "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",
@@ -64,7 +72,7 @@ pub async fn generate_tool_definitions(
                     continue;
                 }
                 generated_names.insert(function_name);
-                output.push_str(&generate_typescript_definition(tool, only_headers));
+                output.push_str(&generate_typescript_definition(tool, only_headers, tool_playground));
             }
             CodeLanguage::Python => {
                 output.push_str("import os\nimport requests\nfrom typing import TypedDict, Optional\n\n");

@@ -8,7 +8,7 @@ authors = { workspace = true }
 default-run = "shinkai_node"
 
 [build-dependencies]
-shinkai_tools_runner = { version = "0.8.1", features = ["built-in-tools"] }
+shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 
 [features]
 default = []
@@ -57,7 +57,7 @@ shinkai_vector_fs = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_sheet = { workspace = true }
-shinkai_baml = { workspace = true }
+# shinkai_baml = { workspace = true }
 shinkai_db = { workspace = true }
 bincode = "1.3.3"
 qrcode = "0.12"
@@ -89,6 +89,7 @@ r2d2 = "0.8.10"
 r2d2_sqlite = "0.25"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 async-std = { version = "1.5.0", features = ["unstable"] }
+env_logger = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.0.2"

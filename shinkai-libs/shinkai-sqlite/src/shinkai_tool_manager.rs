@@ -8,12 +8,8 @@ impl SqliteManager {
     pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => {
-                embedding.vector
-            }
-            None => {
-                self.generate_embeddings(&tool.format_embedding_string()).await?
-            }
+            Some(embedding) => embedding.vector,
+            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
         self.add_tool_with_vector(tool, embedding)
@@ -24,7 +20,6 @@ impl SqliteManager {
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
-
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -314,12 +309,8 @@ impl SqliteManager {
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => {
-                embedding.vector
-            }
-            None => {
-                self.generate_embeddings(&tool.format_embedding_string()).await?
-            }
+            Some(embedding) => embedding.vector,
+            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
         self.update_tool_with_vector(tool, embedding)
@@ -368,16 +359,10 @@ impl SqliteManager {
             })?;
 
         // Delete the tool from the shinkai_tools table
-        tx.execute(
-            "DELETE FROM shinkai_tools WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools WHERE rowid = ?1", params![rowid])?;
 
         // Delete the embedding from the shinkai_tools_vec_items table
-        tx.execute(
-            "DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
 
         tx.commit()?;
         Ok(())
@@ -386,14 +371,12 @@ impl SqliteManager {
     /// Checks if the shinkai_tools table is empty
     pub fn is_empty(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM shinkai_tools",
-            [],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM shinkai_tools", [], |row| row.get(0))
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(count == 0)
     }
@@ -401,14 +384,16 @@ impl SqliteManager {
     /// Checks if a tool exists in the shinkai_tools table by its tool_key
     pub fn tool_exists(&self, tool_key: &str) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
-            params![tool_key.to_lowercase()],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
+                params![tool_key.to_lowercase()],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(exists)
     }
@@ -416,14 +401,16 @@ impl SqliteManager {
     /// Checks if there are any JS tools in the shinkai_tools table
     pub async fn has_any_js_tools(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
-            [],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(exists)
     }
@@ -468,6 +455,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -526,6 +515,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -564,6 +555,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let deno_tool_2 = DenoTool {
@@ -579,6 +572,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let deno_tool_3 = DenoTool {
@@ -594,6 +589,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -635,13 +632,17 @@ mod tests {
 
         // Manually query the shinkai_tools_vec_items table to verify the vector
         let conn = manager.get_connection().unwrap();
-        let rowid: i64 = conn.query_row(
-            "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
-            params![updated_tool_2.tool_router_key().to_lowercase()],
-            |row| row.get(0),
-        ).unwrap();
+        let rowid: i64 = conn
+            .query_row(
+                "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
+                params![updated_tool_2.tool_router_key().to_lowercase()],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        let mut stmt = conn.prepare("SELECT embedding FROM shinkai_tools_vec_items WHERE rowid = ?1").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT embedding FROM shinkai_tools_vec_items WHERE rowid = ?1")
+            .unwrap();
         let embedding_bytes: Vec<u8> = stmt.query_row(params![rowid], |row| row.get(0)).unwrap();
         let db_vector: &[f32] = cast_slice(&embedding_bytes);
 
@@ -667,6 +668,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -681,6 +684,9 @@ mod tests {
         let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
 
         // Assert that the error is ToolAlreadyExists
-        assert!(matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))));
+        assert!(matches!(
+            duplicate_result,
+            Err(SqliteManagerError::ToolAlreadyExists(_))
+        ));
     }
 }

@@ -5,15 +5,19 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
+use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_definitions::definitions_custom::get_custom_tools;
+use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -390,7 +394,7 @@ impl ToolRouter {
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
     ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
-        let function_name = function_call.name.clone();
+        let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
@@ -420,8 +424,34 @@ impl ToolRouter {
             }
             ShinkaiTool::Deno(deno_tool, _) => {
                 let function_config = shinkai_tool.get_config_from_env();
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env
+                    .node_storage_path
+                    .clone()
+                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+                let app_id = context.full_job().job_id().to_string();
+                let tool_id = shinkai_tool.tool_router_key().clone();
+                let header_code =
+                    generate_tool_definitions(CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                        .await
+                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                let mut envs = HashMap::new();
+                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
                 let result = deno_tool
-                    .run(HashMap::new(), "".to_string(), function_args, function_config)
+                    .run(
+                        HashMap::new(),
+                        header_code,
+                        function_args,
+                        function_config,
+                        node_storage_path,
+                        app_id,
+                        tool_id,
+                        false,
+                    )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -697,8 +727,6 @@ impl ToolRouter {
                 });
             }
         }
-
-        Err(LLMProviderError::FunctionNotFound(function_name))
     }
 
     /// This function is used to call a JS function directly
@@ -717,13 +745,39 @@ impl ToolRouter {
         let shinkai_tool = shinkai_tool.unwrap();
         let function_config = shinkai_tool.get_config_from_env();
 
-        let js_tool = match shinkai_tool {
+        let js_tool = match shinkai_tool.clone() {
             ShinkaiTool::Deno(js_tool, _) => js_tool,
             _ => return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string())),
         };
 
+        let node_env = fetch_node_environment();
+        let node_storage_path = node_env
+            .node_storage_path
+            .clone()
+            .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+        let app_id = format!("external_{}", uuid::Uuid::new_v4());
+        let tool_id = shinkai_tool.tool_router_key().clone();
+        let header_code = generate_tool_definitions(CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+            .await
+            .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+        let mut envs = HashMap::new();
+        envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+        envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+
         let result = js_tool
-            .run(HashMap::new(), "".to_string(), function_args, function_config)
+            .run(
+                HashMap::new(),
+                header_code,
+                function_args,
+                function_config,
+                node_storage_path,
+                app_id,
+                tool_id,
+                true,
+            )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;

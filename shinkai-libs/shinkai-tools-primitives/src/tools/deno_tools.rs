@@ -1,14 +1,16 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, thread};
 
 use super::argument::ToolOutputArg;
 use super::tool_config::ToolConfig;
+use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
 use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
+use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::tool::Tool;
 use shinkai_vector_resources::embeddings::Embedding;
@@ -28,6 +30,8 @@ pub struct DenoTool {
     pub activated: bool,
     pub embedding: Option<Embedding>,
     pub result: DenoToolResult,
+    pub sql_tables: Option<Vec<SqlTable>>,
+    pub sql_queries: Option<Vec<SqlQuery>>,
 }
 
 impl DenoTool {
@@ -53,8 +57,21 @@ impl DenoTool {
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
+        node_storage_path: String,
+        app_id: String,
+        tool_id: String,
+        is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
-        self.run_on_demand(envs, header_code, parameters, extra_config)
+        self.run_on_demand(
+            envs,
+            header_code,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id,
+            tool_id,
+            is_temporary,
+        )
     }
 
     pub fn run_on_demand(
@@ -63,10 +80,15 @@ impl DenoTool {
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
+        node_storage_path: String,
+        app_id: String,
+        tool_id: String,
+        is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
-        println!("Running DenoTool named: {}", self.name);
-        println!("Running DenoTool with input: {:?}", parameters);
-        println!("Running DenoTool with extra_config: {:?}", extra_config);
+        println!(
+            "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
+            self.name, parameters, extra_config
+        );
 
         let code = self.js_code.clone();
 
@@ -100,10 +122,16 @@ impl DenoTool {
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         js_tool_thread
             .spawn(move || {
+                fn print_result(result: &Result<RunResult, ToolError>) {
+                    match result {
+                        Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
+                        Err(e) => println!("[Running DenoTool] Error: {:?}", e),
+                    }
+                }
+
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("Running DenoTool with config: {:?}", config);
-                    println!("Running DenoTool with input: {:?}", parameters);
+                    println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
                     // Remove axios import, as it's also created in the header code
                     let step_1 = if !header_code.is_empty() {
                         let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
@@ -116,26 +144,63 @@ impl DenoTool {
                     let step_2 = regex.replace_all(&step_1, "").into_owned();
                     // Add the library import and the header code in the beginning of the code
                     let final_code = format!("{} {}", header_code, step_2);
-                    println!("Final code: {}", final_code);
-                    println!("Config JSON: {}", config_json);
-                    println!("Parameters: {:?}", parameters);
+                    println!(
+                        "[Running DenoTool] Final Code: {} ... {} ",
+                        &final_code[..120.min(final_code.len())],
+                        &final_code[final_code.len().saturating_sub(400)..]
+                    );
+                    println!(
+                        "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
+                        config_json, parameters
+                    );
+
+                    let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
+
+                    // Ensure directory exists
+                    std::fs::create_dir_all(full_path.clone()).map_err(|e| {
+                        ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
+                    })?;
+                    println!(
+                        "[Running DenoTool] Full path: {:?}. App ID: {}. Tool ID: {}",
+                        full_path, app_id, tool_id
+                    );
+
+                    if is_temporary {
+                        // Create .temporal file for temporary tools
+                        // TODO: Garbage collector will delete the tool folder after some time
+                        let temporal_path = full_path.join(".temporal");
+                        std::fs::write(temporal_path, "").map_err(|e| {
+                            ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
+                        })?;
+                    }
+
                     let tool = Tool::new(
                         final_code,
                         config_json,
                         Some(DenoRunnerOptions {
-                            binary_path: PathBuf::from(
+                            context: ExecutionContext {
+                                context_id: app_id.clone(),
+                                execution_id: tool_id.clone(),
+                                code_id: "".to_string(),
+                                storage: full_path.clone(),
+                            },
+                            deno_binary_path: PathBuf::from(
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
                                     .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
                             ),
+                            ..Default::default()
                         }),
                     );
                     // This is just a workaround to fix the parameters object.
                     // App is sending Parameters: {"0": Object {"url": String("https://jhftss.github.io/")}}
                     let binding = serde_json::Value::Object(parameters.clone());
                     let fixed_parameters = parameters.get("0").unwrap_or(&binding);
-                    tool.run(Some(envs), fixed_parameters.clone(), None)
+                    let result = tool
+                        .run(Some(envs), fixed_parameters.clone(), None)
                         .await
-                        .map_err(|e| ToolError::ExecutionError(e.to_string()))
+                        .map_err(|e| ToolError::ExecutionError(e.to_string()));
+                    print_result(&result);
+                    result
                 })
             })
             .unwrap()

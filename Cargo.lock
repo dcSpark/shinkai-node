@@ -1139,7 +1139,7 @@ dependencies = [
  "dunce",
  "either",
  "enum_dispatch",
- "env_logger 0.11.5",
+ "env_logger",
  "envy",
  "eventsource-stream",
  "fastrand",
@@ -2962,19 +2962,6 @@ checksum = "4f2c92ceda6ceec50f43169f9ee8424fe2db276791afde7b2cd8bc084cb376ab"
 dependencies = [
  "log 0.4.22",
  "regex",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
-dependencies = [
- "atty",
- "humantime",
- "log 0.4.22",
- "regex",
- "termcolor",
 ]
 
 [[package]]
@@ -4840,7 +4827,7 @@ dependencies = [
  "cfg-if",
  "colored",
  "either",
- "env_logger 0.11.5",
+ "env_logger",
  "indexmap 2.6.0",
  "internal-baml-core",
  "log 0.4.22",
@@ -8539,7 +8526,7 @@ dependencies = [
  "anyhow",
  "baml-runtime",
  "baml-types",
- "env_logger 0.9.3",
+ "env_logger",
  "indexmap 2.6.0",
  "log 0.4.22",
  "regex",
@@ -8711,6 +8698,7 @@ dependencies = [
  "dashmap",
  "downcast-rs",
  "ed25519-dalek",
+ "env_logger",
  "ethers",
  "fs_extra",
  "futures",
@@ -8734,7 +8722,6 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "shinkai_baml",
  "shinkai_crypto_identities",
  "shinkai_db",
  "shinkai_fs_mirror",
@@ -8895,16 +8882,18 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed8d736488b0e516045c294e09131999cad3d86d4aa40abadebf7b5c56df2ec6"
+checksum = "59a19be1c5a263bd13c53010276b17c0677a598467279b2418c644a332b637cb"
 dependencies = [
+ "anyhow",
  "base64-simd",
+ "chrono",
  "copy_to_output",
  "derivative",
  "derive_more 0.99.18",
  "dispose",
- "env_logger 0.11.5",
+ "env_logger",
  "futures",
  "glob",
  "hex-simd",
@@ -9496,7 +9485,7 @@ version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dffced63c2b5c7be278154d76b479f9f9920ed34e7574201407f0b14e2bbb93"
 dependencies = [
- "env_logger 0.11.5",
+ "env_logger",
  "test-log-macros",
  "tracing-subscriber",
 ]
