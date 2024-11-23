@@ -2820,7 +2820,7 @@ impl Node {
 
         // List all Shinkai tools
         let tools = {
-            match sqlite_manager.get_all_tool_headers() {
+            match sqlite_manager.read().await.get_all_tool_headers() {
                 Ok(tools) => tools,
                 Err(err) => {
                     let api_error = APIError {
@@ -3011,7 +3011,7 @@ impl Node {
         }
 
         // Fetch the tool from the LanceShinkaiDb
-        let tool = match sqlite_manager.get_tool_by_key(&tool_key) {
+        let tool = match sqlite_manager.read().await.get_tool_by_key(&tool_key) {
             Ok(tool) => tool,
             Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
