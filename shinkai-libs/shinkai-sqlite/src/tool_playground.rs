@@ -17,7 +17,10 @@ impl SqliteManager {
             .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
         let result = serde_json::to_string(&tool.metadata.result)
             .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
-
+        let sql_tables = serde_json::to_string(&tool.metadata.sql_tables)
+            .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
+        let sql_queries = serde_json::to_string(&tool.metadata.sql_queries)
+            .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
         // Check if the entry exists
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM tool_playground WHERE tool_router_key = ?1)",
@@ -38,8 +41,10 @@ impl SqliteManager {
                     result = ?7,
                     job_id = ?8,
                     job_id_history = ?9,
-                    code = ?10
-                WHERE tool_router_key = ?11",
+                    code = ?10,
+                    sql_tables = ?11,
+                    sql_queries = ?12
+                WHERE tool_router_key = ?13",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -51,6 +56,8 @@ impl SqliteManager {
                     tool.job_id,
                     job_id_history_str,
                     tool.code,
+                    sql_tables,
+                    sql_queries,
                     tool.tool_router_key.as_deref(),
                 ],
             )?;
@@ -58,8 +65,8 @@ impl SqliteManager {
             // Insert new entry
             tx.execute(
                 "INSERT INTO tool_playground (
-                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, sql_tables, sql_queries
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -72,6 +79,8 @@ impl SqliteManager {
                     tool.job_id,
                     job_id_history_str,
                     tool.code,
+                    sql_tables,
+                    sql_queries,
                 ],
             )?;
         }
@@ -105,7 +114,7 @@ impl SqliteManager {
     pub fn get_tool_playground(&self, tool_router_key: &str) -> Result<ToolPlayground, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, sql_tables, sql_queries
              FROM tool_playground WHERE tool_router_key = ?1",
         )?;
 
@@ -116,6 +125,8 @@ impl SqliteManager {
                 let parameters: String = row.get(5)?;
                 let result: String = row.get(6)?;
                 let job_id_history: String = row.get(9)?;
+                let sql_tables: String = row.get(11)?;
+                let sql_queries: String = row.get(12)?;
 
                 let configurations = serde_json::from_str(&configurations).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
@@ -132,6 +143,16 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?;
+                let sql_tables = serde_json::from_str(&sql_tables).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                        e.to_string(),
+                    )))
+                })?;
+                let sql_queries = serde_json::from_str(&sql_queries).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                        e.to_string(),
+                    )))
+                })?;
 
                 Ok(ToolPlayground {
                     metadata: ToolPlaygroundMetadata {
@@ -142,6 +163,8 @@ impl SqliteManager {
                         configurations,
                         parameters,
                         result,
+                        sql_tables,
+                        sql_queries,
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
@@ -164,7 +187,7 @@ impl SqliteManager {
     pub fn get_all_tool_playground(&self) -> Result<Vec<ToolPlayground>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, sql_tables, sql_queries
              FROM tool_playground",
         )?;
 
@@ -174,6 +197,8 @@ impl SqliteManager {
             let parameters: String = row.get(5)?;
             let result: String = row.get(6)?;
             let job_id_history: String = row.get(9)?;
+            let sql_tables: String = row.get(11)?;
+            let sql_queries: String = row.get(12)?;
 
             let configurations = serde_json::from_str(&configurations).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
@@ -182,6 +207,12 @@ impl SqliteManager {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?;
             let result = serde_json::from_str(&result).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+            })?;
+            let sql_tables = serde_json::from_str(&sql_tables).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+            })?;
+            let sql_queries = serde_json::from_str(&sql_queries).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?;
 
@@ -194,6 +225,8 @@ impl SqliteManager {
                     configurations,
                     parameters,
                     result,
+                    sql_tables,
+                    sql_queries,
                 },
                 tool_router_key: row.get(7)?,
                 job_id: row.get(8)?,
@@ -266,6 +299,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -288,6 +323,8 @@ mod tests {
                 configurations: vec![],
                 parameters: vec![],
                 result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                sql_tables: vec![],
+                sql_queries: vec![],
             },
             tool_router_key: Some(tool_router_key),
             job_id: "job_123".to_string(),
@@ -379,6 +416,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -445,6 +484,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

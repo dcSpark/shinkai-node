@@ -14,9 +14,7 @@ ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
 rand = { workspace = true }
 chrono = { workspace = true }
 regex = { workspace = true }
-anyhow = { workspace = true }
 thiserror = "1.0.44"
-log = { workspace = true }
 hex = { workspace = true }
 shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 aes-gcm = "0.10.3"

@@ -6,11 +6,9 @@ authors = { workspace = true }
 
 [dependencies]
 lazy_static = "1.5.0"
-anyhow = { workspace = true }
 regex = { workspace = true }
 csv = "1.1.6"
 serde_json = { workspace = true }
-byteorder = "1.4.3"
 ordered-float = "3.7.0"
 blake3 = { workspace = true }
 keyphrases = "0.3.2"

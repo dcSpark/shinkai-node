@@ -2918,6 +2918,7 @@ impl Node {
                 parameters,
                 tool_id,
                 app_id,
+                llm_provider,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
@@ -2933,6 +2934,7 @@ impl Node {
                         sqlite_manager_clone,
                         tool_id,
                         app_id,
+                        llm_provider,
                         res,
                     )
                     .await;
@@ -2943,8 +2945,22 @@ impl Node {
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
+                    let _ = Node::get_tool_definitions(bearer, db_clone, language, sqlite_manager_clone, res).await;
+                });
+            }
+            NodeCommand::V2ApiGenerateToolFetchQuery {
+                bearer,
+                language,
+                tools,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
+
+                tokio::spawn(async move {
                     let _ =
-                        Node::generate_tool_definitions(bearer, db_clone, language, sqlite_manager_clone, res).await;
+                        Node::generate_tool_fetch_query(bearer, db_clone, language, tools, sqlite_manager_clone, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolImplementation {

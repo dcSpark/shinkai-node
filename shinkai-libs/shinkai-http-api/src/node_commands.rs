@@ -1002,6 +1002,7 @@ pub enum NodeCommand {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolDefinitions {
@@ -1011,6 +1012,8 @@ pub enum NodeCommand {
     },
     V2ApiGenerateToolFetchQuery {
         bearer: String,
+        language: CodeLanguage,
+        tools: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolImplementation {

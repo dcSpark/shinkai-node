@@ -38,6 +38,13 @@ impl LLMProviderSubset {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
+pub enum ProviderType {
+    Agent,
+    LLMProvider,
+    Unknown,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct SmartInbox {
     pub inbox_id: String,
@@ -48,6 +55,7 @@ pub struct SmartInbox {
     pub job_scope: Option<Value>,
     pub agent: Option<LLMProviderSubset>,
     pub job_config: Option<JobConfig>,
+    pub provider_type: ProviderType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -60,4 +68,5 @@ pub struct V2SmartInbox {
     pub agent: Option<LLMProviderSubset>,
     pub job_scope: Option<Value>,
     pub job_config: Option<JobConfig>,
+    pub provider_type: ProviderType,
 }

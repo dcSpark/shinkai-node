@@ -110,6 +110,7 @@ pub fn tool_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(get_tool_implementation_prompt_handler);
 
     let code_execution_route = warp::path("code_execution")
@@ -785,13 +786,38 @@ pub async fn get_playground_tool_handler(
 pub async fn get_tool_implementation_prompt_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    query_params: HashMap<String, String>,
+
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     
+        // Get language from query params, default to Language::Typescript if not provided
+        let language = query_params
+        .get("language")
+        .and_then(|s| match s.as_str() {
+            "typescript" => Some(CodeLanguage::Typescript),
+            "python" => Some(CodeLanguage::Python),
+            _ => None,
+        });
+        
+    if language.is_none() {
+        return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid language".to_string(),
+            message: "Invalid language parameter".to_string(),
+        }));
+    }
+
+    let tools = query_params
+        .get("tools")
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>());
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGenerateToolFetchQuery {
             bearer,
+            language: language.unwrap(),
+            tools,
             res: res_sender,
         })
         .await
@@ -818,6 +844,7 @@ pub struct CodeExecutionRequest {
     pub parameters: Value,
     #[serde(default)]
     pub extra_config: Option<String>,
+    pub llm_provider: String,
 }
 
 #[utoipa::path(
@@ -858,6 +885,7 @@ pub async fn code_execution_handler(
             parameters,
             tool_id: tool_id,
             app_id: app_id,
+            llm_provider: payload.llm_provider,
             res: res_sender,
         })
         .await

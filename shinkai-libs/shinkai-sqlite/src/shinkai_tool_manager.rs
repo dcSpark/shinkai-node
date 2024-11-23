@@ -573,6 +573,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -631,6 +633,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -671,6 +675,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let deno_tool_2 = DenoTool {
@@ -686,6 +692,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         let deno_tool_3 = DenoTool {
@@ -701,6 +709,8 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -778,6 +788,8 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant

@@ -2,7 +2,6 @@
 members = [
   "shinkai-libs/shinkai-crypto-identities",
   "shinkai-libs/shinkai-sheet",
-  "shinkai-libs/shinkai-fs-mirror",
   "shinkai-libs/shinkai-message-primitives",
   "shinkai-libs/shinkai-ocr",
   "shinkai-libs/shinkai-tcp-relayer",
@@ -31,14 +30,13 @@ shinkai_message_primitives = { path = "./shinkai-libs/shinkai-message-primitives
 shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
 shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" }
 shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
-shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
 shinkai_sheet = { path = "./shinkai-libs/shinkai-sheet" }
 shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
 shinkai_vector_fs = { path = "./shinkai-libs/shinkai-vector-fs" }
 shinkai_db = { path = "./shinkai-libs/shinkai-db" }
 shinkai_subscription_manager = { path = "./shinkai-libs/shinkai-subscription-manager" }
 shinkai_job_queue_manager = { path = "./shinkai-libs/shinkai-job-queue-manager" }
-shinkai_baml = { path = "./shinkai-libs/shinkai-baml" }
+# shinkai_baml = { path = "./shinkai-libs/shinkai-baml" }
 shinkai_http_api = { path = "./shinkai-libs/shinkai-http-api" }
 shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
 shinkai_mini_libs = { path = "./shinkai-libs/shinkai-mini-libs" }
@@ -55,10 +53,11 @@ blake3 = "1.2.0"
 shinkai_tools_runner = "0.8.3"
 serde = "1.0.188"
 base64 = "0.22.0"
-reqwest = "0.11.26"
+reqwest = "0.11.27"
 regex = "1"
 rocksdb = { version = "0.22.0", default-features = false }
 uuid = { version = "1.6.1" }
 rand = "=0.8.5"
 chrono-tz = "0.5"
 hex = "=0.4.3"
+env_logger = "0.11.5"
