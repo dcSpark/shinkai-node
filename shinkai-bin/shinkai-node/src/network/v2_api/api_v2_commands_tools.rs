@@ -690,6 +690,80 @@ impl Node {
         Ok(())
     }
 
+    pub async fn generate_tool_fetch_query(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        language: CodeLanguage,
+        tools: Option<Vec<String>>,
+        sqlite_manager: Arc<SqliteManager>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool_definitions = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await {
+            Ok(definitions) => definitions,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let code_prompt = match generate_code_prompt(language.clone(), "".to_string(), tool_definitions).await {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate code prompt: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string()).await {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let library_code = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), false).await {
+            Ok(code) => code,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let _ = res
+            .send(Ok(json!({
+                "libraryCode": library_code.clone(),
+                "codePrompt": code_prompt.clone(),
+                "metadataPrompt": metadata_prompt.clone(),
+            })))
+            .await;
+        Ok(())
+    }
+
     pub async fn generate_tool_implementation(
         bearer: String,
         db: Arc<ShinkaiDB>,
