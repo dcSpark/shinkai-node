@@ -104,7 +104,7 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "version_check",
- "zerocopy 0.7.35",
+ "zerocopy",
 ]
 
 [[package]]
@@ -6524,7 +6524,7 @@ version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
- "zerocopy 0.7.35",
+ "zerocopy",
 ]
 
 [[package]]
@@ -8115,14 +8115,11 @@ dependencies = [
 name = "shinkai_crypto_identities"
 version = "0.8.15"
 dependencies = [
- "bytes",
  "chrono",
  "dashmap",
  "ed25519-dalek",
  "ethers",
  "lazy_static",
- "rand 0.8.5",
- "serde",
  "serde_json",
  "shinkai_message_primitives",
  "tokio",
@@ -8147,7 +8144,6 @@ dependencies = [
  "serde_json",
  "shinkai_message_primitives",
  "shinkai_sheet",
- "shinkai_tools_primitives",
  "shinkai_vector_resources",
  "tokio",
  "x25519-dalek",
@@ -8195,14 +8191,12 @@ name = "shinkai_message_primitives"
 version = "0.8.15"
 dependencies = [
  "aes-gcm",
- "anyhow",
  "base64 0.22.1",
  "blake3",
  "chacha20poly1305",
  "chrono",
  "ed25519-dalek",
  "hex",
- "log",
  "rand 0.8.5",
  "regex",
  "rust_decimal",
@@ -8238,8 +8232,6 @@ dependencies = [
  "bincode",
  "bip32",
  "blake3",
- "bytes",
- "chacha20poly1305",
  "chashmap",
  "chrono",
  "clap 3.2.25",
@@ -8261,7 +8253,6 @@ dependencies = [
  "log",
  "lru 0.7.8",
  "mockito",
- "num_cpus",
  "qrcode",
  "r2d2",
  "r2d2_sqlite",
@@ -8287,7 +8278,6 @@ dependencies = [
  "shinkai_vector_fs",
  "shinkai_vector_resources",
  "tempfile",
- "thiserror 1.0.69",
  "tiny-bip39",
  "tokio",
  "tokio-tungstenite 0.15.0",
@@ -8319,10 +8309,7 @@ name = "shinkai_sheet"
 version = "0.8.15"
 dependencies = [
  "async-channel 1.9.0",
- "blake3",
  "chrono",
- "dashmap",
- "futures",
  "regex",
  "serde",
  "serde_json",
@@ -8335,13 +8322,9 @@ dependencies = [
 name = "shinkai_sqlite"
 version = "0.8.15"
 dependencies = [
- "bincode",
  "bytemuck",
- "chrono",
- "futures",
  "r2d2",
  "r2d2_sqlite",
- "regex",
  "reqwest 0.11.27",
  "rusqlite",
  "serde",
@@ -8353,8 +8336,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.3",
  "tokio",
- "uuid 1.11.0",
- "zerocopy 0.8.9",
 ]
 
 [[package]]
@@ -8365,10 +8346,8 @@ dependencies = [
  "aws-sdk-s3",
  "aws-types",
  "bincode",
- "chacha20poly1305",
  "chrono",
  "dashmap",
- "ed25519-dalek",
  "futures",
  "reqwest 0.11.27",
  "serde",
@@ -8382,14 +8361,12 @@ dependencies = [
  "tokio",
  "urlencoding 2.1.3",
  "uuid 1.11.0",
- "x25519-dalek",
 ]
 
 [[package]]
 name = "shinkai_tcp_relayer"
 version = "0.8.15"
 dependencies = [
- "bytes",
  "chrono",
  "clap 3.2.25",
  "derivative",
@@ -8397,7 +8374,6 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "rand 0.8.5",
- "serde",
  "serde_json",
  "shinkai_crypto_identities",
  "shinkai_message_primitives",
@@ -8411,10 +8387,6 @@ name = "shinkai_tools_primitives"
 version = "0.8.15"
 dependencies = [
  "anyhow",
- "blake3",
- "chrono",
- "dashmap",
- "futures",
  "regex",
  "reqwest 0.11.27",
  "serde",
@@ -8423,7 +8395,6 @@ dependencies = [
  "shinkai_tools_runner",
  "shinkai_vector_resources",
  "tokio",
- "uuid 1.11.0",
 ]
 
 [[package]]
@@ -8478,11 +8449,9 @@ dependencies = [
 name = "shinkai_vector_resources"
 version = "0.8.15"
 dependencies = [
- "anyhow",
  "async-trait",
  "base64 0.22.1",
  "blake3",
- "byteorder",
  "chrono",
  "comrak",
  "csv",
@@ -10589,16 +10558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
  "byteorder",
- "zerocopy-derive 0.7.35",
-]
-
-[[package]]
-name = "zerocopy"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f49e690f8f352f4a9ee8679a8c5921f42ffd0d6d6413a0a66b8e81cf524e109c"
-dependencies = [
- "zerocopy-derive 0.8.9",
+ "zerocopy-derive",
 ]
 
 [[package]]
@@ -10606,17 +10566,6 @@ name = "zerocopy-derive"
 version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.87",
-]
-
-[[package]]
-name = "zerocopy-derive"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa732fcc881df7a6fbe8e3ed17baadece53b379ad58fe2633396b1a2b108a7b1"
 dependencies = [
  "proc-macro2",
  "quote",
