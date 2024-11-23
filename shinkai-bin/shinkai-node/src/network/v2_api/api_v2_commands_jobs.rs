@@ -58,6 +58,7 @@ impl Node {
             job_scope: smart_inbox.job_scope,
             agent: smart_inbox.agent,
             job_config: smart_inbox.job_config,
+            provider_type: smart_inbox.provider_type,
         })
     }
 

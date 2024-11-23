@@ -9,6 +9,7 @@ use serde_json::Value;
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::smart_inbox::LLMProviderSubset;
+use shinkai_message_primitives::schemas::smart_inbox::ProviderType;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
 use shinkai_message_primitives::{
@@ -532,7 +533,7 @@ impl ShinkaiDB {
                 false
             };
 
-            let agent_subset = {
+            let (agent_subset, provider_type) = {
                 let profile_result = profile_name_identity.full_identity_name.clone().extract_profile();
                 match profile_result {
                     Ok(p) => {
@@ -544,32 +545,37 @@ impl ShinkaiDB {
                                     let agent_id = job.parent_agent_or_llm_provider_id;
 
                                     // Check if the agent_id is an LLM provider
-                                    let agent_subset = match self.get_llm_provider(&agent_id, &p) {
-                                        Ok(agent) => agent.map(LLMProviderSubset::from_serialized_llm_provider),
+                                    match self.get_llm_provider(&agent_id, &p) {
+                                        Ok(agent) => (
+                                            agent.map(LLMProviderSubset::from_serialized_llm_provider),
+                                            ProviderType::LLMProvider,
+                                        ),
                                         Err(_) => {
                                             // If not found as an LLM provider, check if it exists as an agent
                                             match self.get_agent(&agent_id) {
                                                 Ok(Some(agent)) => {
                                                     // Fetch the serialized LLM provider
                                                     if let Ok(Some(serialized_llm_provider)) = self.get_llm_provider(&agent.llm_provider_id, &p) {
-                                                        Some(LLMProviderSubset::from_agent(agent, serialized_llm_provider))
+                                                        (
+                                                            Some(LLMProviderSubset::from_agent(agent, serialized_llm_provider)),
+                                                            ProviderType::Agent,
+                                                        )
                                                     } else {
-                                                        None
+                                                        (None, ProviderType::Unknown)
                                                     }
                                                 }
-                                                _ => None,
+                                                _ => (None, ProviderType::Unknown),
                                             }
                                         }
-                                    };
-                                    agent_subset
+                                    }
                                 }
-                                _ => None,
+                                _ => (None, ProviderType::Unknown),
                             }
                         } else {
-                            None
+                            (None, ProviderType::Unknown)
                         }
                     }
-                    Err(_) => None,
+                    Err(_) => (None, ProviderType::Unknown),
                 }
             };
 
@@ -582,6 +588,7 @@ impl ShinkaiDB {
                 job_scope: job_scope_value,
                 agent: agent_subset,
                 job_config: job_config_value,
+                provider_type,
             };
 
             smart_inboxes.push(smart_inbox);
@@ -616,3 +623,4 @@ impl ShinkaiDB {
         Ok(())
     }
 }
+
