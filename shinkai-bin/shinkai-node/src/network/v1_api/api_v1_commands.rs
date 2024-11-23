@@ -55,7 +55,7 @@ use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -2784,7 +2784,7 @@ impl Node {
     }
 
     pub async fn api_list_all_shinkai_tools(
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2840,7 +2840,7 @@ impl Node {
     }
 
     pub async fn api_set_shinkai_tool(
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2876,7 +2876,7 @@ impl Node {
         }
 
         // Get the full tool from lance_db
-        let existing_tool = match sqlite_manager.get_tool_by_key(&tool_router_key) {
+        let existing_tool = match sqlite_manager.read().await.get_tool_by_key(&tool_router_key) {
             Ok(tool) => tool,
             Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
@@ -2930,12 +2930,12 @@ impl Node {
         };
 
         // Save the tool to the LanceShinkaiDb
-        let save_result = { sqlite_manager.update_tool(merged_tool).await };
+        let save_result = { sqlite_manager.write().await.update_tool(merged_tool).await };
 
         match save_result {
             Ok(_) => {
                 // Fetch the updated tool from the database
-                let updated_tool = { sqlite_manager.get_tool_by_key(&tool_router_key) };
+                let updated_tool = { sqlite_manager.read().await.get_tool_by_key(&tool_router_key) };
 
                 match updated_tool {
                     Ok(tool) => {
@@ -2976,7 +2976,7 @@ impl Node {
     }
 
     pub async fn api_get_shinkai_tool(
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,

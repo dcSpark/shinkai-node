@@ -17,7 +17,7 @@ use crate::network::{
 impl Node {
     pub async fn v2_api_request_invoice(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         tool_key_name: String,
@@ -100,7 +100,7 @@ impl Node {
 
     pub async fn v2_api_pay_invoice(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         invoice_id: String,

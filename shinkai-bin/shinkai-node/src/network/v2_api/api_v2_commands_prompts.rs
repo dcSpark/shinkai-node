@@ -12,7 +12,7 @@ use crate::network::{node_error::NodeError, Node};
 impl Node {
     pub async fn v2_api_add_custom_prompt(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -42,7 +42,7 @@ impl Node {
 
     pub async fn v2_api_delete_custom_prompt(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -99,7 +99,7 @@ impl Node {
 
     pub async fn v2_api_get_all_custom_prompts(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -128,7 +128,7 @@ impl Node {
 
     pub async fn v2_api_get_custom_prompt(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -177,7 +177,7 @@ impl Node {
 
     pub async fn v2_api_search_custom_prompts(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,
@@ -216,7 +216,7 @@ impl Node {
 
     pub async fn v2_api_update_custom_prompt(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,

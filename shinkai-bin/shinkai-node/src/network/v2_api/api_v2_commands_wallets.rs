@@ -192,7 +192,7 @@ impl Node {
 
     pub async fn v2_api_restore_coinbase_mpc_wallet(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -291,7 +291,7 @@ impl Node {
 
     pub async fn v2_api_create_coinbase_mpc_wallet(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,

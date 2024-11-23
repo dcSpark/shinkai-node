@@ -86,7 +86,7 @@ impl Node {
 
     pub async fn v2_api_get_all_tool_offering(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -148,7 +148,7 @@ impl Node {
 
     pub async fn v2_api_set_tool_offering(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
