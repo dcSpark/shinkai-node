@@ -94,7 +94,6 @@ env_logger = { workspace = true }
 [dev-dependencies]
 mockito = "1.0.2"
 tokio-tungstenite = "0.15.0"
-shinkai_fs_mirror = { workspace = true }
 tempfile = "3.10.1"
 fs_extra = "1.2.0"
 utoipa = { version = "4.2.3", features = ["yaml"] }
