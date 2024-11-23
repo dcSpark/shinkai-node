@@ -12,10 +12,10 @@ impl SqliteManager {
             None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
-        self.add_tool_with_vector(tool, embedding).await
+        self.add_tool_with_vector(tool, embedding)
     }
 
-    pub async fn add_tool_with_vector(
+    pub fn add_tool_with_vector(
         &mut self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
@@ -102,7 +102,7 @@ impl SqliteManager {
         )?;
 
         // Update the FTS table using the in-memory connection
-        self.update_tools_fts(&tool).await?;
+        self.update_tools_fts(&tool)?;
 
         tx.commit()?;
 
@@ -221,7 +221,7 @@ impl SqliteManager {
     }
 
     // Updates a ShinkaiTool entry in the shinkai_tools table with a new embedding
-    pub async fn update_tool_with_vector(
+    pub fn update_tool_with_vector(
         &mut self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
@@ -307,7 +307,7 @@ impl SqliteManager {
 
         eprintln!("Updating FTS table");
         // Update the FTS table using the in-memory connection
-        self.update_tools_fts(&tool).await?;
+        self.update_tools_fts(&tool)?;
 
         tx.commit()?;
 
@@ -318,15 +318,11 @@ impl SqliteManager {
     pub async fn update_tool(&mut self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => {
-                embedding.vector
-            }
-            None => {
-                self.generate_embeddings(&tool.format_embedding_string()).await?
-            }
+            Some(embedding) => embedding.vector,
+            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
-        self.update_tool_with_vector(tool, embedding).await
+        self.update_tool_with_vector(tool, embedding)
     }
 
     /// Retrieves all ShinkaiToolHeader entries from the shinkai_tools table
@@ -355,7 +351,7 @@ impl SqliteManager {
 
     /// Removes a ShinkaiTool entry from the shinkai_tools table
     // Note: should we also auto-remove the tool from the tool_playground table?
-    pub async fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
+    pub fn remove_tool(&self, tool_key: &str) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -372,26 +368,22 @@ impl SqliteManager {
             })?;
 
         // Delete the tool from the shinkai_tools table
-        tx.execute(
-            "DELETE FROM shinkai_tools WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools WHERE rowid = ?1", params![rowid])?;
 
         // Delete the embedding from the shinkai_tools_vec_items table
-        tx.execute(
-            "DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
 
         tx.commit()?;
 
-        // Acquire a write lock on the fts_conn
-        let fts_conn = self.fts_conn.write().await;
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
-        fts_conn.execute(
-            "DELETE FROM shinkai_tools_fts WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        fts_conn.execute("DELETE FROM shinkai_tools_fts WHERE rowid = ?1", params![rowid])?;
 
         Ok(())
     }
@@ -399,14 +391,12 @@ impl SqliteManager {
     /// Checks if the shinkai_tools table is empty
     pub fn is_empty(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM shinkai_tools",
-            [],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM shinkai_tools", [], |row| row.get(0))
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(count == 0)
     }
@@ -414,52 +404,55 @@ impl SqliteManager {
     /// Checks if a tool exists in the shinkai_tools table by its tool_key
     pub fn tool_exists(&self, tool_key: &str) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
-            params![tool_key.to_lowercase()],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
+                params![tool_key.to_lowercase()],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(exists)
     }
 
     /// Checks if there are any JS tools in the shinkai_tools table
-    pub async fn has_any_js_tools(&self) -> Result<bool, SqliteManagerError> {
+    pub fn has_any_js_tools(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
-            [],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(exists)
     }
 
     // Update the FTS table when inserting or updating a tool
-    pub async fn update_tools_fts(&self, tool: &ShinkaiTool) -> Result<(), SqliteManagerError> {
-        // Acquire a write lock on the fts_conn
-        let mut fts_conn = self.fts_conn.write().await;
+    pub fn update_tools_fts(&self, tool: &ShinkaiTool) -> Result<(), SqliteManagerError> {
+        // Get a connection from the in-memory pool for FTS operations
+        let mut fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
         // Start a single transaction
         let tx = fts_conn.transaction()?;
 
         // Delete the existing entry
-        tx.execute(
-            "DELETE FROM shinkai_tools_fts WHERE name = ?1",
-            params![tool.name()],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools_fts WHERE name = ?1", params![tool.name()])?;
 
         // Insert the updated tool name
-        tx.execute(
-            "INSERT INTO shinkai_tools_fts(name) VALUES (?1)",
-            params![tool.name()],
-        )?;
+        tx.execute("INSERT INTO shinkai_tools_fts(name) VALUES (?1)", params![tool.name()])?;
 
         // Commit the transaction
         tx.commit()?;
@@ -468,14 +461,17 @@ impl SqliteManager {
     }
 
     // Search the FTS table
-    pub async fn search_tools_by_name(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
-        // Acquire a read lock on the fts_conn
-        let fts_conn = self.fts_conn.read().await;
+    pub fn search_tools_by_name(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
         // Use the in-memory connection for FTS operations
-        let mut stmt = fts_conn.prepare(
-            "SELECT name FROM shinkai_tools_fts WHERE shinkai_tools_fts MATCH ?1",
-        )?;
+        let mut stmt = fts_conn.prepare("SELECT name FROM shinkai_tools_fts WHERE shinkai_tools_fts MATCH ?1")?;
 
         let name_iter = stmt.query_map(params![query], |row| {
             let name: String = row.get(0)?;
@@ -510,14 +506,19 @@ impl SqliteManager {
     }
 
     // Synchronize the FTS table with the main database
-    pub async fn sync_fts_table(&self) -> Result<(), SqliteManagerError> {
+    pub fn sync_fts_table(&self) -> Result<(), SqliteManagerError> {
         // Use the pooled connection to access the shinkai_tools table
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_tools")?;
         let mut rows = stmt.query([])?;
 
-        // Acquire a write lock on the fts_conn
-        let fts_conn = self.fts_conn.write().await;
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
         // Use the in-memory connection for FTS operations
         while let Some(row) = rows.next()? {
@@ -583,7 +584,7 @@ mod tests {
         let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
-        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector).await;
+        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
         assert!(result.is_ok());
 
         // Retrieve the tool using the new method
@@ -595,7 +596,7 @@ mod tests {
         assert_eq!(retrieved_tool.author(), shinkai_tool.author());
 
         // Remove the tool from the database
-        manager.remove_tool(&shinkai_tool.tool_router_key()).await.unwrap();
+        manager.remove_tool(&shinkai_tool.tool_router_key()).unwrap();
 
         // Verify that the tool is removed from the shinkai_tools table
         let tool_removal_result = manager.get_tool_by_key(&shinkai_tool.tool_router_key());
@@ -634,7 +635,9 @@ mod tests {
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        manager.add_tool_with_vector(shinkai_tool.clone(), vector).await.unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool.clone(), vector)
+            .unwrap();
 
         // Generate an embedding vector for the query
         let embedding_query = SqliteManager::generate_vector_for_testing(0.09);
@@ -708,15 +711,12 @@ mod tests {
         // Add the tools to the database
         manager
             .add_tool_with_vector(shinkai_tool_1.clone(), SqliteManager::generate_vector_for_testing(0.1))
-            .await
             .unwrap();
         manager
             .add_tool_with_vector(shinkai_tool_2.clone(), SqliteManager::generate_vector_for_testing(0.2))
-            .await
             .unwrap();
         manager
             .add_tool_with_vector(shinkai_tool_3.clone(), SqliteManager::generate_vector_for_testing(0.3))
-            .await
             .unwrap();
 
         // Print out the name and key for each tool in the database
@@ -742,13 +742,17 @@ mod tests {
 
         // Manually query the shinkai_tools_vec_items table to verify the vector
         let conn = manager.get_connection().unwrap();
-        let rowid: i64 = conn.query_row(
-            "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
-            params![updated_tool_2.tool_router_key().to_lowercase()],
-            |row| row.get(0),
-        ).unwrap();
+        let rowid: i64 = conn
+            .query_row(
+                "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
+                params![updated_tool_2.tool_router_key().to_lowercase()],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        let mut stmt = conn.prepare("SELECT embedding FROM shinkai_tools_vec_items WHERE rowid = ?1").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT embedding FROM shinkai_tools_vec_items WHERE rowid = ?1")
+            .unwrap();
         let embedding_bytes: Vec<u8> = stmt.query_row(params![rowid], |row| row.get(0)).unwrap();
         let db_vector: &[f32] = cast_slice(&embedding_bytes);
 
@@ -781,14 +785,17 @@ mod tests {
 
         // Add the tool to the database
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone()).await;
+        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone());
         assert!(result.is_ok());
 
         // Attempt to add the same tool again
-        let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector).await;
+        let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
 
         // Assert that the error is ToolAlreadyExists
-        assert!(matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))));
+        assert!(matches!(
+            duplicate_result,
+            Err(SqliteManagerError::ToolAlreadyExists(_))
+        ));
     }
 
     #[tokio::test]
@@ -845,7 +852,7 @@ mod tests {
         for (i, tool) in tools.into_iter().enumerate() {
             let shinkai_tool = ShinkaiTool::Deno(tool, true);
             let vector = SqliteManager::generate_vector_for_testing(0.1 * (i + 1) as f32);
-            if let Err(e) = manager.add_tool_with_vector(shinkai_tool, vector).await {
+            if let Err(e) = manager.add_tool_with_vector(shinkai_tool, vector) {
                 eprintln!("Failed to add tool: {:?}", e);
             } else {
                 eprintln!("Successfully added tool with index: {}", i);
@@ -853,7 +860,7 @@ mod tests {
         }
 
         // Test exact match
-        match manager.search_tools_by_name("Text Analysis").await {
+        match manager.search_tools_by_name("Text Analysis") {
             Ok(results) => {
                 eprintln!("Search results: {:?}", results);
                 assert_eq!(results.len(), 1);
@@ -863,17 +870,17 @@ mod tests {
         }
 
         // Test partial match
-        let results = manager.search_tools_by_name("visualization").await.unwrap();
+        let results = manager.search_tools_by_name("visualization").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Data Visualization Tool");
 
         // Test case insensitive match
-        let results = manager.search_tools_by_name("IMAGE").await.unwrap();
+        let results = manager.search_tools_by_name("IMAGE").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Image Processing Tool");
 
         // Test no match
-        let results = manager.search_tools_by_name("nonexistent").await.unwrap();
+        let results = manager.search_tools_by_name("nonexistent").unwrap();
         assert_eq!(results.len(), 0);
     }
 }

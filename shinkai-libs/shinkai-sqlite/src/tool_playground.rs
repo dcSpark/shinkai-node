@@ -272,10 +272,7 @@ mod tests {
         let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
-        manager
-            .add_tool_with_vector(shinkai_tool.clone(), vector)
-            .await
-            .unwrap();
+        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Return the tool_router_key generated from the DenoTool
         shinkai_tool.tool_router_key().to_string()
@@ -388,10 +385,7 @@ mod tests {
         let vector = SqliteManager::generate_vector_for_testing(0.1);
 
         // Add the tool to the database
-        manager
-            .add_tool_with_vector(shinkai_tool.clone(), vector)
-            .await
-            .unwrap();
+        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Return the tool_router_key generated from the DenoTool
         shinkai_tool.tool_router_key().to_string()
@@ -455,10 +449,7 @@ mod tests {
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        manager
-            .add_tool_with_vector(shinkai_tool.clone(), vector)
-            .await
-            .unwrap();
+        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Create and add a ToolPlayground entry
         let tool_playground = create_test_tool_playground(shinkai_tool.tool_router_key().to_string());

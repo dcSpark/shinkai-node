@@ -43,7 +43,7 @@ pub enum SqliteManagerError {
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
-    fts_conn: Arc<RwLock<Connection>>,
+    fts_pool: Arc<Pool<SqliteConnectionManager>>,
     api_url: String,
     model_type: EmbeddingModelType,
 }
@@ -96,23 +96,30 @@ impl SqliteManager {
         // Initialize tables in the persistent database
         Self::initialize_tables(&conn)?;
 
-        // Create an in-memory connection for FTS
-        let fts_conn = Connection::open_in_memory()?;
-        fts_conn.execute_batch(
-            "PRAGMA foreign_keys = ON;", // Enable foreign key support for in-memory connection
-        )?;
+        // Create a connection pool for the in-memory database
+        let fts_manager = SqliteConnectionManager::memory();
+        let fts_pool = Pool::builder()
+            .max_size(5) // Adjust the pool size as needed
+            .build(fts_manager)
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
 
         // Initialize FTS table in the in-memory database
-        Self::initialize_fts_tables(&fts_conn)?;
+        {
+            let fts_conn = fts_pool.get().map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+            fts_conn.execute_batch(
+                "PRAGMA foreign_keys = ON;", // Enable foreign key support for in-memory connection
+            )?;
+            Self::initialize_fts_tables(&fts_conn)?;
+        }
 
         // Synchronize the FTS table with the main database
         let manager = SqliteManager {
             pool: Arc::new(pool),
-            fts_conn: Arc::new(RwLock::new(fts_conn)), // Use the in-memory connection
+            fts_pool: Arc::new(fts_pool), // Use the in-memory connection pool
             api_url,
             model_type,
         };
-        manager.sync_fts_table().await?;
+        manager.sync_fts_table();
 
         Ok(manager)
     }

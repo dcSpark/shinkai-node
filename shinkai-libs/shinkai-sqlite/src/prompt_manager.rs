@@ -1,8 +1,8 @@
 use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
 use rusqlite::{params, OptionalExtension, Result};
-use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use serde_json::Value;
+use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 
 impl SqliteManager {
     pub async fn add_prompt(&self, prompt: &CustomPrompt) -> Result<CustomPrompt> {
@@ -192,11 +192,13 @@ impl SqliteManager {
         let tx = conn.transaction()?;
 
         // Retrieve the rowid of the prompt to be deleted
-        let rowid: Option<i64> = tx.query_row(
-            "SELECT rowid FROM shinkai_prompts WHERE name = ?1",
-            params![name],
-            |row| row.get(0),
-        ).optional()?;
+        let rowid: Option<i64> = tx
+            .query_row(
+                "SELECT rowid FROM shinkai_prompts WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
+            .optional()?;
 
         if let Some(rowid) = rowid {
             // Delete the prompt from shinkai_prompts
@@ -314,17 +316,19 @@ impl SqliteManager {
 
     // Update the FTS table when inserting or updating a prompt
     pub async fn update_prompts_fts(&self, prompt: &CustomPrompt) -> Result<(), SqliteManagerError> {
-        // Acquire a write lock on the fts_conn
-        let mut fts_conn = self.fts_conn.write().await;
+        // Get a connection from the in-memory pool for FTS operations
+        let mut fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
         // Start a single transaction
         let tx = fts_conn.transaction()?;
 
         // Delete the existing entry
-        tx.execute(
-            "DELETE FROM shinkai_prompts_fts WHERE name = ?1",
-            params![prompt.name],
-        )?;
+        tx.execute("DELETE FROM shinkai_prompts_fts WHERE name = ?1", params![prompt.name])?;
 
         // Insert the updated prompt name
         tx.execute(
@@ -339,14 +343,17 @@ impl SqliteManager {
     }
 
     // Search the FTS table
-    pub async fn search_prompts_by_name(&self, query: &str) -> Result<Vec<CustomPrompt>, SqliteManagerError> {
-        // Acquire a read lock on the fts_conn
-        let fts_conn = self.fts_conn.read().await;
+    pub fn search_prompts_by_name(&self, query: &str) -> Result<Vec<CustomPrompt>, SqliteManagerError> {
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
         // Use the in-memory connection for FTS operations
-        let mut stmt = fts_conn.prepare(
-            "SELECT name FROM shinkai_prompts_fts WHERE shinkai_prompts_fts MATCH ?1",
-        )?;
+        let mut stmt = fts_conn.prepare("SELECT name FROM shinkai_prompts_fts WHERE shinkai_prompts_fts MATCH ?1")?;
 
         let name_iter = stmt.query_map(params![query], |row| {
             let name: String = row.get(0)?;
@@ -390,7 +397,12 @@ impl SqliteManager {
         let mut rows = stmt.query([])?;
 
         // Acquire a write lock on the fts_conn
-        let fts_conn = self.fts_conn.write().await;
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
 
         // Use the in-memory connection for FTS operations
         while let Some(row) = rows.next()? {
@@ -464,7 +476,7 @@ mod tests {
 
         let vector = generate_vector(0.1);
         let added_prompt = manager.add_prompt_with_vector(&prompt, vector).unwrap();
-        
+
         // Test retrieval by rowid
         let retrieved_prompt_by_rowid = manager.get_prompt(added_prompt.rowid.unwrap()).unwrap();
         assert!(retrieved_prompt_by_rowid.is_some());
@@ -615,7 +627,9 @@ mod tests {
         };
 
         let updated_vector = generate_vector(0.7);
-        manager.update_prompt_with_vector(&updated_prompt, updated_vector).unwrap();
+        manager
+            .update_prompt_with_vector(&updated_prompt, updated_vector)
+            .unwrap();
 
         // Retrieve the updated prompt
         let retrieved_prompt = manager.get_prompt(rowid_to_update.unwrap()).unwrap();
@@ -703,21 +717,21 @@ mod tests {
         }
 
         // Perform an FTS search for "Alpha"
-        let search_results = manager.search_prompts_by_name("Alpha").await.unwrap();
+        let search_results = manager.search_prompts_by_name("Alpha").unwrap();
 
         // Assert that the search results contain "Prompt Alpha"
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].name, "Prompt Alpha");
 
         // Perform an FTS search for "Beta"
-        let search_results = manager.search_prompts_by_name("Beta").await.unwrap();
+        let search_results = manager.search_prompts_by_name("Beta").unwrap();
 
         // Assert that the search results contain "Prompt Beta"
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].name, "Prompt Beta");
 
         // Perform an FTS search for "Gamma"
-        let search_results = manager.search_prompts_by_name("Gamma").await.unwrap();
+        let search_results = manager.search_prompts_by_name("Gamma").unwrap();
 
         // Assert that the search results contain "Prompt Gamma"
         assert_eq!(search_results.len(), 1);
