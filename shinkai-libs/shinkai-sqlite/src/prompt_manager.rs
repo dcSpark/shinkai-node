@@ -435,7 +435,7 @@ mod tests {
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        SqliteManager::new(db_path, api_url, model_type).await.unwrap()
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
     // Utility function to generate a vector of length 384 filled with a specified value

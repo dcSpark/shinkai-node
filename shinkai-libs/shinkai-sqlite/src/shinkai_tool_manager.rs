@@ -552,7 +552,7 @@ mod tests {
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        SqliteManager::new(db_path, api_url, model_type).await.unwrap()
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
     #[tokio::test]
@@ -829,6 +829,8 @@ mod tests {
                 embedding: None,
                 result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
+                sql_tables: None,
+                sql_queries: None,
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -843,6 +845,8 @@ mod tests {
                 embedding: None,
                 result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
+                sql_tables: None,
+                sql_queries: None,
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -857,6 +861,8 @@ mod tests {
                 embedding: None,
                 result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
+                sql_tables: None,
+                sql_queries: None,
             },
         ];
 

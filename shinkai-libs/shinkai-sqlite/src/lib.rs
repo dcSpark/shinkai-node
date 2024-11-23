@@ -1,11 +1,9 @@
 use embedding_function::EmbeddingFunction;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use sqlite_vec::sqlite3_vec_init;
-use tokio::sync::RwLock;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,7 +57,7 @@ impl std::fmt::Debug for SqliteManager {
 
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
-    pub async fn new<P: AsRef<Path>>(
+    pub fn new<P: AsRef<Path>>(
         db_path: P,
         api_url: String,
         model_type: EmbeddingModelType,
@@ -119,7 +117,7 @@ impl SqliteManager {
             api_url,
             model_type,
         };
-        manager.sync_fts_table();
+        let _ = manager.sync_fts_table();
 
         Ok(manager)
     }

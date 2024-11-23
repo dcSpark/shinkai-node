@@ -5,6 +5,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::tools::llm_language_support::generate_typescript::generate_typescript_definition;
 use crate::tools::tool_implementation;
@@ -17,8 +18,8 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools
 }
 
-pub fn get_all_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
-    let mut all_tools = match sqlite_manager.get_all_tool_headers() {
+pub async fn get_all_tools(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Vec<ShinkaiToolHeader> {
+    let mut all_tools = match sqlite_manager.read().await.get_all_tool_headers() {
         Ok(data) => data,
         Err(_) => Vec::new(),
     };
@@ -47,10 +48,10 @@ pub fn get_all_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeade
 pub async fn generate_tool_definitions(
     tools: Option<Vec<String>>,
     language: CodeLanguage,
-    sqlite_manager: Arc<SqliteManager>,
+    sqlite_manager: Arc<RwLock<SqliteManager>>,
     only_headers: bool,
 ) -> Result<String, APIError> {
-    let mut all_tools = get_all_tools(sqlite_manager.clone());
+    let mut all_tools = get_all_tools(sqlite_manager.clone()).await;
 
     if let Some(tools) = tools {
         all_tools = all_tools
@@ -74,7 +75,7 @@ pub async fn generate_tool_definitions(
     }
 
     for tool in all_tools {
-        let tool_playground: Option<ToolPlayground> = match sqlite_manager.get_tool_playground(&tool.tool_router_key) {
+        let tool_playground: Option<ToolPlayground> = match sqlite_manager.read().await.get_tool_playground(&tool.tool_router_key) {
             Ok(tool_playground) => Some(tool_playground),
             Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
             Err(e) => return Err(APIError::from(e.to_string())),
