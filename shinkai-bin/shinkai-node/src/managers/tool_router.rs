@@ -5,8 +5,7 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
-use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
-use crate::tools::tool_definitions::definitions_custom::get_custom_tools;
+use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -133,7 +132,7 @@ impl ToolRouter {
     }
 
     async fn add_rust_tools(&self) -> Result<(), ToolError> {
-        let rust_tools = get_custom_tools();
+        let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None);
             self.sqlite_manager
@@ -432,7 +431,7 @@ impl ToolRouter {
                 let app_id = context.full_job().job_id().to_string();
                 let tool_id = shinkai_tool.tool_router_key().clone();
                 let header_code =
-                    generate_tool_definitions(CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                    generate_tool_definitions(None, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
@@ -757,7 +756,7 @@ impl ToolRouter {
             .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
         let tool_id = shinkai_tool.tool_router_key().clone();
-        let header_code = generate_tool_definitions(CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+        let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
             .await
             .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
         let mut envs = HashMap::new();

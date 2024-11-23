@@ -3,7 +3,7 @@ use crate::{
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
     tools::{
-        tool_definitions::definition_generation::generate_tool_definitions,
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation},
@@ -555,7 +555,7 @@ impl Node {
     // TOOLS
     // ------------------------------------------------------------
 
-    pub async fn generate_tool_definitions(
+    pub async fn get_tool_definitions(
         bearer: String,
         db: Arc<ShinkaiDB>,
         language: CodeLanguage,
@@ -566,7 +566,7 @@ impl Node {
             return Ok(());
         }
 
-        let definitions = generate_tool_definitions(language, sqlite_manager, false).await;
+        let definitions = generate_tool_definitions(None, language, sqlite_manager, false).await;
 
         match definitions {
             Ok(definitions) => {
@@ -702,18 +702,19 @@ impl Node {
             return Ok(());
         }
 
-        let tool_definitions = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await {
-            Ok(definitions) => definitions,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate tool definitions: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let tool_definitions =
+            match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), true).await {
+                Ok(definitions) => definitions,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         let code_prompt = match generate_code_prompt(language.clone(), "".to_string(), tool_definitions).await {
             Ok(prompt) => prompt,
@@ -741,21 +742,23 @@ impl Node {
             }
         };
 
-        let library_code = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), false).await {
-            Ok(code) => code,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate tool definitions: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let library_code =
+            match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), false).await {
+                Ok(code) => code,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         let _ = res
             .send(Ok(json!({
+                "availableTools": get_all_tools(sqlite_manager.clone()).into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
                 "libraryCode": library_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
@@ -785,18 +788,19 @@ impl Node {
             return Ok(());
         }
         // Generate tool definitions
-        let tool_definitions = match generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await {
-            Ok(definitions) => definitions,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate tool definitions: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let tool_definitions =
+            match generate_tool_definitions(None, language.clone(), sqlite_manager.clone(), true).await {
+                Ok(definitions) => definitions,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         let prompt = job_message.content.clone();
 
