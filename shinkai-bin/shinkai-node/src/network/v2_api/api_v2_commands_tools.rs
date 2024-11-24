@@ -94,7 +94,7 @@ impl Node {
         }
 
         // List all tools
-        match sqlite_manager.get_all_tool_headers() {
+        match sqlite_manager.read().await.get_all_tool_headers() {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -394,13 +394,15 @@ impl Node {
             Ok(())
         }
 
-        // Check if the tool already exists
-        let sqlite_manager_read = sqlite_manager.read().await;
+        // Create a longer-lived binding for the sqlite_manager clone
+        let sqlite_manager_clone = sqlite_manager.clone();
+        let sqlite_manager_read = sqlite_manager_clone.read().await;
+        
         match sqlite_manager_read.tool_exists(&shinkai_tool.tool_router_key()) {
             Ok(true) => {
                 std::mem::drop(sqlite_manager_read);
                 // Tool already exists, update it
-                let sqlite_manager_write = sqlite_manager.write().await;
+                let mut sqlite_manager_write = sqlite_manager.write().await;
                 match sqlite_manager_write.update_tool(shinkai_tool).await {
                     Ok(tool) => {
                         std::mem::drop(sqlite_manager_write);
@@ -419,7 +421,7 @@ impl Node {
             }
             Ok(false) => {
                 // Add the tool to the LanceShinkaiDb
-                let sqlite_manager_write = sqlite_manager.write().await;
+                let mut sqlite_manager_write = sqlite_manager.write().await;
                 match sqlite_manager_write.add_tool(shinkai_tool.clone()).await {
                     Ok(tool) => {
                         std::mem::drop(sqlite_manager_write);
