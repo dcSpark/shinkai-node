@@ -33,12 +33,15 @@ pub enum SqliteManagerError {
     ToolPlaygroundNotFound(String),
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+    #[error("Lock error")]
+    LockError,
     // Add other error variants as needed
 }
 
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
+    fts_pool: Arc<Pool<SqliteConnectionManager>>,
     api_url: String,
     model_type: EmbeddingModelType,
 }
@@ -54,7 +57,11 @@ impl std::fmt::Debug for SqliteManager {
 
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
-    pub fn new<P: AsRef<Path>>(db_path: P, api_url: String, model_type: EmbeddingModelType) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(
+        db_path: P,
+        api_url: String,
+        model_type: EmbeddingModelType,
+    ) -> Result<Self, SqliteManagerError> {
         // Register the sqlite-vec extension
         unsafe {
             sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
@@ -84,14 +91,35 @@ impl SqliteManager {
              PRAGMA foreign_keys = ON;", // Enable foreign key support
         )?;
 
-        // Initialize tables
+        // Initialize tables in the persistent database
         Self::initialize_tables(&conn)?;
 
-        Ok(SqliteManager {
+        // Create a connection pool for the in-memory database
+        let fts_manager = SqliteConnectionManager::memory();
+        let fts_pool = Pool::builder()
+            .max_size(5) // Adjust the pool size as needed
+            .build(fts_manager)
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+
+        // Initialize FTS table in the in-memory database
+        {
+            let fts_conn = fts_pool.get().map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+            fts_conn.execute_batch(
+                "PRAGMA foreign_keys = ON;", // Enable foreign key support for in-memory connection
+            )?;
+            Self::initialize_fts_tables(&fts_conn)?;
+        }
+
+        // Synchronize the FTS table with the main database
+        let manager = SqliteManager {
             pool: Arc::new(pool),
+            fts_pool: Arc::new(fts_pool), // Use the in-memory connection pool
             api_url,
             model_type,
-        })
+        };
+        let _ = manager.sync_fts_table();
+
+        Ok(manager)
     }
 
     // Initializes the required tables in the SQLite database
@@ -177,6 +205,31 @@ impl SqliteManager {
             [],
         )?;
 
+        Ok(())
+    }
+
+    // New method to initialize FTS tables
+    fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::initialize_tools_fts_table(conn)?;
+        Self::initialize_prompts_fts_table(conn)?;
+        Ok(())
+    }
+
+    // Initialize the FTS table for tool names
+    fn initialize_tools_fts_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_fts USING fts5(name)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Initialize the FTS table for prompt names
+    fn initialize_prompts_fts_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_prompts_fts USING fts5(name)",
+            [],
+        )?;
         Ok(())
     }
 

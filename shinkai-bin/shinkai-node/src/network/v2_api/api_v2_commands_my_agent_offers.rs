@@ -8,7 +8,7 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
 use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::network::{
     agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node,
@@ -17,7 +17,7 @@ use crate::network::{
 impl Node {
     pub async fn v2_api_request_invoice(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         tool_key_name: String,
@@ -31,7 +31,7 @@ impl Node {
 
         // Fetch the tool from lance_db
         let network_tool = {
-            match sqlite_manager.get_tool_by_key(&tool_key_name) {
+            match sqlite_manager.read().await.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => match tool {
                     ShinkaiTool::Network(network_tool, _) => network_tool,
                     _ => {
@@ -100,7 +100,7 @@ impl Node {
 
     pub async fn v2_api_pay_invoice(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         invoice_id: String,
@@ -164,7 +164,7 @@ impl Node {
         // Step 4: Check that the data_for_tool is valid
         let tool_key_name = invoice.shinkai_offering.tool_key.clone();
         let tool = {
-            match sqlite_manager.get_tool_by_key(&tool_key_name) {
+            match sqlite_manager.read().await.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => tool,
                 Err(err) => {
                     let api_error = APIError {

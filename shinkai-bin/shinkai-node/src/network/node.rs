@@ -26,17 +26,17 @@ use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
-use reqwest::StatusCode;
-use shinkai_http_api::node_api_router::APIError;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
+use reqwest::StatusCode;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -58,7 +58,7 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -115,7 +115,7 @@ pub struct Node {
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
     // Sqlite3
-    pub sqlite_manager: Arc<SqliteManager>,
+    pub sqlite_manager: Arc<RwLock<SqliteManager>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
@@ -326,8 +326,9 @@ impl Node {
 
         // Initialize SqliteManager
         let embedding_api_url = embedding_generator.api_url.clone();
-        let sqlite_manager =
-            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
+        let sqlite_manager = Arc::new(RwLock::new(
+            SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap(),
+        ));
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(sqlite_manager.clone());

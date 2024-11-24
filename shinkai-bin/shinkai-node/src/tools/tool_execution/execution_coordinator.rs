@@ -12,7 +12,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
@@ -26,7 +26,7 @@ pub async fn execute_tool(
     bearer: String,
     node_name: ShinkaiName,
     db: Arc<ShinkaiDB>,
-    sqlite_manager: Arc<SqliteManager>,
+    sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_router_key: String,
     parameters: Map<String, Value>,
     tool_id: String,
@@ -43,6 +43,8 @@ pub async fn execute_tool(
 
     // Get the tool from the database
     let tool = sqlite_manager
+        .read()
+        .await
         .get_tool_by_key(&tool_router_key)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
@@ -108,7 +110,7 @@ pub async fn execute_code(
     code: String,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
-    sqlite_manager: Arc<SqliteManager>,
+    sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
