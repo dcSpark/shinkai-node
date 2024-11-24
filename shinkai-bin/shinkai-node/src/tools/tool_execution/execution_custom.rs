@@ -1,33 +1,21 @@
-use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use tokio::sync::Mutex;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
-use crate::tools::tool_generation::v2_create_and_send_job_message;
 use crate::tools::tool_implementation;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
-use crate::utils::environment::fetch_node_environment;
-use crate::{llm_provider::job_manager::JobManager, network::Node};
-
-use tokio::time::{sleep, Duration};
-
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params_from_iter;
 
 pub async fn execute_custom_tool(
     tool_router_key: &String,

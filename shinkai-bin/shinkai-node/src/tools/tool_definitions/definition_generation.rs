@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::tools::llm_language_support::generate_typescript::generate_typescript_definition;
+use crate::tools::llm_language_support::generate_typescript::{generate_typescript_definition, typescript_common_code};
 use crate::tools::tool_implementation;
 
 // TODO keep in sync with execution_custom.rs
@@ -66,7 +66,7 @@ pub async fn generate_tool_definitions(
     match language {
         CodeLanguage::Typescript => {
             if !only_headers {
-                output.push_str("import axios from 'npm:axios';\n\n");
+                output.push_str(&typescript_common_code());
             }
         }
         CodeLanguage::Python => {
@@ -75,11 +75,12 @@ pub async fn generate_tool_definitions(
     }
 
     for tool in all_tools {
-        let tool_playground: Option<ToolPlayground> = match sqlite_manager.read().await.get_tool_playground(&tool.tool_router_key) {
-            Ok(tool_playground) => Some(tool_playground),
-            Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
-            Err(e) => return Err(APIError::from(e.to_string())),
-        };
+        let tool_playground: Option<ToolPlayground> =
+            match sqlite_manager.read().await.get_tool_playground(&tool.tool_router_key) {
+                Ok(tool_playground) => Some(tool_playground),
+                Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
+                Err(e) => return Err(APIError::from(e.to_string())),
+            };
 
         match language {
             CodeLanguage::Typescript => {
