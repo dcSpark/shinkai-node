@@ -3,7 +3,6 @@ use std::time::Duration;
 use crate::it::utils::vecfs_test_utils::generate_message_with_payload;
 
 use super::utils::test_boilerplate::run_test_one_node_network;
-use shinkai_dsl::parser::parse_workflow;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider,
@@ -158,22 +157,11 @@ fn create_a_sheet_and_check_workflows() {
                     behavior: ColumnBehavior::Text,
                 };
 
-                let workflow_str = r#"
-                workflow WorkflowTest v0.1 {
-                    step Main {
-                        $RESULT = call opinionated_inference($INPUT)
-                    }
-                }
-                "#;
-                let workflow = parse_workflow(workflow_str).unwrap();
-
                 column_llm = ColumnDefinition {
                     id: Uuid::new_v4().to_string(),
                     name: "Column B".to_string(),
                     behavior: ColumnBehavior::LLMCall {
                         input: "=A".to_string(),
-                        workflow: Some(workflow),
-                        workflow_name: None,
                         llm_provider_name: node1_agent.clone(),
                         input_hash: None,
                     },

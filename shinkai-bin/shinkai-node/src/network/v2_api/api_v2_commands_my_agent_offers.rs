@@ -5,11 +5,10 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::{Mutex, RwLock};
-use regex::Regex;
 
 use crate::network::{
     agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node,
@@ -18,7 +17,7 @@ use crate::network::{
 impl Node {
     pub async fn v2_api_request_invoice(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         tool_key_name: String,
@@ -32,9 +31,8 @@ impl Node {
 
         // Fetch the tool from lance_db
         let network_tool = {
-            let lance_db = lance_db.read().await;
-            match lance_db.get_tool(&tool_key_name).await {
-                Ok(Some(tool)) => match tool {
+            match sqlite_manager.read().await.get_tool_by_key(&tool_key_name) {
+                Ok(tool) => match tool {
                     ShinkaiTool::Network(network_tool, _) => network_tool,
                     _ => {
                         let api_error = APIError {
@@ -46,7 +44,7 @@ impl Node {
                         return Ok(());
                     }
                 },
-                Ok(None) => {
+                Err(SqliteManagerError::ToolNotFound(_)) => {
                     let api_error = APIError {
                         code: StatusCode::NOT_FOUND.as_u16(),
                         error: "Not Found".to_string(),
@@ -102,7 +100,7 @@ impl Node {
 
     pub async fn v2_api_pay_invoice(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         invoice_id: String,
@@ -166,8 +164,7 @@ impl Node {
         // Step 4: Check that the data_for_tool is valid
         let tool_key_name = invoice.shinkai_offering.tool_key.clone();
         let tool = {
-            let lance_db = lance_db.read().await;
-            match lance_db.get_tool(&tool_key_name).await {
+            match sqlite_manager.read().await.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => tool,
                 Err(err) => {
                     let api_error = APIError {
@@ -180,18 +177,6 @@ impl Node {
                 }
             }
         };
-        if tool.is_none() {
-            let api_error = APIError {
-                code: StatusCode::NOT_FOUND.as_u16(),
-                error: "Not Found".to_string(),
-                message: format!("Tool with key name '{}' not found", tool_key_name),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Extract the tool
-        let tool = tool.unwrap();
 
         // Check if the tool has the required input_args
         let required_args = match tool {
@@ -233,7 +218,9 @@ impl Node {
                 let error_message = e.to_string();
                 let human_readable_message = if let Ok(regex) = regex::Regex::new(r#"message: \\"(.*?)\\""#) {
                     if let Some(captures) = regex.captures(&error_message) {
-                        captures.get(1).map_or(error_message.clone(), |m| m.as_str().to_string())
+                        captures
+                            .get(1)
+                            .map_or(error_message.clone(), |m| m.as_str().to_string())
                     } else {
                         error_message.clone()
                     }

@@ -1,47 +1,41 @@
-use std::any::Any;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
-use crate::llm_provider::execution::chains::dsl_chain::dsl_inference_chain::DslChain;
-use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
-use crate::workflows::sm_executor::AsyncFunction;
+use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
+use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
-use shinkai_dsl::dsl_schemas::Workflow;
-use shinkai_lancedb::lance_db::prompts::prompts_data;
-use shinkai_lancedb::lance_db::shinkai_lance_db::{LanceShinkaiDb, LATEST_ROUTER_DB_VERSION};
-use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::files::prompts_data;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::argument::ToolArgument;
+use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_tools_primitives::tools::tool_router_dep::workflows_data;
-use shinkai_tools_primitives::tools::workflow_tool::WorkflowTool;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tokio::sync::RwLock;
-
-use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 
 #[derive(Clone)]
 pub struct ToolRouter {
-    pub lance_db: Arc<RwLock<LanceShinkaiDb>>,
+    pub sqlite_manager: Arc<RwLock<SqliteManager>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -51,61 +45,50 @@ pub struct ToolCallFunctionResponse {
 }
 
 impl ToolRouter {
-    pub fn new(lance_db: Arc<RwLock<LanceShinkaiDb>>) -> Self {
-        ToolRouter { lance_db }
+    pub fn new(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Self {
+        ToolRouter { sqlite_manager }
     }
 
     pub async fn initialization(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         let is_empty;
         let has_any_js_tools;
         {
-            let lance_db = self.lance_db.read().await;
-            is_empty = lance_db.is_empty().await?;
-            has_any_js_tools = lance_db.has_any_js_tools().await?;
+            let sqlite_manager = self.sqlite_manager.read().await;
+            is_empty = sqlite_manager
+                .is_empty()
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+            has_any_js_tools = sqlite_manager
+                .has_any_js_tools()
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
         if is_empty {
-            // Add workflows
-            let _ = self.add_static_workflows(&generator).await;
-
             // Add JS tools
             let _ = self.add_js_tools().await;
+            let _ = self.add_rust_tools().await;
 
             // Add static prompts
             let _ = self.add_static_prompts(&generator).await;
-
-            // Set the latest version in the database
-            self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_js_tools().await;
+            let _ = self.add_rust_tools().await;
         }
-
-        self.lance_db.write().await.create_tool_indices_if_needed().await?;
-        self.lance_db.write().await.create_prompt_indices_if_needed().await?;
 
         Ok(())
     }
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        // Add workflows
-        let _ = self.add_static_workflows(generator).await;
-
         // Add JS tools
         let _ = self.add_js_tools().await;
-
+        let _ = self.add_rust_tools().await;
         let _ = self.add_static_prompts(generator).await;
-
-        // Set the latest version in the database
-        self.set_lancedb_version(LATEST_ROUTER_DB_VERSION).await?;
-
-        self.lance_db.write().await.create_tool_indices_if_needed().await?;
-        self.lance_db.write().await.create_prompt_indices_if_needed().await?;
 
         Ok(())
     }
 
-    pub async fn add_static_prompts(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn add_static_prompts(&self, _generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Check if ONLY_TESTING_PROMPTS is set
         if env::var("ONLY_TESTING_PROMPTS").unwrap_or_default() == "1"
             || env::var("ONLY_TESTING_PROMPTS").unwrap_or_default().to_lowercase() == "true"
@@ -122,34 +105,17 @@ impl ToolRouter {
             prompts_data::PROMPTS_JSON
         };
 
-        let json_value: Value = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
-        let json_array = json_value
-            .as_array()
-            .expect("Expected prompts JSON data to be an array");
+        // Parse the JSON string into a Vec<Value>
+        let json_array: Vec<Value> = serde_json::from_str(prompts_data).expect("Failed to parse prompts JSON data");
 
         println!("Number of static prompts to add: {}", json_array.len());
 
-        for item in json_array {
-            let custom_prompt: Result<CustomPrompt, _> = serde_json::from_value(item.clone());
-            let mut custom_prompt = match custom_prompt {
-                Ok(prompt) => prompt,
-                Err(e) => {
-                    eprintln!("Failed to parse custom_prompt: {}. JSON: {:?}", e, item);
-                    continue; // Skip this item and continue with the next one
-                }
-            };
-
-            // Generate embedding if not present
-            if custom_prompt.embedding.is_none() {
-                let embedding = generator
-                    .generate_embedding_default(&custom_prompt.text_for_embedding())
-                    .await
-                    .map_err(|e| ToolError::EmbeddingGenerationError(e.to_string()))?;
-                custom_prompt.embedding = Some(embedding.vector);
-            }
-
-            let lance_db = self.lance_db.write().await;
-            lance_db.set_prompt(custom_prompt).await?;
+        // Use the add_prompts_from_json_values method
+        {
+            let sqlite_manager = self.sqlite_manager.write().await;
+            sqlite_manager
+                .add_prompts_from_json_values(json_array)
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
         let duration = start_time.elapsed();
@@ -159,63 +125,25 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn add_static_workflows(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        // Check if ONLY_TESTING_WORKFLOWS is set
-        if env::var("ONLY_TESTING_WORKFLOWS").unwrap_or_default() == "1"
-            || env::var("ONLY_TESTING_WORKFLOWS").unwrap_or_default().to_lowercase() == "true"
-        {
-            return Ok(()); // Return right away and don't add anything
-        }
-
-        let model_type = generator.model_type();
-        let start_time = Instant::now();
-
-        if let EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-        ) = model_type
-        {
-            let data = workflows_data::WORKFLOWS_JSON;
-            let json_value: Value = serde_json::from_str(data).expect("Failed to parse JSON data");
-            let json_array = json_value.as_array().expect("Expected JSON data to be an array");
-
-            for item in json_array {
-                let shinkai_tool: Result<ShinkaiTool, _> = serde_json::from_value(item.clone());
-
-                let shinkai_tool = match shinkai_tool {
-                    Ok(tool) => {
-                        eprintln!("adding shinkai_tool (workflow): {:?}", tool.name());
-                        tool
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to parse shinkai_tool: {}. JSON: {:?}", e, item);
-                        continue; // Skip this item and continue with the next one
-                    }
-                };
-
-                let lance_db = self.lance_db.write().await;
-                lance_db.set_tool(&shinkai_tool).await?;
-            }
-        } else {
-            let workflows = WorkflowTool::static_tools();
-            println!("Number of static workflows: {}", workflows.len());
-
-            for (workflow_tool, is_enabled) in workflows {
-                let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
-                let lance_db = self.lance_db.write().await;
-                lance_db.set_tool(&shinkai_tool).await?;
-            }
-        }
-
-        let duration = start_time.elapsed();
-        if env::var("LOG_ALL").unwrap_or_default() == "1" {
-            println!("Time taken to generate static workflows: {:?}", duration);
-        }
-        Ok(())
+    pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
+        let mut sqlite_manager = self.sqlite_manager.write().await;
+        sqlite_manager
+            .add_tool(ShinkaiTool::Network(network_tool, true))
+            .await
+            .map(|_| ())
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.write().await;
-        lance_db.set_tool(&ShinkaiTool::Network(network_tool, true)).await?;
+    async fn add_rust_tools(&self) -> Result<(), ToolError> {
+        let rust_tools = get_rust_tools();
+        let mut sqlite_manager = self.sqlite_manager.write().await;
+        for tool in rust_tools {
+            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None);
+            sqlite_manager
+                .add_tool(ShinkaiTool::Rust(rust_tool, true))
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -236,17 +164,22 @@ impl ToolRouter {
             "shinkai-tool-coinbase-call-faucet",
         ];
 
-        for (name, definition) in tools {
-            if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
-                continue; // Skip tools that are not in the allowed list
-            }
-            println!("Adding JS tool: {}", name);
+        {
+            let mut sqlite_manager = self.sqlite_manager.write().await;
+            for (name, definition) in tools {
+                if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
+                    continue; // Skip tools that are not in the allowed list
+                }
+                println!("Adding JS tool: {}", name);
 
-            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-            for tool in toolkit.tools {
-                let shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
-                let lance_db = self.lance_db.write().await;
-                lance_db.set_tool(&shinkai_tool).await?;
+                let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+                for tool in toolkit.tools {
+                    let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
+                    sqlite_manager
+                        .add_tool(shinkai_tool)
+                        .await
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                }
             }
         }
 
@@ -278,14 +211,18 @@ impl ToolRouter {
                     description: "".to_string(),
                     is_required: true,
                 }],
+                output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
             };
-
-            let shinkai_tool = ShinkaiTool::Network(network_tool, true);
             {
-                let lance_db = self.lance_db.write().await;
-                lance_db.set_tool(&shinkai_tool).await?;
+                let mut sqlite_manager = self.sqlite_manager.write().await;
+                let shinkai_tool = ShinkaiTool::Network(network_tool, true);
+
+                sqlite_manager
+                    .add_tool(shinkai_tool)
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
             }
 
             // Manually create another NetworkTool
@@ -304,34 +241,70 @@ impl ToolRouter {
                     description: "The URL of the YouTube video".to_string(),
                     is_required: true,
                 }],
+                output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
             };
 
-            let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-            let lance_db = self.lance_db.write().await;
-            lance_db.set_tool(&shinkai_tool).await?;
+            {
+                let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
+                let mut sqlite_manager = self.sqlite_manager.write().await;
+                sqlite_manager
+                    .add_tool(shinkai_tool)
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            }
         }
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            let lance_db = self.lance_db.write().await;
-            if let Some(shinkai_tool) = lance_db.get_tool("local:::shinkai-tool-echo:::shinkai__echo").await? {
-                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
-                    js_tool.name = "network__echo".to_string();
-                    let modified_tool = ShinkaiTool::JS(js_tool, true);
-                    lance_db.set_tool(&modified_tool).await?;
+            let sqlite_manager_read = self.sqlite_manager.read().await;
+            match sqlite_manager_read
+                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
+            {
+                Ok(shinkai_tool) => {
+                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
+                        std::mem::drop(sqlite_manager_read);
+                        js_tool.name = "network__echo".to_string();
+                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
+                        let mut sqlite_manager = self.sqlite_manager.write().await;
+                        sqlite_manager
+                            .add_tool(modified_tool)
+                            .await
+                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                    }
+                }
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    eprintln!("Tool not found: local:::shinkai-tool-echo:::shinkai__echo");
+                    // Handle the case where the tool is not found, if necessary
+                }
+                Err(e) => {
+                    return Err(ToolError::DatabaseError(e.to_string()));
                 }
             }
 
-            if let Some(shinkai_tool) = lance_db
-                .get_tool("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
-                .await?
+            let sqlite_manager_read = self.sqlite_manager.read().await;
+            match sqlite_manager_read
+                .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
             {
-                if let ShinkaiTool::JS(mut js_tool, _) = shinkai_tool {
-                    js_tool.name = "youtube_transcript_with_timestamps".to_string();
-                    let modified_tool = ShinkaiTool::JS(js_tool, true);
-                    lance_db.set_tool(&modified_tool).await?;
+                Ok(shinkai_tool) => {
+                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
+                        std::mem::drop(sqlite_manager_read);
+                        js_tool.name = "youtube_transcript_with_timestamps".to_string();
+                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
+                        let mut sqlite_manager = self.sqlite_manager.write().await;
+                        sqlite_manager
+                            .add_tool(modified_tool)
+                            .await
+                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                    }
+                }
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    eprintln!("Tool not found: local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript");
+                    // Handle the case where the tool is not found, if necessary
+                }
+                Err(e) => {
+                    return Err(ToolError::DatabaseError(e.to_string()));
                 }
             }
         }
@@ -343,32 +316,41 @@ impl ToolRouter {
     }
 
     pub async fn get_tool_by_name(&self, name: &str) -> Result<Option<ShinkaiTool>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        lance_db
-            .get_tool(name)
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))
+        match self.sqlite_manager.read().await.get_tool_by_key(name) {
+            Ok(tool) => Ok(Some(tool)),
+            Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
+            Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+        }
     }
 
     pub async fn get_tools_by_names_with_smart_retry(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
-        let lance_db = self.lance_db.read().await;
         let mut tools = Vec::new();
 
         for name in names {
-            match lance_db.get_tool(&name).await {
-                Ok(Some(tool)) => tools.push(tool),
-                Ok(None) => {
+            let sqlite_manager_read = self.sqlite_manager.read().await;
+            match sqlite_manager_read.get_tool_by_key(&name) {
+                Ok(tool) => tools.push(tool),
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    std::mem::drop(sqlite_manager_read);
                     // Perform a vector search if the tool is not found
-                    let search_results = lance_db
-                        .vector_search_all_tools(&name, 10, true)
+                    let search_results = self
+                        .sqlite_manager
+                        .read()
+                        .await
+                        .tool_vector_search(&name, 10)
                         .await
                         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
                     // Search for the result that has the same name
                     if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
-                        match lance_db.get_tool(&matching_result.tool_router_key).await {
-                            Ok(Some(tool)) => tools.push(tool),
-                            Ok(None) => {
+                        match self
+                            .sqlite_manager
+                            .read()
+                            .await
+                            .get_tool_by_key(&matching_result.tool_router_key)
+                        {
+                            Ok(tool) => tools.push(tool),
+                            Err(SqliteManagerError::ToolNotFound(_)) => {
                                 eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
                                 continue; // Skip this tool and continue with the next one
                             }
@@ -392,24 +374,18 @@ impl ToolRouter {
         Ok(tools)
     }
 
-    pub async fn get_workflow(&self, name: &str) -> Result<Option<Workflow>, ToolError> {
-        if let Some(tool) = self.get_tool_by_name(name).await? {
-            if let ShinkaiTool::Workflow(workflow, _) = tool {
-                return Ok(Some(workflow.workflow));
-            }
-        }
-        Ok(None)
-    }
-
     pub async fn vector_search_enabled_tools(
         &self,
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db
-            .vector_search_enabled_tools(query, num_of_results, false)
-            .await?;
+        let tool_headers = self
+            .sqlite_manager
+            .read()
+            .await
+            .tool_vector_search(query, num_of_results)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         Ok(tool_headers)
     }
 
@@ -418,10 +394,13 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db
-            .vector_search_enabled_tools(query, num_of_results, true)
-            .await?;
+        let tool_headers = self
+            .sqlite_manager
+            .read()
+            .await
+            .tool_vector_search(query, num_of_results)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         Ok(tool_headers)
     }
 
@@ -430,22 +409,13 @@ impl ToolRouter {
         query: &str,
         num_of_results: u64,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db.vector_search_all_tools(query, num_of_results, false).await?;
-        Ok(tool_headers)
-    }
-
-    pub async fn workflow_search(
-        &self,
-        name_query: &str,
-        num_of_results: u64,
-    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
-        if name_query.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let lance_db = self.lance_db.read().await;
-        let tool_headers = lance_db.workflow_vector_search(name_query, num_of_results).await?;
+        let tool_headers = self
+            .sqlite_manager
+            .read()
+            .await
+            .tool_vector_search(query, num_of_results)
+            .await
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         Ok(tool_headers)
     }
 
@@ -455,66 +425,69 @@ impl ToolRouter {
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
     ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
-        let function_name = function_call.name.clone();
+        let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
-            ShinkaiTool::Rust(_, _) => {
-                if let Some(rust_function) = RustToolFunctions::get_tool_function(&function_name) {
-                    let args: Vec<Box<dyn Any + Send>> = RustTool::convert_args_from_fn_call(function_args)?;
-                    let result = rust_function(context, args)
-                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-                    let result_str = result
-                        .downcast_ref::<String>()
-                        .ok_or_else(|| {
-                            LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
-                        })?
-                        .clone();
-                    return Ok(ToolCallFunctionResponse {
-                        response: result_str,
-                        function_call,
-                    });
-                }
+            ShinkaiTool::Python(_, _) => {
+                return Ok(ToolCallFunctionResponse {
+                    response: "Deno!".to_string(),
+                    function_call,
+                });
             }
-            ShinkaiTool::JS(js_tool, _) => {
+            ShinkaiTool::Rust(_, _) => {
+                unimplemented!("Rust tool calls are not supported yet");
+                // if let Some(rust_function) = RustToolFunctions::get_tool_function(&function_name) {
+                //     let args: Vec<Box<dyn Any + Send>> = RustTool::convert_args_from_fn_call(function_args)?;
+                //     let result = rust_function(context, args)
+                //         .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                //     let result_str = result
+                //         .downcast_ref::<String>()
+                //         .ok_or_else(|| {
+                //             LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
+                //         })?
+                //         .clone();
+                //     return Ok(ToolCallFunctionResponse {
+                //         response: result_str,
+                //         function_call,
+                //     });
+                // }
+            }
+            ShinkaiTool::Deno(deno_tool, _) => {
                 let function_config = shinkai_tool.get_config_from_env();
-                let result = js_tool
-                    .run(function_args, function_config)
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env
+                    .node_storage_path
+                    .clone()
+                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+                let app_id = context.full_job().job_id().to_string();
+                let tool_id = shinkai_tool.tool_router_key().clone();
+                let header_code =
+                    generate_tool_definitions(None, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                        .await
+                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                let mut envs = HashMap::new();
+                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+                let result = deno_tool
+                    .run(
+                        HashMap::new(),
+                        header_code,
+                        function_args,
+                        function_config,
+                        node_storage_path,
+                        app_id,
+                        tool_id,
+                        false,
+                    )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
                     response: result_str,
-                    function_call,
-                });
-            }
-            ShinkaiTool::Workflow(workflow_tool, _) => {
-                let functions: HashMap<String, Box<dyn AsyncFunction>> = HashMap::new();
-
-                let mut dsl_inference =
-                    DslChain::new(Box::new(context.clone_box()), workflow_tool.workflow.clone(), functions);
-
-                let functions_used = workflow_tool
-                    .workflow
-                    .extract_function_names()
-                    .into_iter()
-                    .filter(|name| name.starts_with("shinkai__"))
-                    .collect::<Vec<_>>();
-                let tools = self.get_tools_by_names_with_smart_retry(functions_used).await?;
-
-                dsl_inference.add_inference_function();
-                dsl_inference.add_inference_no_ws_function();
-                dsl_inference.add_baml_inference_function();
-                dsl_inference.add_opinionated_inference_function();
-                dsl_inference.add_opinionated_inference_no_ws_function();
-                dsl_inference.add_multi_inference_function();
-                dsl_inference.add_all_generic_functions();
-                dsl_inference.add_tools_from_router(tools).await?;
-
-                let inference_result = dsl_inference.run_chain().await?;
-
-                return Ok(ToolCallFunctionResponse {
-                    response: inference_result.response,
                     function_call,
                 });
             }
@@ -578,7 +551,10 @@ impl ToolRouter {
                     (invoice_request, balances)
                 };
 
-                eprintln!("call_function> internal_invoice_request: {:?}", internal_invoice_request);
+                eprintln!(
+                    "call_function> internal_invoice_request: {:?}",
+                    internal_invoice_request
+                );
 
                 // TODO: Send ws_message to the frontend saying requesting invoice to X and more context
 
@@ -625,7 +601,10 @@ impl ToolRouter {
                         }
                         Err(_e) => {
                             // If invoice is not found, check for InvoiceNetworkError
-                            match context.db().get_invoice_network_error(&internal_invoice_request.unique_id.clone()) {
+                            match context
+                                .db()
+                                .get_invoice_network_error(&internal_invoice_request.unique_id.clone())
+                            {
                                 Ok(network_error) => {
                                     eprintln!("InvoiceNetworkError found: {:?}", network_error);
                                     shinkai_log(
@@ -634,7 +613,9 @@ impl ToolRouter {
                                         &format!("InvoiceNetworkError details: {:?}", network_error),
                                     );
                                     // Return the user_error_message if available, otherwise a default message
-                                    let error_message = network_error.user_error_message.unwrap_or_else(|| "Invoice network error encountered".to_string());
+                                    let error_message = network_error
+                                        .user_error_message
+                                        .unwrap_or_else(|| "Invoice network error encountered".to_string());
                                     return Err(LLMProviderError::FunctionExecutionError(error_message));
                                 }
                                 Err(_) => {
@@ -777,8 +758,6 @@ impl ToolRouter {
                 });
             }
         }
-
-        Err(LLMProviderError::FunctionNotFound(function_name))
     }
 
     /// This function is used to call a JS function directly
@@ -797,295 +776,43 @@ impl ToolRouter {
         let shinkai_tool = shinkai_tool.unwrap();
         let function_config = shinkai_tool.get_config_from_env();
 
-        let js_tool = match shinkai_tool {
-            ShinkaiTool::JS(js_tool, _) => js_tool,
+        let js_tool = match shinkai_tool.clone() {
+            ShinkaiTool::Deno(js_tool, _) => js_tool,
             _ => return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string())),
         };
 
+        let node_env = fetch_node_environment();
+        let node_storage_path = node_env
+            .node_storage_path
+            .clone()
+            .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+        let app_id = format!("external_{}", uuid::Uuid::new_v4());
+        let tool_id = shinkai_tool.tool_router_key().clone();
+        let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+            .await
+            .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+        let mut envs = HashMap::new();
+        envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+        envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+
         let result = js_tool
-            .run(function_args, function_config)
+            .run(
+                HashMap::new(),
+                header_code,
+                function_args,
+                function_config,
+                node_storage_path,
+                app_id,
+                tool_id,
+                true,
+            )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 
         return Ok(result_str);
     }
-
-    pub async fn get_current_lancedb_version(&self) -> Result<Option<String>, ToolError> {
-        let lance_db = self.lance_db.read().await;
-        lance_db
-            .get_current_version()
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))
-    }
-
-    pub async fn set_lancedb_version(&self, version: &str) -> Result<(), ToolError> {
-        let lance_db = self.lance_db.write().await;
-        lance_db
-            .set_version(version)
-            .await
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))
-    }
 }
-
-#[cfg(test)]
-mod tests {
-    use regex::Regex;
-    use serde_json::json;
-    use shinkai_baml::baml_builder::BamlConfig;
-    use shinkai_baml::baml_builder::ClientConfig;
-    use shinkai_baml::baml_builder::GeneratorConfig;
-    use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-    use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-    use tokio::task;
-
-    use super::*;
-    use std::env;
-    use std::fs::File;
-    use std::io::Write;
-
-    /// Not really a test but rather a script. I should move it to a separate file soon (tm)
-    /// It's just easier to have it here because it already has access to all the necessary dependencies
-    // #[tokio::test]
-    #[allow(dead_code)]
-    async fn test_generate_static_workflows() {
-        let generator = RemoteEmbeddingGenerator::new_default_local();
-
-        let mut workflows_json_testing = Vec::new();
-        let mut workflows_json = Vec::new();
-
-        // Generate workflows for testing
-        env::set_var("IS_TESTING", "1");
-        let workflows_testing = WorkflowTool::static_tools();
-        println!("Number of testing workflows: {}", workflows_testing.len());
-
-        for (workflow_tool, is_enabled) in workflows_testing {
-            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
-
-            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
-                embedding
-            } else {
-                generator
-                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
-                    .await
-                    .unwrap()
-            };
-
-            shinkai_tool.set_embedding(embedding);
-            workflows_json_testing.push(json!(shinkai_tool));
-        }
-
-        // Generate workflows for production
-        env::set_var("IS_TESTING", "0");
-        let workflows = WorkflowTool::static_tools();
-        println!("Number of production workflows: {}", workflows.len());
-
-        for (workflow_tool, is_enabled) in workflows {
-            let mut shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
-
-            let embedding = if let Some(embedding) = workflow_tool.get_embedding() {
-                embedding
-            } else {
-                generator
-                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
-                    .await
-                    .unwrap()
-            };
-
-            shinkai_tool.set_embedding(embedding);
-            workflows_json.push(json!(shinkai_tool));
-        }
-
-        let json_data_testing =
-            serde_json::to_string(&workflows_json_testing).expect("Failed to serialize testing workflows");
-        let json_data = serde_json::to_string(&workflows_json).expect("Failed to serialize production workflows");
-
-        // Print the current directory
-        let current_dir = env::current_dir().expect("Failed to get current directory");
-        println!("Current directory: {:?}", current_dir);
-
-        let mut file = File::create("../../tmp/workflows_data.rs").expect("Failed to create file");
-        writeln!(
-            file,
-            "pub static WORKFLOWS_JSON_TESTING: &str = r###\"{}\"###;",
-            json_data_testing
-        )
-        .expect("Failed to write to file");
-        writeln!(file, "pub static WORKFLOWS_JSON: &str = r###\"{}\"###;", json_data).expect("Failed to write to file");
-    }
-
-    /// Not really a test but rather a script. I should move it to a separate file soon (tm)
-    /// It's just easier to have it here because it already has access to all the necessary dependencies
-    // #[tokio::test]
-    #[allow(dead_code)]
-    async fn test_generate_workflow_playground_documentation() {
-        /*
-        - read all the workflows
-        - read all the JS tools
-        - read all the Rust tools
-        - (eventually) read all the Python tools
-        - read the baml file
-        - (do we need prompts here? is there a way to read them from the playground?)
-        - generate the documentation
-        - save it to a file
-         */
-
-        let mut tools_json = Vec::new();
-        let mut serialized_tools = Vec::new();
-        let mut documentation_results = Vec::new();
-
-        let workflows = WorkflowTool::static_tools();
-        println!("Number of production workflows: {}", workflows.len());
-
-        for (workflow_tool, is_enabled) in workflows {
-            let shinkai_tool = ShinkaiTool::Workflow(workflow_tool.clone(), is_enabled);
-            tools_json.push(json!(shinkai_tool));
-
-            let tool_content = serde_json::to_string(&shinkai_tool)
-                .expect("Failed to serialize workflow")
-                .trim_start_matches('{')
-                .trim_end_matches('}')
-                .to_string();
-
-            serialized_tools.push(tool_content);
-        }
-
-        // Process JS tools
-        let tools = built_in_tools::get_tools();
-        for (name, definition) in tools {
-            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-            for tool in toolkit.tools {
-                let mut mut_tool = tool.clone();
-                mut_tool.embedding = None;
-                mut_tool.js_code = "".to_string();
-                let shinkai_tool = ShinkaiTool::JS(mut_tool, true);
-
-                tools_json.push(json!(shinkai_tool));
-
-                let tool_content = serde_json::to_string(&shinkai_tool)
-                    .expect("Failed to serialize JS tool")
-                    .trim_start_matches('{')
-                    .trim_end_matches('}')
-                    .to_string();
-
-                serialized_tools.push(tool_content);
-            }
-        }
-
-        for workflow_content in serialized_tools {
-            let mut attempts = 0;
-            let max_attempts = 3;
-            let mut success = false;
-
-            while attempts < max_attempts && !success {
-                attempts += 1;
-
-                // Process the workflow using BAML
-                let generator_config = GeneratorConfig {
-                    output_type: "typescript".to_string(),
-                    output_dir: "../src/".to_string(),
-                    version: "0.55.3".to_string(),
-                    default_client_mode: "async".to_string(),
-                };
-
-                let client_config = ClientConfig {
-                    provider: "ollama".to_string(),
-                    base_url: Some("http://localhost:11434/v1".to_string()),
-                    model: "mistral-small:22b".to_string(),
-                    default_role: "user".to_string(),
-                    api_key: None,
-                };
-
-                eprintln!("\n\nworkflow_content: {:?}", workflow_content);
-
-                let baml_config = BamlConfig::builder(generator_config, client_config)
-                    .dsl_class_file(
-                        r##"
-                        class InputArg {
-                            name string @description(#"The name of the input argument"#)
-                            arg_type string @description(#"The type of the input argument"#)
-                            description string @description(#"The description of the input argument"#)
-                            is_required bool @description(#"Whether the input argument is required"#)
-                        }
-
-                        class Answer {
-                            name string @description(#"The name of the function. Don't include special characters like _ or - instead create an space between words."#)
-                            fn_name string @description(#"The name of the function. It's obtained from tool_router_key by removing the prefix e.g., \"local:::@@official.shinkai:::extensive_summary\" -> \"extensive_summary\""#)
-                            description string @description(#"The description of the function"#)
-                            tool_type string @description(#"The type of the tool E.g. Workflow, Prompt, JS Tool"#)
-                            author string @description(#"The author of the function"#)
-                            version string @description(#"The version of the function"#)
-                            input_args InputArg[] @description(#"The input arguments of the function"#)
-                            config string | null @description(#"The config of the function"#)
-                        }
-
-                        function DocumentFunction(function_string: string) -> Answer {
-                            client ShinkaiProvider
-
-                            prompt #"
-                            Parse the following json and return a structured representation of the data in the schema below. Don't include comments in the JSON.
-
-                            Resume:
-                            ---
-                            {{ function_string }}
-                            ---
-                                
-                            {{ ctx.output_format }}
-
-                            JSON:
-                            {{ _.role("user") }}
-                            "#
-                        }
-                        "##,
-                    )
-                    .input(&workflow_content)
-                    .function_name("DocumentFunction")
-                    .param_name("function_string")
-                    .build();
-
-                let env_vars = HashMap::new();
-                let runtime = baml_config.initialize_runtime(env_vars).unwrap();
-                // Spawn a blocking task to run the blocking code
-                let result = task::spawn_blocking(move || baml_config.execute(&runtime, true))
-                    .await
-                    .unwrap()
-                    .unwrap();
-
-                eprintln!("result: {:?}", result);
-
-                // Remove comments from the result string using regex
-                let re = Regex::new(r",\s*//.*").unwrap();
-                let cleaned_result = re.replace_all(&result, "");
-
-                // Deserialize the cleaned result string into a JSON object
-                match serde_json::from_str::<serde_json::Value>(&cleaned_result) {
-                    Ok(result_json) => {
-                        documentation_results.push(result_json);
-                        success = true;
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to deserialize result (attempt {}): {}", attempts, e);
-                        if attempts >= max_attempts {
-                            panic!("Failed to deserialize result after {} attempts: {}", max_attempts, e);
-                        }
-                    }
-                }
-            }
-        }
-
-        println!("Documentation results: {:?}", documentation_results);
-
-        // Serialize documentation results to JSON
-        let json_data =
-            serde_json::to_string_pretty(&documentation_results).expect("Failed to serialize documentation results");
-
-        // Print the current directory
-        let current_dir = env::current_dir().expect("Failed to get current directory");
-        println!("Current directory: {:?}", current_dir);
-
-        // Write the documentation results to a file
-        let mut file = File::create("../../tmp/documentation_results.json").expect("Failed to create file");
-        writeln!(file, "{}", json_data).expect("Failed to write to file");
-    }
-}
-

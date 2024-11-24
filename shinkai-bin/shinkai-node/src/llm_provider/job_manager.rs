@@ -1,7 +1,6 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
 use super::llm_stopper::LLMStopper;
-use crate::llm_provider::llm_provider::LLMProvider;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
@@ -24,7 +23,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
-use shinkai_sqlite::SqliteLogger;
+// use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::collections::HashSet;
@@ -80,7 +79,7 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
-        sqlite_logger: Option<Arc<SqliteLogger>>,
+        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
@@ -123,7 +122,7 @@ impl JobManager {
             callback_manager.clone(),
             Some(my_agent_payments_manager.clone()),
             Some(ext_agent_payments_manager.clone()),
-            sqlite_logger.clone(),
+            // sqlite_logger.clone(),
             llm_stopper.clone(),
             |job,
              db,
@@ -138,7 +137,7 @@ impl JobManager {
              job_queue_manager,
              my_agent_payments_manager,
              ext_agent_payments_manager,
-             sqlite_logger,
+             //  sqlite_logger,
              llm_stopper| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
@@ -154,7 +153,7 @@ impl JobManager {
                     job_queue_manager,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
-                    sqlite_logger.clone(),
+                    // sqlite_logger.clone(),
                     llm_stopper.clone(),
                 ))
             },
@@ -188,7 +187,7 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        sqlite_logger: Option<Arc<SqliteLogger>>,
+        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
@@ -204,7 +203,7 @@ impl JobManager {
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
                 Option<Arc<Mutex<MyAgentOfferingsManager>>>,
                 Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-                Option<Arc<SqliteLogger>>,
+                // Option<Arc<SqliteLogger>>,
                 Arc<LLMStopper>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
@@ -217,7 +216,7 @@ impl JobManager {
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
-        let sqlite_logger = sqlite_logger.clone();
+        // let sqlite_logger = sqlite_logger.clone();
         let llm_stopper = Arc::clone(&llm_stopper);
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
@@ -286,7 +285,7 @@ impl JobManager {
                         let callback_manager = callback_manager.clone();
                         let my_agent_payments_manager = my_agent_payments_manager.clone();
                         let ext_agent_payments_manager = ext_agent_payments_manager.clone();
-                        let sqlite_logger = sqlite_logger.clone();
+                        // let sqlite_logger = sqlite_logger.clone();
                         let llm_stopper = Arc::clone(&llm_stopper);
 
                         tokio::spawn(async move {
@@ -316,7 +315,7 @@ impl JobManager {
                                             job_queue_manager.clone(),
                                             my_agent_payments_manager,
                                             ext_agent_payments_manager,
-                                            sqlite_logger,
+                                            // sqlite_logger,
                                             llm_stopper,
                                         )
                                         .await;
@@ -513,7 +512,8 @@ impl JobManager {
         std::mem::drop(db_arc);
 
         let message_hash_id = message.calculate_message_hash_for_pagination();
-        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id)).await?;
+        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id))
+            .await?;
 
         Ok(job_message.job_id.clone().to_string())
     }

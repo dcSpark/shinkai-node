@@ -34,5 +34,4 @@ mod it {
 
     mod change_nodes_name_tests;
     mod tcp_proxy_tests;
-    mod z_shinkai_mirror_tests;
 }

@@ -6,6 +6,8 @@ use crate::tools::error::ToolError;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
 
+use super::argument::ToolOutputArg;
+
 #[derive(Debug)]
 pub enum RustToolError {
     InvalidFunctionArguments(String),
@@ -28,6 +30,7 @@ pub struct RustTool {
     pub name: String,
     pub description: String,
     pub input_args: Vec<ToolArgument>,
+    pub output_arg: ToolOutputArg,
     pub tool_embedding: Option<Embedding>,
 }
 
@@ -36,12 +39,14 @@ impl RustTool {
         name: String,
         description: String,
         input_args: Vec<ToolArgument>,
+        output_arg: ToolOutputArg,
         tool_embedding: Option<Embedding>,
     ) -> Self {
         Self {
             name: VRPath::clean_string(&name),
             description,
             input_args,
+            output_arg,
             tool_embedding,
         }
     }
@@ -96,6 +101,7 @@ impl RustTool {
                     false,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -122,6 +128,7 @@ impl RustTool {
                     true,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -134,6 +141,7 @@ impl RustTool {
                 "The URL of the webpage to download".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -146,6 +154,7 @@ impl RustTool {
                 "The HTML content to convert".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -158,6 +167,7 @@ impl RustTool {
                 "The comma-separated string to convert".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -184,6 +194,7 @@ impl RustTool {
                     true,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -209,6 +220,7 @@ impl RustTool {
                 "The error message to return. Useful for debugging in workflows.".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -221,6 +233,7 @@ impl RustTool {
                 "The file extension to count (optional)".to_string(),
                 false,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -233,6 +246,7 @@ impl RustTool {
                 "The filename to retrieve".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -259,6 +273,7 @@ impl RustTool {
                     true,
                 ),
             ],
+            ToolOutputArg::empty(),
             None,
         ));
 
@@ -271,6 +286,7 @@ impl RustTool {
                 "The map function".to_string(),
                 true,
             )],
+            ToolOutputArg::empty(),
             None,
         ));
 

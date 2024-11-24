@@ -15,7 +15,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::Node;
-use shinkai_tools_primitives::tools::argument::ToolArgument;
+use shinkai_tools_primitives::tools::argument::{ToolArgument, ToolOutputArg};
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_vector_resources::utils::hash_string;
@@ -330,6 +330,7 @@ fn micropayment_flow_test() {
                     is_required: true,
                     name: "message".to_string(),
                 }],
+                output_arg: ToolOutputArg::empty(),
                 author: "Shinkai".to_string(),
                 version: "v0.1".to_string(),
                 enabled: true,
@@ -371,7 +372,7 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Failed to retrieve shinkai tool: {:?}", e),
                 };
 
-                if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(ref mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
                 }
 
@@ -494,6 +495,7 @@ fn micropayment_flow_test() {
                     activated: shinkai_tool_header.enabled,
                     config: shinkai_tool_header.config.clone().unwrap_or_default(),
                     input_args: vec![],
+                    output_arg: ToolOutputArg::empty(),
                     embedding: None,
                     restrictions: None,
                 };

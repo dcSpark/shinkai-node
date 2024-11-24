@@ -1,5 +1,4 @@
 use ethers::{core::k256::elliptic_curve, utils::hex::FromHexError};
-use shinkai_lancedb::lance_db::shinkai_lancedb_error::ShinkaiLanceDBError;
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
@@ -35,7 +34,7 @@ pub enum WalletError {
     FunctionExecutionError(String),
     FunctionNotFound(String),
     ToolNotFound(String),
-    LanceDBError(String),
+    SqliteManagerError(String),
     ParsingError(String),
     MissingToAddress,
     InsufficientBalance(String),
@@ -52,15 +51,19 @@ impl fmt::Display for WalletError {
             WalletError::HexError(e) => write!(f, "HexError: {}", e),
             WalletError::ProviderError(e) => write!(f, "ProviderError: {}", e),
             WalletError::DetailedJsonRpcError { code, message, data } => {
-                write!(f, "JSON-RPC error: code {}, message: {}, data: {:?}", code, message, data)
-            },
+                write!(
+                    f,
+                    "JSON-RPC error: code {}, message: {}, data: {:?}",
+                    code, message, data
+                )
+            }
             WalletError::NetworkMismatch => write!(f, "NetworkMismatch"),
             WalletError::InvalidAmount(e) => write!(f, "InvalidAmount: {}", e),
             WalletError::InvalidAddress(e) => write!(f, "InvalidAddress: {}", e),
             WalletError::UnsupportedAsset(e) => write!(f, "UnsupportedAsset: {}", e),
             WalletError::UnsupportedAssetForNetwork(e, n) => {
                 write!(f, "UnsupportedAssetForNetwork: {} for network {}", e, n)
-            },
+            }
             WalletError::MissingContractAddress(e) => write!(f, "MissingContractAddress: {}", e),
             WalletError::AbiError(e) => write!(f, "AbiError: {}", e),
             WalletError::AbiEncodingError(e) => write!(f, "AbiEncodingError: {}", e),
@@ -76,7 +79,7 @@ impl fmt::Display for WalletError {
             WalletError::FunctionExecutionError(e) => write!(f, "FunctionExecutionError: {}", e),
             WalletError::FunctionNotFound(e) => write!(f, "FunctionNotFound: {}", e),
             WalletError::ToolNotFound(e) => write!(f, "ToolNotFound: {}", e),
-            WalletError::LanceDBError(e) => write!(f, "LanceDBError: {}", e),
+            WalletError::SqliteManagerError(e) => write!(f, "SqliteManagerError: {}", e),
             WalletError::ParsingError(e) => write!(f, "ParsingError: {}", e),
             WalletError::MissingToAddress => write!(f, "MissingToAddress"),
             WalletError::InsufficientBalance(e) => write!(f, "InsufficientBalance: {}", e),
@@ -113,7 +116,7 @@ impl Error for WalletError {
             WalletError::FunctionExecutionError(_) => None,
             WalletError::FunctionNotFound(_) => None,
             WalletError::ToolNotFound(_) => None,
-            WalletError::LanceDBError(_) => None,
+            WalletError::SqliteManagerError(_) => None,
             WalletError::ParsingError(_) => None,
             WalletError::MissingToAddress => None,
             WalletError::InsufficientBalance(_) => None,
@@ -140,45 +143,31 @@ impl From<FromHexError> for WalletError {
     }
 }
 
-impl From<ShinkaiLanceDBError> for WalletError {
-    fn from(error: ShinkaiLanceDBError) -> Self {
-        WalletError::FunctionExecutionError(error.to_string())
-    }
-}
-
 impl From<ethers::providers::ProviderError> for WalletError {
     fn from(error: ethers::providers::ProviderError) -> Self {
         match error {
             ethers::providers::ProviderError::JsonRpcClientError(e) => {
                 WalletError::ProviderError(format!("JsonRpcClientError: {:?}", e))
-            },
-            ethers::providers::ProviderError::EnsError(e) => {
-                WalletError::ProviderError(format!("EnsError: {}", e))
-            },
+            }
+            ethers::providers::ProviderError::EnsError(e) => WalletError::ProviderError(format!("EnsError: {}", e)),
             ethers::providers::ProviderError::EnsNotOwned(e) => {
                 WalletError::ProviderError(format!("EnsNotOwned: {}", e))
-            },
-            ethers::providers::ProviderError::SerdeJson(e) => {
-                WalletError::ProviderError(format!("SerdeJson: {}", e))
-            },
-            ethers::providers::ProviderError::HexError(e) => {
-                WalletError::ProviderError(format!("HexError: {}", e))
-            },
-            ethers::providers::ProviderError::HTTPError(e) => {
-                WalletError::ProviderError(format!("HTTPError: {}", e))
-            },
+            }
+            ethers::providers::ProviderError::SerdeJson(e) => WalletError::ProviderError(format!("SerdeJson: {}", e)),
+            ethers::providers::ProviderError::HexError(e) => WalletError::ProviderError(format!("HexError: {}", e)),
+            ethers::providers::ProviderError::HTTPError(e) => WalletError::ProviderError(format!("HTTPError: {}", e)),
             ethers::providers::ProviderError::CustomError(e) => {
                 WalletError::ProviderError(format!("CustomError: {}", e))
-            },
+            }
             ethers::providers::ProviderError::UnsupportedRPC => {
                 WalletError::ProviderError("UnsupportedRPC".to_string())
-            },
+            }
             ethers::providers::ProviderError::UnsupportedNodeClient => {
                 WalletError::ProviderError("UnsupportedNodeClient".to_string())
-            },
+            }
             ethers::providers::ProviderError::SignerUnavailable => {
                 WalletError::ProviderError("SignerUnavailable".to_string())
-            },
+            }
         }
     }
 }

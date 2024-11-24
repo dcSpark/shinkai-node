@@ -1,6 +1,5 @@
 mod tests {
-    use serde_json::json;
-    use serde_json::to_value;
+
     use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
     use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
     use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
@@ -99,7 +98,7 @@ mod tests {
     fn test_serde_encode_decode_message_with_decode_message_result() {
         // Initialize the message
         let (my_encryption_secret_key, my_encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
-        let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
+        let (my_signature_secret_key, _my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
         let receiver_public_key = my_encryption_public_key.clone();
 
         let message = ShinkaiMessageBuilder::new(

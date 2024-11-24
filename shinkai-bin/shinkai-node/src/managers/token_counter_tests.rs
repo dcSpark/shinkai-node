@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::schemas::{llm_message::LlmMessage, prompts::Prompt, subprompts::{SubPrompt, SubPromptType}};
+    use shinkai_message_primitives::schemas::{
+        prompts::Prompt,
+        subprompts::{SubPrompt, SubPromptType},
+    };
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
@@ -674,7 +677,11 @@ D. That Italy inherit the Latins' name and language and not the Trojans'
 The letter of the correct answer is"##;
 
         let sub_prompts = vec![
-            SubPrompt::Content(SubPromptType::System, "You are a very helpful assistant".to_string(), 98),
+            SubPrompt::Content(
+                SubPromptType::System,
+                "You are a very helpful assistant".to_string(),
+                98,
+            ),
             SubPrompt::Content(SubPromptType::User, text.to_string(), 97),
         ];
 

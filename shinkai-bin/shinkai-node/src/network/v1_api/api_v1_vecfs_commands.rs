@@ -28,7 +28,7 @@ use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
     source::DistributionInfo,
-    vector_resource::{VRPack, VRPath, VectorSearchMode},
+    vector_resource::{VRPack, VRPath},
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1169,7 +1169,8 @@ impl Node {
         }
 
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais = ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None, db.clone()).await?;
+        let processed_vrkais =
+            ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None, db.clone()).await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();

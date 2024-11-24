@@ -1,8 +1,7 @@
 use anyhow::Result;
-use baml_runtime::{runtime_interface::ExperimentalTracingInterface, BamlRuntime, InternalRuntimeInterface, RenderCurlSettings};
+use baml_runtime::{BamlRuntime, InternalRuntimeInterface};
 use baml_types::BamlValue;
 use indexmap::IndexMap;
-use log::info;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -200,13 +199,15 @@ impl BamlConfig {
             }
             serde_json::Value::Object(obj) => {
                 if let Some(class_name) = obj.clone().get("class_name").and_then(|v| v.as_str()) {
-                    let class_fields = obj.into_iter()
+                    let class_fields = obj
+                        .into_iter()
                         .filter(|(k, _)| k != "class_name")
                         .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
                         .collect();
                     BamlValue::Class(class_name.to_string(), class_fields)
                 } else {
-                    let baml_map = obj.into_iter()
+                    let baml_map = obj
+                        .into_iter()
                         .map(|(k, v)| (k, BamlConfig::from_serde_value(v)))
                         .collect();
                     BamlValue::Map(baml_map)
@@ -220,12 +221,12 @@ impl BamlConfig {
         let re_backslash = Regex::new(r#"\\\\"#).unwrap(); // Matches \\
         let re_newline = Regex::new(r#"\\n"#).unwrap(); // Matches \n
         let re_tab = Regex::new(r#"\\t"#).unwrap(); // Matches \t
-    
+
         let intermediate = re_backslash_quote.replace_all(json_str, "\"");
         let intermediate = re_backslash.replace_all(&intermediate, "\\");
         let intermediate = re_newline.replace_all(&intermediate, "\n");
         let intermediate = re_tab.replace_all(&intermediate, "\t");
-    
+
         intermediate.to_string()
     }
 

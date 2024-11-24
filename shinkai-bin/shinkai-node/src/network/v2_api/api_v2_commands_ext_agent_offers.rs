@@ -5,8 +5,8 @@ use reqwest::StatusCode;
 
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use tokio::sync::RwLock;
 
@@ -87,7 +87,7 @@ impl Node {
 
     pub async fn v2_api_get_all_tool_offering(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -114,14 +114,14 @@ impl Node {
         let mut detailed_tool_headers = Vec::new();
         for tool_offering in tool_offerings {
             let tool_key = &tool_offering.tool_key;
-            match lance_db.read().await.get_tool(tool_key).await {
-                Ok(Some(tool)) => {
+            match sqlite_manager.read().await.get_tool_by_key(tool_key) {
+                Ok(tool) => {
                     let mut tool_header = tool.to_header();
                     tool_header.sanitize_config();
                     tool_header.tool_offering = Some(tool_offering.clone());
                     detailed_tool_headers.push(tool_header);
                 }
-                Ok(None) => {
+                Err(SqliteManagerError::ToolNotFound(_)) => {
                     let api_error = APIError {
                         code: StatusCode::NOT_FOUND.as_u16(),
                         error: "Not Found".to_string(),
@@ -149,7 +149,7 @@ impl Node {
 
     pub async fn v2_api_set_tool_offering(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -160,7 +160,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match lance_db.read().await.tool_exists(&tool_offering.tool_key).await {
+        match sqlite_manager.read().await.tool_exists(&tool_offering.tool_key) {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {

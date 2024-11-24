@@ -1,38 +1,48 @@
 [package]
 name = "shinkai_vector_resources"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
 lazy_static = "1.5.0"
-env_logger = "0.9"
-anyhow = "1.0"
-regex = "1"
+regex = { workspace = true }
 csv = "1.1.6"
-serde_json = "1.0.117"
-byteorder = "1.4.3"
+serde_json = { workspace = true }
 ordered-float = "3.7.0"
-blake3 = "1.2.0"
+blake3 = { workspace = true }
 keyphrases = "0.3.2"
 async-trait = "0.1.74"
 scraper = "0.19.0"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.5"
-rand = "0.8.4"
-hex = "=0.4.3"
-textcode = "0.2.2"
+chrono = { workspace = true, features = ["serde"] }
+rand = { workspace = true }
+hex = { workspace = true }
 lz4_flex = "0.11.0"
-base64 = "0.22.0"
-futures = "0.3.30"
+base64 = { workspace = true }
+futures = { workspace = true }
 urlencoding = "1.1.1"
 docx-rust = "0.1.8"
 shinkai_ocr = { path = "../shinkai-ocr", optional = true }
 utoipa = "4.2.3"
 num-traits = "0.2"
 umya-spreadsheet = { version = "2.1.1", optional = true }
+comrak = { version = "0.22.0", default-features = true, optional = true }
+reqwest = { workspace = true, features = [
+    "json",
+    "tokio-native-tls",
+    "blocking",
+    "multipart",
+    "default-tls",
+] }
+serde = { workspace = true, features = ["derive"] }
 
 [build-dependencies]
-reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
+reqwest = { workspace = true, features = [
+    "json",
+    "tokio-native-tls",
+    "blocking",
+    "multipart",
+] }
 
 [features]
 default = ["desktop-only"]
@@ -41,22 +51,8 @@ static-pdf-parser = ["shinkai_ocr/static"]
 
 wasm-http = []
 
-[dependencies.comrak]
-version = "0.22.0"
-default-features = true
-optional = true
-
-[dependencies.reqwest]
-version = "0.11"
-default-features = false
-features = ["json", "tokio-native-tls", "blocking", "multipart", "default-tls"]
-
-[dependencies.serde]
-version = "1.0.188"
-features = ["derive"]
-
 [dev-dependencies]
-tokio = { version = "1.36", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 [[test]]
 name = "pdf_parsing_tests"

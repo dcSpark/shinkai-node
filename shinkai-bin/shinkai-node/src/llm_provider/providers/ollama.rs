@@ -27,6 +27,9 @@ use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use std::fs;
+use std::path::Path;
+use chrono::Utc;
 
 pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -131,12 +134,27 @@ impl LLMService for Ollama {
 
             match serde_json::to_string_pretty(&payload_log) {
                 Ok(pretty_json) => {
+                    // Log the JSON
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Info,
                         format!("Messages JSON: {}", pretty_json).as_str(),
                     );
                     eprintln!("Messages JSON: {}", pretty_json);
+
+                    // Create the tmp directory if it doesn't exist
+                    let tmp_dir = Path::new("tmp");
+                    if !tmp_dir.exists() {
+                        fs::create_dir_all(tmp_dir).expect("Failed to create tmp directory");
+                    }
+
+                    // Generate the file name
+                    let timestamp = Utc::now().to_rfc3339();
+                    let file_name = format!("{}_{}.json", timestamp, &pretty_json[0..20.min(pretty_json.len())]);
+                    let file_path = tmp_dir.join(file_name);
+
+                    // Write the pretty_json to the file
+                    fs::write(file_path, pretty_json).expect("Failed to write JSON to file");
                 }
                 Err(e) => shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -574,5 +592,6 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
     // Add options to payload if not empty
     if !options.is_empty() {
         payload["options"] = serde_json::Value::Object(options);
+        eprintln!("options: {:?}", payload);
     }
 }

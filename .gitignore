@@ -79,17 +79,15 @@ localhost_proxied.key
 run_local_ai.sh
 subscriber.key
 shinkai-bin/shinkai-node/lance_db_tests
-lancedb_storage_debug_my_local_ai
 storage_debug_serve_mode
-shinkai-bin/shinkai-node/lancedb_tests
 shinkai-tools-runner-resources
+shinkai-tools-runner-execution-storage
 shinkai-bin/shinkai-node/shinkai_db_tests
 shinkai-tools-runner-resources
 storage_debug_agent_provider
 agent_provider
 image_0.txt
 storage_debug_0_7_33.zip
-shinkai-libs/shinkai-lancedb/lance_db_tests
 example.db
 shinkai-bin/shinkai-node/ocrs/text-detection.rten
 shinkai-bin/shinkai-node/ocrs/text-recognition.rten
@@ -97,3 +95,5 @@ logs.json
 example.db-shm
 example.db-wal
 libpdfium.dylib
+ocrs
+.DS_Store

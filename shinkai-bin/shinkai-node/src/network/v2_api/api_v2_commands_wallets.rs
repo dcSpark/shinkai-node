@@ -5,12 +5,12 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_lancedb::lance_db::shinkai_lance_db::LanceShinkaiDb;
 use shinkai_message_primitives::schemas::{
     coinbase_mpc_config::CoinbaseMPCWalletConfig,
     wallet_complementary::{WalletRole, WalletSource},
     wallet_mixed::{Network, NetworkIdentifier},
 };
+use shinkai_sqlite::SqliteManager;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::{
@@ -192,7 +192,7 @@ impl Node {
 
     pub async fn v2_api_restore_coinbase_mpc_wallet(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -215,14 +215,13 @@ impl Node {
                 ..cfg
             }
         });
-        
+
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to restore Coinbase MPC wallet
         let network = Network::new(network_identifier);
-        let lance_db_weak = Arc::downgrade(&lance_db);
         let restored_wallet_manager =
-            WalletManager::recover_coinbase_mpc_wallet_manager(network, lance_db_weak, config, wallet_id).await;
+            WalletManager::recover_coinbase_mpc_wallet_manager(network, sqlite_manager, config, wallet_id).await;
 
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -292,7 +291,7 @@ impl Node {
 
     pub async fn v2_api_create_coinbase_mpc_wallet(
         db: Arc<ShinkaiDB>,
-        lance_db: Arc<RwLock<LanceShinkaiDb>>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -309,9 +308,8 @@ impl Node {
 
         // Logic to create Coinbase MPC wallet
         let network = Network::new(network_identifier);
-        let lance_db_weak = Arc::downgrade(&lance_db);
         let created_wallet_manager =
-            WalletManager::create_coinbase_mpc_wallet_manager(network, lance_db_weak, config).await;
+            WalletManager::create_coinbase_mpc_wallet_manager(network, sqlite_manager, config).await;
 
         match created_wallet_manager {
             Ok(new_wallet_manager) => {

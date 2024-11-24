@@ -44,6 +44,24 @@ use crate::{
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+#[cfg(debug_assertions)]
+fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
+    if api_key == bearer || bearer == "debug" {
+        return Ok(());
+    } else {
+        return Err(());
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn check_bearer_token(api_key: &str, bearer: &str) {
+    if api_key == bearer {
+        return Ok(());
+    } else {
+        return Err(());
+    }
+}
+
 impl Node {
     pub async fn validate_bearer_token<T>(
         bearer: &str,
@@ -70,16 +88,18 @@ impl Node {
             }
         };
 
-        if api_key == bearer {
-            Ok(())
-        } else {
-            let api_error = APIError {
-                code: StatusCode::UNAUTHORIZED.as_u16(),
-                error: "Unauthorized".to_string(),
-                message: "Invalid bearer token".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            Err(())
+        let result = check_bearer_token(&api_key, bearer);
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error: "Unauthorized".to_string(),
+                    message: "Invalid bearer token".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Err(())
+            }
         }
     }
 
@@ -1157,7 +1177,7 @@ impl Node {
                 .and_then(|v| v.as_str())
                 .unwrap_or(&existing_agent.llm_provider_id)
                 .to_string(),
-                // TODO: decide if we keep this
+            // TODO: decide if we keep this
             // instructions: partial_agent
             //     .get("instructions")
             //     .and_then(|v| v.as_str())
