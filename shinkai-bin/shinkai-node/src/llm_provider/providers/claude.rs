@@ -6,13 +6,13 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_db::schemas::ws_types::ToolMetadata;
-use shinkai_db::schemas::ws_types::ToolStatus;
-use shinkai_db::schemas::ws_types::ToolStatusType;
-use shinkai_db::schemas::ws_types::WSMessageType;
-use shinkai_db::schemas::ws_types::WSMetadata;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use shinkai_db::schemas::ws_types::WidgetMetadata;
+use shinkai_message_primitives::schemas::ws_types::ToolMetadata;
+use shinkai_message_primitives::schemas::ws_types::ToolStatus;
+use shinkai_message_primitives::schemas::ws_types::ToolStatusType;
+use shinkai_message_primitives::schemas::ws_types::WSMessageType;
+use shinkai_message_primitives::schemas::ws_types::WSMetadata;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WidgetMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::{
     schemas::{

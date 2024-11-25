@@ -9,10 +9,10 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{

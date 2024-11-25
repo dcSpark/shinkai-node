@@ -13,7 +13,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentity};
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;

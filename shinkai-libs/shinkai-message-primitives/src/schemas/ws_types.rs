@@ -3,9 +3,11 @@ use std::{collections::VecDeque, fmt, sync::Arc};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::{schemas::shinkai_tool_offering::UsageType, shinkai_message::shinkai_message_schemas::WSTopic};
-use shinkai_sheet::sheet::CellUpdateInfo;
 use tokio::sync::Mutex;
+
+use crate::shinkai_message::shinkai_message_schemas::WSTopic;
+
+use super::{sheet::CellUpdateInfo, shinkai_tool_offering::UsageType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageType {

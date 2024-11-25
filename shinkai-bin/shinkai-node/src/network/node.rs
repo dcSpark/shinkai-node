@@ -35,7 +35,7 @@ use reqwest::StatusCode;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::db_retry::RetryMessage;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;

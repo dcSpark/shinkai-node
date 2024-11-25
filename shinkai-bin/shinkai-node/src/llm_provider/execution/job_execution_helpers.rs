@@ -5,7 +5,7 @@ use crate::llm_provider::llm_provider::LLMProvider;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::job_config::JobConfig;

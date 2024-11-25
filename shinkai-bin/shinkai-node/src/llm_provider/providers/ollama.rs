@@ -8,28 +8,28 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Prom
 use super::super::error::LLMProviderError;
 use super::LLMService;
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_db::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
-};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
 use std::error::Error;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use std::fs;
-use std::path::Path;
-use chrono::Utc;
 
 pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -494,7 +494,12 @@ async fn handle_non_streaming_response(
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &LLMProviderInterface, used_tokens: usize) {
+fn add_options_to_payload(
+    payload: &mut serde_json::Value,
+    config: Option<&JobConfig>,
+    model: &LLMProviderInterface,
+    used_tokens: usize,
+) {
     eprintln!("config: {:?}", config);
     let mut options = serde_json::Map::new();
 

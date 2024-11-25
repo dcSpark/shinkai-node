@@ -10,7 +10,8 @@ use crate::{
     },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
+use shinkai_db::db::ShinkaiDB;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
         invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError},

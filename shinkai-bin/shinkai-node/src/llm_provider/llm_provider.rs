@@ -7,12 +7,12 @@ use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,

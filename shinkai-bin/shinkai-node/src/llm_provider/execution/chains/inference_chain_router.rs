@@ -11,7 +11,7 @@ use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

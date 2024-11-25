@@ -13,7 +13,7 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;

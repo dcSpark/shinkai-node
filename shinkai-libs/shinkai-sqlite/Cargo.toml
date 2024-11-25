@@ -6,6 +6,7 @@ authors = { workspace = true }
 
 [dependencies]
 serde_json = { workspace = true }
+chrono = { workspace = true }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 sqlite-vec = "0.1.3"
 tokio = { workspace = true, features = ["full"] }

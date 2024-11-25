@@ -660,7 +660,8 @@ mod tests {
     use crate::llm_provider::job_manager::JobManagerTrait;
     use async_trait::async_trait;
     use futures::Future;
-    use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
+    use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+    use shinkai_db::db::ShinkaiDB;
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},

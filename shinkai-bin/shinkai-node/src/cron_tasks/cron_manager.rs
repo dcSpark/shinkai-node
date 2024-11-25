@@ -30,10 +30,8 @@ use std::{
 use chrono::{Timelike, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::{
-    db::{db_errors::ShinkaiDBError, ShinkaiDB},
-    schemas::ws_types::WSUpdateHandler,
-};
+use shinkai_db::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
         cron_task::CronTask,

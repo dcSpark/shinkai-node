@@ -26,3 +26,4 @@ pub mod smart_inbox;
 pub mod subprompts;
 pub mod wallet_complementary;
 pub mod wallet_mixed;
+pub mod ws_types;

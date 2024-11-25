@@ -18,6 +18,7 @@ pub mod identity_registration;
 pub mod inbox_manager;
 pub mod invoice_manager;
 pub mod invoice_request_manager;
+pub mod job_manager;
 pub mod llm_provider_manager;
 pub mod my_subscriptions_manager;
 pub mod network_notifications_manager;
@@ -298,6 +299,7 @@ impl SqliteManager {
                 inbox_name TEXT NOT NULL,
                 shinkai_message BLOB NOT NULL,
                 parent_message_id TEXT,
+                created_at TEXT NOT NULL,
             );",
             [],
         )?;

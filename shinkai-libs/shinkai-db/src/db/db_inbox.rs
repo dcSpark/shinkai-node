@@ -12,6 +12,8 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::smart_inbox::LLMProviderSubset;
 use shinkai_message_primitives::schemas::smart_inbox::ProviderType;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
+use shinkai_message_primitives::schemas::ws_types::WSMessageType;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
@@ -19,9 +21,6 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use tokio::sync::Mutex;
-
-use crate::schemas::ws_types::WSMessageType;
-use crate::schemas::ws_types::WSUpdateHandler;
 
 use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 

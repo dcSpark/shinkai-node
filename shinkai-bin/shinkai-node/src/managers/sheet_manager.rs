@@ -2,11 +2,11 @@ use crate::llm_provider::job_manager::JobManagerTrait;
 use async_channel::{Receiver, Sender};
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::{WSMessageType, WSUpdateHandler};
 use shinkai_message_primitives::schemas::sheet::{
     APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, WorkflowSheetJobData,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSUpdateHandler};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
@@ -257,7 +257,7 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-            // TODO: I'm not sure about this one
+                // TODO: I'm not sure about this one
                 .queue_job_message(first_job_message, user_profile, "")
                 .await
                 .map_err(|e| e.to_string())?;

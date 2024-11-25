@@ -71,7 +71,6 @@ fn generate_message_with_text(
 
 #[tokio::test]
 async fn test_insert_single_message_and_retrieve() {
-    
     setup();
 
     let node_identity_name = "@@node.shinkai";
@@ -93,7 +92,10 @@ async fn test_insert_single_message_and_retrieve() {
         "2023-07-03T10:00:00.000Z".to_string(),
     );
 
-    shinkai_db.unsafe_insert_inbox_message(&message, None, None).await.unwrap();
+    shinkai_db
+        .unsafe_insert_inbox_message(&message, None, None)
+        .await
+        .unwrap();
 
     // Retrieve the message and check
     let inbox_name = InboxName::from_message(&message).unwrap();
@@ -114,7 +116,6 @@ async fn test_insert_single_message_and_retrieve() {
 
 #[tokio::test]
 async fn test_insert_two_messages_and_check_order_and_parent() {
-    
     setup();
 
     let node_identity_name = "@@node.shinkai";
@@ -136,7 +137,10 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
         "2023-07-02T20:53:34.812Z".to_string(),
     );
 
-    shinkai_db.unsafe_insert_inbox_message(&message1, None, None).await.unwrap();
+    shinkai_db
+        .unsafe_insert_inbox_message(&message1, None, None)
+        .await
+        .unwrap();
 
     // Insert second message with first message as parent
     let message2 = generate_message_with_text(
@@ -221,7 +225,6 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
 
 #[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure() {
-    
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -341,7 +344,6 @@ async fn test_insert_messages_with_simple_tree_structure() {
 
 #[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure_and_root() {
-    
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -542,7 +544,6 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
 #[tokio::test]
 async fn test_insert_messages_with_tree_structure() {
-    
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -774,7 +775,6 @@ async fn test_insert_messages_with_tree_structure() {
 
 #[tokio::test]
 async fn db_inbox() {
-    
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -798,7 +798,9 @@ async fn db_inbox() {
     );
 
     let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
-    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone(), None, None).await;
+    let _ = shinkai_db
+        .unsafe_insert_inbox_message(&message.clone(), None, None)
+        .await;
     println!("Inserted message {:?}", message.encode_message());
     let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
     println!("Decoded message {:?}", result);
@@ -879,22 +881,34 @@ async fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:55:34.814Z".to_string(),
     );
-    match shinkai_db.unsafe_insert_inbox_message(&message2.clone(), None, None).await {
+    match shinkai_db
+        .unsafe_insert_inbox_message(&message2.clone(), None, None)
+        .await
+    {
         Ok(_) => println!("message2 inserted successfully"),
         Err(e) => println!("Failed to insert message2: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message3.clone(), None, None).await {
+    match shinkai_db
+        .unsafe_insert_inbox_message(&message3.clone(), None, None)
+        .await
+    {
         Ok(_) => println!("message3 inserted successfully"),
         Err(e) => println!("Failed to insert message3: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message4.clone(), None, None).await {
+    match shinkai_db
+        .unsafe_insert_inbox_message(&message4.clone(), None, None)
+        .await
+    {
         Ok(_) => println!("message4 inserted successfully"),
         Err(e) => println!("Failed to insert message4: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message5.clone(), None, None).await {
+    match shinkai_db
+        .unsafe_insert_inbox_message(&message5.clone(), None, None)
+        .await
+    {
         Ok(_) => println!("message5 inserted successfully"),
         Err(e) => println!("Failed to insert message5: {}", e),
     }
@@ -1029,8 +1043,14 @@ async fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:53:34.816Z".to_string(),
     );
-    shinkai_db.unsafe_insert_inbox_message(&message4, None, None).await.unwrap();
-    shinkai_db.unsafe_insert_inbox_message(&message5, None, None).await.unwrap();
+    shinkai_db
+        .unsafe_insert_inbox_message(&message4, None, None)
+        .await
+        .unwrap();
+    shinkai_db
+        .unsafe_insert_inbox_message(&message5, None, None)
+        .await
+        .unwrap();
 
     // Test get_inboxes_for_profile
     let node1_profile_identity = StandardIdentity::new(
@@ -1117,7 +1137,6 @@ async fn db_inbox() {
 
 #[test]
 fn test_permission_errors() {
-    
     setup();
 
     let node1_identity_name = "@@node1.shinkai";

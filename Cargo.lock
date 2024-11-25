@@ -8191,6 +8191,7 @@ name = "shinkai_message_primitives"
 version = "0.8.15"
 dependencies = [
  "aes-gcm",
+ "async-trait",
  "base64 0.22.1",
  "blake3",
  "chacha20poly1305",
@@ -8204,6 +8205,7 @@ dependencies = [
  "serde_json",
  "shinkai_vector_resources",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "utoipa",
@@ -8325,6 +8327,7 @@ dependencies = [
  "bincode",
  "blake3",
  "bytemuck",
+ "chrono",
  "ed25519-dalek",
  "hex",
  "r2d2",
