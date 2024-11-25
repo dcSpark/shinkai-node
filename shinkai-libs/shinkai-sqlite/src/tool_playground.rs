@@ -38,7 +38,7 @@ impl SqliteManager {
                     job_id = ?8,
                     job_id_history = ?9,
                     code = ?10,
-                WHERE tool_router_key = ?13",
+                WHERE tool_router_key = ?11",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
