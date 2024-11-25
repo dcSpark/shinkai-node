@@ -1,324 +1,327 @@
-use pdfium_render::prelude::*;
-use regex::Regex;
-use std::time::Instant;
+// use pdfium_render::prelude::*;
+// use regex::Regex;
+// use std::time::Instant;
 
-use crate::image_parser::ImageParser;
+// use crate::image_parser::ImageParser;
 
-pub struct PDFParser {
-    image_parser: ImageParser,
-    pdfium: Pdfium,
-}
 
-pub struct PDFPage {
-    pub page_number: usize,
-    pub content: Vec<PDFText>,
-}
+// pub struct PDFParser {
+//     image_parser: ImageParser,
+//     pdfium: Pdfium,
+// }
 
-pub struct PDFText {
-    pub text: String,
-    pub likely_heading: bool,
-}
+// #[derive(Debug)]
+// pub struct PDFPage {
+//     pub page_number: usize,
+//     pub content: Vec<PDFText>,
+// }
 
-impl PDFParser {
-    pub fn new() -> anyhow::Result<Self> {
-        let image_parser = ImageParser::new()?;
+// #[derive(Debug)]
+// pub struct PDFText {
+//     pub text: String,
+//     pub likely_heading: bool,
+// }
 
-        #[cfg(not(feature = "static"))]
-        let pdfium = {
-            let lib_path = match std::env::var("PDFIUM_DYNAMIC_LIB_PATH").ok() {
-                Some(lib_path) => lib_path,
-                None => {
-                    #[cfg(target_os = "linux")]
-                    let os = "linux";
+// impl PDFParser {
+//     pub fn new() -> anyhow::Result<Self> {
+//         let image_parser = ImageParser::new()?;
 
-                    #[cfg(target_os = "macos")]
-                    let os = "mac";
+//         #[cfg(not(feature = "static"))]
+//         let pdfium = {
+//             let lib_path = match std::env::var("PDFIUM_DYNAMIC_LIB_PATH").ok() {
+//                 Some(lib_path) => lib_path,
+//                 None => {
+//                     #[cfg(target_os = "linux")]
+//                     let os = "linux";
 
-                    #[cfg(target_os = "windows")]
-                    let os = "win";
+//                     #[cfg(target_os = "macos")]
+//                     let os = "mac";
 
-                    #[cfg(target_arch = "aarch64")]
-                    let arch = "arm64";
+//                     #[cfg(target_os = "windows")]
+//                     let os = "win";
 
-                    #[cfg(target_arch = "x86_64")]
-                    let arch = "x64";
+//                     #[cfg(target_arch = "aarch64")]
+//                     let arch = "arm64";
 
-                    format!("pdfium/{}-{}", os, arch)
-                }
-            };
+//                     #[cfg(target_arch = "x86_64")]
+//                     let arch = "x64";
 
-            // Look for the dynamic library in the specified path or fall back to the current directory.
-            let bindings = match Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)) {
-                Ok(bindings) => bindings,
-                Err(_) => Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))?,
-            };
+//                     format!("pdfium/{}-{}", os, arch)
+//                 }
+//             };
 
-            Pdfium::new(bindings)
-        };
+//             // Look for the dynamic library in the specified path or fall back to the current directory.
+//             let bindings = match Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)) {
+//                 Ok(bindings) => bindings,
+//                 Err(_) => Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))?,
+//             };
 
-        #[cfg(feature = "static")]
-        let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
+//             Pdfium::new(bindings)
+//         };
 
-        Ok(PDFParser { image_parser, pdfium })
-    }
+//         #[cfg(feature = "static")]
+//         let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
 
-    pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
-        let start_time = Instant::now();
-        let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
+//         Ok(PDFParser { image_parser, pdfium })
+//     }
 
-        struct TextPosition {
-            #[allow(dead_code)]
-            x: f32,
-            y: f32,
-        }
+//     pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
+//         let start_time = Instant::now();
+//         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
-        struct TextFont {
-            font_size: f32,
-            font_weight: PdfFontWeight,
-        }
+//         struct TextPosition {
+//             #[allow(dead_code)]
+//             x: f32,
+//             y: f32,
+//         }
 
-        let mut pdf_pages = Vec::new();
-        let mut page_text = "".to_owned();
-        let mut previous_text_font: Option<TextFont> = None;
+//         struct TextFont {
+//             font_size: f32,
+//             font_weight: PdfFontWeight,
+//         }
 
-        // Process metadata
-        let mut metadata_text = "".to_owned();
-        for tag in document.metadata().iter() {
-            match tag.tag_type() {
-                PdfDocumentMetadataTagType::Title => {
-                    let title = tag.value();
-                    if !title.is_empty() {
-                        metadata_text.push_str(&format!("Title: {}\n", title));
-                    }
-                }
-                PdfDocumentMetadataTagType::Author => {
-                    let author = tag.value();
-                    if !author.is_empty() {
-                        metadata_text.push_str(&format!("Author: {}\n", author));
-                    }
-                }
-                PdfDocumentMetadataTagType::Subject => {
-                    let subject = tag.value();
-                    if !subject.is_empty() {
-                        metadata_text.push_str(&format!("Subject: {}\n", subject));
-                    }
-                }
-                PdfDocumentMetadataTagType::Keywords => {
-                    let keywords = tag.value();
-                    if !keywords.is_empty() {
-                        metadata_text.push_str(&format!("Keywords: {}\n", keywords));
-                    }
-                }
-                _ => {}
-            }
-        }
+//         let mut pdf_pages = Vec::new();
+//         let mut page_text = "".to_owned();
+//         let mut previous_text_font: Option<TextFont> = None;
 
-        if !metadata_text.is_empty() {
-            let pdf_text = PDFText {
-                text: metadata_text.trim().to_string(),
-                likely_heading: true,
-            };
-            pdf_pages.push(PDFPage {
-                page_number: 0,
-                content: vec![pdf_text],
-            });
-        }
+//         // Process metadata
+//         let mut metadata_text = "".to_owned();
+//         for tag in document.metadata().iter() {
+//             match tag.tag_type() {
+//                 PdfDocumentMetadataTagType::Title => {
+//                     let title = tag.value();
+//                     if !title.is_empty() {
+//                         metadata_text.push_str(&format!("Title: {}\n", title));
+//                     }
+//                 }
+//                 PdfDocumentMetadataTagType::Author => {
+//                     let author = tag.value();
+//                     if !author.is_empty() {
+//                         metadata_text.push_str(&format!("Author: {}\n", author));
+//                     }
+//                 }
+//                 PdfDocumentMetadataTagType::Subject => {
+//                     let subject = tag.value();
+//                     if !subject.is_empty() {
+//                         metadata_text.push_str(&format!("Subject: {}\n", subject));
+//                     }
+//                 }
+//                 PdfDocumentMetadataTagType::Keywords => {
+//                     let keywords = tag.value();
+//                     if !keywords.is_empty() {
+//                         metadata_text.push_str(&format!("Keywords: {}\n", keywords));
+//                     }
+//                 }
+//                 _ => {}
+//             }
+//         }
 
-        // Process pages
-        for (page_index, page) in document.pages().iter().enumerate() {
-            let page_start_time = Instant::now();
-            let mut pdf_texts = Vec::new();
-            let mut previous_text_position: Option<TextPosition> = None;
+//         if !metadata_text.is_empty() {
+//             let pdf_text = PDFText {
+//                 text: metadata_text.trim().to_string(),
+//                 likely_heading: true,
+//             };
+//             pdf_pages.push(PDFPage {
+//                 page_number: 0,
+//                 content: vec![pdf_text],
+//             });
+//         }
 
-            for object in page.objects().iter() {
-                match object.object_type() {
-                    PdfPageObjectType::Text => {
-                        let text_object = object.as_text_object().unwrap();
-                        let text = text_object.text();
+//         // Process pages
+//         for (page_index, page) in document.pages().iter().enumerate() {
+//             let page_start_time = Instant::now();
+//             let mut pdf_texts = Vec::new();
+//             let mut previous_text_position: Option<TextPosition> = None;
 
-                        if text.is_empty() {
-                            continue;
-                        }
+//             for object in page.objects().iter() {
+//                 match object.object_type() {
+//                     PdfPageObjectType::Text => {
+//                         let text_object = object.as_text_object().unwrap();
+//                         let text = text_object.text();
 
-                        let current_text_position = TextPosition {
-                            x: text_object.get_translation().0.value,
-                            y: text_object.get_translation().1.value,
-                        };
+//                         if text.is_empty() {
+//                             continue;
+//                         }
 
-                        let current_text_font = TextFont {
-                            font_size: text_object.unscaled_font_size().value,
-                            font_weight: text_object.font().weight().unwrap_or(PdfFontWeight::Weight100),
-                        };
+//                         let current_text_position = TextPosition {
+//                             x: text_object.get_translation().0.value,
+//                             y: text_object.get_translation().1.value,
+//                         };
 
-                        let is_bold = match current_text_font.font_weight {
-                            PdfFontWeight::Weight500
-                            | PdfFontWeight::Weight600
-                            | PdfFontWeight::Weight700Bold
-                            | PdfFontWeight::Weight800
-                            | PdfFontWeight::Weight900 => true,
-                            PdfFontWeight::Custom(weight) => weight >= 500,
-                            _ => false,
-                        };
+//                         let current_text_font = TextFont {
+//                             font_size: text_object.unscaled_font_size().value,
+//                             font_weight: text_object.font().weight().unwrap_or(PdfFontWeight::Weight100),
+//                         };
 
-                        let likely_paragraph = if let (Some(previous_text_position), Some(previous_text_font)) =
-                            (previous_text_position.as_ref(), previous_text_font.as_ref())
-                        {
-                            (current_text_position.y < previous_text_position.y
-                                && (previous_text_position.y - current_text_position.y)
-                                    > previous_text_font.font_size * 1.5)
-                                || (previous_text_position.y < current_text_position.y
-                                    && (current_text_position.y - previous_text_position.y)
-                                        > previous_text_font.font_size * 1.5)
-                        } else {
-                            false
-                        };
+//                         let is_bold = match current_text_font.font_weight {
+//                             PdfFontWeight::Weight500
+//                             | PdfFontWeight::Weight600
+//                             | PdfFontWeight::Weight700Bold
+//                             | PdfFontWeight::Weight800
+//                             | PdfFontWeight::Weight900 => true,
+//                             PdfFontWeight::Custom(weight) => weight >= 500,
+//                             _ => false,
+//                         };
 
-                        let likely_heading = previous_text_font
-                            .is_some_and(|f| f.font_size < current_text_font.font_size)
-                            && current_text_font.font_size > 12.0
-                            && is_bold
-                            && text.len() > 1;
+//                         let likely_paragraph = if let (Some(previous_text_position), Some(previous_text_font)) =
+//                             (previous_text_position.as_ref(), previous_text_font.as_ref())
+//                         {
+//                             (current_text_position.y < previous_text_position.y
+//                                 && (previous_text_position.y - current_text_position.y)
+//                                     > previous_text_font.font_size * 1.5)
+//                                 || (previous_text_position.y < current_text_position.y
+//                                     && (current_text_position.y - previous_text_position.y)
+//                                         > previous_text_font.font_size * 1.5)
+//                         } else {
+//                             false
+//                         };
 
-                        // Same line, append text
-                        if previous_text_position.is_some()
-                            && current_text_position.y == previous_text_position.as_ref().unwrap().y
-                        {
-                            page_text.push_str(&text);
-                        } else if likely_heading {
-                            // Save text from previous text objects.
-                            if !page_text.is_empty() {
-                                let pdf_text = PDFText {
-                                    text: Self::normalize_parsed_text(&page_text),
-                                    likely_heading: false,
-                                };
-                                pdf_texts.push(pdf_text);
+//                         let likely_heading = previous_text_font
+//                             .is_some_and(|f| f.font_size < current_text_font.font_size)
+//                             && current_text_font.font_size > 12.0
+//                             && is_bold
+//                             && text.len() > 1;
 
-                                page_text.clear();
-                            }
+//                         // Same line, append text
+//                         if previous_text_position.is_some()
+//                             && current_text_position.y == previous_text_position.as_ref().unwrap().y
+//                         {
+//                             page_text.push_str(&text);
+//                         } else if likely_heading {
+//                             // Save text from previous text objects.
+//                             if !page_text.is_empty() {
+//                                 let pdf_text = PDFText {
+//                                     text: Self::normalize_parsed_text(&page_text),
+//                                     likely_heading: false,
+//                                 };
+//                                 pdf_texts.push(pdf_text);
 
-                            // Add heading to the top level
-                            let pdf_text = PDFText {
-                                text: Self::normalize_parsed_text(&text),
-                                likely_heading: true,
-                            };
-                            pdf_texts.push(pdf_text);
-                        }
-                        // likely heading or new paragraph
-                        else if likely_paragraph {
-                            // Save text from previous text objects.
-                            if !page_text.is_empty() {
-                                let pdf_text = PDFText {
-                                    text: Self::normalize_parsed_text(&page_text),
-                                    likely_heading: false,
-                                };
-                                pdf_texts.push(pdf_text);
+//                                 page_text.clear();
+//                             }
 
-                                page_text.clear();
-                            }
+//                             // Add heading to the top level
+//                             let pdf_text = PDFText {
+//                                 text: Self::normalize_parsed_text(&text),
+//                                 likely_heading: true,
+//                             };
+//                             pdf_texts.push(pdf_text);
+//                         }
+//                         // likely heading or new paragraph
+//                         else if likely_paragraph {
+//                             // Save text from previous text objects.
+//                             if !page_text.is_empty() {
+//                                 let pdf_text = PDFText {
+//                                     text: Self::normalize_parsed_text(&page_text),
+//                                     likely_heading: false,
+//                                 };
+//                                 pdf_texts.push(pdf_text);
 
-                            page_text.push_str(&text);
-                        }
-                        // add new line
-                        else if page_text.is_empty() {
-                            page_text.push_str(&text);
-                        } else {
-                            page_text.push_str(&format!("\n{}", &text));
-                        }
+//                                 page_text.clear();
+//                             }
 
-                        previous_text_position = Some(current_text_position);
-                        previous_text_font = Some(current_text_font);
-                    }
-                    PdfPageObjectType::Image => {
-                        // Save text from previous text objects.
-                        if !page_text.is_empty() {
-                            let pdf_text = PDFText {
-                                text: Self::normalize_parsed_text(&page_text),
-                                likely_heading: false,
-                            };
-                            pdf_texts.push(pdf_text);
+//                             page_text.push_str(&text);
+//                         }
+//                         // add new line
+//                         else if page_text.is_empty() {
+//                             page_text.push_str(&text);
+//                         } else {
+//                             page_text.push_str(&format!("\n{}", &text));
+//                         }
 
-                            page_text.clear();
-                        }
+//                         previous_text_position = Some(current_text_position);
+//                         previous_text_font = Some(current_text_font);
+//                     }
+//                     PdfPageObjectType::Image => {
+//                         // Save text from previous text objects.
+//                         if !page_text.is_empty() {
+//                             let pdf_text = PDFText {
+//                                 text: Self::normalize_parsed_text(&page_text),
+//                                 likely_heading: false,
+//                             };
+//                             pdf_texts.push(pdf_text);
 
-                        let image_object = object.as_image_object().unwrap();
+//                             page_text.clear();
+//                         }
 
-                        // Unwrap the width and height results
-                        let (width, height) = (
-                            image_object.width().unwrap().value,
-                            image_object.height().unwrap().value,
-                        );
+//                         let image_object = object.as_image_object().unwrap();
 
-                        if width > 50.0 && height > 50.0 {
-                            if let Ok(image) = image_object.get_raw_image() {
-                                if let Ok(text) = self.image_parser.process_image(image) {
-                                    if !text.is_empty() {
-                                        let pdf_text = PDFText {
-                                            text: Self::normalize_parsed_text(&text),
-                                            likely_heading: false,
-                                        };
-                                        pdf_texts.push(pdf_text);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
+//                         // Unwrap the width and height results
+//                         let (width, height) = (
+//                             image_object.width().unwrap().value,
+//                             image_object.height().unwrap().value,
+//                         );
 
-            // Drop parsed page numbers as text
-            if !page_text.is_empty() && page_text != format!("{}", page_index + 1) {
-                let pdf_text = PDFText {
-                    text: Self::normalize_parsed_text(&page_text),
-                    likely_heading: false,
-                };
-                pdf_texts.push(pdf_text);
-            }
+//                         if width > 50.0 && height > 50.0 {
+//                             if let Ok(image) = image_object.get_raw_image() {
+//                                 if let Ok(text) = self.image_parser.process_image(image) {
+//                                     if !text.is_empty() {
+//                                         let pdf_text = PDFText {
+//                                             text: Self::normalize_parsed_text(&text),
+//                                             likely_heading: false,
+//                                         };
+//                                         pdf_texts.push(pdf_text);
+//                                     }
+//                                 }
+//                             }
+//                         }
+//                     }
+//                     _ => {}
+//                 }
+//             }
 
-            page_text.clear();
+//             // Drop parsed page numbers as text
+//             if !page_text.is_empty() && page_text != format!("{}", page_index + 1) {
+//                 let pdf_text = PDFText {
+//                     text: Self::normalize_parsed_text(&page_text),
+//                     likely_heading: false,
+//                 };
+//                 pdf_texts.push(pdf_text);
+//             }
 
-            pdf_pages.push(PDFPage {
-                page_number: page_index + 1,
-                content: pdf_texts,
-            });
+//             page_text.clear();
 
-            if std::env::var("DEBUG_VRKAI").is_ok() {
-                let page_duration = page_start_time.elapsed();
-                println!("Page {} parsed in {:?}", page_index + 1, page_duration);
-            }
-        }
+//             pdf_pages.push(PDFPage {
+//                 page_number: page_index + 1,
+//                 content: pdf_texts,
+//             });
 
-        if !page_text.is_empty() {
-            let pdf_text = PDFText {
-                text: Self::normalize_parsed_text(&page_text),
-                likely_heading: false,
-            };
-            pdf_pages
-                .last_mut()
-                .unwrap_or(&mut PDFPage {
-                    page_number: 1,
-                    content: Vec::new(),
-                })
-                .content
-                .push(pdf_text);
-        }
+//             if std::env::var("DEBUG_VRKAI").is_ok() {
+//                 let page_duration = page_start_time.elapsed();
+//                 println!("Page {} parsed in {:?}", page_index + 1, page_duration);
+//             }
+//         }
 
-        if std::env::var("DEBUG_VRKAI").is_ok() {
-            let total_duration = start_time.elapsed();
-            println!("Total PDF parsed in {:?}", total_duration);
-        }
+//         if !page_text.is_empty() {
+//             let pdf_text = PDFText {
+//                 text: Self::normalize_parsed_text(&page_text),
+//                 likely_heading: false,
+//             };
+//             pdf_pages
+//                 .last_mut()
+//                 .unwrap_or(&mut PDFPage {
+//                     page_number: 1,
+//                     content: Vec::new(),
+//                 })
+//                 .content
+//                 .push(pdf_text);
+//         }
 
-        Ok(pdf_pages)
-    }
+//         if std::env::var("DEBUG_VRKAI").is_ok() {
+//             let total_duration = start_time.elapsed();
+//             println!("Total PDF parsed in {:?}", total_duration);
+//         }
 
-    fn normalize_parsed_text(parsed_text: &str) -> String {
-        let re_whitespaces = Regex::new(r"\s{2,}|\n").unwrap();
-        let re_word_breaks = Regex::new(r"\s*").unwrap();
+//         Ok(pdf_pages)
+//     }
 
-        let normalized_text = re_whitespaces.replace_all(parsed_text, " ");
-        let normalized_text = re_word_breaks.replace_all(&normalized_text, "");
-        let normalized_text = normalized_text.trim().to_string();
+//     fn normalize_parsed_text(parsed_text: &str) -> String {
+//         let re_whitespaces = Regex::new(r"\s{2,}|\n").unwrap();
+//         let re_word_breaks = Regex::new(r"\s*").unwrap();
 
-        normalized_text
-    }
-}
+//         let normalized_text = re_whitespaces.replace_all(parsed_text, " ");
+//         let normalized_text = re_word_breaks.replace_all(&normalized_text, "");
+//         let normalized_text = normalized_text.trim().to_string();
+
+//         normalized_text
+//     }
+// }
