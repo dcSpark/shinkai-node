@@ -422,6 +422,7 @@ impl Node {
             }
             Ok(false) => {
                 // Add the tool to the LanceShinkaiDb
+                std::mem::drop(sqlite_manager_read);
                 let mut sqlite_manager_write = sqlite_manager.write().await;
                 match sqlite_manager_write.add_tool(shinkai_tool.clone()).await {
                     Ok(tool) => {
