@@ -38,7 +38,7 @@ impl SqliteManager {
                     job_id = ?8,
                     job_id_history = ?9,
                     code = ?10,
-                WHERE tool_router_key = ?13",
+                WHERE tool_router_key = ?11",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -58,7 +58,7 @@ impl SqliteManager {
             tx.execute(
                 "INSERT INTO tool_playground (
                     name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
