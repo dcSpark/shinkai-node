@@ -565,6 +565,7 @@ mod tests {
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
+            tools: None,
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
@@ -625,6 +626,7 @@ mod tests {
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
+            tools: None,
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
@@ -639,9 +641,7 @@ mod tests {
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
         let vector = SqliteManager::generate_vector_for_testing(0.1);
-        manager
-            .add_tool_with_vector(shinkai_tool.clone(), vector)
-            .unwrap();
+        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Generate an embedding vector for the query
         let embedding_query = SqliteManager::generate_vector_for_testing(0.09);
@@ -667,6 +667,7 @@ mod tests {
             name: "Deno Tool 1".to_string(),
             author: "Author 1".to_string(),
             js_code: "console.log('Tool 1');".to_string(),
+            tools: None,
             config: vec![],
             description: "First Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool1".to_string()],
@@ -684,6 +685,7 @@ mod tests {
             name: "Deno Tool 2".to_string(),
             author: "Author 2".to_string(),
             js_code: "console.log('Tool 2');".to_string(),
+            tools: None,
             config: vec![],
             description: "Second Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool2".to_string()],
@@ -701,6 +703,7 @@ mod tests {
             name: "Deno Tool 3".to_string(),
             author: "Author 3".to_string(),
             js_code: "console.log('Tool 3');".to_string(),
+            tools: None,
             config: vec![],
             description: "Third Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool3".to_string()],
@@ -780,6 +783,7 @@ mod tests {
             name: "Deno Duplicate Tool".to_string(),
             author: "Deno Author".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
+            tools: None,
             config: vec![],
             description: "A Deno tool for testing duplicates".to_string(),
             keywords: vec!["deno".to_string(), "duplicate".to_string()],
@@ -821,6 +825,7 @@ mod tests {
                 name: "Image Processing Tool".to_string(),
                 author: "Author 1".to_string(),
                 js_code: "console.log('Tool 1');".to_string(),
+                tools: None,
                 config: vec![],
                 description: "Process and manipulate images".to_string(),
                 keywords: vec!["image".to_string(), "processing".to_string()],
@@ -837,6 +842,7 @@ mod tests {
                 name: "Text Analysis Helper".to_string(),
                 author: "Author 2".to_string(),
                 js_code: "console.log('Tool 2');".to_string(),
+                tools: None,
                 config: vec![],
                 description: "Analyze text content".to_string(),
                 keywords: vec!["text".to_string(), "analysis".to_string()],
@@ -853,6 +859,7 @@ mod tests {
                 name: "Data Visualization Tool".to_string(),
                 author: "Author 3".to_string(),
                 js_code: "console.log('Tool 3');".to_string(),
+                tools: None,
                 config: vec![],
                 description: "Visualize data sets".to_string(),
                 keywords: vec!["data".to_string(), "visualization".to_string()],

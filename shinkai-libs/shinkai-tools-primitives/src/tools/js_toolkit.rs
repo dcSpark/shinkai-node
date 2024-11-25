@@ -58,6 +58,7 @@ impl JSToolkit {
             author: definition.author.clone(),
             config,
             js_code: definition.code.clone().unwrap_or_default(),
+            tools: None,
             description: definition.description.clone(),
             keywords: definition.keywords.clone(),
             input_args,

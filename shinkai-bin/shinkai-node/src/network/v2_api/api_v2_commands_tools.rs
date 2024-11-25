@@ -338,6 +338,7 @@ impl Node {
             name: payload.metadata.name.clone(),
             author: payload.metadata.author.clone(),
             js_code: payload.code.clone(),
+            tools: payload.metadata.tools.clone(),
             config: payload.metadata.configurations.clone(),
             description: payload.metadata.description.clone(),
             keywords: payload.metadata.keywords.clone(),
@@ -397,7 +398,7 @@ impl Node {
         // Create a longer-lived binding for the sqlite_manager clone
         let sqlite_manager_clone = sqlite_manager.clone();
         let sqlite_manager_read = sqlite_manager_clone.read().await;
-        
+
         match sqlite_manager_read.tool_exists(&shinkai_tool.tool_router_key()) {
             Ok(true) => {
                 std::mem::drop(sqlite_manager_read);
@@ -657,11 +658,12 @@ impl Node {
         Ok(())
     }
 
-    pub async fn execute_code(
+    pub async fn run_execute_code(
         bearer: String,
         db: Arc<ShinkaiDB>,
         tool_type: DynamicToolType,
         code: String,
+        tools: Option<Vec<String>>,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         tool_id: String,
@@ -677,6 +679,7 @@ impl Node {
         let result = execute_code(
             tool_type.clone(),
             code,
+            tools,
             parameters,
             None,
             sqlite_manager,

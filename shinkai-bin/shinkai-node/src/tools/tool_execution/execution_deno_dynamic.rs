@@ -24,6 +24,7 @@ pub fn execute_deno_tool(
         name: "deno_runtime".to_string(),
         author: "system".to_string(),
         js_code: code,
+        tools: None,
         config: vec![],
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
