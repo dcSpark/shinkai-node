@@ -9,6 +9,7 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
@@ -175,7 +176,10 @@ impl DenoTool {
                     }
 
                     let tool = Tool::new(
-                        final_code,
+                        CodeFiles {
+                            files: HashMap::from([(String::from("index.ts"), final_code)]),
+                            entrypoint: "index.ts".to_string(),
+                        },
                         config_json,
                         Some(DenoRunnerOptions {
                             context: ExecutionContext {
@@ -183,6 +187,8 @@ impl DenoTool {
                                 execution_id: tool_id.clone(),
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
+                                assets: vec![],
+                                mount_files: vec![],
                             },
                             deno_binary_path: PathBuf::from(
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
