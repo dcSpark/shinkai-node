@@ -58,7 +58,7 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -115,7 +115,7 @@ pub struct Node {
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
     // Sqlite3
-    pub sqlite_manager: Arc<SqliteManager>,
+    pub sqlite_manager: Arc<RwLock<SqliteManager>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
@@ -212,8 +212,9 @@ impl Node {
 
         // Initialize SqliteManager
         let embedding_api_url = embedding_generator.api_url.clone();
-        let sqlite_manager =
-            Arc::new(SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap());
+        let sqlite_manager = Arc::new(RwLock::new(
+            SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap(),
+        ));
 
         // Setup Identity Manager
         let db_weak = Arc::downgrade(&db_arc);

@@ -8,6 +8,7 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
 use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use tokio::sync::RwLock;
 
 use crate::network::{node_error::NodeError, Node};
 
@@ -88,7 +89,7 @@ impl Node {
 
     pub async fn v2_api_get_all_tool_offering(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -115,7 +116,7 @@ impl Node {
         let mut detailed_tool_headers = Vec::new();
         for tool_offering in tool_offerings {
             let tool_key = &tool_offering.tool_key;
-            match sqlite_manager.get_tool_by_key(tool_key) {
+            match sqlite_manager.read().await.get_tool_by_key(tool_key) {
                 Ok(tool) => {
                     let mut tool_header = tool.to_header();
                     tool_header.sanitize_config();
@@ -150,7 +151,7 @@ impl Node {
 
     pub async fn v2_api_set_tool_offering(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -161,7 +162,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match sqlite_manager.tool_exists(&tool_offering.tool_key) {
+        match sqlite_manager.read().await.tool_exists(&tool_offering.tool_key) {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {

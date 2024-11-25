@@ -2,7 +2,6 @@
 members = [
   "shinkai-libs/shinkai-crypto-identities",
   "shinkai-libs/shinkai-sheet",
-  "shinkai-libs/shinkai-fs-mirror",
   "shinkai-libs/shinkai-message-primitives",
   "shinkai-libs/shinkai-ocr",
   "shinkai-libs/shinkai-tcp-relayer",
@@ -31,7 +30,6 @@ shinkai_message_primitives = { path = "./shinkai-libs/shinkai-message-primitives
 shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
 shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" }
 shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
-shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
 shinkai_sheet = { path = "./shinkai-libs/shinkai-sheet" }
 shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
 shinkai_vector_fs = { path = "./shinkai-libs/shinkai-vector-fs" }
@@ -55,7 +53,7 @@ blake3 = "1.2.0"
 shinkai_tools_runner = "0.8.3"
 serde = "1.0.188"
 base64 = "0.22.0"
-reqwest = "0.11.26"
+reqwest = "0.11.27"
 regex = "1"
 rocksdb = { version = "0.22.0", default-features = false }
 uuid = { version = "1.6.1" }
