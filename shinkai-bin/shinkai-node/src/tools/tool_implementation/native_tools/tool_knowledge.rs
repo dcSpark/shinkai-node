@@ -6,7 +6,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::{argument::ToolOutputArg, shinkai_tool::ShinkaiToolHeader};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
 use shinkai_tools_primitives::tools::error::ToolError;
@@ -89,7 +89,7 @@ impl ToolExecutor for KnowledgeTool {
         parameters: &Map<String, Value>,
         _llm_provider: String,
     ) -> Result<Value, ToolError> {
-        // TODO: define parameters
+        // TODO: define parameters (job: check and direct inbox_id: missing)
         // TODO: how do we use app_id here? is it linked to a job somehow?
         // TODO: create e2e test using this fn so we can test it with some real data
 

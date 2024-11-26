@@ -39,10 +39,11 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
-    let result = match tool_router_key {
-        // TODO Keep in sync with definitions_custom.rs
-        s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => {
-            tool_implementation::sql_processor::SQLProcessorTool::execute(
+
+    if tool_router_key.contains("rust_toolkit") {
+        let tools = NativeToolsList::static_tools().await;
+        if let Some(tool) = tools.iter().find(|t| t.name() == tool_router_key) {
+            return tool.execute(
                 bearer,
                 tool_id,
                 app_id,
@@ -57,39 +58,10 @@ pub async fn execute_custom_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
-            )
-            .await
+            ).await;
         }
-        s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
-            tool_implementation::llm_prompt_processor::LmPromptProcessorTool::execute(
-                bearer,
-                tool_id,
-                app_id,
-                db,
-                vector_fs,
-                sqlite_manager,
-                node_name,
-                identity_manager,
-                job_manager,
-                encryption_secret_key,
-                encryption_public_key,
-                signing_secret_key,
-                &parameters,
-                llm_provider,
-            )
-            .await
-        }
-        _ => Ok(json!({})), // Not a custom tool
-    };
-    let text_result = format!("{:?}", result);
-    if text_result.len() > 200 {
-        println!(
-            "[executing_rust_tool] result: {}...{}",
-            &text_result[..100],
-            &text_result[text_result.len() - 100..]
-        );
-    } else {
-        println!("[executing_rust_tool] result: {}", text_result);
     }
-    result
+
+    // Fallback for non-custom tools
+    Ok(json!({}))
 }

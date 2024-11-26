@@ -2,8 +2,9 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::{argument::ToolOutputArg, shinkai_tool::ShinkaiToolHeader};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use shinkai_vector_resources::embeddings::Embedding;
 use std::path::Path;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
 use shinkai_tools_primitives::tools::error::ToolError;
@@ -31,6 +32,7 @@ use super::tool_traits::ToolExecutor;
 // LLM Tool
 pub struct SQLProcessorTool {
     pub tool: ShinkaiToolHeader,
+    pub tool_embedding: Option<Embedding>,
 }
 
 impl SQLProcessorTool {
@@ -91,7 +93,8 @@ impl SQLProcessorTool {
                 config: None,
                 usage_type: None,
                 tool_offering: None,
-            }
+            },
+            tool_embedding: None, // TODO: add tool embedding
         }
     }
 }
@@ -228,6 +231,8 @@ impl ToolExecutor for SQLProcessorTool {
 
 #[cfg(test)]
 mod tests {
+    use shinkai_tools_primitives::tools::rust_tools::RustTool;
+
     use super::*;
 
     #[test]
@@ -237,5 +242,24 @@ mod tests {
             sql_processor_tool.tool.tool_router_key,
             "local:::rust_toolkit:::shinkai_sqlite_query_executor"
         );
+    }
+
+    #[test]
+    fn test_conversion_to_rust_tool() {
+        let sql_processor_tool = SQLProcessorTool::new();
+
+        let rust_tool = RustTool {
+            name: sql_processor_tool.tool.name.clone(),
+            description: sql_processor_tool.tool.description.clone(),
+            input_args: sql_processor_tool.tool.input_args.clone(),
+            output_arg: sql_processor_tool.tool.output_arg.clone(),
+            tool_embedding: sql_processor_tool.tool_embedding.clone(),
+        };
+
+        assert_eq!(rust_tool.name, sql_processor_tool.tool.name);
+        assert_eq!(rust_tool.description, sql_processor_tool.tool.description);
+        assert_eq!(rust_tool.input_args, sql_processor_tool.tool.input_args);
+        assert_eq!(rust_tool.output_arg, sql_processor_tool.tool.output_arg);
+        assert_eq!(rust_tool.tool_embedding, sql_processor_tool.tool_embedding);
     }
 }
