@@ -133,22 +133,10 @@ impl DenoTool {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
                     println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
-                    // Remove axios import, as it's also created in the header code
-                    let step_1 = if !header_code.is_empty() {
-                        let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
-                        regex_axios.replace_all(&code, "").into_owned()
-                    } else {
-                        code
-                    };
-                    // Remove library import, it is expected to be provided, but might not be generated.
-                    let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
-                    let step_2 = regex.replace_all(&step_1, "").into_owned();
-                    // Add the library import and the header code in the beginning of the code
-                    let final_code = format!("{} {}", header_code, step_2);
                     println!(
-                        "[Running DenoTool] Final Code: {} ... {} ",
-                        &final_code[..120.min(final_code.len())],
-                        &final_code[final_code.len().saturating_sub(400)..]
+                        "[Running DenoTool] Code: {} ... {} ",
+                        &code[..120.min(code.len())],
+                        &code[code.len().saturating_sub(400)..]
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
@@ -177,7 +165,10 @@ impl DenoTool {
 
                     let tool = Tool::new(
                         CodeFiles {
-                            files: HashMap::from([(String::from("index.ts"), final_code)]),
+                            files: HashMap::from([
+                                (String::from("index.ts"), code),
+                                (String::from("./shinkai-local-tools.ts"), header_code),
+                            ]),
                             entrypoint: "index.ts".to_string(),
                         },
                         config_json,

@@ -16,9 +16,9 @@ pub async fn generate_code_prompt(
 # RULE I:
 * You may use any of the following functions if they are relevant and a good match for the task.
 * Import them in the following way (do not rename functions with 'as'):
-`import {{ xx }} from '@shinkai/local-tools'`
+`import {{ xx }} from './shinkai-local-tools.ts'`
 
-* This is the content of '@shinkai/local-tools':
+* This is the content of './shinkai-local-tools.ts':
 ```{language}
 {tool_definitions}
 ```
