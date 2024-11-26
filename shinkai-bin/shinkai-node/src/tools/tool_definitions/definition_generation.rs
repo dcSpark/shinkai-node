@@ -85,11 +85,12 @@ pub async fn generate_tool_definitions(
         match language {
             CodeLanguage::Typescript => {
                 let function_name =
-                    crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.tool_router_key);
+                    crate::tools::llm_language_support::generate_typescript::create_function_name_set(&tool);
                 if generated_names.contains(&function_name) {
                     eprintln!(
                         "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",
-                        function_name, tool.name
+                        function_name,
+                        tool.name.clone()
                     );
                     continue;
                 }
