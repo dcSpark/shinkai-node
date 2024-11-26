@@ -194,10 +194,8 @@ pub fn generate_typescript_definition(
     } else {
         // Only include implementation if not generating .d.ts
         typescript_output.push_str(" {\n");
-        typescript_output.push_str(&format!(
-            "    const _url = 'http://localhost:{}/v2/tool_execution';\n",
-            api_port
-        ));
+        typescript_output.push_str(r#"    const _url = `${Deno.env.get('SHINKAI_NODE_LOCATION')}/v2/tool_execution`;"#);
+        typescript_output.push_str("");
         typescript_output.push_str("    const data = {\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
