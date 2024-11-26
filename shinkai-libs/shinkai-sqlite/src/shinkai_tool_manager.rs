@@ -576,6 +576,7 @@ mod tests {
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -637,6 +638,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -678,6 +680,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let deno_tool_2 = DenoTool {
@@ -696,6 +699,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let deno_tool_3 = DenoTool {
@@ -714,6 +718,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -794,6 +799,7 @@ mod tests {
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -836,6 +842,7 @@ mod tests {
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
+                file_inbox: None,
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -853,6 +860,7 @@ mod tests {
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
+                file_inbox: None,
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -870,6 +878,7 @@ mod tests {
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
+                file_inbox: None,
             },
         ];
 
