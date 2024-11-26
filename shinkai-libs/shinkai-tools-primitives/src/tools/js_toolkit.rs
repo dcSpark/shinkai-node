@@ -71,6 +71,7 @@ impl JSToolkit {
             result,
             sql_tables: None,
             sql_queries: None,
+            file_inbox: None,
         }
     }
 

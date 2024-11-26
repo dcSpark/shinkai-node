@@ -18,6 +18,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
+use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 use crate::utils::environment::fetch_node_environment;
 
 use tokio::sync::{Mutex, RwLock};
@@ -26,8 +27,6 @@ use async_trait::async_trait;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params_from_iter;
-
-use super::tool_traits::ToolExecutor;
 
 // LLM Tool
 pub struct SQLProcessorTool {
@@ -254,6 +253,7 @@ mod tests {
             input_args: sql_processor_tool.tool.input_args.clone(),
             output_arg: sql_processor_tool.tool.output_arg.clone(),
             tool_embedding: sql_processor_tool.tool_embedding.clone(),
+            tool_router_key: sql_processor_tool.tool.tool_router_key.clone(),
         };
 
         assert_eq!(rust_tool.name, sql_processor_tool.tool.name);
@@ -261,5 +261,6 @@ mod tests {
         assert_eq!(rust_tool.input_args, sql_processor_tool.tool.input_args);
         assert_eq!(rust_tool.output_arg, sql_processor_tool.tool.output_arg);
         assert_eq!(rust_tool.tool_embedding, sql_processor_tool.tool_embedding);
+        assert_eq!(rust_tool.tool_router_key, sql_processor_tool.tool.tool_router_key);
     }
 }

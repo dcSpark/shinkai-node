@@ -32,6 +32,7 @@ pub struct RustTool {
     pub input_args: Vec<ToolArgument>,
     pub output_arg: ToolOutputArg,
     pub tool_embedding: Option<Embedding>,
+    pub tool_router_key: String,
 }
 
 impl RustTool {
@@ -41,6 +42,7 @@ impl RustTool {
         input_args: Vec<ToolArgument>,
         output_arg: ToolOutputArg,
         tool_embedding: Option<Embedding>,
+        tool_router_key: String,
     ) -> Self {
         Self {
             name: VRPath::clean_string(&name),
@@ -48,6 +50,7 @@ impl RustTool {
             input_args,
             output_arg,
             tool_embedding,
+            tool_router_key,
         }
     }
 
@@ -82,6 +85,7 @@ impl RustTool {
             input_args: header.input_args.clone(),
             output_arg: header.output_arg.clone(),
             tool_embedding: None, // Assuming no embedding is provided in the header
+            tool_router_key: header.tool_router_key.clone(),
         })
     }
 }

@@ -350,6 +350,7 @@ impl Node {
             result: payload.metadata.result,
             sql_tables: Some(payload.metadata.sql_tables),
             sql_queries: Some(payload.metadata.sql_queries),
+            file_inbox: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(tool, false); // Same as above

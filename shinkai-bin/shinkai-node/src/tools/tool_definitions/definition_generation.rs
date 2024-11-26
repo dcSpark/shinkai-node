@@ -14,7 +14,7 @@ use crate::tools::tool_implementation;
 pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
     custom_tools.push(tool_implementation::llm_prompt_processor::LmPromptProcessorTool::new().tool);
-    custom_tools.push(tool_implementation::sql_processor::SQLProcessorTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools
 }
 
