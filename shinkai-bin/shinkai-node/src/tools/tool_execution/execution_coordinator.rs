@@ -12,6 +12,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::managers::IdentityManager;
@@ -26,6 +27,7 @@ pub async fn execute_tool(
     bearer: String,
     node_name: ShinkaiName,
     db: Arc<ShinkaiDB>,
+    vector_fs: Arc<VectorFS>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_router_key: String,
     parameters: Map<String, Value>,
@@ -91,6 +93,8 @@ pub async fn execute_tool(
                 extra_config,
                 bearer,
                 db,
+                vector_fs,
+                sqlite_manager,
                 llm_provider,
                 node_name,
                 identity_manager,

@@ -31,6 +31,7 @@ use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::{
     argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_playground::ToolPlayground,
 };
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{sync::Arc, time::Instant};
 use tokio::sync::{Mutex, RwLock};
 
@@ -601,6 +602,7 @@ impl Node {
         bearer: String,
         node_name: ShinkaiName,
         db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         tool_router_key: String,
         parameters: Map<String, Value>,
@@ -624,6 +626,7 @@ impl Node {
             bearer,
             node_name,
             db,
+            vector_fs,
             sqlite_manager,
             tool_router_key.clone(),
             parameters,
