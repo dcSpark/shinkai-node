@@ -285,6 +285,7 @@ pub struct ToolImplementationRequest {
     pub message: JobMessage,
     pub language: CodeLanguage,
     pub raw: Option<bool>,
+    pub tools: Vec<String>,
 }
 
 #[utoipa::path(
@@ -308,6 +309,7 @@ pub async fn tool_implementation_handler(
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             message: payload.message,
             language: payload.language,
+            tools: payload.tools,
             raw: payload.raw.unwrap_or(false),
             res: res_sender,
         })

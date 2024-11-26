@@ -2969,6 +2969,7 @@ impl Node {
                 bearer,
                 message,
                 language,
+                tools,
                 raw,
                 res,
             } => {
@@ -2987,6 +2988,7 @@ impl Node {
                         db_clone,
                         message,
                         language,
+                        tools,
                         sqlite_manager_clone,
                         node_name_clone,
                         identity_manager_clone,

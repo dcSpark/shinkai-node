@@ -1021,6 +1021,7 @@ pub enum NodeCommand {
         bearer: String,
         message: JobMessage,
         language: CodeLanguage,
+        tools: Vec<String>,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },

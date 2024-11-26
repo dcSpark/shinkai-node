@@ -792,6 +792,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         job_message: JobMessage,
         language: CodeLanguage,
+        tools: Vec<String>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -809,7 +810,7 @@ impl Node {
         }
         // Generate tool definitions
         let tool_definitions =
-            match generate_tool_definitions(None, language.clone(), sqlite_manager.clone(), true).await {
+            match generate_tool_definitions(Some(tools), language.clone(), sqlite_manager.clone(), true).await {
                 Ok(definitions) => definitions,
                 Err(err) => {
                     let api_error = APIError {
