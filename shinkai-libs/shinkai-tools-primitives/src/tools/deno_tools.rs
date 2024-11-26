@@ -135,9 +135,11 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
                     println!(
-                        "[Running DenoTool] Code: {} ... {} ",
+                        "[Running DenoTool] Code: {} ... {}, Header Code: {} ... {}",
                         &code[..120.min(code.len())],
-                        &code[code.len().saturating_sub(400)..]
+                        &code[code.len().saturating_sub(400)..],
+                        &header_code[..120.min(header_code.len())],
+                        &header_code[header_code.len().saturating_sub(400)..]
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
