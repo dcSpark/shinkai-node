@@ -187,6 +187,8 @@ impl SqliteManager {
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
         Self::initialize_inbox_profile_permissions_table(conn)?;
+        Self::initialize_jobs_table(conn)?;
+        Self::initialize_forked_jobs_table(conn)?;
         Self::initialize_llm_providers_table(conn)?;
         Self::initialize_local_node_keys_table(conn)?;
         Self::initialize_my_subscriptions_table(conn)?;
@@ -295,11 +297,11 @@ impl SqliteManager {
     fn initialize_inbox_messages_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS inbox_messages (
-                message_id TEXT NOT NULL UNIQUE,
+                message_hash TEXT NOT NULL UNIQUE,
                 inbox_name TEXT NOT NULL,
                 shinkai_message BLOB NOT NULL,
-                parent_message_id TEXT,
-                created_at TEXT NOT NULL,
+                parent_message_hash TEXT,
+                time_key TEXT NOT NULL
             );",
             [],
         )?;
@@ -317,6 +319,41 @@ impl SqliteManager {
                 PRIMARY KEY (inbox_name, profile_name),
                 FOREIGN KEY (inbox_name) REFERENCES inboxes(inbox_name),
                 FOREIGN KEY (profile_name) REFERENCES standard_identities(profile_name)
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_jobs_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS jobs (
+                job_id TEXT NOT NULL UNIQUE,
+                is_hidden INTEGER NOT NULL,
+                datetime_created TEXT NOT NULL,
+                is_finished INTEGER NOT NULL,
+                parent_agent_or_llm_provider_id TEXT NOT NULL,
+                scope BLOB NOT NULL,
+                scope_with_files BLOB,
+                conversation_inbox_name TEXT NOT NULL,
+                step_history BLOB,
+                execution_context BLOB,
+                associated_ui BLOB,
+                config BLOB
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_forked_jobs_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forked_jobs (
+                parent_job_id TEXT NOT NULL,
+                forked_job_id TEXT NOT NULL,
+                message_id TEXT NOT NULL
             );",
             [],
         )?;

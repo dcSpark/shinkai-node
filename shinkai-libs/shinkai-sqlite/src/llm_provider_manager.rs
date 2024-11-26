@@ -6,6 +6,12 @@ use shinkai_message_primitives::schemas::{
 use crate::{SqliteManager, SqliteManagerError};
 
 impl SqliteManager {
+    /// Returns the the first half of the blake3 hash of the llm provider id value
+    pub fn llm_provider_id_to_hash(llm_provider_id: &str) -> String {
+        let full_hash = blake3::hash(llm_provider_id.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
+
     pub fn get_all_llm_providers(&self) -> Result<Vec<SerializedLLMProvider>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM llm_providers")?;
