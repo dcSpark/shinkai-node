@@ -103,7 +103,9 @@ impl SqliteManager {
 
         // Initialize FTS table in the in-memory database
         {
-            let fts_conn = fts_pool.get().map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+            let fts_conn = fts_pool
+                .get()
+                .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
             fts_conn.execute_batch(
                 "PRAGMA foreign_keys = ON;", // Enable foreign key support for in-memory connection
             )?;
@@ -249,8 +251,6 @@ impl SqliteManager {
                 job_id TEXT, -- Allow NULL values
                 job_id_history TEXT, -- Store as a comma-separated list
                 code TEXT NOT NULL,
-                sql_tables TEXT, -- Store as a JSON string
-                sql_queries TEXT, -- Store as a JSON string
                 FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
             );",
             [],
