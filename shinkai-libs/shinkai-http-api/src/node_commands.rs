@@ -998,6 +998,7 @@ pub enum NodeCommand {
     V2ApiExecuteCode {
         bearer: String,
         code: String,
+        tools: Option<Vec<String>>,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
         tool_id: String,

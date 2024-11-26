@@ -406,6 +406,7 @@ mod tests {
             config: vec![],
             author: "unknown".to_string(),
             js_code: "".to_string(),
+            tools: None,
             keywords: vec![],
             activated: false,
             embedding: None,
