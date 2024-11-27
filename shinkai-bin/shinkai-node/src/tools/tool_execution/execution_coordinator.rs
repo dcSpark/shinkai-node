@@ -43,69 +43,71 @@ pub async fn execute_tool(
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_tool] with tool_router_key: {}", tool_router_key);
 
-    // Get the tool from the database
-    let tool = sqlite_manager
-        .read()
+    // Determine the tool type based on the tool_router_key
+    if tool_router_key.contains("rust_toolkit") {
+        // Execute as a Rust tool
+        execute_custom_tool(
+            &tool_router_key,
+            parameters,
+            tool_id,
+            app_id,
+            extra_config,
+            bearer,
+            db,
+            vector_fs,
+            sqlite_manager,
+            llm_provider,
+            node_name,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+        )
         .await
-        .get_tool_by_key(&tool_router_key)
-        .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
-
-    // Match the tool type and execute the appropriate function
-    match tool {
-        ShinkaiTool::Deno(deno_tool, _) => {
-            let mut envs = HashMap::new();
-            envs.insert("BEARER".to_string(), bearer);
-            envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
-            envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
-            envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-            envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
-
-            let node_env = fetch_node_environment();
-            let node_storage_path = node_env
-                .node_storage_path
-                .clone()
-                .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-            let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, sqlite_manager, false)
-                .await
-                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-
-            deno_tool
-                .run(
-                    envs,
-                    header_code,
-                    parameters,
-                    extra_config,
-                    node_storage_path,
-                    // TODO REMOVE UNWRAP ONCE THE FRONTEND SENDS THE APP ID AND TOOL ID
-                    app_id.clone(),
-                    tool_id.clone(),
-                    true,
-                )
-                .map(|result| json!(result.data))
-                .map_err(|e| ToolError::ExecutionError(e.to_string()))
-        }
-        ShinkaiTool::Rust(_, _) => {
-            execute_custom_tool(
-                &tool_router_key,
-                parameters,
-                tool_id,
-                app_id,
-                extra_config,
-                bearer,
-                db,
-                vector_fs,
-                sqlite_manager,
-                llm_provider,
-                node_name,
-                identity_manager,
-                job_manager,
-                encryption_secret_key,
-                encryption_public_key,
-                signing_secret_key,
-            )
+    } else {
+        // Assume it's a Deno tool if not Rust
+        let tool = sqlite_manager
+            .read()
             .await
+            .get_tool_by_key(&tool_router_key)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
+
+        match tool {
+            ShinkaiTool::Deno(deno_tool, _) => {
+                let mut envs = HashMap::new();
+                envs.insert("BEARER".to_string(), bearer);
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
+                envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
+
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env
+                    .node_storage_path
+                    .clone()
+                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+                let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, sqlite_manager, false)
+                    .await
+                    .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
+                deno_tool
+                    .run(
+                        envs,
+                        header_code,
+                        parameters,
+                        extra_config,
+                        node_storage_path,
+                        // TODO REMOVE UNWRAP ONCE THE FRONTEND SENDS THE APP ID AND TOOL ID
+                        app_id.clone(),
+                        tool_id.clone(),
+                        true,
+                    )
+                    .map(|result| json!(result.data))
+                    .map_err(|e| ToolError::ExecutionError(e.to_string()))
+            }
+            _ => Err(ToolError::ExecutionError(format!("Unsupported tool type: {:?}", tool))),
         }
-        _ => Err(ToolError::ExecutionError(format!("Unsupported tool type: {:?}", tool))),
     }
 }
 

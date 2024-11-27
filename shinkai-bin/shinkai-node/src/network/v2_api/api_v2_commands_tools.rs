@@ -3,7 +3,7 @@ use crate::{
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
     tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation},
@@ -782,7 +782,7 @@ impl Node {
 
         let _ = res
             .send(Ok(json!({
-                "availableTools": get_all_tools(sqlite_manager.clone()).await.into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
+                "availableTools": get_all_deno_tools(sqlite_manager.clone()).await.into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
                 "libraryCode": library_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),

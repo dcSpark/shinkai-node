@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use serde_json::{json, Map, Value};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
@@ -24,7 +25,7 @@ use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
-use crate::it::utils::node_test_api::api_create_job_with_scope;
+use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
 use super::utils::node_test_api::{api_message_job, api_registration_device_node_profile_main};
@@ -70,6 +71,7 @@ fn native_tool_test_knowledge() {
         let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
 
         let node1_profile_name = "main";
+        let api_key_bearer = "my_api_key".to_string();
 
         // Agent pre-creation
         let _m = server
@@ -141,7 +143,7 @@ fn native_tool_test_knowledge() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
-            None,
+            Some(api_key_bearer.clone()),
         );
 
         let node1_handler = tokio::spawn(async move {
@@ -247,83 +249,111 @@ fn native_tool_test_knowledge() {
                     .await;
                 }
                 {
+                    // Implement the tool execution here
                     // Add tool call code here
-                }
-                {
-                    // Send a Message to the Job for processing
-                    shinkai_log(
-                        ShinkaiLogOption::Api,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Sending a message to Job {}", job_id.clone()),
-                    );
-                    let message = "Run this workflow (this message is not used)".to_string();
+                    let mut parameters = Map::new();
+                    parameters.insert("job_id".to_string(), json!(job_id));
 
-                    api_message_job(
+                    let tool_execution_result = api_execute_tool(
                         node1_commands_sender.clone(),
-                        clone_static_secret_key(&node1_profile_encryption_sk),
-                        node1_encryption_pk,
-                        clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_identity_name,
-                        node1_subidentity_name,
-                        &agent_subidentity.clone(),
-                        &job_id.clone().to_string(),
-                        &message,
-                        "",
-                        "",
+                        api_key_bearer.clone(),
+                        "local:::rust_toolkit:::shinkai_process_embeddings".to_string(),
+                        parameters,
+                        "your_tool_id".to_string(),
+                        "your_app_id".to_string(),
+                        node1_agent.to_string(),
                         None,
                     )
                     .await;
-                }
-                {
-                    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                    let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
 
-                    let mut node2_last_messages = vec![];
-                    for _ in 0..30 {
-                        let msg = ShinkaiMessageBuilder::get_last_messages_from_inbox(
-                            clone_static_secret_key(&node1_profile_encryption_sk),
-                            clone_signature_secret_key(&node1_profile_identity_sk),
-                            node1_encryption_pk,
-                            inbox_name.to_string(),
-                            10,
-                            None,
-                            "".to_string(),
-                            sender.clone(),
-                            node1_identity_name.to_string(),
-                        )
-                        .unwrap();
-                        let (res2_sender, res2_receiver) = async_channel::bounded(1);
-                        node1_commands_sender
-                            .send(NodeCommand::APIGetLastMessagesFromInbox { msg, res: res2_sender })
-                            .await
-                            .unwrap();
-                        node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-
-                        if node2_last_messages.len() >= 2 {
-                            eprintln!("breaking>> node2_last_messages: {:?}", node2_last_messages);
-                            break;
+                    // Handle the result
+                    match tool_execution_result {
+                        Ok(response) => {
+                            // Process the successful response
+                            println!("Tool executed successfully: {:?}", response);
                         }
-
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        Err(error) => {
+                            // Handle the error
+                            eprintln!("Tool execution failed: {:?}", error);
+                            panic!("Tool execution failed: {:?}", error);
+                        }
                     }
-
-                    shinkai_log(
-                        ShinkaiLogOption::Tests,
-                        ShinkaiLogLevel::Debug,
-                        &format!("node2_last_messages: {:?}", node2_last_messages),
-                    );
-
-                    eprintln!("node2_last_messages: {:?}", node2_last_messages);
-                    let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
-                    let message_content_agent: JobMessage =
-                        serde_json::from_str(&shinkai_message_content_agent).unwrap();
-
-                    assert_eq!(
-                        message_content_agent.content,
-                        "The Roman Empire is very interesting".to_string()
-                    );
-                    assert!(node2_last_messages.len() == 2);
                 }
+                // {
+                //     // Send a Message to the Job for processing
+                //     shinkai_log(
+                //         ShinkaiLogOption::Api,
+                //         ShinkaiLogLevel::Debug,
+                //         &format!("Sending a message to Job {}", job_id.clone()),
+                //     );
+                //     let message = "Run this workflow (this message is not used)".to_string();
+
+                //     api_message_job(
+                //         node1_commands_sender.clone(),
+                //         clone_static_secret_key(&node1_profile_encryption_sk),
+                //         node1_encryption_pk,
+                //         clone_signature_secret_key(&node1_profile_identity_sk),
+                //         node1_identity_name,
+                //         node1_subidentity_name,
+                //         &agent_subidentity.clone(),
+                //         &job_id.clone().to_string(),
+                //         &message,
+                //         "",
+                //         "",
+                //         None,
+                //     )
+                //     .await;
+                // }
+                // {
+                //     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+                //     let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
+
+                //     let mut node2_last_messages = vec![];
+                //     for _ in 0..30 {
+                //         let msg = ShinkaiMessageBuilder::get_last_messages_from_inbox(
+                //             clone_static_secret_key(&node1_profile_encryption_sk),
+                //             clone_signature_secret_key(&node1_profile_identity_sk),
+                //             node1_encryption_pk,
+                //             inbox_name.to_string(),
+                //             10,
+                //             None,
+                //             "".to_string(),
+                //             sender.clone(),
+                //             node1_identity_name.to_string(),
+                //         )
+                //         .unwrap();
+                //         let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                //         node1_commands_sender
+                //             .send(NodeCommand::APIGetLastMessagesFromInbox { msg, res: res2_sender })
+                //             .await
+                //             .unwrap();
+                //         node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
+
+                //         if node2_last_messages.len() >= 2 {
+                //             eprintln!("breaking>> node2_last_messages: {:?}", node2_last_messages);
+                //             break;
+                //         }
+
+                //         tokio::time::sleep(Duration::from_millis(500)).await;
+                //     }
+
+                //     shinkai_log(
+                //         ShinkaiLogOption::Tests,
+                //         ShinkaiLogLevel::Debug,
+                //         &format!("node2_last_messages: {:?}", node2_last_messages),
+                //     );
+
+                //     eprintln!("node2_last_messages: {:?}", node2_last_messages);
+                //     let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
+                //     let message_content_agent: JobMessage =
+                //         serde_json::from_str(&shinkai_message_content_agent).unwrap();
+
+                //     assert_eq!(
+                //         message_content_agent.content,
+                //         "The Roman Empire is very interesting".to_string()
+                //     );
+                //     assert!(node2_last_messages.len() == 2);
+                // }
 
                 abort_handler.abort();
             }

@@ -88,7 +88,28 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        _ => Ok(json!({})), // Not a custom tool
+        s if s == "local:::rust_toolkit:::shinkai_process_embeddings" => {
+            tool_implementation::native_tools::tool_knowledge::KnowledgeTool::execute(
+                bearer,
+                tool_id,
+                app_id,
+                db,
+                vector_fs,
+                sqlite_manager,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+                &parameters,
+                llm_provider,
+            )
+            .await
+        }
+        _ => Err(ToolError::InvalidFunctionArguments(
+            "The specified tool_router_key does not match any known custom tools.".to_string(),
+        )),
     };
     let text_result = format!("{:?}", result);
     if text_result.len() > 200 {

@@ -17,6 +17,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use std::collections::HashMap;
+use serde_json::{Map, Value};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn api_registration_device_node_profile_main(
@@ -674,4 +676,33 @@ pub async fn api_get_all_smart_inboxes_from_profile(
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
         node_job_message.unwrap()
     }
+}
+
+pub async fn api_execute_tool(
+    node_commands_sender: Sender<NodeCommand>,
+    bearer: String,
+    tool_router_key: String,
+    parameters: Map<String, Value>,
+    tool_id: String,
+    app_id: String,
+    llm_provider: String,
+    extra_config: Option<String>,
+) -> Result<Value, APIError> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    node_commands_sender
+        .send(NodeCommand::V2ApiExecuteTool {
+            bearer,
+            tool_router_key,
+            parameters,
+            tool_id,
+            app_id,
+            llm_provider,
+            extra_config,
+            res: res_sender,
+        })
+        .await
+        .unwrap();
+
+    res_receiver.recv().await.unwrap()
 }
