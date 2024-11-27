@@ -32,10 +32,13 @@
         return response.data;
     }
 */
-use super::language_helpers::to_camel_case;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
+
+pub fn create_function_name_set(tool: &ShinkaiToolHeader) -> String {
+    crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.name)
+}
 
 fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> String {
     match type_value.as_str() {
@@ -105,6 +108,9 @@ pub fn generate_typescript_definition(
     let node_env = fetch_node_environment();
     let api_port = node_env.api_listen_address.port();
 
+    // Create function name before using tool
+    let function_name = create_function_name_set(&tool);
+
     typescript_output.push_str("/**\n");
     typescript_output.push_str(&format!(" * {}\n", tool.description));
 
@@ -151,14 +157,7 @@ pub fn generate_typescript_definition(
 
     typescript_output.push_str(" */\n");
 
-    let function_name = to_camel_case(&tool.tool_router_key);
-
-    // Add 'export' and 'declare' for .d.ts files
-    if generate_dts {
-        typescript_output.push_str(&format!("export async function {}(", function_name));
-    } else {
-        typescript_output.push_str(&format!("async function {}(", function_name));
-    }
+    typescript_output.push_str(&format!("export async function {}(", function_name));
 
     // Generate function parameters
     let params: Vec<String> = tool
@@ -195,10 +194,8 @@ pub fn generate_typescript_definition(
     } else {
         // Only include implementation if not generating .d.ts
         typescript_output.push_str(" {\n");
-        typescript_output.push_str(&format!(
-            "    const _url = 'http://localhost:{}/v2/tool_execution';\n",
-            api_port
-        ));
+        typescript_output.push_str(r#"    const _url = `${Deno.env.get('SHINKAI_NODE_LOCATION')}/v2/tool_execution`;"#);
+        typescript_output.push_str("");
         typescript_output.push_str("    const data = {\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
@@ -256,7 +253,7 @@ pub fn generate_typescript_definition(
             typescript_output.push_str(" * @returns Query results\n");
             typescript_output.push_str(" */\n");
 
-            let function_name = to_camel_case(&tool.tool_router_key);
+            let function_name = create_function_name_set(&tool);
             typescript_output.push_str(&format!(
                 "async function query_{}(query: string, params?: any[]) {{\n",
                 function_name
@@ -264,7 +261,7 @@ pub fn generate_typescript_definition(
             // TODO: make this dynamic. This should be defined by the tool key path (?)
             let db_name = "default";
             typescript_output.push_str(&format!(
-                "    return localRustToolkitShinkaiSqliteQueryExecutor('{}', query, params);\n",
+                "    return shinkaiSqliteQueryExecutor('{}', query, params);\n",
                 db_name
             ));
             typescript_output.push_str("}\n");

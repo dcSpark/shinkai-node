@@ -9,6 +9,7 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
@@ -22,6 +23,7 @@ pub struct DenoTool {
     pub name: String,
     pub author: String,
     pub js_code: String,
+    pub tools: Option<Vec<String>>,
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
@@ -132,22 +134,12 @@ impl DenoTool {
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
                     println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
-                    // Remove axios import, as it's also created in the header code
-                    let step_1 = if !header_code.is_empty() {
-                        let regex_axios = regex::Regex::new(r#"import\s+axios\s+.*"#)?;
-                        regex_axios.replace_all(&code, "").into_owned()
-                    } else {
-                        code
-                    };
-                    // Remove library import, it is expected to be provided, but might not be generated.
-                    let regex = regex::Regex::new(r#"import\s+\{.+?from\s+["']@shinkai/local-tools['"]\s*;"#)?;
-                    let step_2 = regex.replace_all(&step_1, "").into_owned();
-                    // Add the library import and the header code in the beginning of the code
-                    let final_code = format!("{} {}", header_code, step_2);
                     println!(
-                        "[Running DenoTool] Final Code: {} ... {} ",
-                        &final_code[..120.min(final_code.len())],
-                        &final_code[final_code.len().saturating_sub(400)..]
+                        "[Running DenoTool] Code: {} ... {}, Header Code: {} ... {}",
+                        &code[..120.min(code.len())],
+                        &code[code.len().saturating_sub(400)..],
+                        &header_code[..120.min(header_code.len())],
+                        &header_code[header_code.len().saturating_sub(400)..]
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
@@ -175,7 +167,13 @@ impl DenoTool {
                     }
 
                     let tool = Tool::new(
-                        final_code,
+                        CodeFiles {
+                            files: HashMap::from([
+                                (String::from("index.ts"), code),
+                                (String::from("./shinkai-local-tools.ts"), header_code),
+                            ]),
+                            entrypoint: "index.ts".to_string(),
+                        },
                         config_json,
                         Some(DenoRunnerOptions {
                             context: ExecutionContext {
@@ -183,6 +181,8 @@ impl DenoTool {
                                 execution_id: tool_id.clone(),
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
+                                assets: vec![],
+                                mount_files: vec![],
                             },
                             deno_binary_path: PathBuf::from(
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")

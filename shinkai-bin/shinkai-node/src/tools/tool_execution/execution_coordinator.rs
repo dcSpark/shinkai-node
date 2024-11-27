@@ -108,6 +108,7 @@ pub async fn execute_tool(
 pub async fn execute_code(
     tool_type: DynamicToolType,
     code: String,
+    tools: Option<Vec<String>>,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
@@ -121,7 +122,7 @@ pub async fn execute_code(
     // Route based on the prefix
     match tool_type {
         DynamicToolType::DenoDynamic => {
-            let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, sqlite_manager, false)
+            let header_code = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(

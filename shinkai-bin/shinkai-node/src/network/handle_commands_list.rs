@@ -2947,6 +2947,7 @@ impl Node {
             NodeCommand::V2ApiExecuteCode {
                 bearer,
                 code,
+                tools,
                 tool_type,
                 parameters,
                 tool_id,
@@ -2958,11 +2959,12 @@ impl Node {
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::execute_code(
+                    let _ = Node::run_execute_code(
                         bearer,
                         db_clone,
                         tool_type,
                         code,
+                        tools,
                         parameters,
                         sqlite_manager_clone,
                         tool_id,

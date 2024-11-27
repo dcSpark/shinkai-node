@@ -48,6 +48,10 @@ pub struct ToolPlaygroundMetadata {
     #[serde(deserialize_with = "deserialize_sql_queries")]
     #[serde(rename = "sqlQueries")]
     pub sql_queries: Vec<SqlQuery>,
+    // This is optional as:
+    // None -> All tools.
+    // Empty vector -> No tools.
+    pub tools: Option<Vec<String>>,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>
