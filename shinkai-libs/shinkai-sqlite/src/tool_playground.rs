@@ -274,6 +274,7 @@ mod tests {
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -393,6 +394,7 @@ mod tests {
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -462,6 +464,7 @@ mod tests {
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

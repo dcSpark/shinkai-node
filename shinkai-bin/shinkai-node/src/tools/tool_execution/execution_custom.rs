@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 
+use tokio::sync::RwLock;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -25,6 +28,8 @@ pub async fn execute_custom_tool(
     _extra_config: Option<String>,
     bearer: String,
     db: Arc<ShinkaiDB>,
+    vector_fs: Arc<VectorFS>,
+    sqlite_manager: Arc<RwLock<SqliteManager>>,
     llm_provider: String,
     node_name: ShinkaiName,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -34,14 +39,25 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
+    // TODO: if it is, find it and call it
+
+    // Check if the tool_router_key contains "rust_toolkit"
+    if !tool_router_key.contains("rust_toolkit") {
+        return Err(ToolError::InvalidFunctionArguments(
+            "The tool_router_key does not contain 'rust_toolkit'".to_string(),
+        ));
+    }
+
     let result = match tool_router_key {
         // TODO Keep in sync with definitions_custom.rs
         s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => {
-            tool_implementation::sql_processor::SQLProcessorTool::execute(
+            tool_implementation::native_tools::sql_processor::SQLProcessorTool::execute(
                 bearer,
                 tool_id,
                 app_id,
                 db,
+                vector_fs,
+                sqlite_manager,
                 node_name,
                 identity_manager,
                 job_manager,
@@ -59,6 +75,8 @@ pub async fn execute_custom_tool(
                 tool_id,
                 app_id,
                 db,
+                vector_fs,
+                sqlite_manager,
                 node_name,
                 identity_manager,
                 job_manager,
@@ -70,7 +88,28 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        _ => Ok(json!({})), // Not a custom tool
+        s if s == "local:::rust_toolkit:::shinkai_process_embeddings" => {
+            tool_implementation::native_tools::tool_knowledge::KnowledgeTool::execute(
+                bearer,
+                tool_id,
+                app_id,
+                db,
+                vector_fs,
+                sqlite_manager,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+                &parameters,
+                llm_provider,
+            )
+            .await
+        }
+        _ => Err(ToolError::InvalidFunctionArguments(
+            "The specified tool_router_key does not match any known custom tools.".to_string(),
+        )),
     };
     let text_result = format!("{:?}", result);
     if text_result.len() > 200 {

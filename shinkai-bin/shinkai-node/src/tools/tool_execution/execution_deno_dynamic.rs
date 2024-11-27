@@ -35,6 +35,7 @@ pub fn execute_deno_tool(
         result: DenoToolResult::new("object".to_string(), Value::Null, vec![]),
         sql_tables: None,
         sql_queries: None,
+        file_inbox: None,
     };
 
     let mut envs = HashMap::new();
