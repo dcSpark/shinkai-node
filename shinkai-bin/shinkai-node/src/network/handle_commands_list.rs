@@ -2944,12 +2944,18 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiGenerateToolDefinitions { bearer, language, res } => {
+            NodeCommand::V2ApiGenerateToolDefinitions {
+                bearer,
+                language,
+                tools,
+                res,
+            } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::get_tool_definitions(bearer, db_clone, language, sqlite_manager_clone, res).await;
+                    let _ =
+                        Node::get_tool_definitions(bearer, db_clone, language, tools, sqlite_manager_clone, res).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolFetchQuery {

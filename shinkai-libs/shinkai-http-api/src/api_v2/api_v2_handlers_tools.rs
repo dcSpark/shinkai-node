@@ -165,7 +165,7 @@ pub async fn tool_definitions_handler(
             "python" => Some(CodeLanguage::Python),
             _ => None,
         });
-        
+
     if language.is_none() {
         return Err(warp::reject::custom(APIError {
             code: 400,
@@ -174,12 +174,18 @@ pub async fn tool_definitions_handler(
         }));
     }
 
+    let tools: Vec<String> = query_params
+        .get("tools")
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
+        .unwrap_or_default();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     sender
         .send(NodeCommand::V2ApiGenerateToolDefinitions {
             bearer,
             language: language.unwrap(),
+            tools,
             res: res_sender,
         })
         .await
@@ -850,7 +856,7 @@ pub struct CodeExecutionRequest {
     #[serde(default)]
     pub extra_config: Option<String>,
     pub llm_provider: String,
-    pub tools: Option<Vec<String>>,
+    pub tools: Vec<String>,
 }
 
 #[utoipa::path(

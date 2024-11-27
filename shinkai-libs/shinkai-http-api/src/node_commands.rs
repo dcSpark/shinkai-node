@@ -998,7 +998,7 @@ pub enum NodeCommand {
     V2ApiExecuteCode {
         bearer: String,
         code: String,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
         tool_id: String,
@@ -1009,6 +1009,7 @@ pub enum NodeCommand {
     V2ApiGenerateToolDefinitions {
         bearer: String,
         language: CodeLanguage,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolFetchQuery {

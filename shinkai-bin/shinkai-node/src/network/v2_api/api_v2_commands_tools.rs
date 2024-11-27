@@ -579,6 +579,7 @@ impl Node {
         bearer: String,
         db: Arc<ShinkaiDB>,
         language: CodeLanguage,
+        tools: Vec<String>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -586,7 +587,7 @@ impl Node {
             return Ok(());
         }
 
-        let definitions = generate_tool_definitions(None, language, sqlite_manager, false).await;
+        let definitions = generate_tool_definitions(tools, language, sqlite_manager, false).await;
 
         match definitions {
             Ok(definitions) => {
@@ -668,7 +669,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         tool_type: DynamicToolType,
         code: String,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         tool_id: String,
