@@ -1014,13 +1014,14 @@ pub enum NodeCommand {
     V2ApiGenerateToolFetchQuery {
         bearer: String,
         language: CodeLanguage,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolImplementation {
         bearer: String,
         message: JobMessage,
         language: CodeLanguage,
+        tools: Vec<String>,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
@@ -1028,6 +1029,7 @@ pub enum NodeCommand {
         bearer: String,
         job_id: String,
         language: CodeLanguage,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {

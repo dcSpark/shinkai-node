@@ -259,9 +259,7 @@ impl ToolRouter {
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
             let sqlite_manager_read = self.sqlite_manager.read().await;
-            match sqlite_manager_read
-                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
-            {
+            match sqlite_manager_read.get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo") {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
                         std::mem::drop(sqlite_manager_read);
@@ -462,8 +460,9 @@ impl ToolRouter {
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
                 let tool_id = shinkai_tool.tool_router_key().clone();
+                let tools = deno_tool.tools.clone().unwrap_or_default();
                 let header_code =
-                    generate_tool_definitions(None, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                    generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
@@ -786,11 +785,13 @@ impl ToolRouter {
             .node_storage_path
             .clone()
             .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+        let tools = js_tool.clone().tools.unwrap_or_default();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
         let tool_id = shinkai_tool.tool_router_key().clone();
-        let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
-            .await
-            .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+        let header_code =
+            generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
         let mut envs = HashMap::new();
         envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
         envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API

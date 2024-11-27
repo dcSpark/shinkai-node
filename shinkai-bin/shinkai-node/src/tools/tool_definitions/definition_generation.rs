@@ -46,19 +46,17 @@ pub async fn get_all_tools(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Vec<Sh
 /// Returns a `Result` containing a `String` with the generated tool definitions or an `APIError`
 /// if an error occurs during the process.
 pub async fn generate_tool_definitions(
-    tools: Option<Vec<String>>,
+    tools: Vec<String>,
     language: CodeLanguage,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     only_headers: bool,
 ) -> Result<String, APIError> {
     let mut all_tools = get_all_tools(sqlite_manager.clone()).await;
 
-    if let Some(tools) = tools {
-        all_tools = all_tools
-            .into_iter()
-            .filter(|tool| tools.contains(&tool.tool_router_key))
-            .collect();
-    }
+    all_tools = all_tools
+        .into_iter()
+        .filter(|tool| tools.contains(&tool.tool_router_key))
+        .collect();
 
     let mut output = String::new();
     let mut generated_names = HashSet::new();

@@ -2969,6 +2969,7 @@ impl Node {
                 bearer,
                 message,
                 language,
+                tools,
                 raw,
                 res,
             } => {
@@ -2987,6 +2988,7 @@ impl Node {
                         db_clone,
                         message,
                         language,
+                        tools,
                         sqlite_manager_clone,
                         node_name_clone,
                         identity_manager_clone,
@@ -3004,6 +3006,7 @@ impl Node {
                 bearer,
                 job_id,
                 language,
+                tools,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
@@ -3020,6 +3023,7 @@ impl Node {
                         bearer,
                         job_id,
                         language,
+                        tools,
                         sqlite_manager_clone,
                         db_clone,
                         node_name_clone,
