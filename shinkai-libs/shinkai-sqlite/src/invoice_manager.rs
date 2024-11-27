@@ -10,7 +10,7 @@ impl SqliteManager {
     pub fn set_invoice(&self, invoice: &Invoice) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "INSERT INTO tool_micropayments_tool_invoices (
+            "INSERT INTO invoices (
                 invoice_id,
                 provider_name,
                 requester_name,
@@ -69,7 +69,7 @@ impl SqliteManager {
 
     pub fn get_invoice(&self, invoice_id: &str) -> Result<Invoice, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT * FROM tool_micropayments_tool_invoices WHERE invoice_id = ?1")?;
+        let mut stmt = conn.prepare("SELECT * FROM invoices WHERE invoice_id = ?1")?;
 
         let invoice = stmt
             .query_row(params![invoice_id], |row| {
@@ -169,7 +169,7 @@ impl SqliteManager {
 
     pub fn get_all_invoices(&self) -> Result<Vec<Invoice>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT * FROM tool_micropayments_tool_invoices")?;
+        let mut stmt = conn.prepare("SELECT * FROM invoices")?;
 
         let invoices = stmt
             .query_map([], |row| {
@@ -268,7 +268,7 @@ impl SqliteManager {
 
     pub fn remove_invoice(&self, invoice_id: &str) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("DELETE FROM tool_micropayments_tool_invoices WHERE invoice_id = ?1")?;
+        let mut stmt = conn.prepare("DELETE FROM invoices WHERE invoice_id = ?1")?;
         stmt.execute(params![invoice_id])?;
 
         Ok(())
@@ -279,7 +279,7 @@ impl SqliteManager {
     pub fn set_invoice_network_error(&self, error: &InvoiceRequestNetworkError) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "INSERT INTO tool_micropayments_tool_invoice_network_errors (
+            "INSERT INTO invoice_network_errors (
                 invoice_id,
                 provider_name,
                 requester_name,
@@ -308,8 +308,7 @@ impl SqliteManager {
         invoice_id: &str,
     ) -> Result<InvoiceRequestNetworkError, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("SELECT * FROM tool_micropayments_tool_invoice_network_errors WHERE invoice_id = ?1")?;
+        let mut stmt = conn.prepare("SELECT * FROM invoice_network_errors WHERE invoice_id = ?1")?;
 
         let error = stmt
             .query_row(params![invoice_id], |row| {
@@ -358,7 +357,7 @@ impl SqliteManager {
 
     pub fn get_all_invoice_network_errors(&self) -> Result<Vec<InvoiceRequestNetworkError>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT * FROM tool_micropayments_tool_invoice_network_errors")?;
+        let mut stmt = conn.prepare("SELECT * FROM invoice_network_errors")?;
 
         let errors = stmt
             .query_map([], |row| {
@@ -406,8 +405,7 @@ impl SqliteManager {
 
     pub fn remove_invoice_network_error(&self, invoice_id: &str) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("DELETE FROM tool_micropayments_tool_invoice_network_errors WHERE invoice_id = ?1")?;
+        let mut stmt = conn.prepare("DELETE FROM invoice_network_errors WHERE invoice_id = ?1")?;
         stmt.execute(params![invoice_id])?;
 
         Ok(())

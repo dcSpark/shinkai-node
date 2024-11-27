@@ -313,6 +313,14 @@ impl SqliteManager {
         Ok(count > 0)
     }
 
+    pub fn is_inbox_empty(&self, inbox_name: &str) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM inbox_messages WHERE inbox_name = ?1")?;
+        let mut rows = stmt.query(params![inbox_name])?;
+        let count: i32 = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?.get(0)?;
+        Ok(count == 0)
+    }
+
     pub fn mark_as_read_up_to(
         &self,
         inbox_name: String,

@@ -10,7 +10,7 @@ impl SqliteManager {
     ) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "INSERT INTO tool_micropayments_invoice_requests (
+            "INSERT INTO invoice_requests (
                 unique_id,
                 provider_name,
                 requester_name,
@@ -46,7 +46,7 @@ impl SqliteManager {
                 usage_type_inquiry,
                 date_time,
                 secret_prehash
-            FROM tool_micropayments_invoice_requests
+            FROM invoice_requests
             WHERE unique_id = ?1",
         )?;
 
@@ -88,7 +88,7 @@ impl SqliteManager {
                 usage_type_inquiry,
                 date_time,
                 secret_prehash
-            FROM tool_micropayments_invoice_requests",
+            FROM invoice_requests",
         )?;
 
         let mut rows = stmt.query([])?;
@@ -130,7 +130,7 @@ impl SqliteManager {
 
     pub fn remove_internal_invoice_request(&self, unique_id: &str) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("DELETE FROM tool_micropayments_invoice_requests WHERE unique_id = ?1")?;
+        let mut stmt = conn.prepare("DELETE FROM invoice_requests WHERE unique_id = ?1")?;
 
         stmt.execute(params![unique_id])?;
 

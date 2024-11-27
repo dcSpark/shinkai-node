@@ -1,18 +1,7 @@
-use std::net::SocketAddr;
-
 use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 use chrono::{DateTime, Utc};
 use rocksdb::IteratorMode;
-use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RetryMessage {
-    pub retry_count: u32,
-    pub message: ShinkaiMessage,
-    pub save_to_db_flag: bool,
-    pub peer: (SocketAddr, String),
-}
+use shinkai_message_primitives::{schemas::retry::RetryMessage, shinkai_message::shinkai_message::ShinkaiMessage};
 
 impl ShinkaiDB {
     /// Adds a message to the MessagesToRetry column family.
