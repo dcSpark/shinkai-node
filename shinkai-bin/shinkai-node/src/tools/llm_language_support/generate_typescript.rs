@@ -261,7 +261,7 @@ pub fn generate_typescript_definition(
             // TODO: make this dynamic. This should be defined by the tool key path (?)
             let db_name = "default";
             typescript_output.push_str(&format!(
-                "    return localRustToolkitShinkaiSqliteQueryExecutor('{}', query, params);\n",
+                "    return shinkaiSqliteQueryExecutor('{}', query, params);\n",
                 db_name
             ));
             typescript_output.push_str("}\n");

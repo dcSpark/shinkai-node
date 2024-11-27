@@ -10,7 +10,7 @@ pub async fn generate_code_prompt(
     match language {
         CodeLanguage::Typescript => {
             // This function name must match the generated code for the language specific SQL Query Function
-            let shinkai_sqlite_query_executor = "localRustToolkitShinkaiSqliteQueryExecutor";
+            let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
             return Ok(format!(
                 r####"
 # RULE I:
