@@ -2881,6 +2881,7 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
                 let node_name = self.node_name.clone();
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let job_manager = self.job_manager.clone().unwrap();
@@ -2894,6 +2895,7 @@ impl Node {
                         bearer,
                         node_name,
                         db_clone,
+                        vector_fs_clone,
                         sqlite_manager_clone,
                         tool_router_key,
                         parameters,

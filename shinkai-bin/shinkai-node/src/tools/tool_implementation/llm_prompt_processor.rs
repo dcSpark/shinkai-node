@@ -1,11 +1,13 @@
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     argument::{ToolArgument, ToolOutputArg},
     error::ToolError,
     shinkai_tool::ShinkaiToolHeader,
 };
-use std::sync::Arc;
+use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use std::sync::{Arc, Weak};
 
 use serde_json::{json, Map, Value};
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
@@ -14,7 +16,7 @@ use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -77,9 +79,11 @@ This can be used to process complex requests, text analysis, text matching, text
 impl ToolExecutor for LmPromptProcessorTool {
     async fn execute(
         bearer: String,
-        tool_id: String,
-        app_id: String,
+        _tool_id: String,
+        _app_id: String,
         db_clone: Arc<ShinkaiDB>,
+        _vector_fs_clone: Arc<VectorFS>,
+        _sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,

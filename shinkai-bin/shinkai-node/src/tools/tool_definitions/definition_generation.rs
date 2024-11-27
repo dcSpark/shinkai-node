@@ -14,11 +14,12 @@ use crate::tools::tool_implementation;
 pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
     custom_tools.push(tool_implementation::llm_prompt_processor::LmPromptProcessorTool::new().tool);
-    custom_tools.push(tool_implementation::sql_processor::SQLProcessorTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
     custom_tools
 }
 
-pub async fn get_all_tools(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Vec<ShinkaiToolHeader> {
+pub async fn get_all_deno_tools(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Vec<ShinkaiToolHeader> {
     let mut all_tools = match sqlite_manager.read().await.get_all_tool_headers() {
         Ok(data) => data,
         Err(_) => Vec::new(),
@@ -51,7 +52,7 @@ pub async fn generate_tool_definitions(
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     only_headers: bool,
 ) -> Result<String, APIError> {
-    let mut all_tools = get_all_tools(sqlite_manager.clone()).await;
+    let mut all_tools = get_all_deno_tools(sqlite_manager.clone()).await;
 
     all_tools = all_tools
         .into_iter()

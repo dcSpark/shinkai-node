@@ -34,6 +34,7 @@ pub struct DenoTool {
     pub result: DenoToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
+    pub file_inbox: Option<String>,
 }
 
 impl DenoTool {
