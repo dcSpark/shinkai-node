@@ -579,6 +579,7 @@ impl Node {
         bearer: String,
         db: Arc<ShinkaiDB>,
         language: CodeLanguage,
+        tools: Vec<String>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -586,7 +587,7 @@ impl Node {
             return Ok(());
         }
 
-        let definitions = generate_tool_definitions(None, language, sqlite_manager, false).await;
+        let definitions = generate_tool_definitions(tools, language, sqlite_manager, false).await;
 
         match definitions {
             Ok(definitions) => {
@@ -668,7 +669,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         tool_type: DynamicToolType,
         code: String,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         parameters: Map<String, Value>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         tool_id: String,
@@ -718,7 +719,7 @@ impl Node {
         bearer: String,
         db: Arc<ShinkaiDB>,
         language: CodeLanguage,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -753,7 +754,8 @@ impl Node {
             }
         };
 
-        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string()).await {
+        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string(), tools.clone()).await
+        {
             Ok(prompt) => prompt,
             Err(err) => {
                 let api_error = APIError {
@@ -780,10 +782,25 @@ impl Node {
                 }
             };
 
+        let header_code =
+            match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), true).await {
+                Ok(code) => code,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
         let _ = res
             .send(Ok(json!({
                 "availableTools": get_all_deno_tools(sqlite_manager.clone()).await.into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
                 "libraryCode": library_code.clone(),
+                "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
             })))
@@ -796,6 +813,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         job_message: JobMessage,
         language: CodeLanguage,
+        tools: Vec<String>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -813,7 +831,7 @@ impl Node {
         }
         // Generate tool definitions
         let tool_definitions =
-            match generate_tool_definitions(None, language.clone(), sqlite_manager.clone(), true).await {
+            match generate_tool_definitions(tools, language.clone(), sqlite_manager.clone(), true).await {
                 Ok(definitions) => definitions,
                 Err(err) => {
                     let api_error = APIError {
@@ -869,6 +887,7 @@ impl Node {
         bearer: String,
         job_id: String,
         language: CodeLanguage,
+        tools: Vec<String>,
         _sqlite_manager: Arc<RwLock<SqliteManager>>,
         db_clone: Arc<ShinkaiDB>,
         node_name_clone: ShinkaiName,
@@ -953,7 +972,7 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation(language, code).await {
+        let metadata = match tool_metadata_implementation(language, code, tools).await {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
