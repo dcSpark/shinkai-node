@@ -1060,9 +1060,34 @@ impl Node {
         // Update the scheduled time to now so the messages are content wise the same but produce a different hash
         new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
 
+        let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
+            Ok(inbox) => inbox.to_string(),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get job inbox name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Add the message as a response to the job inbox
-        let parent_hash = match message.get_message_parent_key() {
-            Ok(hash) => hash,
+        let parent_hash = match db.get_parent_message_hash(&inbox_name, &message_hash) {
+            Ok(hash) => {
+                if let Some(hash) = hash {
+                    hash
+                } else {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get message parent key".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1233,7 +1258,7 @@ impl Node {
 
         // Create the AI message
         let identity_secret_key_clone = clone_signature_secret_key(&node_signing_sk);
-        let ai_message_content = format!("Updated code: {}", code);
+        let ai_message_content = format!("```\n{}\n```", code);
         let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             ai_message_content,
