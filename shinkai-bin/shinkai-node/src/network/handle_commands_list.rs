@@ -3035,6 +3035,26 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let node_name_clone = self.node_name.clone();
+                let node_encryption_sk_clone = self.encryption_secret_key.clone();
+                let node_encryption_pk_clone = self.encryption_public_key.clone();
+                let node_signing_sk_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_code_update(
+                        bearer,
+                        db_clone,
+                        job_id,
+                        code,
+                        identity_manager_clone,
+                        node_name_clone,
+                        node_encryption_sk_clone,
+                        node_encryption_pk_clone,
+                        node_signing_sk_clone,
+                        res,
+                    ).await;
+                });
             }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
                 bearer,
