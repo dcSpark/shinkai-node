@@ -557,6 +557,17 @@ impl Node {
             }
         }
 
+        {
+            // Update the version in the database
+            // Retrieve the current version
+            let version = env!("CARGO_PKG_VERSION");
+
+            // Update the version in the database
+
+            let sqlite_manager = self.sqlite_manager.read().await;
+            sqlite_manager.set_version(version).expect("Failed to set version");
+        }
+
         // Call ToolRouter initialization in a new task
         if let Some(tool_router) = &self.tool_router {
             let tool_router = tool_router.clone();

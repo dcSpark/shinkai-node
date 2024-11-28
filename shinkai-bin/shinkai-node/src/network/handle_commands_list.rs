@@ -2396,8 +2396,9 @@ impl Node {
             NodeCommand::V2ApiHealthCheck { res } => {
                 let db_clone = Arc::clone(&self.db);
                 let public_https_certificate_clone = self.public_https_certificate.clone();
+                let sqlite_manager = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, res).await;
+                    let _ = Node::v2_api_health_check(db_clone, sqlite_manager, public_https_certificate_clone, res).await;
                 });
             }
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
