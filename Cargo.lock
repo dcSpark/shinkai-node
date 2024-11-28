@@ -8181,8 +8181,10 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "shinkai_db",
  "shinkai_message_primitives",
+ "shinkai_sqlite",
+ "shinkai_vector_resources",
+ "tempfile",
  "tokio",
 ]
 
@@ -8364,9 +8366,9 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
- "shinkai_db",
  "shinkai_job_queue_manager",
  "shinkai_message_primitives",
+ "shinkai_sqlite",
  "shinkai_vector_fs",
  "shinkai_vector_resources",
  "thiserror 1.0.69",

@@ -26,7 +26,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 pub async fn execute_tool(
     bearer: String,
     node_name: ShinkaiName,
-    db: Arc<ShinkaiDB>,
+    db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_router_key: String,

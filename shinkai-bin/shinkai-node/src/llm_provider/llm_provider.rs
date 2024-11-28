@@ -6,7 +6,6 @@ use super::llm_stopper::LLMStopper;
 use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
@@ -18,7 +17,7 @@ use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName,
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct LLMProvider {
@@ -251,9 +250,9 @@ impl LLMProvider {
         )
     }
 
-    pub fn from_provider_or_agent(
+    pub async fn from_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<Self, LLMProviderError> {
         match provider_or_agent {
             ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
@@ -262,6 +261,8 @@ impl LLMProvider {
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
                 let llm_provider = db
+                    .read()
+                    .await
                     .get_llm_provider(llm_id, &agent.full_identity_name)
                     .map_err(|_e| LLMProviderError::AgentNotFound(llm_id.clone()))?;
                 if let Some(llm_provider) = llm_provider {

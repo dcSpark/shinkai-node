@@ -6,7 +6,6 @@ use std::{
 };
 
 use dashmap::DashMap;
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
     schemas::{
         file_links::{FileLink, FileMapPath, FileStatus, FolderSubscriptionWithPath, SubscriptionStatus},
@@ -14,11 +13,14 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_permissions::ReadPermission};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
-use tokio::sync::Semaphore;
+use tokio::sync::{RwLock, Semaphore};
 
-use crate::subscription_manager::{fs_entry_tree::FSEntryTree, fs_entry_tree_generator::FSEntryTreeGenerator, shared_folder_info::SharedFolderInfo};
+use crate::subscription_manager::{
+    fs_entry_tree::FSEntryTree, fs_entry_tree_generator::FSEntryTreeGenerator, shared_folder_info::SharedFolderInfo,
+};
 
 use super::{
     http_upload_error::HttpUploadError,
@@ -32,7 +34,7 @@ use super::{
 const UPLOAD_CONCURRENCY: usize = 2;
 
 pub struct HttpSubscriptionUploadManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     pub is_syncing: bool,
@@ -66,7 +68,7 @@ impl Clone for HttpSubscriptionUploadManager {
 
 impl HttpSubscriptionUploadManager {
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
@@ -84,7 +86,7 @@ impl HttpSubscriptionUploadManager {
 
         // Restore subscription_file_map from the database
         if let Some(db_strong) = db.upgrade() {
-            match db_strong.read_all_file_links() {
+            match db_strong.read().await.read_all_file_links() {
                 Ok(all_file_links) => {
                     for (folder_subs_with_path, file_links_map) in all_file_links {
                         // Update file_links instead of file_status_map
@@ -134,7 +136,7 @@ impl HttpSubscriptionUploadManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_http_checks(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
@@ -203,7 +205,7 @@ impl HttpSubscriptionUploadManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn controlled_subscription_http_check_loop(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
@@ -230,7 +232,7 @@ impl HttpSubscriptionUploadManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn subscription_http_check_loop(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
@@ -284,7 +286,7 @@ impl HttpSubscriptionUploadManager {
     }
 
     pub async fn get_profiles_and_shared_folders_with_empty_tree(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
     ) -> Result<HashMap<String, Vec<SharedFolderInfo>>, HttpUploadError> {
@@ -292,6 +294,8 @@ impl HttpSubscriptionUploadManager {
             .upgrade()
             .ok_or_else(|| HttpUploadError::DatabaseError("Database instance is not available".to_string()))?;
         let identities = db_strong
+            .read()
+            .await
             .get_all_profiles(node_name.clone())
             .map_err(|e| HttpUploadError::DatabaseError(e.to_string()))?;
 
@@ -318,7 +322,7 @@ impl HttpSubscriptionUploadManager {
     }
 
     async fn fetch_shared_folders_for_profile_with_empty_tree(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         profile: String,
@@ -362,7 +366,7 @@ impl HttpSubscriptionUploadManager {
                 async move {
                     let path_str = path.to_string();
                     let permission_str = format!("{:?}", permission);
-                    let subscription_requirement = match db_clone.get_folder_requirements(&path_str) {
+                    let subscription_requirement = match db_clone.read().await.get_folder_requirements(&path_str) {
                         Ok(req) => Some(req),
                         Err(_) => None,
                     };
@@ -396,20 +400,23 @@ impl HttpSubscriptionUploadManager {
 
     // Helper method to fetch subscriptions that require HTTP support
     #[allow(dead_code)]
-    pub async fn fetch_subscriptions_with_http_support(db: &Weak<ShinkaiDB>) -> Vec<FolderSubscriptionWithPath> {
+    pub async fn fetch_subscriptions_with_http_support(
+        db: &Weak<RwLock<SqliteManager>>,
+    ) -> Vec<FolderSubscriptionWithPath> {
         let db = match db.upgrade() {
             Some(db) => db,
             None => {
                 shinkai_log(
                     ShinkaiLogOption::SubscriptionHTTPUploader,
                     ShinkaiLogLevel::Error,
-                    "Failed to upgrade Weak<ShinkaiDB> to a strong reference",
+                    "Failed to upgrade Weak<RwLock<SqliteManager>> to a strong reference",
                 );
                 return Vec::new(); // Handle error appropriately
             }
         };
+        let db_read = db.read().await;
 
-        match db.get_all_folder_requirements() {
+        match db_read.get_all_folder_requirements() {
             Ok(subscriptions) => subscriptions
                 .into_iter()
                 .filter_map(|(path, folder_subscription)| {
@@ -448,7 +455,7 @@ impl HttpSubscriptionUploadManager {
         profile: String,
         subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
         subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
-        db: &Weak<ShinkaiDB>,
+        db: &Weak<RwLock<SqliteManager>>,
         vector_fs: &Weak<VectorFS>,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
         file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
@@ -501,12 +508,14 @@ impl HttpSubscriptionUploadManager {
             Some(db) => db,
             None => {
                 return Err(HttpUploadError::DatabaseError(
-                    "Failed to upgrade Weak<ShinkaiDB> to a strong reference".to_string(),
+                    "Failed to upgrade Weak<RwLock<SqliteManager>> to a strong reference".to_string(),
                 ))
             }
         };
 
         let credentials = db_strong
+            .read()
+            .await
             .get_upload_credentials(&shared_folder_subs.path, &profile)
             .map_err(|e| HttpUploadError::DatabaseError(format!("Failed to retrieve upload credentials: {}", e)))?;
 
@@ -814,7 +823,7 @@ impl HttpSubscriptionUploadManager {
 
     /// Generates a temporary shareable link for a file.
     pub async fn update_file_links(
-        db: &Weak<ShinkaiDB>,
+        db: &Weak<RwLock<SqliteManager>>,
         file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
         subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
         subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
@@ -911,7 +920,7 @@ impl HttpSubscriptionUploadManager {
         }
         // Store the updated file links to disk if any update occurred
         if needs_update_occurred {
-            if let Err(e) = Self::store_file_links_to_disk(db, &folder_subs_with_path, &file_links) {
+            if let Err(e) = Self::store_file_links_to_disk(db, &folder_subs_with_path, &file_links).await {
                 shinkai_log(
                     ShinkaiLogOption::ExtSubscriptions,
                     ShinkaiLogLevel::Error,
@@ -927,17 +936,22 @@ impl HttpSubscriptionUploadManager {
     }
 
     // Helper method to store file links to disk
-    fn store_file_links_to_disk(
-        db: &Weak<ShinkaiDB>,
+    async fn store_file_links_to_disk(
+        db: &Weak<RwLock<SqliteManager>>,
         folder_subs_with_path: &FolderSubscriptionWithPath,
         file_links: &Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
     ) -> Result<(), HttpUploadError> {
         let db_strong = db.upgrade().ok_or_else(|| {
-            HttpUploadError::DatabaseError("Failed to upgrade Weak<ShinkaiDB> to a strong reference".to_string())
+            HttpUploadError::DatabaseError(
+                "Failed to upgrade Weak<RwLock<SqliteManager>> to a strong reference".to_string(),
+            )
         })?;
 
         if let Some(links) = file_links.get(folder_subs_with_path) {
-            db_strong.write_file_links(folder_subs_with_path, &links)?;
+            db_strong
+                .write()
+                .await
+                .write_file_links(folder_subs_with_path, &links)?;
         }
 
         Ok(())
@@ -1002,10 +1016,14 @@ impl HttpSubscriptionUploadManager {
 
         // Retrieve the destination from the database
         let db_strong = self.db.upgrade().ok_or_else(|| {
-            HttpUploadError::DatabaseError("Failed to upgrade Weak<ShinkaiDB> to a strong reference".to_string())
+            HttpUploadError::DatabaseError(
+                "Failed to upgrade Weak<RwLock<SqliteManager>> to a strong reference".to_string(),
+            )
         })?;
 
         let credentials = db_strong
+            .read()
+            .await
             .get_upload_credentials(&folder_subs_with_path.path, profile)
             .map_err(|e| HttpUploadError::DatabaseError(format!("Failed to retrieve upload credentials: {}", e)))?;
 

@@ -152,7 +152,7 @@
 //     //     let db_weak_clone = db_weak.clone();
 //     //     let process_job_message_queued_wrapper =
 //     //         move |job: CronTask,
-//     //               _db: Weak<ShinkaiDB>,
+//     //               _db: Weak<RwLock<SqliteManager>>,
 //     //               vector_fs_weak: Weak<VectorFS>,
 //     //               identity_sk: SigningKey,
 //     //               job_manager: Arc<Mutex<JobManager>>,

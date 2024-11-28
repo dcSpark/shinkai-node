@@ -4,7 +4,6 @@ use futures::Future;
 use lru::LruCache;
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -13,6 +12,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::SubscriptionPayment;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
@@ -58,8 +58,7 @@ const REFRESH_THRESHOLD_MINUTES: usize = 10;
 const SOFT_REFRESH_THRESHOLD_MINUTES: usize = 2;
 
 pub struct MySubscriptionsManager {
-    pub db: Weak<ShinkaiDB>,
-    pub sqlite_manager: Weak<SqliteManager>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
@@ -85,8 +84,7 @@ pub struct MySubscriptionsManager {
 impl MySubscriptionsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
@@ -120,15 +118,13 @@ impl MySubscriptionsManager {
         let subscription_queue_handler = MySubscriptionsManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
             db.clone(),
-            sqlite_manager.clone(),
             vector_fs.clone(),
             external_node_shared_folders.clone(),
             http_download_manager.clone(),
-            |job_queue_manager, db, sqlite_manager, vector_fs, external_node_shared_folders, http_download_manager| {
+            |job_queue_manager, db, vector_fs, external_node_shared_folders, http_download_manager| {
                 Box::pin(MySubscriptionsManager::process_subscription_job_message_queued(
                     job_queue_manager,
                     db,
-                    sqlite_manager,
                     vector_fs,
                     external_node_shared_folders,
                     http_download_manager,
@@ -139,7 +135,6 @@ impl MySubscriptionsManager {
 
         let subscription_update_cache_task = MySubscriptionsManager::process_subscription_shared_folder_cache_updates(
             db.clone(),
-            sqlite_manager.clone(),
             identity_manager.clone(),
             proxy_connection_info.clone(),
             node_name.clone(),
@@ -150,7 +145,6 @@ impl MySubscriptionsManager {
 
         MySubscriptionsManager {
             db,
-            sqlite_manager,
             vector_fs,
             identity_manager,
             subscriptions_queue_manager,
@@ -331,7 +325,7 @@ impl MySubscriptionsManager {
         // Check locally if I'm already subscribed to the folder using the DB
         let subscription_id = {
             let db_lock = self
-                .sqlite_manager
+                .db
                 .upgrade()
                 .ok_or(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()))?;
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
@@ -391,7 +385,7 @@ impl MySubscriptionsManager {
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
-            if let Some(db_lock) = self.sqlite_manager.upgrade() {
+            if let Some(db_lock) = self.db.upgrade() {
                 db_lock
                     .remove_my_subscription(subscription_id.get_unique_id())
                     .map_err(|e| {
@@ -456,7 +450,7 @@ impl MySubscriptionsManager {
             .as_str(),
         );
         // Check locally if I'm already subscribed to the folder using the DB
-        if let Some(db_lock) = self.sqlite_manager.upgrade() {
+        if let Some(db_lock) = self.db.upgrade() {
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
             let subscription_id = SubscriptionId::new(
                 streamer_node_name.clone(),
@@ -551,7 +545,7 @@ impl MySubscriptionsManager {
 
             new_subscription.update_http_preferred(http_preferred);
 
-            if let Some(db_lock) = self.sqlite_manager.upgrade() {
+            if let Some(db_lock) = self.db.upgrade() {
                 db_lock.add_my_subscription(new_subscription.clone()).map_err(|e| {
                     shinkai_log(
                         ShinkaiLogOption::MySubscriptions,
@@ -655,7 +649,7 @@ impl MySubscriptionsManager {
             MessageSchemaType::SubscribeToSharedFolderResponse => {
                 // Validate that we requested the subscription
                 let db = self
-                    .sqlite_manager
+                    .db
                     .upgrade()
                     .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
                 let subscription_result =
@@ -735,7 +729,7 @@ impl MySubscriptionsManager {
         if was_none {
             // Check if we have a subscription for this folder
             // If we do, trigger a get_shared_folder to indirectly trigger a download sync
-            if let Some(db_lock) = self.sqlite_manager.upgrade() {
+            if let Some(db_lock) = self.db.upgrade() {
                 let subscriptions = db_lock.list_all_my_subscriptions().map_err(|e| {
                     shinkai_log(
                         ShinkaiLogOption::MySubscriptions,
@@ -987,7 +981,7 @@ impl MySubscriptionsManager {
                     )?;
 
                     let db = self
-                        .sqlite_manager
+                        .db
                         .upgrade()
                         .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
                     db.write_notification(user_profile, notification_message).map_err(|e| {
@@ -1023,7 +1017,7 @@ impl MySubscriptionsManager {
 
     pub async fn send_message_to_peer(
         message: ShinkaiMessage,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         receiver_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
@@ -1085,8 +1079,7 @@ impl MySubscriptionsManager {
     /// Scheduler that sends a message to the network queue to update the shared folder cache
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_shared_folder_cache_updates(
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         node_name: ShinkaiName,
@@ -1113,7 +1106,7 @@ impl MySubscriptionsManager {
 
             loop {
                 let subscriptions = {
-                    let db = match sqlite_manager.upgrade() {
+                    let db = match db.upgrade() {
                         Some(db) => db,
                         None => {
                             shinkai_log(
@@ -1220,15 +1213,13 @@ impl MySubscriptionsManager {
 
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
         process_job: impl Fn(
                 Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
-                Weak<ShinkaiDB>,
-                Weak<SqliteManager>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
                 Arc<Mutex<HttpDownloadManager>>,
@@ -1250,7 +1241,6 @@ impl MySubscriptionsManager {
                 if let Err(e) = process_job(
                     job_queue_manager.clone(),
                     db.clone(),
-                    sqlite_manager.clone(),
                     vector_fs.clone(),
                     external_node_shared_folders.clone(),
                     http_download_manager.clone(),
@@ -1268,14 +1258,13 @@ impl MySubscriptionsManager {
 
     pub async fn process_subscription_job_message_queued(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
         http_download_manager: Arc<Mutex<HttpDownloadManager>>,
     ) -> Result<(), SubscriberManagerError> {
         // Read all subscriptions from the database
-        if let Some(db_lock) = sqlite_manager.upgrade() {
+        if let Some(db_lock) = db.upgrade() {
             let all_subscriptions = db_lock.list_all_my_subscriptions().map_err(|e| {
                 SubscriberManagerError::DatabaseError(format!("Failed to list all subscriptions: {:?}", e))
             })?;
@@ -1525,7 +1514,6 @@ impl MySubscriptionsManager {
         MySubscriptionsManager::process_subscription_job_message_queued(
             self.subscriptions_queue_manager.clone(),
             self.db.clone(),
-            self.sqlite_manager.clone(),
             self.vector_fs.clone(),
             self.external_node_shared_folders.clone(),
             self.http_download_manager.clone(),

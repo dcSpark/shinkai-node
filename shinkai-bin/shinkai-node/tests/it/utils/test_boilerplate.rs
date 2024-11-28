@@ -50,7 +50,7 @@ pub struct TestEnvironment {
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
     pub node1_vecfs: Arc<VectorFS>,
-    pub node1_db: Arc<ShinkaiDB>,
+    pub node1_db: Arc<RwLock<SqliteManager>>,
     pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,

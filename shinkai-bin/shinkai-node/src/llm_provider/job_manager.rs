@@ -8,7 +8,6 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
@@ -33,7 +32,7 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 const NUM_THREADS: usize = 4;
 
@@ -55,8 +54,7 @@ pub trait JobManagerTrait {
 
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
-    pub db: Weak<ShinkaiDB>,
-    pub sqlite_manager: Weak<SqliteManager>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub identity_secret_key: SigningKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
@@ -69,8 +67,7 @@ pub struct JobManager {
 impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
@@ -88,7 +85,7 @@ impl JobManager {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
             let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-            let all_jobs = db_arc.get_all_jobs().unwrap();
+            let all_jobs = db_arc.read().await.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
@@ -96,13 +93,9 @@ impl JobManager {
         }
 
         let db_prefix = "job_manager_abcdeprefix_";
-        let job_queue = JobQueueManager::<JobForProcessing>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("JOB_MANAGER_THREADS")
@@ -114,7 +107,6 @@ impl JobManager {
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
             db.clone(),
-            sqlite_manager.clone(),
             vector_fs.clone(),
             node_profile_name.clone(),
             thread_number,
@@ -130,7 +122,6 @@ impl JobManager {
             llm_stopper.clone(),
             |job,
              db,
-             sqlite_manager,
              vector_fs,
              node_profile_name,
              identity_sk,
@@ -147,7 +138,6 @@ impl JobManager {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
-                    sqlite_manager,
                     vector_fs,
                     node_profile_name,
                     identity_sk,
@@ -168,7 +158,6 @@ impl JobManager {
 
         Self {
             db: db.clone(),
-            sqlite_manager,
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             node_profile_name,
             jobs: jobs_map,
@@ -182,8 +171,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
@@ -199,8 +187,7 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
-                Weak<ShinkaiDB>,
-                Weak<SqliteManager>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -222,7 +209,6 @@ impl JobManager {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
-        let sqlite_manager_clone = sqlite_manager.clone();
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
@@ -284,7 +270,6 @@ impl JobManager {
                         let processing_jobs = Arc::clone(&processing_jobs);
                         let semaphore = Arc::clone(&semaphore);
                         let db_clone_2 = db_clone.clone();
-                        let sqlite_manager_clone_2 = sqlite_manager_clone.clone();
                         let vector_fs_clone_2 = vector_fs_clone.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_processing_fn = Arc::clone(&job_processing_fn);
@@ -315,7 +300,6 @@ impl JobManager {
                                         let result = (job_processing_fn)(
                                             job,
                                             db_clone_2,
-                                            sqlite_manager_clone_2,
                                             vector_fs_clone_2,
                                             node_profile_name,
                                             identity_sk_clone,
@@ -461,7 +445,7 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
-            match db_arc.create_new_job(
+            match db_arc.write().await.create_new_job(
                 job_id.clone(),
                 llm_or_agent_provider_id.clone(),
                 job_creation.scope,
@@ -473,9 +457,12 @@ impl JobManager {
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
             };
 
-            match db_arc.get_job(&job_id) {
+            let db_read = db_arc.read().await;
+
+            match db_read.get_job(&job_id) {
                 Ok(job) => {
-                    std::mem::drop(db_arc); // require to avoid deadlock
+                    std::mem::drop(db_read); // require to avoid deadlock
+                    std::mem::drop(db_arc);
                     self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
                     Ok(job_id.clone())
                 }
@@ -502,7 +489,7 @@ impl JobManager {
         };
 
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
+        let is_empty = db_arc.read().await.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
             let mut content = job_message.clone().content;
             if content.chars().count() > 120 {
@@ -510,10 +497,15 @@ impl JobManager {
                 content = format!("{}...", truncated_content);
             }
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
-            db_arc.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
+            db_arc
+                .write()
+                .await
+                .update_smart_inbox_name(&inbox_name.to_string(), &content)?;
         }
 
         db_arc
+            .write()
+            .await
             .add_message_to_job_inbox(
                 &job_message.job_id.clone(),
                 &message,

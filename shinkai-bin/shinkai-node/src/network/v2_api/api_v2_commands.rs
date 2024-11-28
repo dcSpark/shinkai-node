@@ -67,7 +67,7 @@ fn check_bearer_token(api_key: &str, bearer: &str) {
 impl Node {
     pub async fn validate_bearer_token<T>(
         bearer: &str,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         res: &Sender<Result<T, APIError>>,
     ) -> Result<(), ()> {
         // Compare bearer token to the environment variable API_V2_KEY
@@ -223,7 +223,7 @@ impl Node {
     }
 
     pub async fn v2_handle_initial_registration(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         payload: InitialRegistrationRequest,
@@ -284,7 +284,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_default_embedding_model(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -312,8 +312,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_supported_embedding_models(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<String>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -323,7 +322,7 @@ impl Node {
         }
 
         // Get the supported embedding models from the database
-        match sqlite_manager.get_supported_embedding_models() {
+        match db.get_supported_embedding_models() {
             Ok(models) => {
                 let model_names: Vec<String> = models.into_iter().map(|model| model.to_string()).collect();
                 let _ = res.send(Ok(model_names)).await;
@@ -342,7 +341,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_default_embedding_model(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         model_name: String,
         res: Sender<Result<String, APIError>>,
@@ -387,8 +386,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_supported_embedding_models(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -420,7 +418,7 @@ impl Node {
             .collect();
 
         // Update the supported embedding models in the database
-        if let Err(err) = sqlite_manager.update_supported_embedding_models(new_supported_models.clone()) {
+        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
@@ -453,7 +451,7 @@ impl Node {
     }
 
     pub async fn v2_api_add_llm_provider(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Option<Arc<Mutex<JobManager>>>,
         identity_secret_key: SigningKey,
@@ -523,8 +521,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_llm_provider(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         llm_provider_id: String,
@@ -549,7 +546,7 @@ impl Node {
         };
 
         let mut identity_manager = identity_manager.lock().await;
-        match sqlite_manager.remove_llm_provider(&llm_provider_id, &requester_name) {
+        match db.remove_llm_provider(&llm_provider_id, &requester_name) {
             Ok(_) => match identity_manager.remove_agent_subidentity(&llm_provider_id).await {
                 Ok(_) => {
                     let _ = res.send(Ok("Agent removed successfully".to_string())).await;
@@ -578,8 +575,7 @@ impl Node {
     }
 
     pub async fn v2_api_modify_llm_provider(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         agent: SerializedLLMProvider,
@@ -603,7 +599,7 @@ impl Node {
             }
         };
 
-        match sqlite_manager.update_llm_provider(agent.clone(), &requester_name) {
+        match db.update_llm_provider(agent.clone(), &requester_name) {
             Ok(_) => {
                 let mut identity_manager = identity_manager.lock().await;
                 match identity_manager.modify_llm_provider_subidentity(agent).await {
@@ -636,7 +632,7 @@ impl Node {
 
     pub async fn v2_api_change_nodes_name(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         secret_file_path: &str,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_public_key: EncryptionPublicKey,
@@ -721,7 +717,7 @@ impl Node {
 
     pub async fn v2_api_is_pristine(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         res: Sender<Result<bool, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -735,7 +731,7 @@ impl Node {
     }
 
     pub async fn v2_api_health_check(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         public_https_certificate: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -757,7 +753,7 @@ impl Node {
     }
 
     pub async fn v2_api_scan_ollama_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<serde_json::Value>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -784,7 +780,7 @@ impl Node {
     }
 
     pub async fn v2_api_add_ollama_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Option<Arc<Mutex<JobManager>>>,
         identity_secret_key: SigningKey,
@@ -852,7 +848,7 @@ impl Node {
     }
 
     pub async fn v2_api_download_file_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         bearer: String,
         inbox_name: String,
@@ -890,7 +886,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_files_in_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         bearer: String,
         inbox_name: String,
@@ -920,7 +916,7 @@ impl Node {
     }
 
     pub async fn v2_api_stop_llm(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         stopper: Arc<LLMStopper>,
         bearer: String,
         inbox_name: String,
@@ -969,8 +965,7 @@ impl Node {
     }
 
     pub async fn v2_api_add_agent(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         agent: Agent,
@@ -1020,7 +1015,7 @@ impl Node {
         match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
             Ok(Some(_)) => {
                 // Check if the agent_id already exists
-                match sqlite_manager.get_agent(&agent.agent_id) {
+                match db.get_agent(&agent.agent_id) {
                     Ok(Some(_)) => {
                         let api_error = APIError {
                             code: StatusCode::CONFLICT.as_u16(),
@@ -1031,7 +1026,7 @@ impl Node {
                     }
                     Ok(None) => {
                         // Add the agent to the database
-                        match sqlite_manager.add_agent(agent, &requester_name) {
+                        match db.add_agent(agent, &requester_name) {
                             Ok(_) => {
                                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
                             }
@@ -1077,8 +1072,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_agent(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         agent_id: String,
         res: Sender<Result<String, APIError>>,
@@ -1089,7 +1083,7 @@ impl Node {
         }
 
         // Remove the agent from the database
-        match sqlite_manager.remove_agent(&agent_id) {
+        match db.remove_agent(&agent_id) {
             Ok(_) => {
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;
             }
@@ -1107,8 +1101,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_agent(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         partial_agent: serde_json::Value,
         res: Sender<Result<Agent, APIError>>,
@@ -1133,7 +1126,7 @@ impl Node {
         };
 
         // Retrieve the existing agent from the database
-        let existing_agent = match sqlite_manager.get_agent(&agent_id) {
+        let existing_agent = match db.get_agent(&agent_id) {
             Ok(Some(agent)) => agent,
             Ok(None) => {
                 let api_error = APIError {
@@ -1225,7 +1218,7 @@ impl Node {
         };
 
         // Update the agent in the database
-        match sqlite_manager.update_agent(updated_agent.clone()) {
+        match db.update_agent(updated_agent.clone()) {
             Ok(_) => {
                 let _ = res.send(Ok(updated_agent)).await;
             }
@@ -1243,8 +1236,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_agent(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         agent_id: String,
         res: Sender<Result<Agent, APIError>>,
@@ -1255,7 +1247,7 @@ impl Node {
         }
 
         // Retrieve the agent from the database
-        match sqlite_manager.get_agent(&agent_id) {
+        match db.get_agent(&agent_id) {
             Ok(Some(agent)) => {
                 let _ = res.send(Ok(agent)).await;
             }
@@ -1281,8 +1273,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_all_agents(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<Agent>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1292,7 +1283,7 @@ impl Node {
         }
 
         // Retrieve all agents from the database
-        match sqlite_manager.get_all_agents() {
+        match db.get_all_agents() {
             Ok(agents) => {
                 let _ = res.send(Ok(agents)).await;
             }

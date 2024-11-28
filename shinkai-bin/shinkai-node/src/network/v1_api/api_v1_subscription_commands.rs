@@ -113,7 +113,7 @@ impl Node {
     }
 
     pub async fn api_subscription_my_subscriptions(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -182,7 +182,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_available_shared_items(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -364,7 +364,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_subscribe_to_shared_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -438,7 +438,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_create_shareable_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -504,7 +504,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_update_shareable_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -556,7 +556,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_unshare_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -652,7 +652,7 @@ impl Node {
     }
 
     pub async fn api_get_http_free_subscription_links(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         _node_name: ShinkaiName,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         subscription_id: String,
@@ -714,7 +714,7 @@ impl Node {
     }
 
     pub async fn api_get_last_notifications(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -765,7 +765,7 @@ impl Node {
     }
 
     pub async fn api_get_notifications_before_timestamp(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,

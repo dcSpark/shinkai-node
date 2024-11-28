@@ -77,7 +77,7 @@ impl Node {
     }
 
     async fn has_standard_identity_access(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: &InboxName,
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
@@ -88,7 +88,7 @@ impl Node {
     }
 
     async fn has_device_identity_access(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: &InboxName,
         std_identity: &DeviceIdentity,
     ) -> Result<bool, NodeError> {
@@ -99,7 +99,7 @@ impl Node {
     }
 
     pub async fn has_inbox_access(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: &InboxName,
         sender_subidentity: &Identity,
     ) -> Result<bool, NodeError> {
@@ -126,7 +126,7 @@ impl Node {
 
     async fn process_last_messages_from_inbox<F, T>(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -243,7 +243,7 @@ impl Node {
 
     pub async fn api_get_last_messages_from_inbox(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -263,7 +263,7 @@ impl Node {
 
     pub async fn api_get_last_messages_from_inbox_with_branches(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -283,7 +283,7 @@ impl Node {
 
     pub async fn api_get_last_unread_messages_from_inbox(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -386,7 +386,7 @@ impl Node {
 
     pub async fn api_create_and_send_registration_code(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -471,7 +471,7 @@ impl Node {
 
     pub async fn api_create_new_job(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -516,7 +516,7 @@ impl Node {
 
     pub async fn api_mark_as_read_up_to(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -616,7 +616,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_registration_code_usage(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -732,7 +732,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_registration_code_usage(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         first_device_needs_registration_code: bool,
@@ -1110,7 +1110,7 @@ impl Node {
     }
 
     async fn scan_and_add_ollama_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
@@ -1163,7 +1163,7 @@ impl Node {
 
     pub async fn api_update_smart_inbox_name(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1287,7 +1287,7 @@ impl Node {
     }
 
     pub async fn api_get_all_smart_inboxes_for_profile(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -1427,7 +1427,7 @@ impl Node {
     }
 
     pub async fn api_get_all_inboxes_for_profile(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -1573,7 +1573,7 @@ impl Node {
     }
 
     pub async fn api_update_job_to_finished(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1722,7 +1722,7 @@ impl Node {
     }
 
     pub async fn api_job_message(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1823,7 +1823,7 @@ impl Node {
     }
 
     pub async fn api_available_llm_providers(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1946,7 +1946,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_add_ollama_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -2043,7 +2043,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_add_agent(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -2148,7 +2148,7 @@ impl Node {
     }
 
     pub async fn api_remove_agent(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2230,7 +2230,7 @@ impl Node {
     }
 
     pub async fn api_modify_agent(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2311,7 +2311,7 @@ impl Node {
     }
 
     pub async fn api_change_job_agent(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2452,7 +2452,7 @@ impl Node {
     }
 
     pub async fn api_create_files_inbox_with_symmetric_key(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2521,7 +2521,7 @@ impl Node {
         }
     }
 
-    pub async fn process_symmetric_key(content: String, db: Arc<ShinkaiDB>) -> Result<String, APIError> {
+    pub async fn process_symmetric_key(content: String, db: Arc<RwLock<SqliteManager>>) -> Result<String, APIError> {
         // Convert the hex string to bytes
         let private_key_bytes = hex::decode(&content).map_err(|_| APIError {
             code: StatusCode::BAD_REQUEST.as_u16(),
@@ -2565,7 +2565,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_get_filenames_in_inbox(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -2616,7 +2616,7 @@ impl Node {
     }
 
     pub async fn api_add_file_to_inbox_with_symmetric_key(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         filename: String,
         file_data: Vec<u8>,
@@ -2697,7 +2697,7 @@ impl Node {
         }
     }
 
-    pub async fn api_is_pristine(db: Arc<ShinkaiDB>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
+    pub async fn api_is_pristine(db: Arc<RwLock<SqliteManager>>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
         let has_any_profile = db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
         Ok(())
@@ -2705,7 +2705,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_search_shinkai_tool(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3039,7 +3039,7 @@ impl Node {
     }
 
     pub async fn api_update_default_embedding_model(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3108,7 +3108,7 @@ impl Node {
     }
 
     pub async fn api_update_supported_embedding_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -3287,7 +3287,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_send_onionized_message(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,

@@ -10,14 +10,14 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::{json, Value as JsonValue};
 use shinkai_message_primitives::schemas::identity::Identity;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
-use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIExportSheetPayload, APIImportSheetPayload, APISetSheetUploadedFilesPayload, SheetFileFormat, SpreadSheetPayload,
@@ -25,7 +25,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 
 impl Node {
     pub async fn v2_api_import_sheet(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         input_payload: APIImportSheetPayload,
         bearer: String,
@@ -36,7 +36,7 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         if let Some(sheet_name) = &input_payload.sheet_name {
             let mut sheet_manager = sheet_manager.lock().await;
@@ -98,7 +98,7 @@ impl Node {
     }
 
     pub async fn v2_api_export_sheet(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         input_payload: APIExportSheetPayload,
         bearer: String,
@@ -158,7 +158,7 @@ impl Node {
     }
 
     pub async fn v2_set_sheet_uploaded_files(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
@@ -216,7 +216,10 @@ impl Node {
 
             // Add uploaded files to the sheet
             let mut sheet_manager_guard = sheet_manager.lock().await;
-            match sheet_manager_guard.set_uploaded_files(&input_payload.sheet_id, row, col, files) {
+            match sheet_manager_guard
+                .set_uploaded_files(&input_payload.sheet_id, row, col, files)
+                .await
+            {
                 Ok(_) => {}
                 Err(err) => {
                     let api_error = APIError {

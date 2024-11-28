@@ -113,7 +113,7 @@ async fn test_process_job_queue_concurrency() {
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<ShinkaiDB>,
+                              db: Weak<RwLock<SqliteManager>>,
                               _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
@@ -270,7 +270,7 @@ async fn test_sequential_process_for_same_job_id() {
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<ShinkaiDB>,
+                              db: Weak<RwLock<SqliteManager>>,
                               _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,

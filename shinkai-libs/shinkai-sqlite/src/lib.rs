@@ -1,4 +1,5 @@
 use embedding_function::EmbeddingFunction;
+use errors::SqliteManagerError;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
@@ -7,11 +8,11 @@ use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use thiserror::Error;
 
 pub mod agent_manager;
 pub mod cron_task_manager;
 pub mod embedding_function;
+pub mod errors;
 pub mod files;
 pub mod identity_manager;
 pub mod identity_registration;
@@ -34,65 +35,6 @@ pub mod tool_payment_req_manager;
 pub mod tool_playground;
 pub mod uploaded_file_links_manager;
 pub mod wallet_manager;
-
-#[derive(Error, Debug)]
-pub enum SqliteManagerError {
-    #[error("Tool already exists with key: {0}")]
-    ToolAlreadyExists(String),
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] rusqlite::Error),
-    #[error("Embedding generation error: {0}")]
-    EmbeddingGenerationError(String),
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-    #[error("Tool not found with key: {0}")]
-    ToolNotFound(String),
-    #[error("ToolPlayground already exists with job_id: {0}")]
-    ToolPlaygroundAlreadyExists(String),
-    #[error("ToolPlayground not found with job_id: {0}")]
-    ToolPlaygroundNotFound(String),
-    #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
-    #[error("Tool offering not found with key: {0}")]
-    ToolOfferingNotFound(String),
-    #[error("DateTime parse error: {0}")]
-    DateTimeParseError(String),
-    #[error("Subscription not found with id: {0}")]
-    SubscriptionNotFound(String),
-    #[error("Wallet manager not found")]
-    WalletManagerNotFound,
-    #[error("Data not found")]
-    DataNotFound,
-    #[error("Data already exists")]
-    DataAlreadyExists,
-    #[error("Invalid identity name: {0}")]
-    InvalidIdentityName(String),
-    #[error("Invoice not found with id: {0}")]
-    InvoiceNotFound(String),
-    #[error("Network error not found with id: {0}")]
-    InvoiceNetworkErrorNotFound(String),
-    #[error("Profile does not exist: {0}")]
-    ProfileNotFound(String),
-    #[error("Profile name already exists")]
-    ProfileNameAlreadyExists,
-    #[error("Invalid profile name: {0}")]
-    InvalidProfileName(String),
-    #[error("Invalid attribute name: {0}")]
-    InvalidAttributeName(String),
-    #[error("Registration code does not exist")]
-    CodeNonExistent,
-    #[error("Registration code already used")]
-    CodeAlreadyUsed,
-    #[error("Error: {0}")]
-    SomeError(String),
-    #[error("Missing value: {0}")]
-    MissingValue(String),
-    #[error("Inbox not found: {0}")]
-    InboxNotFound(String),
-    #[error("Lock error")]
-    LockError,
-    // Add other error variants as needed
-}
 
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
@@ -845,5 +787,14 @@ impl SqliteManager {
     // Utility function to generate a vector of length 384 filled with a specified value
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
         vec![value; 384]
+    }
+
+    pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
+        Ok(self.model_type.clone())
+    }
+
+    pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
+        self.model_type = model;
+        Ok(())
     }
 }

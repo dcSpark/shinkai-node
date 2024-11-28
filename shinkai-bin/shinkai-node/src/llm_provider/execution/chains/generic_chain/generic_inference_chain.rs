@@ -12,7 +12,6 @@ use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use async_trait::async_trait;
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -30,7 +29,7 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -65,7 +64,6 @@ impl InferenceChain for GenericInferenceChain {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = GenericInferenceChain::start_chain(
             self.context.db.clone(),
-            self.context.sqlite_manager.clone(),
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
@@ -103,8 +101,7 @@ impl GenericInferenceChain {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
@@ -181,7 +178,8 @@ impl GenericInferenceChain {
             llm_provider.clone(),
             db.clone(),
             stream,
-        );
+        )
+        .await;
 
         if use_tools && tools_allowed {
             // If the llm_provider is an Agent, retrieve tools directly from the Agent struct
@@ -302,7 +300,7 @@ impl GenericInferenceChain {
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
-                sqlite_manager.clone(),
+                db.clone(),
             )
             .await;
 
@@ -321,7 +319,6 @@ impl GenericInferenceChain {
                 let image_files = HashMap::new();
                 let context = InferenceChainContext::new(
                     db.clone(),
-                    sqlite_manager.clone(),
                     vector_fs.clone(),
                     full_job.clone(),
                     parsed_message,

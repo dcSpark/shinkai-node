@@ -10,17 +10,16 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage};
 use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
@@ -28,8 +27,7 @@ impl JobManager {
     /// Returns the final String result from the inferencing, and a new execution context.
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
@@ -55,7 +53,9 @@ impl JobManager {
             } else {
                 // If it's an agent, we need to get the LLM provider from the agent
                 let llm_id = llm_provider.get_llm_provider_id();
-                let llm_provider = sqlite_manager
+                let llm_provider = db
+                    .read()
+                    .await
                     .get_llm_provider(llm_id, &user_profile)
                     .map_err(|e| e.to_string())?
                     .ok_or(LLMProviderError::LLMProviderNotFound)?;
@@ -68,7 +68,6 @@ impl JobManager {
         // Create the inference chain context
         let chain_context = InferenceChainContext::new(
             db,
-            sqlite_manager,
             vector_fs,
             full_job.clone(),
             parsed_user_message,

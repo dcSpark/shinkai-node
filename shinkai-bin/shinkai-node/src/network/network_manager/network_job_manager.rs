@@ -13,11 +13,11 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
@@ -93,7 +93,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     // TODO: change to Weak<Mutex<...>>
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -188,7 +188,7 @@ impl NetworkJobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -204,7 +204,7 @@ impl NetworkJobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                                // job to process
-                Weak<ShinkaiDB>,                                // db
+                Weak<RwLock<SqliteManager>>,                    // db
                 Weak<VectorFS>,                                 // vector_fs
                 ShinkaiName,                                    // my_profile_name
                 EncryptionStaticKey,                            // my_encryption_secret_key
@@ -424,7 +424,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -527,7 +527,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         _: EncryptionStaticKey,
@@ -793,7 +793,7 @@ impl NetworkJobManager {
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
-        shinkai_db: Weak<ShinkaiDB>,
+        shinkai_db: Weak<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,

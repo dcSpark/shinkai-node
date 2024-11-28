@@ -81,7 +81,7 @@ impl ToolExecutor for LmPromptProcessorTool {
         bearer: String,
         _tool_id: String,
         _app_id: String,
-        db_clone: Arc<ShinkaiDB>,
+        db_clone: Arc<RwLock<SqliteManager>>,
         _vector_fs_clone: Arc<VectorFS>,
         _sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,

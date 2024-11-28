@@ -3,20 +3,19 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_sqlite::{SqliteManager, SqliteManagerError};
+use shinkai_sqlite::errors::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 impl JobManager {
     /// Inferences the Agent's LLM with the given prompt.
@@ -27,13 +26,13 @@ impl JobManager {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let llm_provider_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
 
         let task_response = tokio::spawn(async move {
-            let llm_provider = LLMProvider::from_provider_or_agent(llm_provider_cloned, db.clone())?;
+            let llm_provider = LLMProvider::from_provider_or_agent(llm_provider_cloned, db.clone()).await?;
             llm_provider
                 .inference(prompt_cloned, inbox_name, ws_manager_trait, config, llm_stopper)
                 .await
@@ -54,20 +53,17 @@ impl JobManager {
     /// it may return an outdated node_name
     pub async fn fetch_relevant_job_data(
         job_id: &str,
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<(Job, Option<ProviderOrAgent>, String, Option<ShinkaiName>), LLMProviderError> {
         // Fetch the job
-        let full_job = { db.get_job(job_id)? };
+        let full_job = { db.read().await.get_job(job_id)? };
 
         // Acquire Agent
         let agent_or_llm_provider_id = full_job.parent_agent_or_llm_provider_id.clone();
         let mut agent_or_llm_provider_found = None;
         let mut profile_name = String::new();
         let mut user_profile: Option<ShinkaiName> = None;
-        let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(sqlite_manager)
-            .await
-            .unwrap_or(vec![]);
+        let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(db).await.unwrap_or(vec![]);
         for agent_or_llm_provider in agents_and_llm_providers {
             if agent_or_llm_provider.get_id() == &agent_or_llm_provider_id {
                 agent_or_llm_provider_found = Some(agent_or_llm_provider.clone());
@@ -86,10 +82,10 @@ impl JobManager {
     }
 
     pub async fn get_all_agents_and_llm_providers(
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<Vec<ProviderOrAgent>, SqliteManagerError> {
-        let llm_providers = db.get_all_llm_providers()?;
-        let agents = db.get_all_agents()?;
+        let llm_providers = db.read().await.get_all_llm_providers()?;
+        let agents = db.read().await.get_all_agents()?;
 
         let mut providers_and_agents = Vec::new();
 

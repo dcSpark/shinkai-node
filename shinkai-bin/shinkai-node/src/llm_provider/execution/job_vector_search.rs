@@ -1,10 +1,10 @@
 use crate::llm_provider::job_manager::JobManager;
 use keyphrases::KeyPhraseExtractor;
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::errors::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -16,6 +16,7 @@ use shinkai_vector_resources::vector_resource::{
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
@@ -23,7 +24,7 @@ impl JobManager {
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
     #[allow(clippy::too_many_arguments)]
     pub async fn keyword_chained_job_scope_vector_search(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query_text: String,
@@ -31,7 +32,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         num_of_top_results: u64,
         max_tokens_in_prompt: usize,
-    ) -> Result<(Vec<RetrievedNode>, Option<String>), ShinkaiDBError> {
+    ) -> Result<(Vec<RetrievedNode>, Option<String>), SqliteManagerError> {
         let mut master_intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
@@ -213,7 +214,7 @@ impl JobManager {
     /// Returns the proximity groups of retrieved nodes.
     #[allow(clippy::too_many_arguments)]
     async fn internal_job_scope_vector_search_groups(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query: Embedding,
@@ -223,7 +224,7 @@ impl JobManager {
         _include_description: bool,
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
-    ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), ShinkaiDBError> {
+    ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), SqliteManagerError> {
         // Determine the vector search mode configured in the job scope.
         // Limit the maximum tokens to 25k (~ 10 pages of PDF) if the context window is greater than that.
         // If the length is < 25k, pass the entire context.
@@ -289,7 +290,7 @@ impl JobManager {
                 let reader = vector_fs
                     .new_reader(profile.clone(), folder.path.clone(), profile.clone())
                     .await
-                    .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
+                    .map_err(|e: VectorFSError| SqliteManagerError::SomeError(format!("VectorFS error: {}", e)))?;
 
                 let results = vector_fs
                     .deep_vector_search_customized(
@@ -302,7 +303,7 @@ impl JobManager {
                         job_scope.vector_search_mode.clone(),
                     )
                     .await
-                    .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
+                    .map_err(|e: VectorFSError| SqliteManagerError::SomeError(format!("VectorFS error: {}", e)))?;
 
                 // Fetch the intros
                 let mut bare_results = vec![];
@@ -313,7 +314,9 @@ impl JobManager {
                         let result_reader = reader
                             .new_reader_copied_data(result.fs_item_path().clone(), &vector_fs)
                             .await
-                            .map_err(|e: VectorFSError| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
+                            .map_err(|e: VectorFSError| {
+                                SqliteManagerError::SomeError(format!("VectorFS error: {}", e))
+                            })?;
 
                         if let Ok(intro_nodes) = vector_fs._internal_get_vr_intro_ret_nodes(&result_reader).await {
                             e.insert(intro_nodes);

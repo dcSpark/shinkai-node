@@ -3,23 +3,22 @@ use crate::network::network_manager::network_handlers::verify_message_signature;
 use crate::network::node_error::NodeError;
 use async_trait::async_trait;
 use shinkai_crypto_identities::ShinkaiRegistryError;
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
 pub struct IdentityManager {
     pub local_node_name: ShinkaiName,
     pub local_identities: Vec<Identity>,
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
     pub is_ready: bool,
 }
@@ -41,7 +40,7 @@ impl Clone for Box<dyn IdentityManagerTrait + Send> {
 
 impl IdentityManager {
     pub async fn new(
-        db: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         local_node_name: ShinkaiName,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
@@ -49,7 +48,9 @@ impl IdentityManager {
             let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            db.get_all_profiles_and_devices(local_node_name.clone())?
+            let db_read = db.read().await;
+            db_read
+                .get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
                 .collect()
         };
@@ -58,7 +59,9 @@ impl IdentityManager {
             let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            db.get_all_llm_providers()?
+            let db_read = db.read().await;
+            db_read
+                .get_all_llm_providers()?
                 .into_iter()
                 .map(Identity::LLMProvider)
                 .collect::<Vec<_>>()
@@ -67,7 +70,8 @@ impl IdentityManager {
             let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            db.debug_print_all_keys_for_profiles_identity_key();
+            let db_read = db.read().await;
+            db_read.debug_print_all_keys_for_profiles_identity_key();
         }
 
         identities.extend(llm_providers);
@@ -266,12 +270,12 @@ impl IdentityManager {
         self.local_identities.clone()
     }
 
-    pub async fn get_all_llm_providers(&self) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
-        let db_arc = self
-            .db
-            .upgrade()
-            .ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
-        db_arc.get_all_llm_providers()
+    pub async fn get_all_llm_providers(&self) -> Result<Vec<SerializedLLMProvider>, SqliteManagerError> {
+        let db_arc = self.db.upgrade().ok_or(SqliteManagerError::SomeError(
+            "Couldn't convert to db strong".to_string(),
+        ))?;
+        let db_read = db_arc.read().await;
+        db_read.get_all_llm_providers()
     }
 }
 

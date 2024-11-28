@@ -329,7 +329,7 @@ impl Node {
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
         // Remove the sheet using SheetManager
-        match sheet_manager_guard.remove_sheet(&sheet_id) {
+        match sheet_manager_guard.remove_sheet(&sheet_id).await {
             Ok(_) => {
                 let _ = res.send(Ok(json!(null))).await;
                 Ok(())

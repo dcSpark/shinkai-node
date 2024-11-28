@@ -1,9 +1,9 @@
 use crate::llm_provider::job_manager::JobManager;
 use futures::stream::Stream;
-use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_error::VectorFSError};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
 use std::pin::Pin;
@@ -229,7 +229,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         profile: &ShinkaiName,
-    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
+    ) -> Result<Vec<BaseVectorResource>, SqliteManagerError> {
         let mut resources = Vec::new();
 
         // Add local resources to the list
@@ -241,12 +241,12 @@ impl JobManager {
             let reader = vector_fs
                 .new_reader(profile.clone(), fs_item.path.clone(), profile.clone())
                 .await
-                .map_err(|e| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
+                .map_err(|e| SqliteManagerError::SomeError(format!("VectorFS error: {}", e)))?;
 
             let ret_resource = vector_fs
                 .retrieve_vector_resource(&reader)
                 .await
-                .map_err(|e| ShinkaiDBError::Other(format!("VectorFS error: {}", e)))?;
+                .map_err(|e| SqliteManagerError::SomeError(format!("VectorFS error: {}", e)))?;
             resources.push(ret_resource);
         }
 

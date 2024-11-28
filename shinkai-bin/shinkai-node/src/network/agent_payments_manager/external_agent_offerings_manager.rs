@@ -67,8 +67,7 @@ impl From<InvoiceError> for AgentOfferingManagerError {
 // should we use the name of the destination as part of the hash?
 
 pub struct ExtAgentOfferingsManager {
-    pub db: Weak<ShinkaiDB>,
-    pub sqlite_manager: Weak<SqliteManager>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -108,8 +107,7 @@ impl ExtAgentOfferingsManager {
     ///
     /// * `Self` - A new instance of `ExtAgentOfferingsManager`.
     pub async fn new(
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
@@ -173,7 +171,6 @@ impl ExtAgentOfferingsManager {
 
         Self {
             db,
-            sqlite_manager,
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
@@ -210,7 +207,7 @@ impl ExtAgentOfferingsManager {
     /// * `tokio::task::JoinHandle<()>` - A handle to the spawned task.
     pub async fn process_offerings_queue(
         offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -222,7 +219,7 @@ impl ExtAgentOfferingsManager {
         tool_router: Weak<ToolRouter>,
         process_job: impl Fn(
                 Invoice,
-                Weak<ShinkaiDB>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -404,7 +401,7 @@ impl ExtAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
         _invoice: Invoice,
-        _db: Weak<ShinkaiDB>,
+        _db: Weak<RwLock<SqliteManager>>,
         _vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
         _my_signature_secret_key: SigningKey,
@@ -428,7 +425,7 @@ impl ExtAgentOfferingsManager {
     /// * `Result<Vec<String>, AgentOfferingManagerError>` - A list of available tools or an error.
     pub async fn available_tools(&mut self) -> Result<Vec<String>, AgentOfferingManagerError> {
         let db = self
-            .sqlite_manager
+            .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
@@ -504,7 +501,7 @@ impl ExtAgentOfferingsManager {
     /// * `Result<bool, SubscriberManagerError>` - True if successful, otherwise an error.
     pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
         let db = self
-            .sqlite_manager
+            .db
             .upgrade()
             .ok_or_else(|| SubscriberManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
@@ -535,14 +532,10 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        let sqlite_manager = self.sqlite_manager.upgrade().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed("Failed to upgrade sqlite_manager reference".to_string())
-        })?;
-
         // Validate and convert the tool_key_name
         let actual_tool_key_name = invoice_request.validate_and_convert_tool_key(&self.node_name)?;
 
-        let shinkai_offering = sqlite_manager
+        let shinkai_offering = db
             .get_tool_offering(&actual_tool_key_name)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
 

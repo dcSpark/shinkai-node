@@ -20,8 +20,7 @@ use crate::{
 
 impl Node {
     pub async fn v2_api_restore_local_ethers_wallet(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -66,7 +65,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -107,8 +106,7 @@ impl Node {
     }
 
     pub async fn v2_api_create_local_ethers_wallet(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -152,7 +150,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -193,8 +191,7 @@ impl Node {
     }
 
     pub async fn v2_api_restore_coinbase_mpc_wallet(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -223,8 +220,7 @@ impl Node {
         // Logic to restore Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let restored_wallet_manager =
-            WalletManager::recover_coinbase_mpc_wallet_manager(network, sqlite_manager.clone(), config, wallet_id)
-                .await;
+            WalletManager::recover_coinbase_mpc_wallet_manager(network, db.clone(), config, wallet_id).await;
 
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -252,7 +248,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -293,8 +289,7 @@ impl Node {
     }
 
     pub async fn v2_api_create_coinbase_mpc_wallet(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -312,7 +307,7 @@ impl Node {
         // Logic to create Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let created_wallet_manager =
-            WalletManager::create_coinbase_mpc_wallet_manager(network, sqlite_manager.clone(), config).await;
+            WalletManager::create_coinbase_mpc_wallet_manager(network, db.clone(), config).await;
 
         match created_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -340,7 +335,7 @@ impl Node {
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
                     match serde_json::to_value(wallet_manager) {
                         Ok(wallet_manager_value) => {
-                            if let Err(e) = sqlite_manager.save_wallet_manager(&wallet_manager_value) {
+                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -381,7 +376,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_wallets(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,

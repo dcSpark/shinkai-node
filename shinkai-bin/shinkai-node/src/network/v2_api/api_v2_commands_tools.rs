@@ -40,7 +40,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
@@ -84,7 +84,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_all_shinkai_tools(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
@@ -114,7 +114,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_shinkai_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_router_key: String,
@@ -201,7 +201,7 @@ impl Node {
     }
 
     pub async fn v2_api_add_shinkai_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         new_tool: ShinkaiTool,
@@ -235,7 +235,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_shinkai_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         payload: String,
@@ -298,7 +298,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_playground_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         payload: ToolPlayground,
@@ -455,7 +455,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_playground_tools(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
@@ -485,7 +485,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_playground_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_key: String,
@@ -532,7 +532,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_playground_tool(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_key: String,
@@ -577,7 +577,7 @@ impl Node {
 
     pub async fn get_tool_definitions(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         res: Sender<Result<Value, APIError>>,
@@ -602,7 +602,7 @@ impl Node {
     pub async fn execute_tool(
         bearer: String,
         node_name: ShinkaiName,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         tool_router_key: String,
@@ -665,7 +665,7 @@ impl Node {
 
     pub async fn run_execute_code(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         tool_type: DynamicToolType,
         code: String,
         tools: Option<Vec<String>>,
@@ -716,7 +716,7 @@ impl Node {
 
     pub async fn generate_tool_fetch_query(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
         tools: Option<Vec<String>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
@@ -793,7 +793,7 @@ impl Node {
 
     pub async fn generate_tool_implementation(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         job_message: JobMessage,
         language: CodeLanguage,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
@@ -870,7 +870,7 @@ impl Node {
         job_id: String,
         language: CodeLanguage,
         _sqlite_manager: Arc<RwLock<SqliteManager>>,
-        db_clone: Arc<ShinkaiDB>,
+        db_clone: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,

@@ -27,7 +27,7 @@ pub async fn execute_custom_tool(
     app_id: String,
     _extra_config: Option<String>,
     bearer: String,
-    db: Arc<ShinkaiDB>,
+    db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     llm_provider: String,

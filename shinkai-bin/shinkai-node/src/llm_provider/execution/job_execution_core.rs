@@ -10,11 +10,11 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata};
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -34,15 +34,14 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
-        db: Weak<ShinkaiDB>,
-        sqlite_manager: Weak<SqliteManager>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         identity_secret_key: SigningKey,
@@ -58,10 +57,6 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        let sqlite_manager = sqlite_manager
-            .upgrade()
-            .ok_or("Failed to upgrade sqlite_manager")
-            .unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
         let job_id = job_message.job_message.job_id.clone();
         shinkai_log(
@@ -71,9 +66,7 @@ impl JobManager {
         );
 
         // Fetch data we need to execute job step
-        let fetch_data_result =
-            JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone(), sqlite_manager.clone())
-                .await;
+        let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
         let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
             Ok(data) => data,
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e, ws_manager).await,
@@ -130,7 +123,6 @@ impl JobManager {
         // 3.- *If* a sheet job is found, processing job message is taken over by this alternate logic
         let sheet_job_found = JobManager::process_sheet_job(
             db.clone(),
-            sqlite_manager.clone(),
             vector_fs.clone(),
             &job_message.job_message,
             job_message.message_hash_id.clone(),
@@ -155,7 +147,6 @@ impl JobManager {
         // Otherwise proceed forward with rest of logic.
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
-            sqlite_manager.clone(),
             vector_fs.clone(),
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
@@ -183,7 +174,7 @@ impl JobManager {
 
     /// Handle errors by sending an error message to the job inbox
     async fn handle_error(
-        db: &Arc<ShinkaiDB>,
+        db: &Arc<RwLock<SqliteManager>>,
         user_profile: Option<ShinkaiName>,
         job_id: &str,
         identity_secret_key: &SigningKey,
@@ -214,7 +205,9 @@ impl JobManager {
         )
         .expect("Failed to build error message");
 
-        db.add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
+        db.write()
+            .await
+            .add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
             .await
             .expect("Failed to add error message to job inbox");
 
@@ -225,8 +218,7 @@ impl JobManager {
     /// and then parses + saves the output result to the DB.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
@@ -292,7 +284,6 @@ impl JobManager {
         // Call the inference chain router to choose which chain to use, and call it
         let inference_response = JobManager::inference_chain_router(
             db.clone(),
-            sqlite_manager.clone(),
             vector_fs.clone(),
             llm_provider_found,
             full_job,
@@ -347,7 +338,7 @@ impl JobManager {
         );
 
         // Save response data to DB
-        db.add_step_history(
+        db.write().await.add_step_history(
             job_message.job_id.clone(),
             job_message.content,
             Some(image_files),
@@ -355,17 +346,20 @@ impl JobManager {
             None,
             None,
         )?;
-        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
+        db.write()
+            .await
+            .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
-        db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+        db.write()
+            .await
+            .set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_sheet_job(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
@@ -447,7 +441,6 @@ impl JobManager {
 
             let inference_result = JobManager::inference_chain_router(
                 db.clone(),
-                sqlite_manager.clone(),
                 vector_fs.clone(),
                 llm_provider_found,
                 mutable_job.clone(),
@@ -507,7 +500,7 @@ impl JobManager {
 
     /// Helper function to process files and update the job scope.
     async fn process_files_and_update_scope(
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         files: Vec<(String, Vec<u8>)>,
         agent_found: Option<ProviderOrAgent>,
@@ -641,7 +634,7 @@ impl JobManager {
                             }
                         }
                     }
-                    db.update_job_scope(job_id, scope_with_files.clone())?;
+                    db.write().await.update_job_scope(job_id, scope_with_files.clone())?;
                 } else {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
@@ -666,7 +659,7 @@ impl JobManager {
     /// Processes the files sent together with the current job_message into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_files_for_vector_resources(
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         agent_found: Option<ProviderOrAgent>,
@@ -716,7 +709,7 @@ impl JobManager {
     /// Processes the specified files into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_specified_files_for_vector_resources(
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         files_inbox: String,
         file_names: Vec<String>,
@@ -818,7 +811,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,

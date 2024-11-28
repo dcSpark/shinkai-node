@@ -1,6 +1,7 @@
-use std::fmt;
-use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_sqlite::errors::SqliteManagerError;
+
 use super::subscription_file_uploader::{FileDestinationError, FileTransferError};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum HttpUploadError {
@@ -17,7 +18,7 @@ pub enum HttpUploadError {
     InvalidSubscriptionRequirement(String),
     MissingSubscriptionRequirement(String),
     SerdeJsonError(serde_json::Error),
-    ShinkaiDBError(ShinkaiDBError),
+    ShinkaiDBError(SqliteManagerError),
 }
 
 impl std::error::Error for HttpUploadError {}
@@ -52,8 +53,8 @@ impl From<serde_json::Error> for HttpUploadError {
     }
 }
 
-impl From<ShinkaiDBError> for HttpUploadError {
-    fn from(error: ShinkaiDBError) -> Self {
+impl From<SqliteManagerError> for HttpUploadError {
+    fn from(error: SqliteManagerError) -> Self {
         HttpUploadError::ShinkaiDBError(error)
     }
 }

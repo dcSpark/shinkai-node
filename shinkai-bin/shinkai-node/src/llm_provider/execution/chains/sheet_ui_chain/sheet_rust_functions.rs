@@ -356,7 +356,7 @@ impl SheetRustFunctions {
         xlsx_data: Vec<u8>,
         sheet_name: Option<String>,
     ) -> Result<String, String> {
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
         let spreadsheet =
             umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(xlsx_data), true).map_err(|e| e.to_string())?;
 
@@ -671,9 +671,11 @@ mod tests {
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
-    use shinkai_vector_resources::utils::hash_string;
-    use std::{fs, path::Path, sync::Arc};
-    use tokio::sync::Mutex;
+    use shinkai_sqlite::SqliteManager;
+    use shinkai_vector_resources::{model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference}, utils::hash_string};
+    use tempfile::NamedTempFile;
+    use std::{fs, path::{Path, PathBuf}, sync::Arc};
+    use tokio::sync::{Mutex, RwLock};
 
     struct MockJobManager;
 
@@ -698,25 +700,21 @@ mod tests {
         }
     }
 
-    pub fn setup() {
-        let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(path);
+    fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        let lance_path = Path::new("lance_db_tests/");
-        let _ = fs::remove_dir_all(lance_path);
-    }
-
-    pub fn create_testing_db(node_name: String) -> ShinkaiDB {
-        let db_path = format!("db_tests/{}", hash_string(&node_name));
-        ShinkaiDB::new(&db_path).unwrap()
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
     #[tokio::test]
     async fn test_set_column_with_mock_job_manager() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -729,7 +727,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Call create_new_column_with_values with the values: "USA, Chile, Canada"
         let mut args = HashMap::new();
@@ -795,10 +793,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_column_with_values() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -811,7 +808,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create a new column with values: "USA, Chile, Canada"
         let mut args = HashMap::new();
@@ -861,10 +858,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_replace_value_at_position() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -877,7 +873,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create a new column with values: "USA, Chile, Canada"
         let mut args = HashMap::new();
@@ -927,10 +923,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_columns_with_csv() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -943,7 +938,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create new columns with CSV data
         let csv_data = "Name,Age,Location\nAlice,30,USA\nBob,25,UK\nCharlie,35,Canada";
@@ -991,10 +986,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_columns_with_large_csv() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -1007,7 +1001,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create new columns with large CSV data from JSON content
         let json_content = r#"{
@@ -1245,10 +1239,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_columns_with_semicolon_csv() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -1261,7 +1254,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create new columns with semicolon-separated CSV data
         let csv_data = r#"Countries;New Column;New Column

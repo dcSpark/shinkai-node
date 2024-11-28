@@ -1,6 +1,6 @@
 use std::fmt;
 
-use shinkai_db::db::db_errors::ShinkaiDBError;
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
 
@@ -90,10 +90,10 @@ impl From<&str> for SubscriberManagerError {
     }
 }
 
-impl From<ShinkaiDBError> for SubscriberManagerError {
-    fn from(error: ShinkaiDBError) -> Self {
+impl From<SqliteManagerError> for SubscriberManagerError {
+    fn from(error: SqliteManagerError) -> Self {
         match error {
-            ShinkaiDBError::RocksDBError(e) => SubscriberManagerError::DatabaseError(e.to_string()),
+            SqliteManagerError::DatabaseError(e) => SubscriberManagerError::DatabaseError(e.to_string()),
             // Map other specific ShinkaiDBError variants to appropriate SubscriberManagerError variants
             // For simplicity, using DatabaseError for all cases here, but you should map them appropriately
             _ => SubscriberManagerError::DatabaseError(error.to_string()),

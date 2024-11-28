@@ -10,7 +10,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 impl Node {
     pub async fn api_private_devops_cron_list(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {

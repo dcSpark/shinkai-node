@@ -10,7 +10,6 @@ use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::file_links::{FileLink, FolderSubscriptionWithPath};
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
@@ -19,6 +18,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -66,7 +66,7 @@ impl PartialOrd for SubscriptionWithTree {
 }
 
 pub struct ExternalSubscriberManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -92,7 +92,7 @@ pub struct ExternalSubscriberManager {
 impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
@@ -248,7 +248,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     async fn process_subscription_updates(
         _job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -345,7 +345,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         _vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -414,7 +414,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
-        _db: Weak<ShinkaiDB>,
+        _db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
         _my_signature_secret_key: SigningKey,
@@ -673,7 +673,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -686,7 +686,7 @@ impl ExternalSubscriberManager {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         process_job: impl Fn(
                 SubscriptionWithTree,
-                Weak<ShinkaiDB>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -1568,7 +1568,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_and_send_request_updated_state(
         subscription_id: SubscriptionId,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         node_name: ShinkaiName,

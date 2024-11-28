@@ -14,8 +14,7 @@ use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_get_tool_offering(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -44,8 +43,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_tool_offering(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -88,7 +86,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_all_tool_offering(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
@@ -150,7 +148,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_tool_offering(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         sqlite_manager: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,

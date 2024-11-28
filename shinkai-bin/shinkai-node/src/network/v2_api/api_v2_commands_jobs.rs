@@ -63,7 +63,7 @@ impl Node {
     }
 
     pub async fn v2_create_new_job(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -170,7 +170,7 @@ impl Node {
     }
 
     pub async fn v2_job_message(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -314,7 +314,7 @@ impl Node {
     }
 
     pub async fn v2_get_last_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         inbox_name: String,
         limit: usize,
@@ -368,7 +368,7 @@ impl Node {
     }
 
     pub async fn v2_get_last_messages_from_inbox_with_branches(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         inbox_name: String,
         limit: usize,
@@ -422,7 +422,7 @@ impl Node {
     }
 
     pub async fn v2_get_all_smart_inboxes(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
@@ -487,7 +487,7 @@ impl Node {
     }
 
     pub async fn v2_get_available_llm_providers(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         bearer: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
@@ -516,7 +516,7 @@ impl Node {
     }
 
     pub async fn v2_update_smart_inbox_name(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         inbox_name: String,
         custom_name: String,
@@ -546,7 +546,7 @@ impl Node {
     }
 
     pub async fn v2_create_files_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), APIError> {
@@ -582,7 +582,7 @@ impl Node {
     }
 
     pub async fn v2_add_file_to_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         file_inbox_name: String,
         filename: String,
@@ -617,7 +617,7 @@ impl Node {
     }
 
     pub async fn v2_api_change_job_llm_provider(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         payload: APIChangeJobAgentRequest,
         res: Sender<Result<String, APIError>>,
@@ -648,7 +648,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_job_config(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         job_id: String,
         config: JobConfig,
@@ -693,7 +693,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_job_config(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         job_id: String,
         res: Sender<Result<JobConfig, APIError>>,
@@ -736,7 +736,7 @@ impl Node {
     }
 
     pub async fn v2_api_retry_message(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
@@ -986,7 +986,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_job_scope(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         job_id: String,
         job_scope: JobScope,
@@ -1042,7 +1042,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_job_scope(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         job_id: String,
         res: Sender<Result<Value, APIError>>,
@@ -1085,7 +1085,7 @@ impl Node {
     }
 
     pub async fn v2_fork_job_messages(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -1315,7 +1315,7 @@ impl Node {
     }
 
     pub async fn v2_remove_job(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         bearer: String,
         job_id: String,
@@ -1408,7 +1408,7 @@ impl Node {
     }
 
     pub async fn v2_export_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         bearer: String,
         inbox_name: String,

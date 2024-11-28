@@ -2,7 +2,6 @@ use super::error::LLMProviderError;
 use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
@@ -14,6 +13,7 @@ use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileTy
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct ParsingHelper {}
 
@@ -23,7 +23,7 @@ impl ParsingHelper {
         text_groups: &Vec<TextGroup>,
         agent: ProviderOrAgent,
         max_node_text_size: u64,
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<String, LLMProviderError> {
         let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
@@ -81,7 +81,7 @@ impl ParsingHelper {
         agent: Option<ProviderOrAgent>,
         max_node_text_size: u64,
         distribution_info: DistributionInfo,
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<BaseVectorResource, LLMProviderError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -126,7 +126,7 @@ impl ParsingHelper {
         files: Vec<(String, Vec<u8>, DistributionInfo)>,
         generator: &dyn EmbeddingGenerator,
         agent: Option<ProviderOrAgent>,
-        db: Arc<SqliteManager>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
         #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (

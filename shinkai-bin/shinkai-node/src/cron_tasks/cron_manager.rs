@@ -30,7 +30,6 @@ use std::{
 use chrono::{Timelike, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
@@ -47,13 +46,15 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_sqlite::errors::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::llm_provider::{error::LLMProviderError, job_manager::JobManager};
 
 pub struct CronManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
@@ -66,7 +67,7 @@ pub enum CronManagerError {
     SomeError(String),
     JobCreationError(String),
     StrError(String),
-    DBError(ShinkaiDBError),
+    DBError(SqliteManagerError),
     InboxError(InboxNameError),
 }
 
@@ -82,8 +83,8 @@ impl From<&str> for CronManagerError {
     }
 }
 
-impl From<ShinkaiDBError> for CronManagerError {
-    fn from(error: ShinkaiDBError) -> Self {
+impl From<SqliteManagerError> for CronManagerError {
+    fn from(error: SqliteManagerError) -> Self {
         CronManagerError::DBError(error)
     }
 }
@@ -96,7 +97,7 @@ impl From<InboxNameError> for CronManagerError {
 
 impl CronManager {
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
@@ -144,7 +145,7 @@ impl CronManager {
 
     #[allow(clippy::too_many_arguments)]
     pub fn process_job_queue(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
@@ -153,7 +154,7 @@ impl CronManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 CronTask,
-                Weak<ShinkaiDB>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
@@ -188,7 +189,8 @@ impl CronManager {
                         return;
                     }
                     let db_arc = db_arc.unwrap();
-                    db_arc
+                    let db_read = db_arc.read().await;
+                    db_read
                         .get_all_cron_tasks_from_all_profiles(node_profile_name.clone())
                         .unwrap_or_default()
                 };
@@ -264,7 +266,7 @@ impl CronManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         cron_job: CronTask,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         _vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
@@ -300,7 +302,7 @@ impl CronManager {
 
             // Add permission
             let db_arc = db.upgrade().unwrap();
-            db_arc.add_permission_with_profile(
+            db_arc.write().await.add_permission_with_profile(
                 inbox_name.to_string().as_str(),
                 shinkai_profile.clone(),
                 InboxPermission::Admin,
@@ -323,9 +325,14 @@ impl CronManager {
 
             message_hash_id = shinkai_message.calculate_message_hash_for_pagination();
             db_arc
+                .write()
+                .await
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
                 .await?;
-            db_arc.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
+            db_arc
+                .write()
+                .await
+                .update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
         }
 
         // Add Message to Job Queue
@@ -395,7 +402,8 @@ impl CronManager {
         // Note: needed to avoid a deadlock
         tokio::spawn(async move {
             let db_arc = db.upgrade().unwrap();
-            db_arc
+            let db_write = db_arc.write().await;
+            db_write
                 .add_cron_task(
                     profile,
                     task_id,
