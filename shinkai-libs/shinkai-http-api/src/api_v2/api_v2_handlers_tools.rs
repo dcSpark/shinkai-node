@@ -165,7 +165,7 @@ pub async fn tool_definitions_handler(
             "python" => Some(CodeLanguage::Python),
             _ => None,
         });
-        
+
     if language.is_none() {
         return Err(warp::reject::custom(APIError {
             code: 400,
@@ -174,12 +174,18 @@ pub async fn tool_definitions_handler(
         }));
     }
 
+    let tools: Vec<String> = query_params
+        .get("tools")
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
+        .unwrap_or_default();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     sender
         .send(NodeCommand::V2ApiGenerateToolDefinitions {
             bearer,
             language: language.unwrap(),
+            tools,
             res: res_sender,
         })
         .await
@@ -284,6 +290,7 @@ pub struct ToolMetadata {
 pub struct ToolImplementationRequest {
     pub message: JobMessage,
     pub language: CodeLanguage,
+    pub tools: Vec<String>,
     pub raw: Option<bool>,
 }
 
@@ -308,6 +315,7 @@ pub async fn tool_implementation_handler(
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             message: payload.message,
             language: payload.language,
+            tools: payload.tools,
             raw: payload.raw.unwrap_or(false),
             res: res_sender,
         })
@@ -332,6 +340,7 @@ pub async fn tool_implementation_handler(
 pub struct ToolMetadataImplementationRequest {
     pub language: CodeLanguage,
     pub job_id: String,
+    pub tools: Vec<String>,
 }
 
 #[utoipa::path(
@@ -355,6 +364,7 @@ pub async fn tool_metadata_implementation_handler(
             bearer: authorization.strip_prefix("Bearer ").unwrap_or("").to_string(),
             language: payload.language,
             job_id: payload.job_id,
+            tools: payload.tools,
             res: res_sender,
         })
         .await
@@ -808,9 +818,10 @@ pub async fn get_tool_implementation_prompt_handler(
         }));
     }
 
-    let tools = query_params
+    let tools: Vec<String> = query_params
         .get("tools")
-        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>());
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
+        .unwrap_or_default();
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
@@ -845,7 +856,7 @@ pub struct CodeExecutionRequest {
     #[serde(default)]
     pub extra_config: Option<String>,
     pub llm_provider: String,
-    pub tools: Option<Vec<String>>,
+    pub tools: Vec<String>,
 }
 
 #[utoipa::path(

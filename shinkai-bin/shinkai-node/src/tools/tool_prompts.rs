@@ -65,7 +65,11 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
 //     Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
 // }
 
-pub async fn tool_metadata_implementation(language: CodeLanguage, code: String) -> Result<String, APIError> {
+pub async fn tool_metadata_implementation(
+    language: CodeLanguage,
+    code: String,
+    tools: Vec<String>,
+) -> Result<String, APIError> {
     // Generate tool definitions first
     // let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
 
@@ -224,7 +228,13 @@ This is the SCHEMA for the METADATA:
             }},
             "required": ["name", "query"]
           }}
-        }}
+        }},
+        "tools": {{
+          "type": "array",
+          "items": {{
+            "type": "string"
+          }}
+        }},
         "if": {{
           "properties": {{
             "type": {{
@@ -294,6 +304,10 @@ Output: ```json
       "name": "Get wallet by address",
       "query": "SELECT * FROM wallets WHERE address = :address"
     }}
+  ],
+  "tools": [
+    "local:::rust_toolkit:::shinkai_sqlite_query_executor",
+    "local:::shinkai_tool_echo:::shinkai_echo"
   ]
 }};
 ```
@@ -345,7 +359,8 @@ Output:```json
       "name": "Get page by URL",
       "query": "SELECT * FROM downloaded_pages WHERE url = :url ORDER BY downloaded_at DESC LIMIT 1"
     }}
-  ]
+  ],
+  "tools": []
 }};
 ```
 
@@ -361,10 +376,13 @@ sqlQueries contains from 1 to 3 examples that show how the data should be retrie
 * Any comments, notes, explanations or examples must be omitted in the Output.
 * Generate the METADATA for the following source code in the INPUT:
 
+# TOOLS:
+{:?}
+
 # INPUT:
 {}
 "####,
-                code.clone()
+             tools, code.clone()
             ));
             return Ok(generate_code_prompt);
         }
