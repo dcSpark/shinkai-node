@@ -138,7 +138,7 @@ impl ToolRouter {
         let rust_tools = get_rust_tools();
         let mut sqlite_manager = self.sqlite_manager.write().await;
         for tool in rust_tools {
-            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None);
+            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None, tool.tool_router_key);
             sqlite_manager
                 .add_tool(ShinkaiTool::Rust(rust_tool, true))
                 .await

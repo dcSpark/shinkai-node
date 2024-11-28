@@ -419,6 +419,7 @@ mod tests {
             ),
             sql_tables: None,
             sql_queries: None,
+            file_inbox: None,
         };
 
         // Create a ShinkaiTool instance
