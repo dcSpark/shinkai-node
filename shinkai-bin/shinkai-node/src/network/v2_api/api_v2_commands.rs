@@ -742,6 +742,39 @@ impl Node {
 
         let version = env!("CARGO_PKG_VERSION");
 
+        // Check if the version is 0.9.0
+        let lancedb_exists = {
+            // DB Path Env Vars
+            let node_storage_path: String = env::var("NODE_STORAGE_PATH").unwrap_or_else(|_| "storage".to_string());
+            eprintln!("Node storage path: {}", node_storage_path);
+
+            // Try to open the folder main_db and search for lancedb
+            let main_db_path = std::path::Path::new(&node_storage_path).join("main_db");
+
+            if let Ok(entries) = std::fs::read_dir(&main_db_path) {
+                entries.filter_map(Result::ok).any(|entry| {
+                    let entry_path = entry.path();
+                    eprintln!("Entry: {}", entry_path.to_str().unwrap_or(""));
+                    if entry_path.is_dir() {
+                        if entry_path.to_str().map_or(false, |s| s.contains("lancedb")) {
+                            return true;
+                        }
+                        // Check one more level deep
+                        if let Ok(sub_entries) = std::fs::read_dir(&entry_path) {
+                            return sub_entries.filter_map(Result::ok).any(|sub_entry| {
+                                let sub_entry_path = sub_entry.path();
+                                eprintln!("Sub entry: {}", sub_entry_path.to_str().unwrap_or(""));
+                                sub_entry_path.is_dir() && sub_entry_path.to_str().map_or(false, |s| s.contains("lance"))
+                            });
+                        }
+                    }
+                    false
+                })
+            } else {
+                false
+            }
+        };
+
         let (_current_version, needs_global_reset) = match sqlite_manager.read().await.get_version() {
             Ok(version) => version,
             Err(_err) => {
@@ -761,7 +794,7 @@ impl Node {
                 "is_pristine": !db.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
-                "update_requires_reset": needs_global_reset
+                "update_requires_reset": needs_global_reset || lancedb_exists
             })))
             .await;
         Ok(())

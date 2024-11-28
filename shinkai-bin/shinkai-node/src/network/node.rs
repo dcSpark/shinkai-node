@@ -563,8 +563,7 @@ impl Node {
             let version = env!("CARGO_PKG_VERSION");
 
             // Update the version in the database
-
-            let sqlite_manager = self.sqlite_manager.read().await;
+            let sqlite_manager = self.sqlite_manager.write().await;
             sqlite_manager.set_version(version).expect("Failed to set version");
         }
 
