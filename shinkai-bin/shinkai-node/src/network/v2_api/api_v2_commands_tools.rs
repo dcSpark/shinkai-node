@@ -38,6 +38,8 @@ use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+use chrono::Utc;
+
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<ShinkaiDB>,
@@ -1015,6 +1017,96 @@ impl Node {
                 return Ok(());
             }
         }
+    }
+
+    pub async fn v2_api_tool_implementation_undo_to(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        message_hash: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the job using the job_id
+        let job = match db.get_job_with_options(&job_id, true, true) {
+            Ok(job) => job,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Job not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Use the fetch_message_and_hash method to retrieve the message
+        let (message, _hash) = match db.fetch_message_and_hash(&message_hash) {
+            Ok(result) => result,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Message not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Determine if it's an AI or user message, if it's a user message then we need to return an error
+        if message.is_receiver_subidentity_agent() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Undo operation not allowed for user messages".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let mut new_message = message.clone();
+        // Update the scheduled time to now so the messages are content wise the same but produce a different hash
+        new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
+
+        // Add the message as a response to the job inbox
+        let parent_hash = match message.get_message_parent_key() {
+            Ok(hash) => hash,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get message parent key: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let undo_result = db.add_message_to_job_inbox(&job_id, &new_message, Some(parent_hash), None)
+            .await;
+
+        match undo_result {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Undo operation successful" });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to undo tool implementation: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
     }
 }
 

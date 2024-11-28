@@ -3010,6 +3010,32 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiToolImplementationUndoTo {
+                bearer,
+                message_hash,
+                job_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_undo_to(
+                        bearer,
+                        db_clone,
+                        message_hash,
+                        job_id,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiToolImplementationCodeUpdate {
+                bearer,
+                job_id,
+                code,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+            }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
                 bearer,
                 job_id,

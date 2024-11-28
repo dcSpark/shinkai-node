@@ -745,6 +745,7 @@ impl Node {
                 "is_pristine": !db.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
+                "update_requires_reset": false // TODO: needs logic
             })))
             .await;
         Ok(())

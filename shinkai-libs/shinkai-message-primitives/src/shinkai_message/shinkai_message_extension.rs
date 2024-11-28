@@ -192,4 +192,22 @@ impl ShinkaiMessage {
         }
         Ok(())
     }
+
+    pub fn is_receiver_subidentity_main(&self) -> bool {
+        match &self.body {
+            MessageBody::Unencrypted(body) => {
+                body.internal_metadata.recipient_subidentity == "main"
+            }
+            _ => false,
+        }
+    }
+
+    pub fn is_receiver_subidentity_agent(&self) -> bool {
+        match &self.body {
+            MessageBody::Unencrypted(body) => {
+                body.internal_metadata.recipient_subidentity.contains("agent")
+            }
+            _ => false,
+        }
+    }
 }
