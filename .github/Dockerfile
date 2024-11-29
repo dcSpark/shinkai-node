@@ -30,7 +30,7 @@ COPY . .
 
 RUN cargo clean
 RUN rustup component add rustfmt
-RUN if [ "$BUILD_TYPE" = "release" ]; then cargo build --release; else cargo build; fi
+RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] && echo "--release")
 
 COPY .github/run-main*.sh /entrypoints/
 RUN chmod 755 /entrypoints/*.sh
