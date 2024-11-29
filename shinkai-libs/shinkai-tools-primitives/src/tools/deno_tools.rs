@@ -182,7 +182,7 @@ impl DenoTool {
                                 execution_id: tool_id.clone(),
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
-                                assets: vec![],
+                                assets_files: vec![],
                                 mount_files: vec![],
                             },
                             deno_binary_path: PathBuf::from(
