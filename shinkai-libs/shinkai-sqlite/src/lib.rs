@@ -328,7 +328,7 @@ impl SqliteManager {
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions.iter().any(|&breaking_version| {
-                current_version.as_str() < breaking_version && version > breaking_version
+                current_version.as_str() < breaking_version && version >= breaking_version
             })
         });
 
@@ -411,5 +411,15 @@ mod tests {
         let (version, needs_reset) = manager.get_version().unwrap();
         assert_eq!(version, "0.9.1");
         assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_update_to_breaking_version() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        manager.set_version("0.9.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.9.0");
+        assert!(needs_reset);
     }
 }
