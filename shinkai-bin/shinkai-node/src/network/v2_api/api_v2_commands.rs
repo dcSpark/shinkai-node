@@ -28,11 +28,12 @@ use shinkai_message_primitives::{
         signatures::signature_public_key_to_string,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
@@ -730,6 +731,7 @@ impl Node {
 
     pub async fn v2_api_health_check(
         db: Arc<ShinkaiDB>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         public_https_certificate: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -740,11 +742,26 @@ impl Node {
 
         let version = env!("CARGO_PKG_VERSION");
 
+        let (_current_version, needs_global_reset) = match sqlite_manager.read().await.get_version() {
+            Ok(version) => version,
+            Err(_err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get version in table"),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
         let _ = res
             .send(Ok(serde_json::json!({
                 "is_pristine": !db.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
+                "update_requires_reset": needs_global_reset
             })))
             .await;
         Ok(())

@@ -1058,4 +1058,16 @@ pub enum NodeCommand {
         tool_key: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiToolImplementationUndoTo {
+        bearer: String,
+        message_hash: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiToolImplementationCodeUpdate {
+        bearer: String,
+        job_id: String,
+        code: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
