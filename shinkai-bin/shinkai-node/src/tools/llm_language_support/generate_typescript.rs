@@ -195,7 +195,16 @@ pub fn generate_typescript_definition(
         // Only include implementation if not generating .d.ts
         typescript_output.push_str(" {\n");
         typescript_output.push_str(r#"    const _url = `${Deno.env.get('SHINKAI_NODE_LOCATION')}/v2/tool_execution`;"#);
-        typescript_output.push_str("");
+        typescript_output.push_str("\n");
+
+        // Add tool configuration if it exists
+        if let Some(configs) = &tool.config {
+            typescript_output.push_str("    // Tool configuration requirements\n");
+            for config in configs {
+                typescript_output.push_str(&format!("        /* {:?} */\n", config));
+            }
+        }
+
         typescript_output.push_str("    const data = {\n");
         typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
         typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));

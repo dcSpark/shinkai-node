@@ -44,7 +44,7 @@ impl SQLProcessorTool {
                 If this tool is used, you need to create if not exists the tables used other queries.
                 Table creation should always use 'CREATE TABLE IF NOT EXISTS'.
                 
-                Example table creation:
+                -- Example table creation:
                 CREATE TABLE IF NOT EXISTS table_name (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     field_1 TEXT NOT NULL,
@@ -53,10 +53,13 @@ impl SQLProcessorTool {
                     field_4 TEXT
                 );
                 
-                Example insert:
-                INSERT INTO table_name (field_1, field_3, field_4) VALUES ('value_1', 1, 'value_4');
+                -- Example insert:
+                INSERT INTO table_name (field_1, field_3, field_4) 
+                    VALUES ('value_1', 3, 'value_4')
+                    ON CONFLICT(id) DO UPDATE SET field_1 = 'value_1', field_3 = 3, field_4 = 'value_4';
+                ;
                 
-                Example read:
+                -- Example read:
                 SELECT * FROM table_name WHERE field_2 > datetime('now', '-1 day');
                 SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DESC LIMIT 10;"#
                     .to_string(),

@@ -6,7 +6,7 @@ use crate::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation},
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
 };
 use async_channel::Sender;
@@ -754,19 +754,19 @@ impl Node {
             }
         };
 
-        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string(), tools.clone()).await
-        {
-            Ok(prompt) => prompt,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate tool definitions: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let metadata_prompt =
+            match tool_metadata_implementation_prompt(language.clone(), "".to_string(), tools.clone()).await {
+                Ok(prompt) => prompt,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         let library_code =
             match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), false).await {
@@ -972,7 +972,7 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation(language, code, tools).await {
+        let metadata = match tool_metadata_implementation_prompt(language, code, tools).await {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
