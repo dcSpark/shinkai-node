@@ -5,7 +5,10 @@ use crate::llm_provider::{
 use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
     llm_message::LlmMessage,
-    llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}},
+    llm_providers::{
+        common_agent_llm_provider::ProviderOrAgent,
+        serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+    },
     prompts::Prompt,
     shinkai_name::ShinkaiName,
 };
@@ -403,7 +406,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => 1_000_000,
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
-            LLMProviderInterface::Groq(groq) => std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000),
+            LLMProviderInterface::Groq(groq) => {
+                std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000)
+            }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
         }
@@ -459,9 +464,9 @@ impl ModelCapabilitiesManager {
         db: Arc<ShinkaiDB>,
     ) -> Option<usize> {
         match provider_or_agent {
-            ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
-                Some(ModelCapabilitiesManager::get_max_input_tokens(&serialized_llm_provider.model))
-            }
+            ProviderOrAgent::LLMProvider(serialized_llm_provider) => Some(
+                ModelCapabilitiesManager::get_max_input_tokens(&serialized_llm_provider.model),
+            ),
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
                 let profile = agent.full_identity_name.extract_profile().ok()?;
@@ -679,20 +684,22 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns whether the given model supports tool/function calling capabilities
-    pub fn has_tool_capabilities(model: &LLMProviderInterface, stream: Option<bool>) -> bool {
+    pub fn has_tool_capabilities(model: &LLMProviderInterface, _stream: Option<bool>) -> bool {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
             LLMProviderInterface::OpenAI(_) => true,
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
-                (model.model_type.starts_with("llama3.1")
+                model.model_type.starts_with("llama3.1")
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("mistral-nemo")
                     || model.model_type.starts_with("mistral-small")
-                    || model.model_type.starts_with("mistral-large"))
-                    && stream.map_or(true, |s| !s)
+                    || model.model_type.starts_with("mistral-large")
+                    || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("qwen2.5-coder")
+                    || model.model_type.starts_with("qwq")
             }
             LLMProviderInterface::Groq(model) => {
                 model.model_type.starts_with("llama-3.2")
