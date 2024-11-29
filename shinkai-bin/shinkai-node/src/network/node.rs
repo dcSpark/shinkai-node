@@ -193,10 +193,11 @@ impl Node {
         // Initialize SqliteManager
         let embedding_api_url = embedding_generator.api_url.clone();
         let db_arc = Arc::new(RwLock::new(
-            SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap_or_else(|e| {
-                eprintln!("Error: {:?}", e);
-                panic!("Failed to open database: {}", main_db_path)
-            }),
+            SqliteManager::new(main_db_path.clone(), embedding_api_url, default_embedding_model.clone())
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {:?}", e);
+                    panic!("Failed to open database: {}", main_db_path)
+                }),
         ));
 
         // Get public keys, and update the local node keys in the db

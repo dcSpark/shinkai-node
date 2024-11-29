@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -106,7 +106,6 @@ impl ToolExecutor for SQLProcessorTool {
         app_id: String,
         _db_clone: Arc<RwLock<SqliteManager>>,
         _vector_fs_clone: Arc<VectorFS>,
-        _sqlite_manager: Arc<RwLock<SqliteManager>>,
         _node_name_clone: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
         _job_manager_clone: Arc<Mutex<JobManager>>,

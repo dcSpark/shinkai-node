@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
-use shinkai_db::db::{ShinkaiDB, Topic};
+
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -21,6 +21,7 @@ use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
 use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -33,6 +34,7 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use std::{env, mem};
+use tokio::sync::RwLock;
 use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -110,7 +112,7 @@ impl NetworkJobManager {
         {
             let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
 
-            let all_jobs = shinkai_db.get_all_jobs().unwrap();
+            let all_jobs = shinkai_db.read().await.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
@@ -118,13 +120,9 @@ impl NetworkJobManager {
         }
 
         let db_prefix = "network_queue_abcprefix_";
-        let network_job_queue = JobQueueManager::<NetworkJobQueue>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let network_job_queue = JobQueueManager::<NetworkJobQueue>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
         let network_job_queue_manager = Arc::new(Mutex::new(network_job_queue));
 
         let thread_number = env::var("NETWORK_JOB_MANAGER_THREADS")
@@ -544,8 +542,9 @@ impl NetworkJobManager {
         // check that the subscription exists
         let subscription = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+            let db_read = maybe_db.read().await;
 
-            match maybe_db.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
+            match db_read.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
                 Ok(sub) => sub,
                 Err(_) => return Err(NetworkJobQueueError::Other("Subscription not found".to_string())),
             }
@@ -554,9 +553,10 @@ impl NetworkJobManager {
         // get the symmetric key from the database
         let symmetric_sk_bytes = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+            let db_read = maybe_db.read().await;
 
             // Retrieve the symmetric key using the symmetric_key_hash from the database
-            match maybe_db.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
+            match db_read.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
                 Ok(key) => key,
                 Err(_) => {
                     return Err(NetworkJobQueueError::SymmetricKeyNotFound(

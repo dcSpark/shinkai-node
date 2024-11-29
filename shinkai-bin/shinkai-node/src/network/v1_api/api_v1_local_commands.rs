@@ -7,11 +7,11 @@ use crate::network::Node;
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use log::error;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
     shinkai_message::{
@@ -19,9 +19,10 @@ use shinkai_message_primitives::{
         shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
     },
 };
+use shinkai_sqlite::SqliteManager;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 impl Node {
     pub async fn local_get_last_unread_messages_from_inbox(
@@ -99,7 +100,7 @@ impl Node {
         code_type: RegistrationCodeType,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let code = match db.generate_registration_new_code(permissions, code_type) {
+        let code = match db.write().await.generate_registration_new_code(permissions, code_type) {
             Ok(code) => code,
             Err(e) => {
                 error!("Failed to generate registration new code: {}", e);
@@ -174,7 +175,7 @@ impl Node {
         };
 
         let perm = InboxPermission::from_str(&perm_type).unwrap();
-        let result = match db.add_permission(&inbox_name, &standard_identity, perm) {
+        let result = match db.write().await.add_permission(&inbox_name, &standard_identity, perm) {
             Ok(_) => "Success".to_string(),
             Err(e) => e.to_string(),
         };
@@ -225,7 +226,7 @@ impl Node {
         };
 
         // First, check if permission exists and remove it if it does
-        match db.remove_permission(&inbox_name, &standard_identity) {
+        match db.write().await.remove_permission(&inbox_name, &standard_identity) {
             Ok(()) => {
                 let _ = res
                     .send(format!(
@@ -344,7 +345,7 @@ impl Node {
     }
 
     pub async fn local_is_pristine(db: Arc<RwLock<SqliteManager>>, res: Sender<bool>) {
-        let has_any_profile = db.has_any_profile().unwrap_or(false);
+        let has_any_profile = db.read().await.has_any_profile().unwrap_or(false);
         let _ = res.send(!has_any_profile).await;
     }
 

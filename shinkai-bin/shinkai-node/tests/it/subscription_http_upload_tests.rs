@@ -120,7 +120,7 @@ fn subscription_http_upload() {
                     let db_strong = node1_db_weak.upgrade().unwrap();
                     let path = "/shinkai_sharing";
                     let profile = "main";
-                    let credentials = db_strong.get_upload_credentials(path, profile).unwrap();
+                    let credentials = db_strong.read().await.get_upload_credentials(path, profile).unwrap();
 
                     let destination = FileDestination::from_credentials(credentials).await.unwrap();
 
@@ -302,7 +302,7 @@ fn subscription_http_upload() {
                     };
                     {
                         let db_strong = node1_db_weak.upgrade().unwrap();
-                        let _ = db_strong.add_my_subscription(subscription.clone());
+                        let _ = db_strong.write().await.add_my_subscription(subscription.clone());
                     }
                     // Instantiate HttpDownloadManager and call process_job_queue
                     let http_download_manager = HttpDownloadManager::new(

@@ -5,7 +5,7 @@ use base64::Engine;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::identity::Identity,
@@ -15,10 +15,11 @@ use shinkai_message_primitives::{
         APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, source::SourceFile, vector_resource::VRPath};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     managers::IdentityManager,
@@ -921,15 +922,6 @@ impl Node {
 
         // Step 1: Create a file inbox
         let hash_hex = uuid::Uuid::new_v4().to_string();
-        if let Err(err) = db.create_files_message_inbox(hash_hex.clone()) {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: format!("Failed to create files message inbox: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
         let file_inbox_name = hash_hex;
 
         // Step 2: Add the file to the inbox

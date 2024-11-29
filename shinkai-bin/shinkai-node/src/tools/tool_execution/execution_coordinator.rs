@@ -17,7 +17,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
-use shinkai_db::db::ShinkaiDB;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -28,7 +28,6 @@ pub async fn execute_tool(
     node_name: ShinkaiName,
     db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_router_key: String,
     parameters: Map<String, Value>,
     tool_id: String,
@@ -55,7 +54,6 @@ pub async fn execute_tool(
             bearer,
             db,
             vector_fs,
-            sqlite_manager,
             llm_provider,
             node_name,
             identity_manager,
@@ -67,7 +65,7 @@ pub async fn execute_tool(
         .await
     } else {
         // Assume it's a Deno tool if not Rust
-        let tool = sqlite_manager
+        let tool = db
             .read()
             .await
             .get_tool_by_key(&tool_router_key)
@@ -87,7 +85,7 @@ pub async fn execute_tool(
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, sqlite_manager, false)
+                let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, db, false)
                     .await
                     .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
 

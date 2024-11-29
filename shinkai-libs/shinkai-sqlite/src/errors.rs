@@ -59,6 +59,8 @@ pub enum SqliteManagerError {
     LockError,
     #[error("VR error: {0}")]
     VRError(VRError),
+    #[error("Invalid data")]
+    InvalidData,
     // Add other error variants as needed
 }
 

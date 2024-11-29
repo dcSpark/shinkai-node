@@ -8,8 +8,6 @@ use dashmap::DashMap;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::file_links::{FileLink, FolderSubscriptionWithPath};
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
@@ -24,6 +22,8 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::errors::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
 use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use shinkai_subscription_manager::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
@@ -39,7 +39,7 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -102,13 +102,9 @@ impl ExternalSubscriberManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
-        let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
         let shared_folders_trees = Arc::new(DashMap::new());
         let subscription_ids_are_sync = Arc::new(DashMap::new());
@@ -270,7 +266,8 @@ impl ExternalSubscriberManager {
                     return;
                 }
             };
-            match db.all_subscribers_subscription() {
+            let db_write = db.write().await;
+            match db_write.all_subscribers_subscription() {
                 Ok(subscriptions) => subscriptions.into_iter().map(|s| s.subscription_id).collect(),
                 Err(e) => {
                     shinkai_log(
@@ -283,39 +280,52 @@ impl ExternalSubscriberManager {
             }
         };
 
-        let filtered_subscription_ids = subscriptions_ids_to_process
-            .into_iter()
-            .filter(|subscription_id| {
-                let subscription_id_str = subscription_id.get_unique_id().to_string();
-
-                if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
-                    let folder_path = &arc_tuple.0;
-                    let last_sync_version = &arc_tuple.1;
-
-                    let folder_key = format!(
-                        "{}:::{}",
-                        subscription_id.extract_streamer_profile().unwrap_or_default(),
-                        folder_path
+        let filtered_subscription_ids = {
+            let db = match db.upgrade() {
+                Some(db) => db,
+                None => {
+                    shinkai_log(
+                        ShinkaiLogOption::ExtSubscriptions,
+                        ShinkaiLogLevel::Error,
+                        "Database instance is not available",
                     );
-                    if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(&folder_key) {
-                        let current_version = *current_version_arc.value();
+                    return;
+                }
+            };
+            let db_read = db.read().await;
 
-                        return current_version != *last_sync_version;
+            subscriptions_ids_to_process
+                .into_iter()
+                .filter(|subscription_id| {
+                    let subscription_id_str = subscription_id.get_unique_id().to_string();
+
+                    if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
+                        let folder_path = &arc_tuple.0;
+                        let last_sync_version = &arc_tuple.1;
+
+                        let folder_key = format!(
+                            "{}:::{}",
+                            subscription_id.extract_streamer_profile().unwrap_or_default(),
+                            folder_path
+                        );
+                        if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(&folder_key) {
+                            let current_version = *current_version_arc.value();
+
+                            return current_version != *last_sync_version;
+                        }
                     }
-                }
-                true
-            })
-            .filter(|subscription_id| {
-                let db = match db.upgrade() {
-                    Some(db) => db,
-                    None => return false,
-                };
-                match db.get_folder_requirements(&subscription_id.clone().extract_shared_folder().unwrap_or_default()) {
-                    Ok(req) => !req.has_web_alternative.unwrap_or(false),
-                    Err(_e) => false,
-                }
-            })
-            .collect::<Vec<SubscriptionId>>();
+                    true
+                })
+                .filter(|subscription_id| {
+                    match db_read
+                        .get_folder_requirements(&subscription_id.clone().extract_shared_folder().unwrap_or_default())
+                    {
+                        Ok(req) => !req.has_web_alternative.unwrap_or(false),
+                        Err(_e) => false,
+                    }
+                })
+                .collect::<Vec<SubscriptionId>>()
+        };
 
         for subscription_id in filtered_subscription_ids {
             shinkai_log(
@@ -870,6 +880,8 @@ impl ExternalSubscriberManager {
                 "Database instance is not available".to_string(),
             ))?;
             let identities = db
+                .read()
+                .await
                 .get_all_profiles(self.node_name.clone())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
             identities
@@ -1010,7 +1022,7 @@ impl ExternalSubscriberManager {
             for (path, permission) in filtered_results {
                 let path_str = path.to_string();
                 let permission_str = format!("{:?}", permission);
-                let subscription_requirement = match db.get_folder_requirements(&path_str) {
+                let subscription_requirement = match db.read().await.get_folder_requirements(&path_str) {
                     Ok(req) => Some(req),
                     Err(e) => {
                         shinkai_log(
@@ -1134,7 +1146,9 @@ impl ExternalSubscriberManager {
             "Database instance is not available".to_string(),
         ))?;
 
-        db.set_folder_requirements(&path, subscription_requirement)
+        db.write()
+            .await
+            .set_folder_requirements(&path, subscription_requirement)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
         shinkai_log(
@@ -1250,7 +1264,9 @@ impl ExternalSubscriberManager {
                 "Database instance is not available".to_string(),
             ))?;
 
-            db.set_folder_requirements(&path, subscription_requirement.clone())
+            db.write()
+                .await
+                .set_folder_requirements(&path, subscription_requirement.clone())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
             // Set upload credentials if provided
@@ -1259,7 +1275,9 @@ impl ExternalSubscriberManager {
             )?;
 
             if upload_credentials.is_some() {
-                db.set_upload_credentials(&path, &requester_profile, upload_credentials.clone().unwrap())
+                db.write()
+                    .await
+                    .set_upload_credentials(&path, &requester_profile, upload_credentials.clone().unwrap())
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
                 let folder_subscription_with_path = FolderSubscriptionWithPath {
@@ -1328,7 +1346,7 @@ impl ExternalSubscriberManager {
             ))?;
 
             // Remove upload credentials if the folder had a web alternative
-            let folder_subscription = db.get_folder_requirements(&path)?;
+            let folder_subscription = db.read().await.get_folder_requirements(&path)?;
             if folder_subscription.has_web_alternative.unwrap_or(false) {
                 let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
                     SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
@@ -1347,11 +1365,15 @@ impl ExternalSubscriberManager {
                     .remove_http_support_for_subscription(subscription_with_path, &profile)
                     .await;
 
-                db.remove_upload_credentials(&path, &requester_profile)
+                db.write()
+                    .await
+                    .remove_upload_credentials(&path, &requester_profile)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
             }
 
-            db.remove_folder_requirements(&path)
+            db.write()
+                .await
+                .remove_folder_requirements(&path)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
@@ -1435,11 +1457,11 @@ impl ExternalSubscriberManager {
             "Database instance is not available".to_string(),
         ))?;
 
-        match db.get_subscription_by_id(&subscription_id) {
+        match db.read().await.get_subscription_by_id(&subscription_id) {
             Ok(_) => {
                 // If subscription exists, let's allow the user to re-subscribe
             }
-            Err(ShinkaiDBError::DataNotFound) => {
+            Err(SqliteManagerError::DataNotFound) => {
                 // If subscription does not exist, proceed with adding the subscription
             }
             Err(e) => {
@@ -1462,7 +1484,9 @@ impl ExternalSubscriberManager {
 
         subscription.update_http_preferred(http_preferred);
 
-        db.add_subscriber_subscription(subscription)
+        db.write()
+            .await
+            .add_subscriber_subscription(subscription)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
         shinkai_log(
@@ -1522,8 +1546,9 @@ impl ExternalSubscriberManager {
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
             "Database instance is not available".to_string(),
         ))?;
+        let db_write = db.write().await;
 
-        match db.remove_subscriber(&subscription_id) {
+        match db_write.remove_subscriber(&subscription_id) {
             Ok(_) => {
                 // Successfully unsubscribed
                 shinkai_log(
@@ -1589,13 +1614,17 @@ impl ExternalSubscriberManager {
                 "Database instance is not available".to_string(),
             ))?;
 
-            let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
-                ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
-                    "Subscription with ID {} not found",
-                    subscription_id.get_unique_id()
-                )),
-                _ => SubscriberManagerError::DatabaseError(e.to_string()),
-            });
+            let subscription = db
+                .read()
+                .await
+                .get_subscription_by_id(&subscription_id)
+                .map_err(|e| match e {
+                    SqliteManagerError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
+                        "Subscription with ID {} not found",
+                        subscription_id.get_unique_id()
+                    )),
+                    _ => SubscriberManagerError::DatabaseError(e.to_string()),
+                });
             subscription?
         };
 
@@ -1660,16 +1689,22 @@ impl ExternalSubscriberManager {
         let subscriptions = if let Some(ref path) = path {
             if path != "/" {
                 // Use db.all_subscribers_for_folder when path is defined and not "/"
-                db.all_subscribers_for_folder(path)
+                db.read()
+                    .await
+                    .all_subscribers_for_folder(path)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
             } else {
                 // When path is "/", treat it the same as if path is None
-                db.all_subscribers_subscription()
+                db.read()
+                    .await
+                    .all_subscribers_subscription()
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
             }
         } else {
             // When path is None, get all subscriptions and then group by folder
-            db.all_subscribers_subscription()
+            db.read()
+                .await
+                .all_subscribers_subscription()
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
         };
 
@@ -1707,10 +1742,11 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
+            let db_read = db.read().await;
 
             let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
-            db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
-                ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
+            db_read.get_subscription_by_id(&subscription_id).map_err(|e| match e {
+                SqliteManagerError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                     "Subscription with ID {} not found",
                     subscription_unique_id
                 )),

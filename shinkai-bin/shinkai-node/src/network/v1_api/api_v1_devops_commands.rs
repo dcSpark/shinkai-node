@@ -4,9 +4,11 @@ use crate::network::{node_error::NodeError, Node};
 
 use async_channel::Sender;
 use reqwest::StatusCode;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_sqlite::SqliteManager;
+use tokio::sync::RwLock;
 
 impl Node {
     pub async fn api_private_devops_cron_list(
@@ -15,7 +17,7 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Call the get_all_cron_tasks_from_all_profiles function
-        match db.get_all_cron_tasks_from_all_profiles(node_name.clone()) {
+        match db.read().await.get_all_cron_tasks_from_all_profiles(node_name.clone()) {
             Ok(tasks) => {
                 // If everything went well, send the tasks back as a JSON string
                 let tasks_json = serde_json::to_string(&tasks).unwrap();

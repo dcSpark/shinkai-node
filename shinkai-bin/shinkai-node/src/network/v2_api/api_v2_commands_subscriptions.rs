@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{
@@ -17,7 +17,8 @@ use shinkai_message_primitives::{
     },
 };
 
-use tokio::sync::Mutex;
+use shinkai_sqlite::SqliteManager;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     managers::IdentityManager,
@@ -557,7 +558,7 @@ impl Node {
             return Ok(());
         }
 
-        let db_result = db.list_all_my_subscriptions();
+        let db_result = db.read().await.list_all_my_subscriptions();
 
         match db_result {
             Ok(subscriptions) => {
@@ -648,7 +649,7 @@ impl Node {
         let _profile = parts[0].to_string();
         let path = parts[1].to_string();
 
-        let folder_subscription = match db.get_folder_requirements(&path) {
+        let folder_subscription = match db.read().await.get_folder_requirements(&path) {
             Ok(result) => result,
             Err(e) => {
                 let api_error = APIError {
@@ -724,7 +725,11 @@ impl Node {
             return Ok(());
         }
 
-        match db.get_last_notifications(requester_name.clone(), payload.count, payload.timestamp) {
+        match db
+            .read()
+            .await
+            .get_last_notifications(requester_name.clone(), payload.count, payload.timestamp)
+        {
             Ok(notifications) => {
                 let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
             }
@@ -777,7 +782,11 @@ impl Node {
             return Ok(());
         }
 
-        match db.get_notifications_before_timestamp(requester_name.clone(), payload.timestamp, payload.count) {
+        match db.read().await.get_notifications_before_timestamp(
+            requester_name.clone(),
+            payload.timestamp,
+            payload.count,
+        ) {
             Ok(notifications) => {
                 let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
             }

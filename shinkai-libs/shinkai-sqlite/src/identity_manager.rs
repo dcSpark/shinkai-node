@@ -508,7 +508,7 @@ impl SqliteManager {
         };
 
         // Print all standard identities
-        let mut stmt = match conn.prepare("SELECT full_identity_name FROM standard_identities") {
+        let mut stmt = match conn.prepare("SELECT profile_name FROM standard_identities") {
             Ok(stmt) => stmt,
             Err(e) => {
                 shinkai_log(
@@ -520,7 +520,7 @@ impl SqliteManager {
             }
         };
 
-        let identity_names = match stmt.query_map([], |row| row.get(0)) {
+        let identity_names = match stmt.query_map([], |row| row.get::<_, String>(0)) {
             Ok(identity_names) => identity_names,
             Err(e) => {
                 shinkai_log(
@@ -532,13 +532,7 @@ impl SqliteManager {
             }
         };
 
-        let identity_names = identity_names
-            .filter_map(|id| {
-                id.ok()
-                    .and_then(|id| ShinkaiName::new(id).ok())
-                    .and_then(|name| name.get_profile_name_string())
-            })
-            .collect::<Vec<_>>();
+        let identity_names = identity_names.filter_map(|id| id.ok()).collect::<Vec<_>>();
 
         for identity_name in identity_names {
             shinkai_log(
@@ -549,7 +543,7 @@ impl SqliteManager {
         }
 
         // Print all device identities
-        let mut stmt = match conn.prepare("SELECT full_identity_name FROM device_identities") {
+        let mut stmt = match conn.prepare("SELECT device_name FROM device_identities") {
             Ok(stmt) => stmt,
             Err(e) => {
                 shinkai_log(
@@ -561,7 +555,7 @@ impl SqliteManager {
             }
         };
 
-        let identity_names = match stmt.query_map([], |row| row.get(0)) {
+        let identity_names = match stmt.query_map([], |row| row.get::<_, String>(0)) {
             Ok(identity_names) => identity_names,
             Err(e) => {
                 shinkai_log(
@@ -573,13 +567,7 @@ impl SqliteManager {
             }
         };
 
-        let identity_names = identity_names
-            .filter_map(|id| {
-                id.ok()
-                    .and_then(|id| ShinkaiName::new(id).ok())
-                    .and_then(|name| name.get_profile_name_string())
-            })
-            .collect::<Vec<_>>();
+        let identity_names = identity_names.filter_map(|id| id.ok()).collect::<Vec<_>>();
 
         for identity_name in identity_names {
             shinkai_log(

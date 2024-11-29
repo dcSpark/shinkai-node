@@ -21,6 +21,7 @@ pub mod invoice_manager;
 pub mod invoice_request_manager;
 pub mod job_manager;
 pub mod job_queue_manager;
+pub mod keys_manager;
 pub mod llm_provider_manager;
 pub mod my_subscriptions_manager;
 pub mod network_notifications_manager;
@@ -68,6 +69,12 @@ impl SqliteManager {
         let mut db_path = db_path.as_ref().to_path_buf();
         if db_path.extension().and_then(|ext| ext.to_str()) != Some("db") {
             db_path.set_extension("db");
+        }
+
+        // Create all subfolders if they don't exist
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
         }
 
         let manager = SqliteConnectionManager::file(db_path);
@@ -141,6 +148,7 @@ impl SqliteManager {
         Self::initialize_job_queue_table(conn)?;
         Self::initialize_llm_providers_table(conn)?;
         Self::initialize_local_node_keys_table(conn)?;
+        Self::initialize_message_box_symmetric_keys_table(conn)?;
         Self::initialize_my_subscriptions_table(conn)?;
         Self::initialize_network_notifications_table(conn)?;
         Self::initialize_prompt_table(conn)?;
@@ -358,6 +366,18 @@ impl SqliteManager {
                 node_name TEXT NOT NULL UNIQUE,
                 node_encryption_public_key BLOB NOT NULL,
                 node_signature_public_key BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_message_box_symmetric_keys_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_box_symmetric_keys (
+                hex_blake3_hash TEXT NOT NULL UNIQUE,
+                symmetric_key BLOB NOT NULL
             );",
             [],
         )?;

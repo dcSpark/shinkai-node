@@ -283,7 +283,8 @@ mod tests {
     #[tokio::test]
     async fn test_queue_manager() {
         let db = setup();
-        let db_weak = Arc::downgrade(&Arc::new(RwLock::new(db)));
+        let db = Arc::new(RwLock::new(db));
+        let db_weak = Arc::downgrade(&db);
 
         let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, None).await.unwrap();
 
@@ -421,7 +422,8 @@ mod tests {
     #[tokio::test]
     async fn test_queue_manager_with_jsonvalue() {
         let db = setup();
-        let db_weak = Arc::downgrade(&Arc::new(RwLock::new(db)));
+        let db = Arc::new(RwLock::new(db));
+        let db_weak = Arc::downgrade(&db);
         let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak, None).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
@@ -458,7 +460,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_all_elements_interleave() {
         let db = setup();
-        let db_weak = Arc::downgrade(&Arc::new(RwLock::new(db)));
+        let db = Arc::new(RwLock::new(db));
+        let db_weak = Arc::downgrade(&db);
         let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, None).await.unwrap();
 
         // Create jobs

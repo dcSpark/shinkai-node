@@ -1,12 +1,12 @@
 use std::sync::{Arc, Weak};
 
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
     schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
-use tokio::sync::Mutex;
+use shinkai_sqlite::SqliteManager;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::managers::identity_manager::IdentityManagerTrait;
 

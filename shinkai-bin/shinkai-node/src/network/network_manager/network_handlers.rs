@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
@@ -34,12 +34,13 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::{
     fs_entry_tree::FSEntryTree, shared_folder_info::SharedFolderInfo,
 };
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::{
@@ -1114,7 +1115,11 @@ pub async fn handle_network_message_cases(
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<InvoiceRequestNetworkError>(&content) {
                         Ok(invoice_request_network_error) => {
-                            if let Err(e) = maybe_db.set_invoice_network_error(&invoice_request_network_error) {
+                            if let Err(e) = maybe_db
+                                .write()
+                                .await
+                                .set_invoice_network_error(&invoice_request_network_error)
+                            {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Error,

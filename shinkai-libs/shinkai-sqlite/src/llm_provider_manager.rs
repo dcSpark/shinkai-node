@@ -174,6 +174,35 @@ impl SqliteManager {
         Ok(result)
     }
 
+    pub fn get_llm_provider_profiles_with_access(
+        &self,
+        llm_provider_id: &str,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<String>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let llm_provider_id = Self::db_llm_provider_id(llm_provider_id, profile)?;
+        let mut stmt = conn.prepare("SELECT full_identity_name FROM llm_providers WHERE db_llm_provider_id = ?1")?;
+
+        let rows = stmt.query_map(params![&llm_provider_id], |row| {
+            let full_identity_name = row.get::<_, String>(0)?;
+            Ok(ShinkaiName::new(full_identity_name).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+            })?)
+        })?;
+
+        let mut identities = Vec::new();
+        for row in rows {
+            identities.push(row?);
+        }
+
+        let profiles = identities
+            .into_iter()
+            .map(|identity| identity.get_profile_name_string().unwrap_or_default())
+            .collect();
+
+        Ok(profiles)
+    }
+
     fn db_llm_provider_id(llm_provider_id: &str, profile: &ShinkaiName) -> Result<String, SqliteManagerError> {
         let profile_name = profile
             .get_profile_name_string()

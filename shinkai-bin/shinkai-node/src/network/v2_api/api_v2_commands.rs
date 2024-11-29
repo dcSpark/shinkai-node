@@ -3,7 +3,7 @@ use std::{env, sync::Arc};
 use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
@@ -34,7 +34,7 @@ use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
@@ -75,7 +75,7 @@ impl Node {
             Ok(api_key) => api_key,
             Err(_) => {
                 // If the environment variable is not set, read from the database
-                match db.read_api_v2_key() {
+                match db.read().await.read_api_v2_key() {
                     Ok(Some(api_key)) => api_key,
                     Ok(None) | Err(_) => {
                         let api_error = APIError {
@@ -294,7 +294,7 @@ impl Node {
         }
 
         // Get the default embedding model from the database
-        match db.get_default_embedding_model() {
+        match db.read().await.get_default_embedding_model() {
             Ok(model) => {
                 let _ = res.send(Ok(model.to_string())).await;
             }
@@ -322,7 +322,7 @@ impl Node {
         }
 
         // Get the supported embedding models from the database
-        match db.get_supported_embedding_models() {
+        match db.read().await.get_supported_embedding_models() {
             Ok(models) => {
                 let model_names: Vec<String> = models.into_iter().map(|model| model.to_string()).collect();
                 let _ = res.send(Ok(model_names)).await;
@@ -366,7 +366,7 @@ impl Node {
         };
 
         // Update the default embedding model in the database
-        match db.update_default_embedding_model(new_default_model) {
+        match db.write().await.update_default_embedding_model(new_default_model) {
             Ok(_) => {
                 let _ = res
                     .send(Ok("Default embedding model updated successfully".to_string()))
@@ -418,7 +418,11 @@ impl Node {
             .collect();
 
         // Update the supported embedding models in the database
-        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
+        if let Err(err) = db
+            .write()
+            .await
+            .update_supported_embedding_models(new_supported_models.clone())
+        {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
@@ -546,7 +550,7 @@ impl Node {
         };
 
         let mut identity_manager = identity_manager.lock().await;
-        match db.remove_llm_provider(&llm_provider_id, &requester_name) {
+        match db.write().await.remove_llm_provider(&llm_provider_id, &requester_name) {
             Ok(_) => match identity_manager.remove_agent_subidentity(&llm_provider_id).await {
                 Ok(_) => {
                     let _ = res.send(Ok("Agent removed successfully".to_string())).await;
@@ -599,7 +603,7 @@ impl Node {
             }
         };
 
-        match db.update_llm_provider(agent.clone(), &requester_name) {
+        match db.write().await.update_llm_provider(agent.clone(), &requester_name) {
             Ok(_) => {
                 let mut identity_manager = identity_manager.lock().await;
                 match identity_manager.modify_llm_provider_subidentity(agent).await {
@@ -725,7 +729,7 @@ impl Node {
             return Ok(());
         }
 
-        let has_any_profile = db.has_any_profile().unwrap_or(false);
+        let has_any_profile = db.read().await.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
         Ok(())
     }
@@ -744,7 +748,7 @@ impl Node {
 
         let _ = res
             .send(Ok(serde_json::json!({
-                "is_pristine": !db.has_any_profile().unwrap_or(false),
+                "is_pristine": !db.read().await.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
             })))
@@ -1012,10 +1016,14 @@ impl Node {
         // TODO: validate knowledge
 
         // Check if the llm_provider_id exists
-        match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
+        match db
+            .read()
+            .await
+            .get_llm_provider(&agent.llm_provider_id, &requester_name)
+        {
             Ok(Some(_)) => {
                 // Check if the agent_id already exists
-                match db.get_agent(&agent.agent_id) {
+                match db.read().await.get_agent(&agent.agent_id) {
                     Ok(Some(_)) => {
                         let api_error = APIError {
                             code: StatusCode::CONFLICT.as_u16(),
@@ -1026,7 +1034,7 @@ impl Node {
                     }
                     Ok(None) => {
                         // Add the agent to the database
-                        match db.add_agent(agent, &requester_name) {
+                        match db.write().await.add_agent(agent, &requester_name) {
                             Ok(_) => {
                                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
                             }
@@ -1083,7 +1091,7 @@ impl Node {
         }
 
         // Remove the agent from the database
-        match db.remove_agent(&agent_id) {
+        match db.write().await.remove_agent(&agent_id) {
             Ok(_) => {
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;
             }
@@ -1126,7 +1134,7 @@ impl Node {
         };
 
         // Retrieve the existing agent from the database
-        let existing_agent = match db.get_agent(&agent_id) {
+        let existing_agent = match db.read().await.get_agent(&agent_id) {
             Ok(Some(agent)) => agent,
             Ok(None) => {
                 let api_error = APIError {
@@ -1218,7 +1226,7 @@ impl Node {
         };
 
         // Update the agent in the database
-        match db.update_agent(updated_agent.clone()) {
+        match db.write().await.update_agent(updated_agent.clone()) {
             Ok(_) => {
                 let _ = res.send(Ok(updated_agent)).await;
             }
@@ -1247,7 +1255,7 @@ impl Node {
         }
 
         // Retrieve the agent from the database
-        match db.get_agent(&agent_id) {
+        match db.read().await.get_agent(&agent_id) {
             Ok(Some(agent)) => {
                 let _ = res.send(Ok(agent)).await;
             }
@@ -1283,7 +1291,7 @@ impl Node {
         }
 
         // Retrieve all agents from the database
-        match db.get_all_agents() {
+        match db.read().await.get_all_agents() {
             Ok(agents) => {
                 let _ = res.send(Ok(agents)).await;
             }

@@ -9,7 +9,7 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{identity::Identity, shinkai_name::ShinkaiName},
@@ -23,6 +23,7 @@ use shinkai_message_primitives::{
         },
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
@@ -30,7 +31,7 @@ use shinkai_vector_resources::{
     source::DistributionInfo,
     vector_resource::{VRPack, VRPath},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {

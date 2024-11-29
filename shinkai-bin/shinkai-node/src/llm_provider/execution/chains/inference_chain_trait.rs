@@ -8,7 +8,7 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
