@@ -30,12 +30,13 @@ fi
 
 TARGET_OS=$1
 TARGET_CPU=$2
+TARGET_LINKING=$3
 
 mkdir -p pdfium-source
 cd pdfium-source
 
 ## Install
-if [[ ${3-} != "no-install" ]]
+if [[ ${4-} != "no-install" ]]
 then
   case "$TARGET_OS" in
     linux)
@@ -67,10 +68,16 @@ if [[ ${3-} != "no-install" ]]
 then
   case "$TARGET_OS" in
     linux)
-      build/install-build-deps.sh
+      ./pdfium/build/install-build-deps.sh
       gclient runhooks
       ;;
   esac
+fi
+
+## Install sysroot
+if [[ $TARGET_CPU == "arm64" ]]
+then
+  python3 ./pdfium/build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
 fi
 
 ## Configure build
@@ -88,6 +95,17 @@ cp ../../args.gn $BUILD_TARGET_DIR/args.gn
   echo "target_os = \"$TARGET_OS\"" >> args.gn
   echo "target_cpu = \"$TARGET_CPU\"" >> args.gn
 
+  case "$TARGET_LINKING" in
+    static)
+      echo "pdf_is_complete_lib = true" >> args.gn
+      echo "is_component_build = false" >> args.gn
+      ;;
+    dynamic)
+      echo "pdf_is_complete_lib = false" >> args.gn
+      echo "is_component_build = true" >> args.gn
+      ;;
+  esac
+
   case "$TARGET_OS" in
     linux | mac)
       echo "clang_use_chrome_plugins = false" >> args.gn
@@ -104,7 +122,14 @@ mkdir -p ../../$TARGET_OS-$TARGET_CPU
 
 case "$TARGET_OS" in
   linux | mac)
-    mv -f $BUILD_TARGET_DIR/obj/libpdfium.a ../../$TARGET_OS-$TARGET_CPU/libpdfium.a
+    case "$TARGET_LINKING" in
+      static)
+        mv -f $BUILD_TARGET_DIR/obj/libpdfium.a ../../$TARGET_OS-$TARGET_CPU/libpdfium.a
+        ;;
+      dynamic)
+        mv -f $BUILD_TARGET_DIR/libpdfium.so ../../$TARGET_OS-$TARGET_CPU/libpdfium.so
+        ;;
+    esac
     ;;
   win)
     mv -f $BUILD_TARGET_DIR/obj/pdfium.lib ../../$TARGET_OS-$TARGET_CPU/pdfium.lib

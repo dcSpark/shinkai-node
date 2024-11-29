@@ -55,7 +55,7 @@ fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
 }
 
 #[cfg(not(debug_assertions))]
-fn check_bearer_token(api_key: &str, bearer: &str) {
+fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
     if api_key == bearer {
         return Ok(());
     } else {
