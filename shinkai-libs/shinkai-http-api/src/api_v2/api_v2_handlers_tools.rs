@@ -122,6 +122,20 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(code_execution_handler);
 
+    let undo_to_route = warp::path("tool_implementation_undo_to")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(undo_to_handler);
+
+    let tool_implementation_code_update_route = warp::path("tool_implementation_code_update")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(tool_implementation_code_update_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -137,6 +151,8 @@ pub fn tool_routes(
         .or(remove_playground_tool_route)
         .or(get_playground_tool_route)
         .or(get_tool_implementation_prompt_route)
+        .or(undo_to_route)
+        .or(tool_implementation_code_update_route)
 }
 
 #[utoipa::path(
@@ -918,6 +934,102 @@ pub async fn code_execution_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct UndoToRequest {
+    pub message_hash: String,
+    pub job_id: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/tool_implementation_undo_to",
+    request_body = UndoToRequest,
+    responses(
+        (status = 200, description = "Successfully undone to specified state", body = Value),
+        (status = 400, description = "Invalid request parameters", body = APIError),
+        (status = 500, description = "Undo operation failed", body = APIError)
+    )
+)]
+pub async fn undo_to_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: UndoToRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiToolImplementationUndoTo {
+            bearer,
+            message_hash: payload.message_hash,
+            job_id: payload.job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ToolImplementationCodeUpdateRequest {
+    pub job_id: String,
+    pub code: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/tool_implementation_code_update",
+    request_body = ToolImplementationCodeUpdateRequest,
+    responses(
+        (status = 200, description = "Successfully updated tool implementation code", body = Value),
+        (status = 400, description = "Invalid request parameters", body = APIError),
+        (status = 500, description = "Code update failed", body = APIError)
+    )
+)]
+pub async fn tool_implementation_code_update_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: ToolImplementationCodeUpdateRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiToolImplementationCodeUpdate {
+            bearer,
+            job_id: payload.job_id,
+            code: payload.code,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -936,6 +1048,7 @@ pub async fn code_execution_handler(
         get_playground_tool_handler,
         get_tool_implementation_prompt_handler,
         code_execution_handler,
+        undo_to_handler,
     ),
     components(
         schemas(
