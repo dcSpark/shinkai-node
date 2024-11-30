@@ -330,9 +330,11 @@ impl ToolRouter {
             .sqlite_manager
             .read()
             .await
-            .tool_vector_search(query, num_of_results)
+            .tool_vector_search(query, num_of_results, false, false)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        // Note: we can add more code here to filter out low confidence results
+        let tool_headers = tool_headers.into_iter().map(|(tool, _)| tool).collect();
         Ok(tool_headers)
     }
 
@@ -345,9 +347,11 @@ impl ToolRouter {
             .sqlite_manager
             .read()
             .await
-            .tool_vector_search(query, num_of_results)
+            .tool_vector_search(query, num_of_results, false, true)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        // Note: we can add more code here to filter out low confidence results
+        let tool_headers = tool_headers.into_iter().map(|(tool, _)| tool).collect();
         Ok(tool_headers)
     }
 
@@ -360,9 +364,11 @@ impl ToolRouter {
             .sqlite_manager
             .read()
             .await
-            .tool_vector_search(query, num_of_results)
+            .tool_vector_search(query, num_of_results, true, true)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        // Note: we can add more code here to filter out low confidence results
+        let tool_headers = tool_headers.into_iter().map(|(tool, _)| tool).collect();
         Ok(tool_headers)
     }
 

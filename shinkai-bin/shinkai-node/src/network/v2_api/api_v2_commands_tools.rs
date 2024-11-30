@@ -58,7 +58,7 @@ impl Node {
 
         // Perform the internal search using SqliteManager
         // TODO: implement something like BTS for tools
-        match sqlite_manager.read().await.tool_vector_search(&query, 5).await {
+        match sqlite_manager.read().await.tool_vector_search(&query, 5, false, true).await {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),

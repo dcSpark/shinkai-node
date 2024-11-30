@@ -132,6 +132,7 @@ impl SqliteManager {
         vector: Vec<f32>,
         num_results: u64,
         include_disabled: bool,
+        include_network: bool,
     ) -> Result<Vec<(ShinkaiToolHeader, f64)>, SqliteManagerError> {
         // Serialize the vector to a JSON array string
         let vector_json = serde_json::to_string(&vector).map_err(|e| {
@@ -141,19 +142,39 @@ impl SqliteManager {
         
         // Perform the vector search to get tool_keys and distances
         let conn = self.get_connection()?;
-        let query = if include_disabled {
-            "SELECT v.tool_key, v.distance 
-             FROM shinkai_tools_vec_items v
-             WHERE v.embedding MATCH json(?1)  -- Use json() function to ensure it's treated as JSON
-             ORDER BY distance 
-             LIMIT ?2"
-        } else {
-            "SELECT v.tool_key, v.distance 
-             FROM shinkai_tools_vec_items v
-             WHERE v.embedding MATCH json(?1)  -- Use json() function to ensure it's treated as JSON
-             AND v.is_enabled = 1
-             ORDER BY distance 
-             LIMIT ?2"
+        let query = match (include_disabled, include_network) {
+            (true, true) => {
+                "SELECT v.tool_key, v.distance 
+                 FROM shinkai_tools_vec_items v
+                 WHERE v.embedding MATCH json(?1)
+                 ORDER BY distance 
+                 LIMIT ?2"
+            }
+            (true, false) => {
+                "SELECT v.tool_key, v.distance 
+                 FROM shinkai_tools_vec_items v
+                 WHERE v.embedding MATCH json(?1)
+                 AND v.is_network = 0
+                 ORDER BY distance 
+                 LIMIT ?2"
+            }
+            (false, true) => {
+                "SELECT v.tool_key, v.distance 
+                 FROM shinkai_tools_vec_items v
+                 WHERE v.embedding MATCH json(?1)
+                 AND v.is_enabled = 1
+                 ORDER BY distance 
+                 LIMIT ?2"
+            }
+            (false, false) => {
+                "SELECT v.tool_key, v.distance 
+                 FROM shinkai_tools_vec_items v
+                 WHERE v.embedding MATCH json(?1)
+                 AND v.is_enabled = 1
+                 AND v.is_network = 0
+                 ORDER BY distance 
+                 LIMIT ?2"
+            }
         };
 
         let mut stmt = conn.prepare(query)?;
@@ -184,6 +205,7 @@ impl SqliteManager {
         query: &str,
         num_results: u64,
         include_disabled: bool,
+        include_network: bool,
     ) -> Result<Vec<(ShinkaiToolHeader, f64)>, SqliteManagerError> {
         if query.is_empty() {
             return Ok(Vec::new());
@@ -196,7 +218,7 @@ impl SqliteManager {
         })?;
 
         // Use the new function to perform the search
-        self.tool_vector_search_with_vector(embedding, num_results, include_disabled)
+        self.tool_vector_search_with_vector(embedding, num_results, include_disabled, include_network)
     }
 
     /// Retrieves a ShinkaiToolHeader based on its tool_key
@@ -567,9 +589,18 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
+    use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
+    use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
+    use shinkai_message_primitives::schemas::wallet_mixed::Asset;
+    use shinkai_message_primitives::schemas::wallet_mixed::Network;
+    use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
+    use shinkai_tools_primitives::tools::argument::ToolArgument;
     use shinkai_tools_primitives::tools::argument::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
+    use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -724,7 +755,7 @@ mod tests {
         // Perform a vector search using the generated embedding
         let num_results = 1;
         let search_results: Vec<ShinkaiToolHeader> = manager
-            .tool_vector_search_with_vector(embedding_query, num_results, true)
+            .tool_vector_search_with_vector(embedding_query, num_results, true, true)
             .unwrap()
             .iter()
             .map(|(tool, _distance)| tool.clone())
@@ -1054,7 +1085,7 @@ mod tests {
         // Test search excluding disabled tools
         let embedding_query = SqliteManager::generate_vector_for_testing(0.15);
         let search_results: Vec<ShinkaiToolHeader> = manager
-            .tool_vector_search_with_vector(embedding_query.clone(), 10, false)
+            .tool_vector_search_with_vector(embedding_query.clone(), 10, false, true)
             .unwrap()
             .iter()
             .map(|(tool, _distance)| tool.clone())
@@ -1066,7 +1097,7 @@ mod tests {
 
         // Test search including disabled tools
         let search_results: Vec<ShinkaiToolHeader> = manager
-            .tool_vector_search_with_vector(embedding_query, 10, true)
+            .tool_vector_search_with_vector(embedding_query, 10, true, true)
             .unwrap()
             .iter()
             .map(|(tool, _distance)| tool.clone())
@@ -1076,5 +1107,145 @@ mod tests {
         assert_eq!(search_results.len(), 2);
         assert!(search_results.iter().any(|t| t.name == "Enabled Test Tool"));
         assert!(search_results.iter().any(|t| t.name == "Disabled Test Tool"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_vector_search_with_network_filter() {
+        let mut manager = setup_test_db().await;
+
+        // Create three tools: one enabled non-network, one disabled non-network, one enabled network
+        let enabled_non_network_tool = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Enabled Non-Network Tool".to_string(),
+            author: "Author 1".to_string(),
+            js_code: "console.log('Enabled Non-Network');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "An enabled non-network tool".to_string(),
+            keywords: vec!["enabled".to_string(), "non-network".to_string()],
+            input_args: vec![],
+            activated: true,
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+        };
+
+        let disabled_non_network_tool = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Disabled Non-Network Tool".to_string(),
+            author: "Author 2".to_string(),
+            js_code: "console.log('Disabled Non-Network');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "A disabled non-network tool".to_string(),
+            keywords: vec!["disabled".to_string(), "non-network".to_string()],
+            input_args: vec![],
+            activated: false, // This tool is disabled
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+        };
+
+        let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+            asset: Asset {
+                network_id: NetworkIdentifier::BaseSepolia,
+                asset_id: "USDC".to_string(),
+                decimals: Some(6),
+                contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
+            },
+            amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+        }]));
+
+        let enabled_network_tool = NetworkTool {
+            name: "Enabled Network Tool".to_string(),
+            toolkit_name: "Network Toolkit".to_string(),
+            description: "An enabled network tool".to_string(),
+            version: "v0.1".to_string(),
+            provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+            usage_type: usage_type.clone(),
+            activated: true,
+            config: vec![],
+            input_args: vec![ToolArgument {
+                name: "message".to_string(),
+                arg_type: "string".to_string(),
+                description: "".to_string(),
+                is_required: true,
+            }],
+            output_arg: ToolOutputArg { json: "".to_string() },
+            embedding: None,
+            restrictions: None,
+        };
+
+        // Wrap the tools in ShinkaiTool variants
+        let shinkai_enabled_non_network = ShinkaiTool::Deno(enabled_non_network_tool, true);
+        let shinkai_disabled_non_network = ShinkaiTool::Deno(disabled_non_network_tool, false);
+        let shinkai_enabled_network = ShinkaiTool::Network(enabled_network_tool, true);
+
+        // Add the tools to the database
+        manager
+            .add_tool_with_vector(shinkai_enabled_non_network.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_disabled_non_network.clone(), SqliteManager::generate_vector_for_testing(0.2))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_enabled_network.clone(), SqliteManager::generate_vector_for_testing(0.3))
+            .unwrap();
+
+        // Perform searches and verify results
+
+        // Search including only enabled non-network tools
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(SqliteManager::generate_vector_for_testing(0.15), 10, false, false)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].name, "Enabled Non-Network Tool");
+
+        // Search including only enabled tools (both network and non-network)
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(SqliteManager::generate_vector_for_testing(0.25), 10, false, true)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        assert_eq!(search_results.len(), 2);
+        assert!(search_results.iter().any(|t| t.name == "Enabled Non-Network Tool"));
+        assert!(search_results.iter().any(|t| t.name == "Enabled Network Tool"));
+
+        // Search including all non-network tools (enabled and disabled)
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(SqliteManager::generate_vector_for_testing(0.15), 10, true, false)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        assert_eq!(search_results.len(), 2);
+        assert!(search_results.iter().any(|t| t.name == "Enabled Non-Network Tool"));
+        assert!(search_results.iter().any(|t| t.name == "Disabled Non-Network Tool"));
+
+        // Search including all tools (enabled, disabled, network, and non-network)
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(SqliteManager::generate_vector_for_testing(0.25), 10, true, true)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        assert_eq!(search_results.len(), 3);
+        assert!(search_results.iter().any(|t| t.name == "Enabled Non-Network Tool"));
+        assert!(search_results.iter().any(|t| t.name == "Disabled Non-Network Tool"));
+        assert!(search_results.iter().any(|t| t.name == "Enabled Network Tool"));
     }
 }

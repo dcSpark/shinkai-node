@@ -211,7 +211,7 @@ impl SqliteManager {
             "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(
                 embedding float[384],
                 is_enabled integer,
-                +is_network integer,
+                is_network integer,
                 +tool_key text
             )",
             [],
