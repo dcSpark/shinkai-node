@@ -321,57 +321,6 @@ impl ToolRouter {
         }
     }
 
-    pub async fn get_tools_by_names_with_smart_retry(&self, names: Vec<String>) -> Result<Vec<ShinkaiTool>, ToolError> {
-        let mut tools = Vec::new();
-
-        for name in names {
-            let sqlite_manager_read = self.sqlite_manager.read().await;
-            match sqlite_manager_read.get_tool_by_key(&name) {
-                Ok(tool) => tools.push(tool),
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    std::mem::drop(sqlite_manager_read);
-                    // Perform a vector search if the tool is not found
-                    let search_results = self
-                        .sqlite_manager
-                        .read()
-                        .await
-                        .tool_vector_search(&name, 10)
-                        .await
-                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-
-                    // Search for the result that has the same name
-                    if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
-                        match self
-                            .sqlite_manager
-                            .read()
-                            .await
-                            .get_tool_by_key(&matching_result.tool_router_key)
-                        {
-                            Ok(tool) => tools.push(tool),
-                            Err(SqliteManagerError::ToolNotFound(_)) => {
-                                eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
-                                continue; // Skip this tool and continue with the next one
-                            }
-                            Err(e) => {
-                                eprintln!("Database error: {}", e);
-                                continue; // Skip this tool and continue with the next one
-                            }
-                        }
-                    } else {
-                        eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
-                        continue; // Skip this tool and continue with the next one
-                    }
-                }
-                Err(e) => {
-                    eprintln!("get_tools_by_names_with_smart_retry> Database error: {}", e);
-                    continue; // Skip this tool and continue with the next one
-                }
-            }
-        }
-
-        Ok(tools)
-    }
-
     pub async fn vector_search_enabled_tools(
         &self,
         query: &str,

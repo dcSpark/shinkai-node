@@ -95,10 +95,27 @@ impl SqliteManager {
             ],
         )?;
 
-        // Insert the embedding into the shinkai_tools_vec_items table
+        // Extract is_enabled and is_network
+        let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
+        let (_, is_network) = match tool_clone {
+            ShinkaiTool::Network(_, _) => (Some(0.0), true),
+            _ => (None, false),
+        };
+
+        // Insert the embedding into the shinkai_tools_vec_items table with metadata
         tx.execute(
-            "INSERT INTO shinkai_tools_vec_items (embedding) VALUES (?1)",
-            params![cast_slice(&embedding)],
+            "INSERT INTO shinkai_tools_vec_items (
+                embedding, 
+                is_enabled, 
+                is_network, 
+                tool_key
+            ) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                cast_slice(&embedding),
+                is_enabled as i32,
+                is_network as i32,
+                tool_key
+            ],
         )?;
 
         // Update the FTS table using the in-memory connection
@@ -114,39 +131,51 @@ impl SqliteManager {
         &self,
         vector: Vec<f32>,
         num_results: u64,
-    ) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
-        // Convert Vec<f32> to &[u8] using bytemuck
-        let embedding_bytes: &[u8] = cast_slice(&vector);
-
-        // Step 1: Perform the vector search to get rowids
+        include_disabled: bool,
+    ) -> Result<Vec<(ShinkaiToolHeader, f64)>, SqliteManagerError> {
+        // Serialize the vector to a JSON array string
+        let vector_json = serde_json::to_string(&vector).map_err(|e| {
+            eprintln!("Vector serialization error: {}", e);
+            SqliteManagerError::SerializationError(e.to_string())
+        })?;
+        
+        // Perform the vector search to get tool_keys and distances
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare(
-            "SELECT rowid FROM shinkai_tools_vec_items 
-             WHERE embedding MATCH ? 
+        let query = if include_disabled {
+            "SELECT v.tool_key, v.distance 
+             FROM shinkai_tools_vec_items v
+             WHERE v.embedding MATCH json(?1)  -- Use json() function to ensure it's treated as JSON
              ORDER BY distance 
-             LIMIT ?",
-        )?;
+             LIMIT ?2"
+        } else {
+            "SELECT v.tool_key, v.distance 
+             FROM shinkai_tools_vec_items v
+             WHERE v.embedding MATCH json(?1)  -- Use json() function to ensure it's treated as JSON
+             AND v.is_enabled = 1
+             ORDER BY distance 
+             LIMIT ?2"
+        };
 
-        let rowids: Vec<i64> = stmt
-            .query_map(params![embedding_bytes, num_results], |row| row.get(0))?
-            .collect::<Result<Vec<i64>, _>>()?;
+        let mut stmt = conn.prepare(query)?;
 
-        // Step 2: Retrieve the corresponding ShinkaiTool entries
-        let mut tools = Vec::new();
-        for rowid in rowids {
-            let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE rowid = ?")?;
-            let tool_header_data: Vec<u8> = stmt.query_row(params![rowid], |row| row.get(0))?;
+        // Retrieve tool_keys and distances
+        let tool_keys_and_distances: Vec<(String, f64)> = stmt
+            .query_map(params![vector_json, num_results], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
-            // Deserialize the tool_header_data to get the ShinkaiToolHeader
-            let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
-                eprintln!("Deserialization error: {}", e);
-                SqliteManagerError::SerializationError(e.to_string())
-            })?;
+        eprintln!("Tool keys and distances: {:?}", tool_keys_and_distances);
 
-            tools.push(tool_header);
+        // Retrieve the corresponding ShinkaiToolHeaders and pair with distances
+        let mut tools_with_distances = Vec::new();
+        for (tool_key, distance) in tool_keys_and_distances {
+            if let Ok(tool_header) = self.get_tool_header_by_key(&tool_key) {
+                tools_with_distances.push((tool_header, distance));
+            }
         }
 
-        Ok(tools)
+        Ok(tools_with_distances)
     }
 
     // Performs a vector search for tools based on a query string
@@ -154,7 +183,8 @@ impl SqliteManager {
         &self,
         query: &str,
         num_results: u64,
-    ) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
+        include_disabled: bool,
+    ) -> Result<Vec<(ShinkaiToolHeader, f64)>, SqliteManagerError> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -166,7 +196,7 @@ impl SqliteManager {
         })?;
 
         // Use the new function to perform the search
-        self.tool_vector_search_with_vector(embedding, num_results)
+        self.tool_vector_search_with_vector(embedding, num_results, include_disabled)
     }
 
     /// Retrieves a ShinkaiToolHeader based on its tool_key
@@ -621,15 +651,15 @@ mod tests {
     async fn test_tool_vector_search() {
         let mut manager = setup_test_db().await;
 
-        // Create and add a DenoTool instance
-        let deno_tool = DenoTool {
+        // Create and add three DenoTool instances
+        let deno_tool_1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
-            name: "Deno Test Tool".to_string(),
-            author: "Deno Author".to_string(),
-            js_code: "console.log('Hello, Deno!');".to_string(),
+            name: "Deno Test Tool 1".to_string(),
+            author: "Deno Author 1".to_string(),
+            js_code: "console.log('Hello, Deno 1!');".to_string(),
             tools: None,
             config: vec![],
-            description: "A Deno tool for testing".to_string(),
+            description: "A Deno tool for testing 1".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: vec![],
             activated: true,
@@ -641,22 +671,68 @@ mod tests {
             file_inbox: None,
         };
 
-        let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
-        let vector = SqliteManager::generate_vector_for_testing(0.1);
-        manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
+        let deno_tool_2 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Deno Test Tool 2".to_string(),
+            author: "Deno Author 2".to_string(),
+            js_code: "console.log('Hello, Deno 2!');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "A Deno tool for testing 2".to_string(),
+            keywords: vec!["deno".to_string(), "test".to_string()],
+            input_args: vec![],
+            activated: true,
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+        };
 
-        // Generate an embedding vector for the query
+        let deno_tool_3 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Deno Test Tool 3".to_string(),
+            author: "Deno Author 3".to_string(),
+            js_code: "console.log('Hello, Deno 3!');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "A Deno tool for testing 3".to_string(),
+            keywords: vec!["deno".to_string(), "test".to_string()],
+            input_args: vec![],
+            activated: true,
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+        };
+
+        let shinkai_tool_1 = ShinkaiTool::Deno(deno_tool_1, true);
+        let shinkai_tool_2 = ShinkaiTool::Deno(deno_tool_2, true);
+        let shinkai_tool_3 = ShinkaiTool::Deno(deno_tool_3, true);
+
+        // Add the tools to the database with different vectors
+        manager.add_tool_with_vector(shinkai_tool_1.clone(), SqliteManager::generate_vector_for_testing(0.1)).unwrap();
+        manager.add_tool_with_vector(shinkai_tool_2.clone(), SqliteManager::generate_vector_for_testing(0.5)).unwrap();
+        manager.add_tool_with_vector(shinkai_tool_3.clone(), SqliteManager::generate_vector_for_testing(0.9)).unwrap();
+
+        // Generate an embedding vector for the query that is close to the first tool
         let embedding_query = SqliteManager::generate_vector_for_testing(0.09);
 
         // Perform a vector search using the generated embedding
         let num_results = 1;
-        let search_results = manager
-            .tool_vector_search_with_vector(embedding_query, num_results)
-            .unwrap();
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(embedding_query, num_results, true)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
 
-        // Assert that the search results contain the added tool
+        // Assert that the search results contain the first tool
         assert_eq!(search_results.len(), 1);
-        assert_eq!(search_results[0].name, "Deno Test Tool");
+        assert_eq!(search_results[0].name, "Deno Test Tool 1");
     }
 
     #[tokio::test]
@@ -916,5 +992,89 @@ mod tests {
         // Test no match
         let results = manager.search_tools_by_name("nonexistent").unwrap();
         assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_tool_vector_search_with_disabled() {
+        let mut manager = setup_test_db().await;
+
+        // Create two DenoTool instances - one enabled, one disabled
+        let enabled_tool = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Enabled Test Tool".to_string(),
+            author: "Author 1".to_string(),
+            js_code: "console.log('Enabled');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "An enabled tool for testing".to_string(),
+            keywords: vec!["enabled".to_string(), "test".to_string()],
+            input_args: vec![],
+            activated: true,
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+        };
+
+        let disabled_tool = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Disabled Test Tool".to_string(),
+            author: "Author 2".to_string(),
+            js_code: "console.log('Disabled');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "A disabled tool for testing".to_string(),
+            keywords: vec!["disabled".to_string(), "test".to_string()],
+            input_args: vec![],
+            activated: false, // This tool is disabled
+            embedding: None,
+            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+        };
+
+        // Add both tools to the database
+        let shinkai_enabled = ShinkaiTool::Deno(enabled_tool, true);
+        let shinkai_disabled = ShinkaiTool::Deno(disabled_tool, false);
+
+        manager
+            .add_tool_with_vector(shinkai_enabled.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(
+                shinkai_disabled.clone(),
+                SqliteManager::generate_vector_for_testing(0.2),
+            )
+            .unwrap();
+
+        // Test search excluding disabled tools
+        let embedding_query = SqliteManager::generate_vector_for_testing(0.15);
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(embedding_query.clone(), 10, false)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        // Should only find the enabled tool
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].name, "Enabled Test Tool");
+
+        // Test search including disabled tools
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(embedding_query, 10, true)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        // Should find both tools
+        assert_eq!(search_results.len(), 2);
+        assert!(search_results.iter().any(|t| t.name == "Enabled Test Tool"));
+        assert!(search_results.iter().any(|t| t.name == "Disabled Test Tool"));
     }
 }
