@@ -167,7 +167,7 @@ impl SqliteManager {
             "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(
                 embedding float[384],
                 is_enabled integer,
-                +id integer
+                +prompt_id integer
             )",
             [],
         )?;
