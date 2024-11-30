@@ -152,6 +152,7 @@ impl ShinkaiMessageBuilder {
             sheet_job_data: None,
             callback: None,
             metadata: None,
+            tool_key: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -195,6 +196,7 @@ impl ShinkaiMessageBuilder {
             sheet_job_data: None,
             callback: None,
             metadata,
+            tool_key: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
