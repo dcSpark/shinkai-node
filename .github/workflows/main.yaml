@@ -2,7 +2,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/main.yml"
+      - ".github/workflows/main.yaml"
       - "Cargo.*"
       - "shinkai-libs/**"
       - "shinkai-bin/**"
@@ -10,7 +10,7 @@ on:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
-      - ".github/workflows/main.yml"
+      - ".github/workflows/main.yaml"
       - "Cargo.*"
       - "shinkai-libs/**"
       - "shinkai-bin/**"
