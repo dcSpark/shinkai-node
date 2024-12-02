@@ -96,8 +96,8 @@ pub async fn generate_code_prompt(
                     r#"
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
-  * Import them with the format: `from .shinkai-local-tools import xx`
-  * This is the content of './shinkai-local-tools.py':
+  * Import them with the format: `from shinkai_local_tools import xx`
+  * This is the content of './shinkai_local_tools.py':
   ```{language}
   {tool_definitions}
   ```
@@ -105,7 +105,7 @@ pub async fn generate_code_prompt(
 
 <agent_python_libraries>
 * Prefer libraries in the following order:
-  1. A function provided by './shinkai-local-tools.py' that resolves correctly the requierement.
+  1. A function provided by './shinkai_local_tools.py' that resolves correctly the requierement.
   2. If network fetch is required, use the "requests" library and import it with using `import requests`.
   3. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
   4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
@@ -145,13 +145,14 @@ class OUTPUT:
     pass
 
 async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
-    return Output()
-
+    output = Output()
+    return output
   ```
   * CONFIG, INPUTS and OUTPUT must be objects, not arrays neither basic types.
 </agent_code_format>
 
 <agent_code_rules>
+  * Do not implement __init__ or __new__ methods for CONFIG, INPUTS or OUTPUT.
   * The code will be shared as a library, when used it run(...) function will be called.
   * The function signature MUST be: `async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT`
   {is_memory_required_message}
