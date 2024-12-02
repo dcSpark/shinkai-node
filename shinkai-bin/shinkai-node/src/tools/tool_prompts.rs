@@ -44,7 +44,7 @@ pub async fn generate_code_prompt(
     2. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
     3. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
     4. If an external system requires to be used through a package, or the API is unknown the NPM library may be used with the 'npm:' prefix.
-  </agent_deno_libraries>
+</agent_deno_libraries>
 "#
             };
             return Ok(format!(
