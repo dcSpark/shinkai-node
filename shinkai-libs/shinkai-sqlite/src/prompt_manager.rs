@@ -35,15 +35,15 @@ impl SqliteManager {
             ],
         )?;
 
-        let row_id = tx.last_insert_rowid();
+        let id = tx.last_insert_rowid();
 
-        // Update the prompt's rowid
+        // Update the prompt's id
         let mut prompt = prompt.clone();
-        prompt.rowid = Some(row_id);
+        prompt.rowid = Some(id);
 
         tx.execute(
-            "INSERT INTO prompt_vec_items (rowid, embedding) VALUES (?1, ?2)",
-            params![row_id, cast_slice(&vector)],
+            "INSERT INTO prompt_vec_items (prompt_id, embedding, is_enabled) VALUES (?1, ?2, ?3)",
+            params![id, cast_slice(&vector), prompt.is_enabled as i32],
         )?;
 
         tx.commit()?;
@@ -213,46 +213,62 @@ impl SqliteManager {
     }
 
     // Performs a vector search for prompts using a precomputed vector
-    pub fn prompt_vector_search_with_vector(&self, vector: Vec<f32>, num_results: u64) -> Result<Vec<CustomPrompt>> {
-        // Convert Vec<f32> to &[u8] using bytemuck
-        let embedding_bytes: &[u8] = cast_slice(&vector);
+    pub fn prompt_vector_search_with_vector(
+        &self,
+        vector: Vec<f32>,
+        num_results: u64,
+        include_disabled: bool,
+    ) -> Result<Vec<(CustomPrompt, f64)>> {
+        // Serialize the vector to a JSON array string
+        let vector_json = serde_json::to_string(&vector).map_err(|e| {
+            eprintln!("Vector serialization error: {}", e);
+            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+        })?;
 
-        // Step 1: Perform the vector search to get rowids
+        // Perform the vector search to get rowids and distances
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare(
-            "SELECT rowid FROM prompt_vec_items 
-             WHERE embedding MATCH ? 
+        let query = if include_disabled {
+            "SELECT v.rowid, v.distance 
+             FROM prompt_vec_items v
+             WHERE v.embedding MATCH json(?1)  -- Use json() function to ensure it's treated as JSON
              ORDER BY distance 
-             LIMIT ?",
-        )?;
+             LIMIT ?2"
+        } else {
+            "SELECT v.rowid, v.distance 
+             FROM prompt_vec_items v
+             WHERE v.embedding MATCH json(?1)  -- Use json() function to ensure it's treated as JSON
+             AND v.is_enabled = 1
+             ORDER BY distance 
+             LIMIT ?2"
+        };
 
-        let rowids: Vec<i64> = stmt
-            .query_map(params![embedding_bytes, num_results], |row| row.get(0))?
-            .collect::<Result<Vec<i64>, _>>()?;
+        let mut stmt = conn.prepare(query)?;
 
-        // Step 2: Retrieve the corresponding CustomPrompt entries
-        let mut prompts = Vec::new();
-        for rowid in rowids {
-            let mut stmt = conn.prepare("SELECT * FROM shinkai_prompts WHERE rowid = ?")?;
-            let prompt = stmt.query_row(params![rowid], |row| {
-                Ok(CustomPrompt {
-                    rowid: Some(row.get(0)?),
-                    name: row.get(1)?,
-                    is_system: row.get::<_, i32>(2)? != 0,
-                    is_enabled: row.get::<_, i32>(3)? != 0,
-                    version: row.get(4)?,
-                    prompt: row.get(5)?,
-                    is_favorite: row.get::<_, i32>(6)? != 0,
-                })
-            })?;
-            prompts.push(prompt);
+        // Retrieve rowids and distances
+        let rowids_and_distances: Vec<(i64, f64)> = stmt
+            .query_map(params![vector_json, num_results], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Retrieve the corresponding CustomPrompt entries and pair with distances
+        let mut prompts_with_distances = Vec::new();
+        for (rowid, distance) in rowids_and_distances {
+            if let Ok(Some(prompt)) = self.get_prompt(rowid) {
+                prompts_with_distances.push((prompt, distance));
+            }
         }
 
-        Ok(prompts)
+        Ok(prompts_with_distances)
     }
 
     // Performs a vector search for prompts based on a query string
-    pub async fn prompt_vector_search(&self, query: &str, num_results: u64) -> Result<Vec<CustomPrompt>> {
+    pub async fn prompt_vector_search(
+        &self,
+        query: &str,
+        num_results: u64,
+        include_disabled: bool,
+    ) -> Result<Vec<(CustomPrompt, f64)>> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -261,7 +277,7 @@ impl SqliteManager {
         let embedding = self.generate_embeddings(query).await?;
 
         // Use the new function to perform the search
-        self.prompt_vector_search_with_vector(embedding, num_results)
+        self.prompt_vector_search_with_vector(embedding, num_results, include_disabled)
     }
 
     // Retrieves the embedding of a prompt by rowid
@@ -575,18 +591,18 @@ mod tests {
 
         // Perform a vector search using the specified search vector
         let search_vector = generate_vector(0.4);
-        let search_results = manager.prompt_vector_search_with_vector(search_vector, 3).unwrap();
+        let search_results = manager.prompt_vector_search_with_vector(search_vector, 3, false).unwrap();
 
         // Check that the search results are not empty and that "Prompt 0.4" is the first result
         assert!(!search_results.is_empty());
-        assert_eq!(search_results[0].name, "Prompt 0.4");
+        assert_eq!(search_results[0].0.name, "Prompt 0.4");
 
         // Check that the second result is either "Prompt 0.5" or "Prompt 0.3"
         assert!(search_results.len() > 1);
-        assert!(search_results[1].name == "Prompt 0.5" || search_results[1].name == "Prompt 0.3");
+        assert!(search_results[1].0.name == "Prompt 0.5" || search_results[1].0.name == "Prompt 0.3");
 
         assert!(search_results.len() > 2);
-        assert!(search_results[2].name == "Prompt 0.5" || search_results[2].name == "Prompt 0.3");
+        assert!(search_results[2].0.name == "Prompt 0.5" || search_results[2].0.name == "Prompt 0.3");
     }
 
     #[tokio::test]

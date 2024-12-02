@@ -375,6 +375,7 @@ impl SheetUIInferenceChain {
                         vector_fs.clone(),
                         full_job.clone(),
                         parsed_message,
+                        None, // TODO: hook this up
                         message_hash_id.clone(),
                         image_files.clone(),
                         llm_provider.clone(),
