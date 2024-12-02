@@ -17,7 +17,7 @@ pub async fn generate_code_prompt(
                 "".to_string()
             };
             let tool_section = if !tool_definitions.is_empty() {
-                r#"
+                format!("
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
   * Import them with the format: `import {{ xx }} from './shinkai-local-tools.ts'`
@@ -35,7 +35,7 @@ pub async fn generate_code_prompt(
     4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
     5. If an external system requires to be used through a package (Deno, Node or NPM), or the API is unknown the NPM library may be used with the 'npm:' prefix.
 </agent_deno_libraries>
-"#
+").to_string()
             } else {
                 r#"
 <agent_deno_libraries>
@@ -45,7 +45,7 @@ pub async fn generate_code_prompt(
     3. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
     4. If an external system requires to be used through a package, or the API is unknown the NPM library may be used with the 'npm:' prefix.
 </agent_deno_libraries>
-"#
+"#.to_string()
             };
             return Ok(format!(
                 r#"
@@ -93,7 +93,8 @@ pub async fn generate_code_prompt(
                 "".to_string()
             };
             let tool_section = if !tool_definitions.is_empty() {
-                r#"
+                format!(
+                    r#"
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
   * Import them with the format: `from .shinkai-local-tools import xx`
@@ -112,6 +113,8 @@ pub async fn generate_code_prompt(
   5. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
 </agent_python_libraries>
 "#
+                )
+                .to_string()
             } else {
                 r#"
 <agent_python_libraries>
@@ -122,6 +125,7 @@ pub async fn generate_code_prompt(
   4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
 </agent_python_libraries>
 "#
+                .to_string()
             };
             return Ok(format!(
                 r#"
