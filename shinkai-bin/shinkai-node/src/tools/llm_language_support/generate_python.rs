@@ -36,7 +36,6 @@ fn json_type_to_python(type_value: &Value, items_value: Option<&Value>) -> Strin
         Some("function") => "str".to_string(),
 
         Some(t) => {
-            println!("t>>>>> {}", t);
             // Check if this is actually an object with a "type" field
             if let Some(obj_type) = type_value.get("type") {
                 json_type_to_python(obj_type, type_value.get("items"))
