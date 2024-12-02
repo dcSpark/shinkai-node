@@ -32,7 +32,6 @@
         return response.data;
     }
 */
-use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
 

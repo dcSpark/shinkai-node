@@ -60,6 +60,9 @@ pub async fn generate_tool_definitions(
         .filter(|tool| tools.contains(&tool.tool_router_key))
         .collect();
 
+    if all_tools.is_empty() {
+        return Ok("".to_string());
+    }
     let mut output = String::new();
     let mut generated_names = HashSet::new();
 
@@ -70,7 +73,9 @@ pub async fn generate_tool_definitions(
             }
         }
         CodeLanguage::Python => {
-            output.push_str(&python_common_code());
+            if !only_headers {
+                output.push_str(&python_common_code());
+            }
         }
     }
 

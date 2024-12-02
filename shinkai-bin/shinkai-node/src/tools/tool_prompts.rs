@@ -3,14 +3,20 @@ use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 pub async fn generate_code_prompt(
     language: CodeLanguage,
+    is_memory_required: bool,
     prompt: String,
     tool_definitions: String,
 ) -> Result<String, APIError> {
     match language {
         CodeLanguage::Typescript => {
             let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
-            return Ok(format!(
-                r####"
+            let is_memory_required_message = if is_memory_required {
+                format!("* If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.")
+            } else {
+                "".to_string()
+            };
+            let tool_section = if !tool_definitions.is_empty() {
+                format!("
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
   * Import them with the format: `import {{ xx }} from './shinkai-local-tools.ts'`
@@ -21,13 +27,28 @@ pub async fn generate_code_prompt(
 </agent_libraries>
 
 <agent_deno_libraries>
-  * Prefer libraries in the following order: Deno, Node, NPM
+  * Prefer libraries in the following order:
     1. A function provided by './shinkai-local-tools.ts' that resolves correctly the requierement.
     2. If fetch is required, it is available in the global scope without any import.
     3. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
     4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
-    5. If an external system requires to be used through a package, or the API is unknown the NPM library may be used with the 'npm:' prefix.
+    5. If an external system requires to be used through a package (Deno, Node or NPM), or the API is unknown the NPM library may be used with the 'npm:' prefix.
 </agent_deno_libraries>
+").to_string()
+            } else {
+                r#"
+<agent_deno_libraries>
+  * Prefer libraries in the following order: Deno, Node, NPM
+    1. If fetch is required, it is available in the global scope without any import.
+    2. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
+    3. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
+    4. If an external system requires to be used through a package, or the API is unknown the NPM library may be used with the 'npm:' prefix.
+</agent_deno_libraries>
+"#.to_string()
+            };
+            return Ok(format!(
+                r#"
+{tool_section}
 
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
@@ -45,7 +66,7 @@ pub async fn generate_code_prompt(
 <agent_code_rules>
   * The code will be shared as a library, when used it run(...) function will be called.
   * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
-  * If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.
+  {is_memory_required_message}
 </agent_code_rules>
 
 <agent_code_implementation>
@@ -60,13 +81,19 @@ pub async fn generate_code_prompt(
 {prompt}
 </input_command>
 
-"####
+"#
             ));
         }
         CodeLanguage::Python => {
             let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
-            return Ok(format!(
-                r####"
+            let is_memory_required_message = if is_memory_required {
+                format!("* If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.")
+            } else {
+                "".to_string()
+            };
+            let tool_section = if !tool_definitions.is_empty() {
+                format!(
+                    r#"
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
   * Import them with the format: `from .shinkai-local-tools import xx`
@@ -76,14 +103,32 @@ pub async fn generate_code_prompt(
   ```
 </agent_libraries>
 
-<agent_deno_libraries>
-  * Prefer libraries in the following order:
-    1. A function provided by './shinkai-local-tools.ts' that resolves correctly the requierement.
-    2. If network fetch is required, use the "requests" library and import it with using `import requests`.
-    3. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
-    4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
-    5. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
-</agent_deno_libraries>
+<agent_python_libraries>
+* Prefer libraries in the following order:
+  1. A function provided by './shinkai-local-tools.py' that resolves correctly the requierement.
+  2. If network fetch is required, use the "requests" library and import it with using `import requests`.
+  3. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
+  4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
+  5. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
+</agent_python_libraries>
+"#
+                )
+                .to_string()
+            } else {
+                r#"
+<agent_python_libraries>
+* Prefer libraries in the following order:
+  1. If network fetch is required, use the "requests" library and import it with using `import requests`.
+  2. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
+  3. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
+  4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
+</agent_python_libraries>
+"#
+                .to_string()
+            };
+            return Ok(format!(
+                r#"
+{tool_section}
 
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
@@ -109,7 +154,7 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
 <agent_code_rules>
   * The code will be shared as a library, when used it run(...) function will be called.
   * The function signature MUST be: `async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT`
-  * If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.
+  {is_memory_required_message}
 </agent_code_rules>
 
 <agent_code_implementation>
@@ -124,14 +169,14 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
 {prompt}
 </input_command>
 
-"####
+"#
             ));
         }
     }
 }
 
 pub async fn tool_metadata_implementation_prompt(
-    language: CodeLanguage,
+    _language: CodeLanguage,
     code: String,
     tools: Vec<String>,
 ) -> Result<String, APIError> {

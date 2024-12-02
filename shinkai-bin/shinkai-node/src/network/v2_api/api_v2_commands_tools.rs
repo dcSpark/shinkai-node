@@ -19,7 +19,9 @@ use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike, shinkai_name::ShinkaiSubidentityType},
     shinkai_message::shinkai_message_schemas::{JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    shinkai_utils::{
+        job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -744,18 +746,22 @@ impl Node {
                 }
             };
 
-        let code_prompt = match generate_code_prompt(language.clone(), "".to_string(), tool_definitions).await {
-            Ok(prompt) => prompt,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate code prompt: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let is_memory_required = tools
+            .iter()
+            .any(|tool| tool.contains("local:::rust_toolkit:::shinkai_sqlite_query_executor"));
+        let code_prompt =
+            match generate_code_prompt(language.clone(), is_memory_required, "".to_string(), tool_definitions).await {
+                Ok(prompt) => prompt,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate code prompt: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         let metadata_prompt =
             match tool_metadata_implementation_prompt(language.clone(), "".to_string(), tools.clone()).await {
@@ -836,7 +842,7 @@ impl Node {
         }
         // Generate tool definitions
         let tool_definitions =
-            match generate_tool_definitions(tools, language.clone(), sqlite_manager.clone(), true).await {
+            match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), true).await {
                 Ok(definitions) => definitions,
                 Err(err) => {
                     let api_error = APIError {
@@ -850,11 +856,15 @@ impl Node {
             };
 
         let prompt = job_message.content.clone();
+        let is_memory_required = tools
+            .clone()
+            .iter()
+            .any(|tool| tool.contains("local:::rust_toolkit:::shinkai_sqlite_query_executor"));
 
         // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
-            false => match generate_code_prompt(language, prompt, tool_definitions).await {
+            false => match generate_code_prompt(language, is_memory_required, prompt, tool_definitions).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {
@@ -1090,7 +1100,7 @@ impl Node {
                     let _ = res.send(Err(api_error)).await;
                     return Ok(());
                 }
-            },
+            }
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1271,10 +1281,13 @@ impl Node {
             identity_secret_key_clone,
             node_name.node_name.clone(),
             node_name.node_name.clone(),
-        ).expect("Failed to build AI message");
+        )
+        .expect("Failed to build AI message");
 
         // Add the AI message to the job inbox
-        let add_ai_message_result = db.add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None).await;
+        let add_ai_message_result = db
+            .add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None)
+            .await;
 
         if let Err(err) = add_ai_message_result {
             let api_error = APIError {
