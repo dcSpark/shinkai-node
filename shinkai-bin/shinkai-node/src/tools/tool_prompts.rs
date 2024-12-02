@@ -9,7 +9,6 @@ pub async fn generate_code_prompt(
 ) -> Result<String, APIError> {
     match language {
         CodeLanguage::Typescript => {
-            // This function name must match the generated code for the language specific SQL Query Function
             let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
             let is_memory_required_message = if is_memory_required {
                 format!("* If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.")

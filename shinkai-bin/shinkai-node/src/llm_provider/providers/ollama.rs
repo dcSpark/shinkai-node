@@ -8,6 +8,7 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Prom
 use super::super::error::LLMProviderError;
 use super::LLMService;
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json;
@@ -24,12 +25,11 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopi
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
 use std::error::Error;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use std::fs;
-use std::path::Path;
-use chrono::Utc;
 
 pub fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -136,21 +136,6 @@ impl LLMService for Ollama {
                         ShinkaiLogLevel::Info,
                         format!("Messages JSON: {}", pretty_json).as_str(),
                     );
-                    eprintln!("Messages JSON: {}", pretty_json);
-
-                    // Create the tmp directory if it doesn't exist
-                    let tmp_dir = Path::new("tmp");
-                    if !tmp_dir.exists() {
-                        fs::create_dir_all(tmp_dir).expect("Failed to create tmp directory");
-                    }
-
-                    // Generate the file name
-                    let timestamp = Utc::now().to_rfc3339();
-                    let file_name = format!("{}_{}.json", timestamp, &pretty_json[0..20.min(pretty_json.len())]);
-                    let file_path = tmp_dir.join(file_name);
-
-                    // Write the pretty_json to the file
-                    fs::write(file_path, pretty_json).expect("Failed to write JSON to file");
                 }
                 Err(e) => shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -197,7 +182,7 @@ async fn handle_streaming_response(
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
-    _tools: Option<Vec<JsonValue>>,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client.post(url).json(&payload).send().await?;
 
@@ -245,7 +230,12 @@ async fn handle_streaming_response(
                         .await;
                 }
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), final_function_call, None));
+                return Ok(LLMInferenceResponse::new(
+                    response_text,
+                    json!({}),
+                    final_function_call,
+                    None,
+                ));
             }
         }
 
@@ -264,15 +254,38 @@ async fn handle_streaming_response(
                         // Check for tool calls in the message
                         if let Some(tool_calls) = data.message.tool_calls {
                             for tool_call in tool_calls {
-                                let function = tool_call.function.clone();
-                                let name = function.name;
-                                let arguments = function.arguments.unwrap_or_default();
+                                // Direct field access since function is a struct
+                                let name = tool_call.function.name.clone();
+                                let arguments = tool_call
+                                    .function
+                                    .arguments
+                                    .clone()
+                                    .unwrap_or_else(|| serde_json::Map::new());
+
+                                // Search for the tool_router_key in the tools array
+                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                    tools_array.iter().find_map(|tool| {
+                                        // Get the function object first
+                                        if let Some(function) = tool.get("function") {
+                                            // Then get the name from the function object
+                                            if function.get("name")?.as_str()? == name {
+                                                function
+                                                    .get("tool_router_key")
+                                                    .and_then(|key| key.as_str().map(|s| s.to_string()))
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
 
                                 // Store the function call
                                 final_function_call = Some(FunctionCall {
                                     name: name.clone(),
                                     arguments: arguments.clone(),
-                                    tool_router_key: None,
+                                    tool_router_key,
                                 });
 
                                 // Log the tool call
@@ -285,32 +298,39 @@ async fn handle_streaming_response(
                                 // Send WS message for tool call
                                 if let Some(ref manager) = ws_manager_trait {
                                     if let Some(ref inbox_name) = inbox_name {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
+                                        if let Some(ref function_call) = final_function_call {
+                                            let m = manager.lock().await;
+                                            let inbox_name_string = inbox_name.to_string();
 
-                                        let tool_metadata = ToolMetadata {
-                                            tool_name: name.clone(),
-                                            tool_router_key: None,
-                                            args: arguments,
-                                            result: None,
-                                            status: ToolStatus {
-                                                type_: ToolStatusType::Running,
-                                                reason: None,
-                                            },
-                                        };
+                                            // Serialize FunctionCall to JSON value
+                                            let function_call_json = serde_json::to_value(function_call)
+                                                .unwrap_or_else(|_| serde_json::json!({}));
 
-                                        let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+                                            let tool_metadata = ToolMetadata {
+                                                tool_name: name.clone(),
+                                                tool_router_key: None,
+                                                args: function_call_json.as_object().cloned().unwrap_or_default(),
+                                                result: None,
+                                                status: ToolStatus {
+                                                    type_: ToolStatusType::Running,
+                                                    reason: None,
+                                                },
+                                            };
 
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                serde_json::to_string(&tool_call)
-                                                    .unwrap_or_else(|_| "{}".to_string()),
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
+                                            let ws_message_type =
+                                                WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                                            let _ = m
+                                                .queue_message(
+                                                    WSTopic::Inbox,
+                                                    inbox_name_string,
+                                                    serde_json::to_string(&tool_call)
+                                                        .unwrap_or_else(|_| "Error serializing tool call".to_string()),
+                                                    ws_message_type,
+                                                    true,
+                                                )
+                                                .await;
+                                        }
                                     }
                                 }
                             }
@@ -392,7 +412,12 @@ async fn handle_streaming_response(
         None
     };
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), final_function_call, tps))
+    Ok(LLMInferenceResponse::new(
+        response_text,
+        json!({}),
+        final_function_call,
+        tps,
+    ))
 }
 
 async fn handle_non_streaming_response(
@@ -546,7 +571,12 @@ async fn handle_non_streaming_response(
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>, model: &LLMProviderInterface, used_tokens: usize) {
+fn add_options_to_payload(
+    payload: &mut serde_json::Value,
+    config: Option<&JobConfig>,
+    model: &LLMProviderInterface,
+    used_tokens: usize,
+) {
     eprintln!("config: {:?}", config);
     let mut options = serde_json::Map::new();
 
