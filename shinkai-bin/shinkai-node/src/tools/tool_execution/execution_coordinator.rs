@@ -99,6 +99,8 @@ pub async fn execute_tool(
                 deno_tool
                     .run(
                         envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
                         header_code,
                         parameters,
                         extra_config,

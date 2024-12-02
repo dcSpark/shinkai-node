@@ -105,9 +105,6 @@ pub fn generate_typescript_definition(
     tool_playground: Option<ToolPlayground>,
 ) -> String {
     let mut typescript_output = String::new();
-    let node_env = fetch_node_environment();
-    let api_port = node_env.api_listen_address.port();
-
     let function_name = create_function_name_set(&tool);
 
     // Combine JSDoc comment generation
