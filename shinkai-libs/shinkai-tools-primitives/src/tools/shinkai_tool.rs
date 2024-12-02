@@ -406,6 +406,7 @@ mod tests {
             config: vec![],
             author: "unknown".to_string(),
             js_code: "".to_string(),
+            tools: None,
             keywords: vec![],
             activated: false,
             embedding: None,
@@ -416,6 +417,9 @@ mod tests {
                 }),
                 vec!["markdowns".to_string()],
             ),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
         };
 
         // Create a ShinkaiTool instance

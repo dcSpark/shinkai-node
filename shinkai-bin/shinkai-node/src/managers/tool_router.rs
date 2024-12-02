@@ -5,15 +5,18 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
-use crate::tools::tool_definitions::definitions_custom::get_custom_tools;
+use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
+use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -28,10 +31,11 @@ use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ToolRouter {
-    pub sqlite_manager: Arc<SqliteManager>,
+    pub sqlite_manager: Arc<RwLock<SqliteManager>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -41,7 +45,7 @@ pub struct ToolCallFunctionResponse {
 }
 
 impl ToolRouter {
-    pub fn new(sqlite_manager: Arc<SqliteManager>) -> Self {
+    pub fn new(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Self {
         ToolRouter { sqlite_manager }
     }
 
@@ -49,15 +53,13 @@ impl ToolRouter {
         let is_empty;
         let has_any_js_tools;
         {
-            is_empty = self
-                .sqlite_manager
+            let sqlite_manager = self.sqlite_manager.read().await;
+            is_empty = sqlite_manager
                 .is_empty()
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-            has_any_js_tools = self
-                .sqlite_manager
+            has_any_js_tools = sqlite_manager
                 .has_any_js_tools()
-                .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
@@ -109,9 +111,12 @@ impl ToolRouter {
         println!("Number of static prompts to add: {}", json_array.len());
 
         // Use the add_prompts_from_json_values method
-        self.sqlite_manager
-            .add_prompts_from_json_values(json_array)
-            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        {
+            let sqlite_manager = self.sqlite_manager.write().await;
+            sqlite_manager
+                .add_prompts_from_json_values(json_array)
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        }
 
         let duration = start_time.elapsed();
         if env::var("LOG_ALL").unwrap_or_default() == "1" {
@@ -121,7 +126,8 @@ impl ToolRouter {
     }
 
     pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
-        self.sqlite_manager
+        let mut sqlite_manager = self.sqlite_manager.write().await;
+        sqlite_manager
             .add_tool(ShinkaiTool::Network(network_tool, true))
             .await
             .map(|_| ())
@@ -129,10 +135,11 @@ impl ToolRouter {
     }
 
     async fn add_rust_tools(&self) -> Result<(), ToolError> {
-        let rust_tools = get_custom_tools();
+        let rust_tools = get_rust_tools();
+        let mut sqlite_manager = self.sqlite_manager.write().await;
         for tool in rust_tools {
-            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None);
-            self.sqlite_manager
+            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None, tool.tool_router_key);
+            sqlite_manager
                 .add_tool(ShinkaiTool::Rust(rust_tool, true))
                 .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -157,19 +164,22 @@ impl ToolRouter {
             "shinkai-tool-coinbase-call-faucet",
         ];
 
-        for (name, definition) in tools {
-            if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
-                continue; // Skip tools that are not in the allowed list
-            }
-            println!("Adding JS tool: {}", name);
+        {
+            let mut sqlite_manager = self.sqlite_manager.write().await;
+            for (name, definition) in tools {
+                if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
+                    continue; // Skip tools that are not in the allowed list
+                }
+                println!("Adding JS tool: {}", name);
 
-            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-            for tool in toolkit.tools {
-                let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-                self.sqlite_manager
-                    .add_tool(shinkai_tool)
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+                for tool in toolkit.tools {
+                    let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
+                    sqlite_manager
+                        .add_tool(shinkai_tool)
+                        .await
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                }
             }
         }
 
@@ -205,12 +215,15 @@ impl ToolRouter {
                 embedding: None,
                 restrictions: None,
             };
+            {
+                let mut sqlite_manager = self.sqlite_manager.write().await;
+                let shinkai_tool = ShinkaiTool::Network(network_tool, true);
 
-            let shinkai_tool = ShinkaiTool::Network(network_tool, true);
-            self.sqlite_manager
-                .add_tool(shinkai_tool)
-                .await
-                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                sqlite_manager
+                    .add_tool(shinkai_tool)
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            }
 
             // Manually create another NetworkTool
             let youtube_tool = NetworkTool {
@@ -233,24 +246,27 @@ impl ToolRouter {
                 restrictions: None,
             };
 
-            let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-            self.sqlite_manager
-                .add_tool(shinkai_tool)
-                .await
-                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            {
+                let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
+                let mut sqlite_manager = self.sqlite_manager.write().await;
+                sqlite_manager
+                    .add_tool(shinkai_tool)
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            }
         }
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
-            {
+            let sqlite_manager_read = self.sqlite_manager.read().await;
+            match sqlite_manager_read.get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo") {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
+                        std::mem::drop(sqlite_manager_read);
                         js_tool.name = "network__echo".to_string();
                         let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
+                        let mut sqlite_manager = self.sqlite_manager.write().await;
+                        sqlite_manager
                             .add_tool(modified_tool)
                             .await
                             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -265,15 +281,17 @@ impl ToolRouter {
                 }
             }
 
-            match self
-                .sqlite_manager
+            let sqlite_manager_read = self.sqlite_manager.read().await;
+            match sqlite_manager_read
                 .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
             {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
+                        std::mem::drop(sqlite_manager_read);
                         js_tool.name = "youtube_transcript_with_timestamps".to_string();
                         let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
+                        let mut sqlite_manager = self.sqlite_manager.write().await;
+                        sqlite_manager
                             .add_tool(modified_tool)
                             .await
                             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -296,7 +314,7 @@ impl ToolRouter {
     }
 
     pub async fn get_tool_by_name(&self, name: &str) -> Result<Option<ShinkaiTool>, ToolError> {
-        match self.sqlite_manager.get_tool_by_key(name) {
+        match self.sqlite_manager.read().await.get_tool_by_key(name) {
             Ok(tool) => Ok(Some(tool)),
             Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
             Err(e) => Err(ToolError::DatabaseError(e.to_string())),
@@ -307,19 +325,28 @@ impl ToolRouter {
         let mut tools = Vec::new();
 
         for name in names {
-            match self.sqlite_manager.get_tool_by_key(&name) {
+            let sqlite_manager_read = self.sqlite_manager.read().await;
+            match sqlite_manager_read.get_tool_by_key(&name) {
                 Ok(tool) => tools.push(tool),
                 Err(SqliteManagerError::ToolNotFound(_)) => {
+                    std::mem::drop(sqlite_manager_read);
                     // Perform a vector search if the tool is not found
                     let search_results = self
                         .sqlite_manager
+                        .read()
+                        .await
                         .tool_vector_search(&name, 10)
                         .await
                         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
                     // Search for the result that has the same name
                     if let Some(matching_result) = search_results.iter().find(|result| result.name == name) {
-                        match self.sqlite_manager.get_tool_by_key(&matching_result.tool_router_key) {
+                        match self
+                            .sqlite_manager
+                            .read()
+                            .await
+                            .get_tool_by_key(&matching_result.tool_router_key)
+                        {
                             Ok(tool) => tools.push(tool),
                             Err(SqliteManagerError::ToolNotFound(_)) => {
                                 eprintln!("get_tools_by_names_with_smart_retry> Tool not found: {}", name);
@@ -352,6 +379,8 @@ impl ToolRouter {
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
+            .read()
+            .await
             .tool_vector_search(query, num_of_results)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -365,6 +394,8 @@ impl ToolRouter {
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
+            .read()
+            .await
             .tool_vector_search(query, num_of_results)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -378,6 +409,8 @@ impl ToolRouter {
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
+            .read()
+            .await
             .tool_vector_search(query, num_of_results)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -390,7 +423,7 @@ impl ToolRouter {
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
     ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
-        let function_name = function_call.name.clone();
+        let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
@@ -420,8 +453,35 @@ impl ToolRouter {
             }
             ShinkaiTool::Deno(deno_tool, _) => {
                 let function_config = shinkai_tool.get_config_from_env();
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env
+                    .node_storage_path
+                    .clone()
+                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+                let app_id = context.full_job().job_id().to_string();
+                let tool_id = shinkai_tool.tool_router_key().clone();
+                let tools = deno_tool.tools.clone().unwrap_or_default();
+                let header_code =
+                    generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                        .await
+                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                let mut envs = HashMap::new();
+                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
                 let result = deno_tool
-                    .run(HashMap::new(), "".to_string(), function_args, function_config)
+                    .run(
+                        HashMap::new(),
+                        header_code,
+                        function_args,
+                        function_config,
+                        node_storage_path,
+                        app_id,
+                        tool_id,
+                        false,
+                    )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -697,8 +757,6 @@ impl ToolRouter {
                 });
             }
         }
-
-        Err(LLMProviderError::FunctionNotFound(function_name))
     }
 
     /// This function is used to call a JS function directly
@@ -717,13 +775,41 @@ impl ToolRouter {
         let shinkai_tool = shinkai_tool.unwrap();
         let function_config = shinkai_tool.get_config_from_env();
 
-        let js_tool = match shinkai_tool {
+        let js_tool = match shinkai_tool.clone() {
             ShinkaiTool::Deno(js_tool, _) => js_tool,
             _ => return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string())),
         };
 
+        let node_env = fetch_node_environment();
+        let node_storage_path = node_env
+            .node_storage_path
+            .clone()
+            .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+        let tools = js_tool.clone().tools.unwrap_or_default();
+        let app_id = format!("external_{}", uuid::Uuid::new_v4());
+        let tool_id = shinkai_tool.tool_router_key().clone();
+        let header_code =
+            generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+        let mut envs = HashMap::new();
+        envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
+        envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
+        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+
         let result = js_tool
-            .run(HashMap::new(), "".to_string(), function_args, function_config)
+            .run(
+                HashMap::new(),
+                header_code,
+                function_args,
+                function_config,
+                node_storage_path,
+                app_id,
+                tool_id,
+                true,
+            )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;

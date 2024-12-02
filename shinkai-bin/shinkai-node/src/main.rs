@@ -18,6 +18,7 @@ use console_subscriber;
 
 #[tokio::main]
 pub async fn main() {
+    env_logger::init();
     init_default_tracing();
     #[cfg(feature = "console")]
     {

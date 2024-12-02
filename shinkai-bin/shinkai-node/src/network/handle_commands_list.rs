@@ -2396,8 +2396,9 @@ impl Node {
             NodeCommand::V2ApiHealthCheck { res } => {
                 let db_clone = Arc::clone(&self.db);
                 let public_https_certificate_clone = self.public_https_certificate.clone();
+                let sqlite_manager = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, res).await;
+                    let _ = Node::v2_api_health_check(db_clone, sqlite_manager, public_https_certificate_clone, res).await;
                 });
             }
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
@@ -2881,6 +2882,7 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let vector_fs_clone = self.vector_fs.clone();
                 let node_name = self.node_name.clone();
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let job_manager = self.job_manager.clone().unwrap();
@@ -2894,6 +2896,7 @@ impl Node {
                         bearer,
                         node_name,
                         db_clone,
+                        vector_fs_clone,
                         sqlite_manager_clone,
                         tool_router_key,
                         parameters,
@@ -2914,43 +2917,68 @@ impl Node {
             NodeCommand::V2ApiExecuteCode {
                 bearer,
                 code,
+                tools,
                 tool_type,
                 parameters,
                 tool_id,
                 app_id,
+                llm_provider,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::execute_code(
+                    let _ = Node::run_execute_code(
                         bearer,
                         db_clone,
                         tool_type,
                         code,
+                        tools,
                         parameters,
                         sqlite_manager_clone,
                         tool_id,
                         app_id,
+                        llm_provider,
                         res,
                     )
                     .await;
                 });
             }
-            NodeCommand::V2ApiGenerateToolDefinitions { bearer, language, res } => {
+            NodeCommand::V2ApiGenerateToolDefinitions {
+                bearer,
+                language,
+                tools,
+                res,
+            } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
                     let _ =
-                        Node::generate_tool_definitions(bearer, db_clone, language, sqlite_manager_clone, res).await;
+                        Node::get_tool_definitions(bearer, db_clone, language, tools, sqlite_manager_clone, res).await;
+                });
+            }
+            NodeCommand::V2ApiGenerateToolFetchQuery {
+                bearer,
+                language,
+                tools,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let sqlite_manager_clone = self.sqlite_manager.clone();
+
+                tokio::spawn(async move {
+                    let _ =
+                        Node::generate_tool_fetch_query(bearer, db_clone, language, tools, sqlite_manager_clone, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolImplementation {
                 bearer,
                 message,
                 language,
+                tools,
                 raw,
                 res,
             } => {
@@ -2969,6 +2997,7 @@ impl Node {
                         db_clone,
                         message,
                         language,
+                        tools,
                         sqlite_manager_clone,
                         node_name_clone,
                         identity_manager_clone,
@@ -2982,10 +3011,57 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiToolImplementationUndoTo {
+                bearer,
+                message_hash,
+                job_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_undo_to(
+                        bearer,
+                        db_clone,
+                        message_hash,
+                        job_id,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiToolImplementationCodeUpdate {
+                bearer,
+                job_id,
+                code,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let node_name_clone = self.node_name.clone();
+                let node_encryption_sk_clone = self.encryption_secret_key.clone();
+                let node_encryption_pk_clone = self.encryption_public_key.clone();
+                let node_signing_sk_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_code_update(
+                        bearer,
+                        db_clone,
+                        job_id,
+                        code,
+                        identity_manager_clone,
+                        node_name_clone,
+                        node_encryption_sk_clone,
+                        node_encryption_pk_clone,
+                        node_signing_sk_clone,
+                        res,
+                    ).await;
+                });
+            }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
                 bearer,
                 job_id,
                 language,
+                tools,
                 res,
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
@@ -3002,6 +3078,7 @@ impl Node {
                         bearer,
                         job_id,
                         language,
+                        tools,
                         sqlite_manager_clone,
                         db_clone,
                         node_name_clone,

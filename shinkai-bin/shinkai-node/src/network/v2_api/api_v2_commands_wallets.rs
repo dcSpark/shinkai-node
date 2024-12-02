@@ -11,7 +11,7 @@ use shinkai_message_primitives::schemas::{
     wallet_mixed::{Network, NetworkIdentifier},
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     network::{node_error::NodeError, Node},
@@ -192,7 +192,7 @@ impl Node {
 
     pub async fn v2_api_restore_coinbase_mpc_wallet(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,
@@ -291,7 +291,7 @@ impl Node {
 
     pub async fn v2_api_create_coinbase_mpc_wallet(
         db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
         network_identifier: NetworkIdentifier,

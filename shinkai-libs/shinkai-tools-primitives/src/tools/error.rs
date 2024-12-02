@@ -27,6 +27,7 @@ pub enum ToolError {
     MissingEmbedding,
     EmbeddingGenerationError(String),
     MissingConfigError(String),
+    InvalidFunctionArguments(String),
 }
 
 impl fmt::Display for ToolError {
@@ -55,6 +56,7 @@ impl fmt::Display for ToolError {
             ToolError::MissingEmbedding => write!(f, "Missing embedding."),
             ToolError::EmbeddingGenerationError(ref e) => write!(f, "Embedding generation error: {}", e),
             ToolError::MissingConfigError(ref e) => write!(f, "Missing config error: {}", e),
+            ToolError::InvalidFunctionArguments(ref e) => write!(f, "Invalid function arguments: {}", e),
         }
     }
 }

@@ -6,7 +6,6 @@ authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { workspace = true }
-shinkai_tools_primitives = { workspace = true }
 shinkai_vector_resources = { workspace = true }
 shinkai_sheet = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

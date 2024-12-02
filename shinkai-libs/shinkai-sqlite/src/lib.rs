@@ -33,12 +33,15 @@ pub enum SqliteManagerError {
     ToolPlaygroundNotFound(String),
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+    #[error("Lock error")]
+    LockError,
     // Add other error variants as needed
 }
 
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
+    fts_pool: Arc<Pool<SqliteConnectionManager>>,
     api_url: String,
     model_type: EmbeddingModelType,
 }
@@ -54,7 +57,11 @@ impl std::fmt::Debug for SqliteManager {
 
 impl SqliteManager {
     // Creates a new SqliteManager with a connection pool to the specified database path
-    pub fn new<P: AsRef<Path>>(db_path: P, api_url: String, model_type: EmbeddingModelType) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(
+        db_path: P,
+        api_url: String,
+        model_type: EmbeddingModelType,
+    ) -> Result<Self, SqliteManagerError> {
         // Register the sqlite-vec extension
         unsafe {
             sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
@@ -84,14 +91,37 @@ impl SqliteManager {
              PRAGMA foreign_keys = ON;", // Enable foreign key support
         )?;
 
-        // Initialize tables
+        // Initialize tables in the persistent database
         Self::initialize_tables(&conn)?;
 
-        Ok(SqliteManager {
+        // Create a connection pool for the in-memory database
+        let fts_manager = SqliteConnectionManager::memory();
+        let fts_pool = Pool::builder()
+            .max_size(5) // Adjust the pool size as needed
+            .build(fts_manager)
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+
+        // Initialize FTS table in the in-memory database
+        {
+            let fts_conn = fts_pool
+                .get()
+                .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+            fts_conn.execute_batch(
+                "PRAGMA foreign_keys = ON;", // Enable foreign key support for in-memory connection
+            )?;
+            Self::initialize_fts_tables(&fts_conn)?;
+        }
+
+        // Synchronize the FTS table with the main database
+        let manager = SqliteManager {
             pool: Arc::new(pool),
+            fts_pool: Arc::new(fts_pool), // Use the in-memory connection pool
             api_url,
             model_type,
-        })
+        };
+        let _ = manager.sync_fts_table();
+
+        Ok(manager)
     }
 
     // Initializes the required tables in the SQLite database
@@ -102,6 +132,7 @@ impl SqliteManager {
         Self::initialize_tools_vector_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
+        Self::initialize_version_table(conn)?;
         Ok(())
     }
 
@@ -180,6 +211,31 @@ impl SqliteManager {
         Ok(())
     }
 
+    // New method to initialize FTS tables
+    fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::initialize_tools_fts_table(conn)?;
+        Self::initialize_prompts_fts_table(conn)?;
+        Ok(())
+    }
+
+    // Initialize the FTS table for tool names
+    fn initialize_tools_fts_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_fts USING fts5(name)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Initialize the FTS table for prompt names
+    fn initialize_prompts_fts_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_prompts_fts USING fts5(name)",
+            [],
+        )?;
+        Ok(())
+    }
+
     // Updated method to initialize the tool_playground table with non-nullable and unique tool_router_key
     fn initialize_tool_playground_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
@@ -211,6 +267,18 @@ impl SqliteManager {
                 tool_router_key TEXT NOT NULL,
                 code TEXT NOT NULL,
                 FOREIGN KEY(tool_router_key) REFERENCES tool_playground(tool_router_key)
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // New method to initialize the version table
+    fn initialize_version_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS app_version (
+                version TEXT NOT NULL UNIQUE,
+                needs_global_reset INTEGER NOT NULL CHECK (needs_global_reset IN (0, 1))
             );",
             [],
         )?;
@@ -251,5 +319,107 @@ impl SqliteManager {
     // Utility function to generate a vector of length 384 filled with a specified value
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
         vec![value; 384]
+    }
+
+    // Method to set the version and determine if a global reset is needed
+    pub fn set_version(&self, version: &str) -> Result<()> {
+        // Note: add breaking versions here as needed
+        let breaking_versions = vec!["0.9.0"];
+
+        let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
+            breaking_versions.iter().any(|&breaking_version| {
+                current_version.as_str() < breaking_version && version >= breaking_version
+            })
+        });
+
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM app_version;", [])?;
+        conn.execute(
+            "INSERT INTO app_version (version, needs_global_reset) VALUES (?, ?);",
+            &[&version as &dyn ToSql, &(needs_global_reset as i32) as &dyn ToSql],
+        )?;
+
+        Ok(())
+    }
+
+    // Method to get the version and reset status
+    pub fn get_version(&self) -> Result<(String, bool)> {
+        let conn = self.get_connection()?;
+        conn.query_row(
+            "SELECT version, needs_global_reset FROM app_version LIMIT 1;",
+            [],
+            |row| {
+                let version: String = row.get(0)?;
+                let needs_global_reset: i32 = row.get(1)?;
+                Ok((version, needs_global_reset != 0))
+            },
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use std::path::PathBuf;
+    use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
+
+    async fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_set_version_no_reset_needed() {
+        let manager = setup_test_db().await;
+        manager.set_version("1.0.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "1.0.0");
+        assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_reset_needed() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.8.0");
+        assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_update_no_reset() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        manager.set_version("1.0.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        eprintln!("version: {}", version);
+        assert_eq!(version, "1.0.0");
+        assert!(needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_update_from_breaking_version_no_reset() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.9.0").unwrap();
+        manager.set_version("0.9.1").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.9.1");
+        assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_update_to_breaking_version() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        manager.set_version("0.9.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.9.0");
+        assert!(needs_reset);
     }
 }

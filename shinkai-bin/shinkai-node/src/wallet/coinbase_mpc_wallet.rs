@@ -12,9 +12,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
+use tokio::sync::RwLock;
 
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
+use crate::utils::environment::fetch_node_environment;
 use crate::wallet::wallet_error::WalletError;
 use shinkai_message_primitives::schemas::wallet_mixed::{
     Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
@@ -26,7 +28,7 @@ pub struct CoinbaseMPCWallet {
     pub network: Network,
     pub address: Address,
     pub config: CoinbaseMPCWalletConfig,
-    pub sqlite_manager: Option<Weak<SqliteManager>>,
+    pub sqlite_manager: Option<Weak<RwLock<SqliteManager>>>,
 }
 
 // Note: do we need access to ToolRouter? (maybe not, since we can call the Coinbase SDK directly)
@@ -82,13 +84,13 @@ impl<'de> Deserialize<'de> for CoinbaseMPCWallet {
 }
 
 impl CoinbaseMPCWallet {
-    pub fn update_sqlite_manager(&mut self, sqlite_manager: Arc<SqliteManager>) {
+    pub fn update_sqlite_manager(&mut self, sqlite_manager: Arc<RwLock<SqliteManager>>) {
         self.sqlite_manager = Some(Arc::downgrade(&sqlite_manager));
     }
 
     pub async fn create_wallet(
         network: Network,
-        sqlite_manager: Weak<SqliteManager>, // Changed to Weak
+        sqlite_manager: Weak<RwLock<SqliteManager>>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<Self, WalletError> {
         let sqlite_manager_strong = sqlite_manager.upgrade().ok_or(WalletError::ConfigNotFound)?;
@@ -97,6 +99,8 @@ impl CoinbaseMPCWallet {
             None => {
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = sqlite_manager_strong
+                    .read()
+                    .await
                     .get_tool_by_key(tool_id)
                     .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
@@ -183,7 +187,7 @@ impl CoinbaseMPCWallet {
 
     pub async fn restore_wallet(
         network: Network,
-        sqlite_manager: Weak<SqliteManager>,
+        sqlite_manager: Weak<RwLock<SqliteManager>>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<Self, WalletError> {
@@ -195,6 +199,8 @@ impl CoinbaseMPCWallet {
             None => {
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = sqlite_manager_strong
+                    .read()
+                    .await
                     .get_tool_by_key(tool_id)
                     .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
@@ -278,7 +284,7 @@ impl CoinbaseMPCWallet {
 
     pub async fn call_function(
         config: CoinbaseMPCWalletConfig,
-        sqlite_manager: Weak<SqliteManager>, // Changed to Weak
+        sqlite_manager: Weak<RwLock<SqliteManager>>, // Changed to Weak
         function_name: ShinkaiToolCoinbase,
         params: serde_json::Map<String, Value>,
     ) -> Result<Value, WalletError> {
@@ -287,6 +293,8 @@ impl CoinbaseMPCWallet {
             .ok_or(WalletError::SqliteManagerError("SqliteManager not found".to_string()))?;
         let tool_id = function_name.definition_id();
         let shinkai_tool = sqlite_manager_strong
+            .read()
+            .await
             .get_tool_by_key(tool_id)
             .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
         let function_config = shinkai_tool.get_config_from_env();
@@ -314,8 +322,25 @@ impl CoinbaseMPCWallet {
             .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
 
         if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
+            let node_env = fetch_node_environment();
+            let node_storage_path = node_env
+                .node_storage_path
+                .clone()
+                .ok_or_else(|| WalletError::FunctionExecutionError("Node storage path is not set".to_string()))?;
+            let app_id = format!("coinbase_{}", uuid::Uuid::new_v4());
+            let tool_id = js_tool.name.clone();
+            let header_code = "";
             let result = js_tool
-                .run(HashMap::new(), "".to_string(), params, Some(function_config_str))
+                .run(
+                    HashMap::new(), // Note: we don't need envs for this function - as it doesn't call other tools
+                    header_code.to_string(),
+                    params,
+                    Some(function_config_str),
+                    node_storage_path,
+                    app_id,
+                    tool_id,
+                    false,
+                )
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
             let result_str =
                 serde_json::to_string(&result).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
@@ -615,7 +640,7 @@ impl SendActions for CoinbaseMPCWallet {
 
     fn sign_transaction(
         &self,
-        tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
+        _tx: shinkai_message_primitives::schemas::wallet_mixed::Transaction,
     ) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send + 'static>> {
         let fut = async move {
             // Mock implementation for signing a transaction

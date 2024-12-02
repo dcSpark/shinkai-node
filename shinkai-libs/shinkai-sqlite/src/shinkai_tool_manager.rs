@@ -5,26 +5,21 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
-    pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
+    pub async fn add_tool(&mut self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => {
-                embedding.vector
-            }
-            None => {
-                self.generate_embeddings(&tool.format_embedding_string()).await?
-            }
+            Some(embedding) => embedding.vector,
+            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
         self.add_tool_with_vector(tool, embedding)
     }
 
     pub fn add_tool_with_vector(
-        &self,
+        &mut self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
-
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -106,7 +101,11 @@ impl SqliteManager {
             params![cast_slice(&embedding)],
         )?;
 
+        // Update the FTS table using the in-memory connection
+        self.update_tools_fts(&tool)?;
+
         tx.commit()?;
+
         Ok(tool_clone)
     }
 
@@ -223,7 +222,7 @@ impl SqliteManager {
 
     // Updates a ShinkaiTool entry in the shinkai_tools table with a new embedding
     pub fn update_tool_with_vector(
-        &self,
+        &mut self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
@@ -306,20 +305,21 @@ impl SqliteManager {
             params![cast_slice(&embedding), rowid],
         )?;
 
+        eprintln!("Updating FTS table");
+        // Update the FTS table using the in-memory connection
+        self.update_tools_fts(&tool)?;
+
         tx.commit()?;
+
         Ok(tool)
     }
 
     /// Updates a ShinkaiTool entry by generating a new embedding
-    pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
+    pub async fn update_tool(&mut self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => {
-                embedding.vector
-            }
-            None => {
-                self.generate_embeddings(&tool.format_embedding_string()).await?
-            }
+            Some(embedding) => embedding.vector,
+            None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
         self.update_tool_with_vector(tool, embedding)
@@ -368,32 +368,35 @@ impl SqliteManager {
             })?;
 
         // Delete the tool from the shinkai_tools table
-        tx.execute(
-            "DELETE FROM shinkai_tools WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools WHERE rowid = ?1", params![rowid])?;
 
         // Delete the embedding from the shinkai_tools_vec_items table
-        tx.execute(
-            "DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1",
-            params![rowid],
-        )?;
+        tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
 
         tx.commit()?;
+
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
+
+        fts_conn.execute("DELETE FROM shinkai_tools_fts WHERE rowid = ?1", params![rowid])?;
+
         Ok(())
     }
 
     /// Checks if the shinkai_tools table is empty
     pub fn is_empty(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM shinkai_tools",
-            [],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM shinkai_tools", [], |row| row.get(0))
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(count == 0)
     }
@@ -401,31 +404,133 @@ impl SqliteManager {
     /// Checks if a tool exists in the shinkai_tools table by its tool_key
     pub fn tool_exists(&self, tool_key: &str) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
-            params![tool_key.to_lowercase()],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
+                params![tool_key.to_lowercase()],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(exists)
     }
 
     /// Checks if there are any JS tools in the shinkai_tools table
-    pub async fn has_any_js_tools(&self) -> Result<bool, SqliteManagerError> {
+    pub fn has_any_js_tools(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
-            [],
-            |row| row.get(0),
-        ).map_err(|e| {
-            eprintln!("Database error: {}", e);
-            SqliteManagerError::DatabaseError(e)
-        })?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
 
         Ok(exists)
+    }
+
+    // Update the FTS table when inserting or updating a tool
+    pub fn update_tools_fts(&self, tool: &ShinkaiTool) -> Result<(), SqliteManagerError> {
+        // Get a connection from the in-memory pool for FTS operations
+        let mut fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
+
+        // Start a single transaction
+        let tx = fts_conn.transaction()?;
+
+        // Delete the existing entry
+        tx.execute("DELETE FROM shinkai_tools_fts WHERE name = ?1", params![tool.name()])?;
+
+        // Insert the updated tool name
+        tx.execute("INSERT INTO shinkai_tools_fts(name) VALUES (?1)", params![tool.name()])?;
+
+        // Commit the transaction
+        tx.commit()?;
+
+        Ok(())
+    }
+
+    // Search the FTS table
+    pub fn search_tools_by_name(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
+
+        // Use the in-memory connection for FTS operations
+        let mut stmt = fts_conn.prepare("SELECT name FROM shinkai_tools_fts WHERE shinkai_tools_fts MATCH ?1")?;
+
+        let name_iter = stmt.query_map(params![query], |row| {
+            let name: String = row.get(0)?;
+            Ok(name)
+        })?;
+
+        let mut tool_headers = Vec::new();
+        let conn = self.get_connection()?;
+
+        for name_result in name_iter {
+            let name = name_result.map_err(|e| {
+                eprintln!("FTS query error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
+
+            // Query the persistent database for the full tool data
+            let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1")?;
+            let tool_header_data: Vec<u8> = stmt.query_row(params![name], |row| row.get(0)).map_err(|e| {
+                eprintln!("Persistent DB query error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
+
+            let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
+                eprintln!("Deserialization error: {}", e);
+                SqliteManagerError::SerializationError(e.to_string())
+            })?;
+
+            tool_headers.push(tool_header);
+        }
+
+        Ok(tool_headers)
+    }
+
+    // Synchronize the FTS table with the main database
+    pub fn sync_fts_table(&self) -> Result<(), SqliteManagerError> {
+        // Use the pooled connection to access the shinkai_tools table
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_tools")?;
+        let mut rows = stmt.query([])?;
+
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self.fts_pool.get().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1), // Using a generic error code
+                Some(e.to_string()),
+            )
+        })?;
+
+        // Use the in-memory connection for FTS operations
+        while let Some(row) = rows.next()? {
+            let rowid: i64 = row.get(0)?;
+            let name: String = row.get(1)?;
+            fts_conn.execute(
+                "INSERT INTO shinkai_tools_fts(rowid, name) VALUES (?1, ?2)
+                 ON CONFLICT(rowid) DO UPDATE SET name = excluded.name",
+                params![rowid, name],
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -440,7 +545,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
-    fn setup_test_db() -> SqliteManager {
+    async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
@@ -452,7 +557,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_deno_tool() {
-        let manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -460,6 +565,7 @@ mod tests {
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
+            tools: None,
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
@@ -468,6 +574,9 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -510,7 +619,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search() {
-        let manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create and add a DenoTool instance
         let deno_tool = DenoTool {
@@ -518,6 +627,7 @@ mod tests {
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
+            tools: None,
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
@@ -526,6 +636,9 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -548,7 +661,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_middle_tool() {
-        let manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create three DenoTool instances
         let deno_tool_1 = DenoTool {
@@ -556,6 +669,7 @@ mod tests {
             name: "Deno Tool 1".to_string(),
             author: "Author 1".to_string(),
             js_code: "console.log('Tool 1');".to_string(),
+            tools: None,
             config: vec![],
             description: "First Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool1".to_string()],
@@ -564,6 +678,9 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let deno_tool_2 = DenoTool {
@@ -571,6 +688,7 @@ mod tests {
             name: "Deno Tool 2".to_string(),
             author: "Author 2".to_string(),
             js_code: "console.log('Tool 2');".to_string(),
+            tools: None,
             config: vec![],
             description: "Second Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool2".to_string()],
@@ -579,6 +697,9 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         let deno_tool_3 = DenoTool {
@@ -586,6 +707,7 @@ mod tests {
             name: "Deno Tool 3".to_string(),
             author: "Author 3".to_string(),
             js_code: "console.log('Tool 3');".to_string(),
+            tools: None,
             config: vec![],
             description: "Third Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool3".to_string()],
@@ -594,6 +716,9 @@ mod tests {
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -635,13 +760,17 @@ mod tests {
 
         // Manually query the shinkai_tools_vec_items table to verify the vector
         let conn = manager.get_connection().unwrap();
-        let rowid: i64 = conn.query_row(
-            "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
-            params![updated_tool_2.tool_router_key().to_lowercase()],
-            |row| row.get(0),
-        ).unwrap();
+        let rowid: i64 = conn
+            .query_row(
+                "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
+                params![updated_tool_2.tool_router_key().to_lowercase()],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        let mut stmt = conn.prepare("SELECT embedding FROM shinkai_tools_vec_items WHERE rowid = ?1").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT embedding FROM shinkai_tools_vec_items WHERE rowid = ?1")
+            .unwrap();
         let embedding_bytes: Vec<u8> = stmt.query_row(params![rowid], |row| row.get(0)).unwrap();
         let db_vector: &[f32] = cast_slice(&embedding_bytes);
 
@@ -651,7 +780,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_duplicate_tool() {
-        let manager = setup_test_db();
+        let mut manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -659,6 +788,7 @@ mod tests {
             name: "Deno Duplicate Tool".to_string(),
             author: "Deno Author".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
+            tools: None,
             config: vec![],
             description: "A Deno tool for testing duplicates".to_string(),
             keywords: vec!["deno".to_string(), "duplicate".to_string()],
@@ -667,6 +797,9 @@ mod tests {
             activated: true,
             embedding: None,
             result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -681,6 +814,107 @@ mod tests {
         let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
 
         // Assert that the error is ToolAlreadyExists
-        assert!(matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))));
+        assert!(matches!(
+            duplicate_result,
+            Err(SqliteManagerError::ToolAlreadyExists(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_fts_search() {
+        let mut manager = setup_test_db().await;
+
+        // Create multiple tools with different names
+        let tools = vec![
+            DenoTool {
+                toolkit_name: "Deno Toolkit".to_string(),
+                name: "Image Processing Tool".to_string(),
+                author: "Author 1".to_string(),
+                js_code: "console.log('Tool 1');".to_string(),
+                tools: None,
+                config: vec![],
+                description: "Process and manipulate images".to_string(),
+                keywords: vec!["image".to_string(), "processing".to_string()],
+                input_args: vec![],
+                activated: true,
+                embedding: None,
+                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                output_arg: ToolOutputArg::empty(),
+                sql_tables: None,
+                sql_queries: None,
+                file_inbox: None,
+            },
+            DenoTool {
+                toolkit_name: "Deno Toolkit".to_string(),
+                name: "Text Analysis Helper".to_string(),
+                author: "Author 2".to_string(),
+                js_code: "console.log('Tool 2');".to_string(),
+                tools: None,
+                config: vec![],
+                description: "Analyze text content".to_string(),
+                keywords: vec!["text".to_string(), "analysis".to_string()],
+                input_args: vec![],
+                activated: true,
+                embedding: None,
+                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                output_arg: ToolOutputArg::empty(),
+                sql_tables: None,
+                sql_queries: None,
+                file_inbox: None,
+            },
+            DenoTool {
+                toolkit_name: "Deno Toolkit".to_string(),
+                name: "Data Visualization Tool".to_string(),
+                author: "Author 3".to_string(),
+                js_code: "console.log('Tool 3');".to_string(),
+                tools: None,
+                config: vec![],
+                description: "Visualize data sets".to_string(),
+                keywords: vec!["data".to_string(), "visualization".to_string()],
+                input_args: vec![],
+                activated: true,
+                embedding: None,
+                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                output_arg: ToolOutputArg::empty(),
+                sql_tables: None,
+                sql_queries: None,
+                file_inbox: None,
+            },
+        ];
+
+        // Add all tools to the database
+        for (i, tool) in tools.into_iter().enumerate() {
+            let shinkai_tool = ShinkaiTool::Deno(tool, true);
+            let vector = SqliteManager::generate_vector_for_testing(0.1 * (i + 1) as f32);
+            if let Err(e) = manager.add_tool_with_vector(shinkai_tool, vector) {
+                eprintln!("Failed to add tool: {:?}", e);
+            } else {
+                eprintln!("Successfully added tool with index: {}", i);
+            }
+        }
+
+        // Test exact match
+        match manager.search_tools_by_name("Text Analysis") {
+            Ok(results) => {
+                eprintln!("Search results: {:?}", results);
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].name, "Text Analysis Helper");
+            }
+            Err(e) => eprintln!("Search failed: {:?}", e),
+        }
+
+        // Test partial match
+        let results = manager.search_tools_by_name("visualization").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Data Visualization Tool");
+
+        // Test case insensitive match
+        let results = manager.search_tools_by_name("IMAGE").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Image Processing Tool");
+
+        // Test no match
+        let results = manager.search_tools_by_name("nonexistent").unwrap();
+        assert_eq!(results.len(), 0);
     }
 }

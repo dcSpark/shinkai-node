@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::{
     wallet_mixed::{Asset, Balance, Network, PublicAddress},
 };
 use shinkai_sqlite::SqliteManager;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::{
@@ -171,7 +172,7 @@ impl WalletManager {
 
     pub async fn create_coinbase_mpc_wallet_manager(
         network: Network,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         config: Option<CoinbaseMPCWalletConfig>,
     ) -> Result<WalletManager, WalletError> {
         let payment_wallet: Box<dyn PaymentWallet> = Box::new(
@@ -188,7 +189,7 @@ impl WalletManager {
 
     pub async fn recover_coinbase_mpc_wallet_manager(
         network: Network,
-        sqlite_manager: Arc<SqliteManager>,
+        sqlite_manager: Arc<RwLock<SqliteManager>>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
     ) -> Result<WalletManager, WalletError> {
