@@ -594,7 +594,6 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
-    use shinkai_message_primitives::schemas::wallet_mixed::Network;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
     use shinkai_tools_primitives::tools::argument::ToolArgument;
     use shinkai_tools_primitives::tools::argument::ToolOutputArg;

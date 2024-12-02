@@ -653,14 +653,6 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIPrivateDevopsCronList { res } => self.api_private_devops_cron_list(res).await,
-            NodeCommand::APIPrivateDevopsCronList { res } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_name_clone = self.node_name.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_private_devops_cron_list(db_clone, node_name_clone, res).await;
-                });
-            }
             NodeCommand::APIListAllShinkaiTools { msg, res } => {
                 let sqlite_manager = self.sqlite_manager.clone();
                 let node_name_clone = self.node_name.clone();

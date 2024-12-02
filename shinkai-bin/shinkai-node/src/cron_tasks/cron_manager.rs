@@ -1,26 +1,3 @@
-/*
-
-Stories
-
-a) Add new Task
-User creates a new cron tab by explaining in natural language what they want to do, to what (URL) and when. I will use two inputs to make it easier for the LLM for now.
-
-Note: No navigation for now.
-
-It will show back the cron tab in code and natural language from that (use JS library), and ask for confirmation.
-
-b) See all Tasks (and update or remove them)
-
-The user is able to see all the tasks, update them or remove them.
-
-c) Execute Task
-
-- Have a thread that runs every minute and checks if there are any tasks to execute
-- (Option B) sleep until the next cycle, then check all the tasks, calculate when is the next one to execute, and sleep until then
-- Execute task
-
-*/
-
 use std::{
     collections::HashMap,
     pin::Pin,
