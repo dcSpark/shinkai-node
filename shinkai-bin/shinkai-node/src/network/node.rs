@@ -433,9 +433,11 @@ impl Node {
                 .expect("Failed to set api_v2_key in the database");
             key
         } else {
-            match db_arc.read().await.read_api_v2_key() {
+            let db_read = db_arc.read().await;
+            match db_read.read_api_v2_key() {
                 Ok(Some(key)) => key,
                 Ok(None) | Err(_) => {
+                    std::mem::drop(db_read);
                     let new_key = Node::generate_api_v2_key();
                     db_arc
                         .write()
@@ -494,7 +496,6 @@ impl Node {
 
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
-        let db_weak = Arc::downgrade(&self.db);
         let db_weak = Arc::downgrade(&self.db);
         let vector_fs_weak = Arc::downgrade(&self.vector_fs);
 
@@ -569,7 +570,7 @@ impl Node {
             let version = env!("CARGO_PKG_VERSION");
 
             // Update the version in the database
-            let sqlite_manager = self.sqlite_manager.write().await;
+            let sqlite_manager = self.db.write().await;
             sqlite_manager.set_version(version).expect("Failed to set version");
         }
 
@@ -688,49 +689,58 @@ impl Node {
     // A function that initializes the embedding models from the database
     async fn initialize_embedding_models(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Read the default embedding model from the database
-        match self.db.read().await.get_default_embedding_model() {
-            Ok(model) => {
-                let mut default_model_guard = self.default_embedding_model.lock().await;
-                *default_model_guard = model;
+        {
+            let db_read = self.db.read().await;
+            match db_read.get_default_embedding_model() {
+                Ok(model) => {
+                    let mut default_model_guard = self.default_embedding_model.lock().await;
+                    *default_model_guard = model;
+                }
+                Err(SqliteManagerError::DataNotFound) => {
+                    std::mem::drop(db_read);
+                    // If not found, update the database with the current value
+                    let default_model_guard = self.default_embedding_model.lock().await;
+                    self.db
+                        .write()
+                        .await
+                        .update_default_embedding_model(default_model_guard.clone())
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+                }
+                Err(e) => return Err(Box::new(NodeError::from(e.to_string())) as Box<dyn std::error::Error + Send>),
             }
-            Err(SqliteManagerError::DataNotFound) => {
-                // If not found, update the database with the current value
-                let default_model_guard = self.default_embedding_model.lock().await;
-                self.db
-                    .write()
-                    .await
-                    .update_default_embedding_model(default_model_guard.clone())
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-            }
-            Err(e) => return Err(Box::new(NodeError::from(e.to_string())) as Box<dyn std::error::Error + Send>),
         }
 
         // Read the supported embedding models from the database
-        match self.db.read().await.get_supported_embedding_models() {
-            Ok(models) => {
-                // If empty, update the database with the current value
-                if models.is_empty() {
+        {
+            let db_read = self.db.read().await;
+            match db_read.get_supported_embedding_models() {
+                Ok(models) => {
+                    std::mem::drop(db_read);
+                    // If empty, update the database with the current value
+                    if models.is_empty() {
+                        let supported_models_guard = self.supported_embedding_models.lock().await;
+                        self.db
+                            .write()
+                            .await
+                            .update_supported_embedding_models(supported_models_guard.clone())
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+                    } else {
+                        let mut supported_models_guard = self.supported_embedding_models.lock().await;
+                        *supported_models_guard = models;
+                    }
+                }
+                Err(SqliteManagerError::DataNotFound) => {
+                    std::mem::drop(db_read);
+                    // If not found, update the database with the current value
                     let supported_models_guard = self.supported_embedding_models.lock().await;
                     self.db
                         .write()
                         .await
                         .update_supported_embedding_models(supported_models_guard.clone())
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-                } else {
-                    let mut supported_models_guard = self.supported_embedding_models.lock().await;
-                    *supported_models_guard = models;
                 }
+                Err(e) => return Err(Box::new(NodeError::from(e.to_string())) as Box<dyn std::error::Error + Send>),
             }
-            Err(SqliteManagerError::DataNotFound) => {
-                // If not found, update the database with the current value
-                let supported_models_guard = self.supported_embedding_models.lock().await;
-                self.db
-                    .write()
-                    .await
-                    .update_supported_embedding_models(supported_models_guard.clone())
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-            }
-            Err(e) => return Err(Box::new(NodeError::from(e.to_string())) as Box<dyn std::error::Error + Send>),
         }
 
         Ok(())

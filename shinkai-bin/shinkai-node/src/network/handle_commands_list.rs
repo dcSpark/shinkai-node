@@ -2921,11 +2921,10 @@ impl Node {
                 tools,
                 res,
             } => {
-                let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
+                let db_clone = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ =
-                        Node::get_tool_definitions(bearer, db_clone, language, tools, res).await;
+                    let _ = Node::get_tool_definitions(bearer, db_clone, language, tools, res).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolFetchQuery {
@@ -2983,14 +2982,7 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_tool_implementation_undo_to(
-                        bearer,
-                        db_clone,
-                        message_hash,
-                        job_id,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_tool_implementation_undo_to(bearer, db_clone, message_hash, job_id, res).await;
                 });
             }
             NodeCommand::V2ApiToolImplementationCodeUpdate {
@@ -3018,7 +3010,8 @@ impl Node {
                         node_encryption_pk_clone,
                         node_signing_sk_clone,
                         res,
-                    ).await;
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {

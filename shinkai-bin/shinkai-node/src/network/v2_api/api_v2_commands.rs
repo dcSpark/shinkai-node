@@ -768,7 +768,8 @@ impl Node {
                             return sub_entries.filter_map(Result::ok).any(|sub_entry| {
                                 let sub_entry_path = sub_entry.path();
                                 eprintln!("Sub entry: {}", sub_entry_path.to_str().unwrap_or(""));
-                                sub_entry_path.is_dir() && sub_entry_path.to_str().map_or(false, |s| s.contains("lance"))
+                                sub_entry_path.is_dir()
+                                    && sub_entry_path.to_str().map_or(false, |s| s.contains("lance"))
                             });
                         }
                     }
@@ -779,7 +780,7 @@ impl Node {
             }
         };
 
-        let (_current_version, needs_global_reset) = match sqlite_manager.read().await.get_version() {
+        let (_current_version, needs_global_reset) = match db.read().await.get_version() {
             Ok(version) => version,
             Err(_err) => {
                 let _ = res

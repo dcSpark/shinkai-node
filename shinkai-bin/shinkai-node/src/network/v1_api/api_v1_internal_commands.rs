@@ -416,8 +416,10 @@ impl Node {
         profile: &ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
-        match db.write().await.add_llm_provider(llm_provider.clone(), profile) {
+        let db_write = db.write().await;
+        match db_write.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
+                drop(db_write);
                 let mut subidentity_manager = identity_manager.lock().await;
                 match subidentity_manager
                     .add_llm_provider_subidentity(llm_provider.clone())

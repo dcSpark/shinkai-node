@@ -7,14 +7,24 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT value FROM shinkai_settings WHERE key = 'supported_embedding_models'")?;
 
-        let models = stmt.query_row([], |row| {
-            let models: String = row.get(0)?;
-            let models: Vec<EmbeddingModelType> = serde_json::from_str(&models).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?;
+        let models = stmt
+            .query_row([], |row| {
+                let models: String = row.get(0)?;
+                let models: Vec<EmbeddingModelType> = serde_json::from_str(&models).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                        e.to_string(),
+                    )))
+                })?;
 
-            Ok(models)
-        })?;
+                Ok(models)
+            })
+            .map_err(|e| {
+                if e == rusqlite::Error::QueryReturnedNoRows {
+                    SqliteManagerError::DataNotFound
+                } else {
+                    SqliteManagerError::DatabaseError(e)
+                }
+            })?;
 
         Ok(models)
     }

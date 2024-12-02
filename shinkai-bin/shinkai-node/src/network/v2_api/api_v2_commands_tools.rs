@@ -18,7 +18,9 @@ use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike, shinkai_name::ShinkaiSubidentityType},
     shinkai_message::shinkai_message_schemas::{JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    shinkai_utils::{
+        job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -769,19 +771,18 @@ impl Node {
             }
         };
 
-        let header_code =
-            match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), true).await {
-                Ok(code) => code,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to generate tool definitions: {:?}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let header_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await {
+            Ok(code) => code,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         let _ = res
             .send(Ok(json!({
@@ -1007,7 +1008,7 @@ impl Node {
 
     pub async fn v2_api_tool_implementation_undo_to(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         message_hash: String,
         job_id: String,
         res: Sender<Result<Value, APIError>>,
@@ -1018,7 +1019,7 @@ impl Node {
         }
 
         // Use the fetch_message_and_hash method to retrieve the message
-        let (message, _hash) = match db.fetch_message_and_hash(&message_hash) {
+        let (message, _hash) = match db.read().await.fetch_message_and_hash(&message_hash) {
             Ok(result) => result,
             Err(err) => {
                 let api_error = APIError {
@@ -1060,7 +1061,7 @@ impl Node {
         };
 
         // Add the message as a response to the job inbox
-        let parent_hash = match db.get_parent_message_hash(&inbox_name, &message_hash) {
+        let parent_hash = match db.read().await.get_parent_message_hash(&inbox_name, &message_hash) {
             Ok(hash) => {
                 if let Some(hash) = hash {
                     hash
@@ -1073,7 +1074,7 @@ impl Node {
                     let _ = res.send(Err(api_error)).await;
                     return Ok(());
                 }
-            },
+            }
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1086,6 +1087,8 @@ impl Node {
         };
 
         let undo_result = db
+            .write()
+            .await
             .add_message_to_job_inbox(&job_id, &new_message, Some(parent_hash), None)
             .await;
 
@@ -1109,7 +1112,7 @@ impl Node {
 
     pub async fn v2_api_tool_implementation_code_update(
         bearer: String,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         job_id: String,
         code: String,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1150,7 +1153,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.read().await.get_job_with_options(&job_id, false, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -1230,7 +1233,11 @@ impl Node {
         };
 
         // Add the Shinkai message to the job inbox
-        let add_message_result = db.add_message_to_job_inbox(&job_id, &shinkai_message, None, None).await;
+        let add_message_result = db
+            .write()
+            .await
+            .add_message_to_job_inbox(&job_id, &shinkai_message, None, None)
+            .await;
 
         if let Err(err) = add_message_result {
             let api_error = APIError {
@@ -1253,10 +1260,15 @@ impl Node {
             identity_secret_key_clone,
             node_name.node_name.clone(),
             node_name.node_name.clone(),
-        ).expect("Failed to build AI message");
+        )
+        .expect("Failed to build AI message");
 
         // Add the AI message to the job inbox
-        let add_ai_message_result = db.add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None).await;
+        let add_ai_message_result = db
+            .write()
+            .await
+            .add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None)
+            .await;
 
         if let Err(err) = add_ai_message_result {
             let api_error = APIError {

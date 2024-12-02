@@ -322,8 +322,8 @@ impl SqliteManager {
         )?;
         stmt.execute(params![
             node_name,
-            encryption_public_key_to_string(encryption_pk),
-            signature_public_key_to_string(signature_pk)
+            encryption_public_key_to_string(encryption_pk).as_bytes(),
+            signature_public_key_to_string(signature_pk).as_bytes()
         ])?;
 
         Ok(())
