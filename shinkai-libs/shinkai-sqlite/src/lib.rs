@@ -164,7 +164,11 @@ impl SqliteManager {
     fn initialize_prompt_vector_tables(conn: &rusqlite::Connection) -> Result<()> {
         // Create a table for prompt vector embeddings
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(embedding float[384])",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS prompt_vec_items USING vec0(
+                embedding float[384],
+                is_enabled integer,
+                +prompt_id integer
+            )",
             [],
         )?;
 
@@ -202,9 +206,14 @@ impl SqliteManager {
 
     // New method to initialize the tools vector table
     fn initialize_tools_vector_table(conn: &rusqlite::Connection) -> Result<()> {
-        // Create a table for tool vector embeddings
+        // Create a table for tool vector embeddings with metadata columns
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(embedding float[384])",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS shinkai_tools_vec_items USING vec0(
+                embedding float[384],
+                is_enabled integer,
+                is_network integer,
+                +tool_key text
+            )",
             [],
         )?;
 
@@ -327,9 +336,9 @@ impl SqliteManager {
         let breaking_versions = vec!["0.9.0"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
-            breaking_versions.iter().any(|&breaking_version| {
-                current_version.as_str() < breaking_version && version >= breaking_version
-            })
+            breaking_versions
+                .iter()
+                .any(|&breaking_version| current_version.as_str() < breaking_version && version >= breaking_version)
         });
 
         let conn = self.get_connection()?;
@@ -360,9 +369,9 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
-    use std::path::PathBuf;
     use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
