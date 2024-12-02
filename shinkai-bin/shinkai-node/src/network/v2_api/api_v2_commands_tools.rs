@@ -3,6 +3,7 @@ use crate::{
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
     tools::{
+        llm_language_support::file_support_ts::generate_file_support_ts,
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
@@ -803,6 +804,8 @@ impl Node {
                 "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
+                "supportLibraryHeaders": generate_file_support_ts(true),
+                "supportLibrary": generate_file_support_ts(false),
             })))
             .await;
         Ok(())

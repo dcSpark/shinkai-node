@@ -5,6 +5,6 @@
 // Hay que crear una herramienta igual, en un archivo igual que ese.
 // Solo tiene que mantener la firma del run
 
-pub mod tool_knowledge;
+pub mod llm_prompt_processor;
 pub mod sql_processor;
-pub mod native_tools_list;
+pub mod tool_knowledge;
