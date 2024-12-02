@@ -9,11 +9,10 @@ pub async fn generate_code_prompt(
 ) -> Result<String, APIError> {
     match language {
         CodeLanguage::Typescript => {
-            // This function name must match the generated code for the language specific SQL Query Function
             let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
-            return Ok(format!(
-                r####"
-# RULE I:
+            let tool_section = if !tool_definitions.is_empty() {
+                format!(
+                    r####"
 * You may use any of the following functions if they are relevant and a good match for the task.
 * Import them in the following way (do not rename functions with 'as'):
 `import {{ xx }} from './shinkai-local-tools.ts'`
@@ -22,8 +21,17 @@ pub async fn generate_code_prompt(
 ```{language}
 {tool_definitions}
 ```
+"####
+                )
+            } else {
+                "* No additional tools are available for this task.\n".to_string()
+            };
 
-#RULE II:
+            return Ok(format!(
+                r####"
+# RULE I:
+{tool_section}
+# RULE II:
 * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
 ```{language}
 type CONFIG = {{}};
