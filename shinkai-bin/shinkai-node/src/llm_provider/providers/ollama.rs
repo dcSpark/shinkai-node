@@ -136,21 +136,6 @@ impl LLMService for Ollama {
                         ShinkaiLogLevel::Info,
                         format!("Messages JSON: {}", pretty_json).as_str(),
                     );
-                    eprintln!("Messages JSON: {}", pretty_json);
-
-                    // Create the tmp directory if it doesn't exist
-                    let tmp_dir = Path::new("tmp");
-                    if !tmp_dir.exists() {
-                        fs::create_dir_all(tmp_dir).expect("Failed to create tmp directory");
-                    }
-
-                    // Generate the file name
-                    let timestamp = Utc::now().to_rfc3339();
-                    let file_name = format!("{}_{}.json", timestamp, &pretty_json[0..20.min(pretty_json.len())]);
-                    let file_path = tmp_dir.join(file_name);
-
-                    // Write the pretty_json to the file
-                    fs::write(file_path, pretty_json).expect("Failed to write JSON to file");
                 }
                 Err(e) => shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -269,7 +254,6 @@ async fn handle_streaming_response(
                         // Check for tool calls in the message
                         if let Some(tool_calls) = data.message.tool_calls {
                             for tool_call in tool_calls {
-
                                 // Direct field access since function is a struct
                                 let name = tool_call.function.name.clone();
                                 let arguments = tool_call
@@ -285,7 +269,8 @@ async fn handle_streaming_response(
                                         if let Some(function) = tool.get("function") {
                                             // Then get the name from the function object
                                             if function.get("name")?.as_str()? == name {
-                                                function.get("tool_router_key")
+                                                function
+                                                    .get("tool_router_key")
                                                     .and_then(|key| key.as_str().map(|s| s.to_string()))
                                             } else {
                                                 None
