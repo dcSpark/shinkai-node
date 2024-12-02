@@ -70,7 +70,7 @@ pub async fn execute_custom_tool(
             .await
         }
         s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
-            tool_implementation::llm_prompt_processor::LmPromptProcessorTool::execute(
+            tool_implementation::native_tools::llm_prompt_processor::LmPromptProcessorTool::execute(
                 bearer,
                 tool_id,
                 app_id,

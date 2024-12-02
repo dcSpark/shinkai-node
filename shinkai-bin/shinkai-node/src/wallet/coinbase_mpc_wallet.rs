@@ -333,6 +333,8 @@ impl CoinbaseMPCWallet {
             let result = js_tool
                 .run(
                     HashMap::new(), // Note: we don't need envs for this function - as it doesn't call other tools
+                    node_env.api_listen_address.ip().to_string(),
+                    node_env.api_listen_address.port(),
                     header_code.to_string(),
                     params,
                     Some(function_config_str),
