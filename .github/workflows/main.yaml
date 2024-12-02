@@ -6,6 +6,7 @@ on:
       - "Cargo.*"
       - "shinkai-libs/**"
       - "shinkai-bin/**"
+
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
@@ -47,3 +48,4 @@ jobs:
     env:
       FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
       FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+
