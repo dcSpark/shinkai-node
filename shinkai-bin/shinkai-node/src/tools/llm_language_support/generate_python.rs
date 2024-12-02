@@ -144,7 +144,6 @@ pub fn generate_python_definition(
 
     if generate_pyi {
         // Generate .pyi stub file
-        python_output.push_str("from typing import Optional, Any, Dict, List, Union\n\n");
         python_output.push_str(&format!("def {}(", function_name));
         python_output.push_str(&generate_parameters(&tool, false));
         python_output.push_str(") -> Dict[str, Any]:\n");

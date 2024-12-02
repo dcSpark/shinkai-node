@@ -58,6 +58,14 @@ pub async fn generate_tool_definitions(
     all_tools = all_tools
         .into_iter()
         .filter(|tool| tools.contains(&tool.tool_router_key))
+        //
+        // TODO
+        // Only generate definitions for tools that don't have a config
+        //
+        // This is a temporary filter to avoid generating definitions for tools that have a CONFIG
+        // Remove a soon CONFIGS are been passed to the tool.
+        //
+        .filter(|tool| tool.config == None || tool.config.as_ref().unwrap().is_empty())
         .collect();
 
     if all_tools.is_empty() {
