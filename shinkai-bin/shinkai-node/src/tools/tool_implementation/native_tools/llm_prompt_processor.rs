@@ -28,7 +28,7 @@ use crate::{llm_provider::job_manager::JobManager, network::Node};
 use async_trait::async_trait;
 use tokio::time::{sleep, Duration};
 
-use super::tool_traits::ToolExecutor;
+use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
 pub struct LmPromptProcessorTool {
     pub tool: ShinkaiToolHeader,
