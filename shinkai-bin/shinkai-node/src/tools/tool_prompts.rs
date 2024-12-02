@@ -107,7 +107,7 @@ pub async fn generate_code_prompt(
 * Prefer libraries in the following order:
   1. A function provided by './shinkai_local_tools.py' that resolves correctly the requierement.
   2. If network fetch is required, use the "requests" library and import it with using `import requests`.
-  3. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
+  3. The code will be ran with Python Runtime, so prefer Python default and standard libraries. Import all used libraries as `from <library> import <function>` for exmaple for Lists use `from typing import List`.
   4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
   5. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
 </agent_python_libraries>
@@ -133,7 +133,7 @@ pub async fn generate_code_prompt(
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
   ```{language}
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 class CONFIG:
     pass

@@ -200,6 +200,61 @@ pub fn generate_python_definition(
         python_output.push_str(&generate_parameters(&tool, true));
         python_output.push_str(") -> Dict[str, Any]:\n");
         python_output.push_str(&generate_docstring(&tool, "    "));
+
+        // Add the implementation
+        python_output.push_str(
+            r#"
+    _url = os.environ.get('SHINKAI_NODE_LOCATION', '') + '/v2/tool_execution'
+    data = {
+        'tool_router_key': '"#,
+        );
+        python_output.push_str(&tool.tool_router_key);
+        python_output.push_str(
+            r#"',
+        'tool_type': '"#,
+        );
+        python_output.push_str(&tool.tool_type.to_lowercase());
+        python_output.push_str(
+            r#"',
+        'llm_provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', ''),
+        'parameters': {
+"#,
+        );
+
+        // Add parameters
+        for arg in &tool.input_args {
+            python_output.push_str(&format!("            '{}': {},\n", arg.name, arg.name));
+        }
+
+        python_output.push_str(
+            r#"        }
+    }
+    try:
+        response = requests.post(
+            _url,
+            json=data,
+            headers={
+                'Authorization': f"Bearer {os.environ.get('BEARER', '')}",
+                'x-shinkai-tool-id': os.environ.get('X_SHINKAI_TOOL_ID', ''),
+                'x-shinkai-app-id': os.environ.get('X_SHINKAI_APP_ID', ''),
+                'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', '')
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        error_message = '::NETWORK_ERROR:: '
+        if hasattr(e, 'response') and e.response is not None:
+            error_message += f"Status: {e.response.status_code}, "
+            try:
+                error_message += f"Response: {e.response.json()}"
+            except:
+                error_message += f"Response: {e.response.text}"
+        else:
+            error_message += str(e)
+        raise Exception(error_message)
+"#,
+        );
     }
 
     python_output
