@@ -1224,7 +1224,7 @@ impl Node {
 
         let job_message = JobMessage {
             job_id: job_id.clone(),
-            content: format!("Update the code to: {}", code),
+            content: format!("<input_command>Update the code to: {}</input_command>", code),
             files_inbox: "".to_string(),
             parent: None,
             workflow_code: None,
@@ -1272,7 +1272,9 @@ impl Node {
 
         // Create the AI message
         let identity_secret_key_clone = clone_signature_secret_key(&node_signing_sk);
-        let ai_message_content = format!("```\n{}\n```", code);
+        // TODO This should be retrieved from the job (?) or from the endpoint
+        let language = "typescript";
+        let ai_message_content = format!("```{}\n{}\n```", language, code);
         let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             ai_message_content,
