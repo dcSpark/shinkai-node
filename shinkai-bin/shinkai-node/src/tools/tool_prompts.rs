@@ -1,4 +1,3 @@
-use crate::network::Node;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
@@ -13,381 +12,445 @@ pub async fn generate_code_prompt(
             let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
             return Ok(format!(
                 r####"
-# RULE I:
-* You may use any of the following functions if they are relevant and a good match for the task.
-* Import them in the following way (do not rename functions with 'as'):
-`import {{ xx }} from './shinkai-local-tools.ts'`
+<agent_libraries>
+  * You may use any of the following functions if they are relevant and a good match for the task.
+  * Import them with the format: `import {{ xx }} from './shinkai-local-tools.ts'`
+  * This is the content of './shinkai-local-tools.ts':
+  ```{language}
+  {tool_definitions}
+  ```
+</agent_libraries>
 
-* This is the content of './shinkai-local-tools.ts':
-```{language}
-{tool_definitions}
-```
+<agent_deno_libraries>
+  * Prefer libraries in the following order: Deno, Node, NPM
+    1. A function provided by './shinkai-local-tools.ts' that resolves correctly the requierement.
+    2. If fetch is required, it is available in the global scope without any import.
+    3. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
+    4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
+    5. If an external system requires to be used through a package, or the API is unknown the NPM library may be used with the 'npm:' prefix.
+</agent_deno_libraries>
 
-#RULE II:
-* To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
-```{language}
-type CONFIG = {{}};
-type INPUTS = {{}};
-type OUTPUT = {{}};
-export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
-    return {{}};
-}}
-```
+<agent_code_format>
+  * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
+  ```{language}
+    type CONFIG = {{}};
+    type INPUTS = {{}};
+    type OUTPUT = {{}};
+    export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {{
+        return {{}};
+    }}
+  ```
+  * CONFIG, INPUTS and OUTPUT must be objects, not arrays neither basic types.
+</agent_code_format>
 
-# RULE III:
-* This will be shared as a library, when used it run(...) function will be called.
-* The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
-* If you need to import other libraries, do it in the Deno NPM format and with version, for example to import axios use 'import axios from 'npm:axios@1.6.2' with the 'npm:' prefix, and the exact version.
-* If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.
+<agent_code_rules>
+  * The code will be shared as a library, when used it run(...) function will be called.
+  * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
+  * If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.
+</agent_code_rules>
 
-# RULE IV:
-* Do not output, notes, ideas, explanations or examples.
-* Output only valid {language} code, so the complete Output can be directly executed.
-* Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
-* Write a single implementation file, only one typescript code block.
-* Implements the code in {language} for the following INPUT:
+<agent_code_implementation>
+  * Do not output, notes, ideas, explanations or examples.
+  * Write only valid {language} code, so the complete printed code can be directly executed.
+  * Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
+  * Write a single implementation file, only one typescript code block.
+  * Implements the code in {language} for the following input_command tag.
+</agent_code_implementation>
 
+<input_command>
 {prompt}
+</input_command>
+
 "####
             ));
         }
         CodeLanguage::Python => {
-            return Err(Node::generic_api_error("NYI Python"));
+            let shinkai_sqlite_query_executor = "shinkaiSqliteQueryExecutor";
+            return Ok(format!(
+                r####"
+<agent_libraries>
+  * You may use any of the following functions if they are relevant and a good match for the task.
+  * Import them with the format: `from .shinkai-local-tools import xx`
+  * This is the content of './shinkai-local-tools.py':
+  ```{language}
+  {tool_definitions}
+  ```
+</agent_libraries>
+
+<agent_deno_libraries>
+  * Prefer libraries in the following order:
+    1. A function provided by './shinkai-local-tools.ts' that resolves correctly the requierement.
+    2. If network fetch is required, use the "requests" library and import it with using `import requests`.
+    3. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
+    4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
+    5. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
+</agent_deno_libraries>
+
+<agent_code_format>
+  * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
+  ```{language}
+from typing import Dict, Any
+
+class CONFIG:
+    pass
+
+class INPUTS:
+    pass
+
+class OUTPUT:
+    pass
+
+async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
+    return Output()
+
+  ```
+  * CONFIG, INPUTS and OUTPUT must be objects, not arrays neither basic types.
+</agent_code_format>
+
+<agent_code_rules>
+  * The code will be shared as a library, when used it run(...) function will be called.
+  * The function signature MUST be: `async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT`
+  * If permanent memory is required, write to disk, store, sql always prioritize using {shinkai_sqlite_query_executor}.
+</agent_code_rules>
+
+<agent_code_implementation>
+  * Do not output, notes, ideas, explanations or examples.
+  * Write only valid {language} code, so the complete printed code can be directly executed.
+  * Only if required any additional notes, comments or explanation should be included in /* ... */ blocks.
+  * Write a single implementation file, only one typescript code block.
+  * Implements the code in {language} for the following input_command tag
+</agent_code_implementation>
+
+<input_command>
+{prompt}
+</input_command>
+
+"####
+            ));
         }
     }
 }
 
-// TODO: move to commands_tools as an endpoint implementation
-// pub async fn generate_tool_fetch_query(
-//     language: CodeLanguage,
-//     tool_definitions: String,
-// ) -> Result<String, APIError> {
-//     Ok(generate_code_prompt(language, "".to_string(), tool_definitions).await?)
-// }
-
-pub async fn tool_metadata_implementation(
+pub async fn tool_metadata_implementation_prompt(
     language: CodeLanguage,
     code: String,
     tools: Vec<String>,
 ) -> Result<String, APIError> {
-    // Generate tool definitions first
-    // let tool_definitions = generate_tool_definitions(language.clone(), sqlite_manager.clone(), true).await?;
-
-    let mut generate_code_prompt = String::new();
-
-    match language {
-        CodeLanguage::Typescript => {
-            generate_code_prompt.push_str(&format!(
-                r####"
-# RULE I:
-This is the SCHEMA for the METADATA:
-```json
- {{
-  "name": "metaschema",
-  "schema": {{
-    "type": "object",
-    "properties": {{
-      "name": {{
-        "type": "string",
-        "description": "The name of the schema"
-      }},
-      "type": {{
-        "type": "string",
-        "enum": [
-          "object",
-          "array",
-          "string",
-          "number",
-          "boolean",
-          "null"
-        ]
-      }},
+    Ok(format!(
+        r####"
+<agent_metadata_schema>
+  * This is the SCHEMA for the METADATA:
+  ```json
+  {{
+    "name": "metaschema",
+    "schema": {{
+      "type": "object",
       "properties": {{
-        "type": "object",
-        "additionalProperties": {{
-          "$ref": "#/$defs/schema_definition"
-        }}
-      }},
-      "items": {{
-        "anyOf": [
-          {{
-            "$ref": "#/$defs/schema_definition"
-          }},
-          {{
-            "type": "array",
-            "items": {{
-              "$ref": "#/$defs/schema_definition"
-            }}
-          }}
-        ]
-      }},
-      "required": {{
-        "type": "array",
-        "items": {{
-          "type": "string"
-        }}
-      }},
-      "additionalProperties": {{
-        "type": "boolean"
-      }}
-    }},
-    "required": [
-      "type"
-    ],
-    "additionalProperties": false,
-    "if": {{
-      "properties": {{
+        "name": {{
+          "type": "string",
+          "description": "The name of the schema"
+        }},
         "type": {{
-          "const": "object"
-        }}
-      }}
-    }},
-    "then": {{
-      "required": [
-        "properties"
-      ]
-    }},
-    "$defs": {{
-      "schema_definition": {{
-        "type": "object",
+          "type": "string",
+          "enum": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        }},
         "properties": {{
-          "type": {{
-            "type": "string",
-            "enum": [
-              "object",
-              "array",
-              "string",
-              "number",
-              "boolean",
-              "null"
-            ]
-          }},
-          "properties": {{
-            "type": "object",
-            "additionalProperties": {{
-              "$ref": "#/$defs/schema_definition"
-            }}
-          }},
-          "items": {{
-            "anyOf": [
-              {{
-                "$ref": "#/$defs/schema_definition"
-              }},
-              {{
-                "type": "array",
-                "items": {{
-                  "$ref": "#/$defs/schema_definition"
-                }}
-              }}
-            ]
-          }},
-          "required": {{
-            "type": "array",
-            "items": {{
-              "type": "string"
-            }}
-          }},
+          "type": "object",
           "additionalProperties": {{
-            "type": "boolean"
+            "$ref": "#/$defs/schema_definition"
           }}
         }},
-        "required": [
-          "type"
-        ],
-        "additionalProperties": false,
-        "sqlTables": {{
-          "type": "array",
-          "items": {{
-            "type": "object",
-            "properties": {{
-              "name": {{
-                "type": "string",
-                "description": "Name of the table"
-              }},
-              "definition": {{
-                "type": "string",
-                "description": "SQL CREATE TABLE statement"
-              }}
+        "items": {{
+          "anyOf": [
+            {{
+              "$ref": "#/$defs/schema_definition"
             }},
-            "required": ["name", "definition"]
-          }}
-        }},
-        "sqlQueries": {{
-          "type": "array",
-          "items": {{
-            "type": "object",
-            "properties": {{
-              "name": {{
-                "type": "string",
-                "description": "Name/description of the query"
-              }},
-              "query": {{
-                "type": "string",
-                "description": "Example SQL query"
+            {{
+              "type": "array",
+              "items": {{
+                "$ref": "#/$defs/schema_definition"
               }}
-            }},
-            "required": ["name", "query"]
-          }}
+            }}
+          ]
         }},
-        "tools": {{
+        "required": {{
           "type": "array",
           "items": {{
             "type": "string"
           }}
         }},
-        "if": {{
+        "additionalProperties": {{
+          "type": "boolean"
+        }}
+      }},
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "if": {{
+        "properties": {{
+          "type": {{
+            "const": "object"
+          }}
+        }}
+      }},
+      "then": {{
+        "required": [
+          "properties"
+        ]
+      }},
+      "$defs": {{
+        "schema_definition": {{
+          "type": "object",
           "properties": {{
             "type": {{
-              "const": "object"
+              "type": "string",
+              "enum": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            }},
+            "properties": {{
+              "type": "object",
+              "additionalProperties": {{
+                "$ref": "#/$defs/schema_definition"
+              }}
+            }},
+            "items": {{
+              "anyOf": [
+                {{
+                  "$ref": "#/$defs/schema_definition"
+                }},
+                {{
+                  "type": "array",
+                  "items": {{
+                    "$ref": "#/$defs/schema_definition"
+                  }}
+                }}
+              ]
+            }},
+            "required": {{
+              "type": "array",
+              "items": {{
+                "type": "string"
+              }}
+            }},
+            "additionalProperties": {{
+              "type": "boolean"
             }}
-          }}
-        }},
-        "then": {{
+          }},
           "required": [
-            "properties"
-          ]
+            "type"
+          ],
+          "additionalProperties": false,
+          "sqlTables": {{
+            "type": "array",
+            "items": {{
+              "type": "object",
+              "properties": {{
+                "name": {{
+                  "type": "string",
+                  "description": "Name of the table"
+                }},
+                "definition": {{
+                  "type": "string",
+                  "description": "SQL CREATE TABLE statement"
+                }}
+              }},
+              "required": ["name", "definition"]
+            }}
+          }},
+          "sqlQueries": {{
+            "type": "array",
+            "items": {{
+              "type": "object",
+              "properties": {{
+                "name": {{
+                  "type": "string",
+                  "description": "Name/description of the query"
+                }},
+                "query": {{
+                  "type": "string",
+                  "description": "Example SQL query"
+                }}
+              }},
+              "required": ["name", "query"]
+            }}
+          }},
+          "tools": {{
+            "type": "array",
+            "items": {{
+              "type": "string"
+            }}
+          }},
+          "if": {{
+            "properties": {{
+              "type": {{
+                "const": "object"
+              }}
+            }}
+          }},
+          "then": {{
+            "required": [
+              "properties"
+            ]
+          }}
         }}
       }}
     }}
   }}
-}}
-```
-
-These are two examples of METADATA:
-## Example 1:
-Output: ```json
-{{
-  "id": "shinkai-tool-coinbase-create-wallet",
-  "name": "Shinkai: Coinbase Wallet Creator",
-  "description": "Tool for creating a Coinbase wallet",
-  "author": "Shinkai",
-  "keywords": [
-    "coinbase",
-    "wallet",
-    "creator",
-    "shinkai"
-  ],
-  "configurations": {{
-    "type": "object",
-    "properties": {{
-      "name": {{ "type": "string" }},
-      "privateKey": {{ "type": "string" }},
-      "useServerSigner": {{ "type": "string", "default": "false", "nullable": true }},
+  ```
+</agent_metadata_schema>
+<agent_metadata_examples>
+  These are two examples of METADATA:
+  ## Example 1:
+  Output: ```json
+  {{
+    "id": "shinkai-tool-coinbase-create-wallet",
+    "name": "Shinkai: Coinbase Wallet Creator",
+    "description": "Tool for creating a Coinbase wallet",
+    "author": "Shinkai",
+    "keywords": [
+      "coinbase",
+      "wallet",
+      "creator",
+      "shinkai"
+    ],
+    "configurations": {{
+      "type": "object",
+      "properties": {{
+        "name": {{ "type": "string" }},
+        "privateKey": {{ "type": "string" }},
+        "useServerSigner": {{ "type": "string", "default": "false", "nullable": true }},
+      }},
+      "required": [
+        "name",
+        "privateKey"
+      ]
     }},
-    "required": [
-      "name",
-      "privateKey"
+    "parameters": {{
+      "type": "object",
+      "properties": {{}},
+      "required": []
+    }},
+    "result": {{
+      "type": "object",
+      "properties": {{
+        "walletId": {{ "type": "string", "nullable": true }},
+        "seed": {{ "type": "string", "nullable": true }},
+        "address": {{ "type": "string", "nullable": true }},
+      }},
+      "required": []
+    }},
+    "sqlTables": [
+      {{
+        "name": "wallets",
+        "definition": "CREATE TABLE wallets (id VARCHAR(255) PRIMARY KEY, name VARCHAR(255) NOT NULL, private_key TEXT NOT NULL, address VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+      }}
+    ],
+    "sqlQueries": [
+      {{
+        "name": "Get wallet by address",
+        "query": "SELECT * FROM wallets WHERE address = :address"
+      }}
+    ],
+    "tools": [
+      "local:::rust_toolkit:::shinkai_sqlite_query_executor",
+      "local:::shinkai_tool_echo:::shinkai_echo"
     ]
-  }},
-  "parameters": {{
-    "type": "object",
-    "properties": {{}},
-    "required": []
-  }},
-  "result": {{
-    "type": "object",
-    "properties": {{
-      "walletId": {{ "type": "string", "nullable": true }},
-      "seed": {{ "type": "string", "nullable": true }},
-      "address": {{ "type": "string", "nullable": true }},
+  }};
+  ```
+
+  ## Example 2:
+  Output:```json
+  {{
+    "id": "shinkai-tool-download-pages",
+    "name": "Shinkai: Download Pages",
+    "description": "Downloads one or more URLs and converts their HTML content to Markdown",
+    "author": "Shinkai",
+    "keywords": [
+      "HTML to Markdown",
+      "web page downloader",
+      "content conversion",
+      "URL to Markdown",
+    ],
+    "configurations": {{
+      "type": "object",
+      "properties": {{}},
+      "required": []
     }},
-    "required": []
-  }},
-  "sqlTables": [
-    {{
-      "name": "wallets",
-      "definition": "CREATE TABLE wallets (id VARCHAR(255) PRIMARY KEY, name VARCHAR(255) NOT NULL, private_key TEXT NOT NULL, address VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-    }}
-  ],
-  "sqlQueries": [
-    {{
-      "name": "Get wallet by address",
-      "query": "SELECT * FROM wallets WHERE address = :address"
-    }}
-  ],
-  "tools": [
-    "local:::rust_toolkit:::shinkai_sqlite_query_executor",
-    "local:::shinkai_tool_echo:::shinkai_echo"
-  ]
-}};
-```
-
-## Example 2:
-Output:```json
-{{
-  "id": "shinkai-tool-download-pages",
-  "name": "Shinkai: Download Pages",
-  "description": "Downloads one or more URLs and converts their HTML content to Markdown",
-  "author": "Shinkai",
-  "keywords": [
-    "HTML to Markdown",
-    "web page downloader",
-    "content conversion",
-    "URL to Markdown",
-  ],
-  "configurations": {{
-    "type": "object",
-    "properties": {{}},
-    "required": []
-  }},
-  "parameters": {{
-    "type": "object",
-    "properties": {{
-      "urls": {{ "type": "array", "items": {{ "type": "string" }} }},
+    "parameters": {{
+      "type": "object",
+      "properties": {{
+        "urls": {{ "type": "array", "items": {{ "type": "string" }} }},
+      }},
+      "required": [
+        "urls"
+      ]
     }},
-    "required": [
-      "urls"
-    ]
-  }},
-  "result": {{
-    "type": "object",
-    "properties": {{
-      "markdowns": {{ "type": "array", "items": {{ "type": "string" }} }},
+    "result": {{
+      "type": "object",
+      "properties": {{
+        "markdowns": {{ "type": "array", "items": {{ "type": "string" }} }},
+      }},
+      "required": [
+        "markdowns"
+      ]
     }},
-    "required": [
-      "markdowns"
-    ]
-  }},
-  "sqlTables": [
-    {{
-      "name": "downloaded_pages",
-      "definition": "CREATE TABLE downloaded_pages (id SERIAL PRIMARY KEY, url TEXT NOT NULL, markdown_content TEXT, downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-    }}
-  ],
-  "sqlQueries": [
-    {{
-      "name": "Get page by URL",
-      "query": "SELECT * FROM downloaded_pages WHERE url = :url ORDER BY downloaded_at DESC LIMIT 1"
-    }}
-  ],
-  "tools": []
-}};
-```
+    "sqlTables": [
+      {{
+        "name": "downloaded_pages",
+        "definition": "CREATE TABLE downloaded_pages (id SERIAL PRIMARY KEY, url TEXT NOT NULL, markdown_content TEXT, downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+      }}
+    ],
+    "sqlQueries": [
+      {{
+        "name": "Get page by URL",
+        "query": "SELECT * FROM downloaded_pages WHERE url = :url ORDER BY downloaded_at DESC LIMIT 1"
+      }}
+    ],
+    "tools": []
+  }};
+  ```
+</agent_metadata_examples>
 
-# RULE II:
-If the code uses shinkaiSqliteQueryExecutor then fill the sqlTables and sqlQueries sections, otherwise these sections are empty.
-sqlTables contains the complete table structures, they should be same as in the code.
-sqlQueries contains from 1 to 3 examples that show how the data should be retrieved for usage.
+<agent_metadata_rules>
+  * If the code uses shinkaiSqliteQueryExecutor then fill the sqlTables and sqlQueries sections, otherwise these sections are empty.
+  * sqlTables contains the complete table structures, they should be same as in the code.
+  * sqlQueries contains from 1 to 3 examples that show how the data should be retrieved for usage.
+</agent_metadata_rules>
 
-# RULE III:
-* Return a valid schema for the described JSON, remove trailing commas.
-* The METADATA must be in JSON valid format in only one JSON code block and nothing else.
-* Output only the METADATA, so the complete Output it's a valid JSON string.
-* Any comments, notes, explanations or examples must be omitted in the Output.
-* Generate the METADATA for the following source code in the INPUT:
-
-# TOOLS:
+<available_tools>
 {:?}
+</available_tools>
 
-# INPUT:
+<agent_metadata_implementation>
+  * Return a valid schema for the described JSON, remove trailing commas.
+  * The METADATA must be in JSON valid format in only one JSON code block and nothing else.
+  * Output only the METADATA, so the complete Output it's a valid JSON string.
+  * Any comments, notes, explanations or examples must be omitted in the Output.
+  * Use the available_tools section to get the list of tools for the metadata.
+  * Generate the METADATA for the following source code in the input_command tag.
+  * configuration, parameters and result must be objects, not arrays neither basic types.
+</agent_metadata_implementation>
+
+<input_command>
 {}
+</input_command>
+
 "####,
-             tools, code.clone()
-            ));
-            return Ok(generate_code_prompt);
-        }
-        CodeLanguage::Python => {
-            return Err(Node::generic_api_error("NYI Python"));
-        }
-    }
+        tools,
+        code.clone()
+    ))
 }
