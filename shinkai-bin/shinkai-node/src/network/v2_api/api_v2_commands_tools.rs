@@ -1222,6 +1222,7 @@ impl Node {
             sheet_job_data: None,
             callback: None,
             metadata: None,
+            tool_key: None,
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(

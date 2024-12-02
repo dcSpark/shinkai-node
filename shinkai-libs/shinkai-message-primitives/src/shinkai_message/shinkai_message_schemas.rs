@@ -318,13 +318,18 @@ pub struct JobMessage {
     pub files_inbox: String,
     pub parent: Option<String>,
     #[serde(default)]
+    // TODO(Nico): this is not used anymore, remove it
     pub workflow_code: Option<String>,
     #[serde(default, deserialize_with = "deserialize_workflow_name")]
+    // TODO(Nico): this is not used anymore, remove it
     pub workflow_name: Option<String>,
     pub sheet_job_data: Option<String>,
+    // Whenever we need to chain actions, we can use this
     pub callback: Option<Box<CallbackAction>>,
+    // This is added from the node
     pub metadata: Option<MessageMetadata>,
-    // TODO: add tools here
+    // Whenever we want to force the use of a specific tool, we can use this
+    pub tool_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
