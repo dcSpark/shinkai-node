@@ -306,8 +306,8 @@ impl GenericInferenceChain {
         });
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            custom_system_prompt,
-            custom_prompt,
+            custom_system_prompt.clone(),
+            custom_prompt.clone(),
             user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
@@ -421,8 +421,8 @@ impl GenericInferenceChain {
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
-                    None, // TODO: connect later on
-                    None, // TODO: connect later on
+                    custom_system_prompt.clone(),
+                    custom_prompt.clone(),
                     user_message.clone(),
                     image_files.clone(),
                     ret_nodes.clone(),
