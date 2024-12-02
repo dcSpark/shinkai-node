@@ -85,9 +85,14 @@ pub async fn execute_tool(
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let header_code = generate_tool_definitions(None, CodeLanguage::Typescript, db, false)
-                    .await
-                    .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                let header_code = generate_tool_definitions(
+                    deno_tool.tools.clone().unwrap_or_default(),
+                    CodeLanguage::Typescript,
+                    db,
+                    false,
+                )
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
 
                 deno_tool
                     .run(
@@ -112,7 +117,7 @@ pub async fn execute_tool(
 pub async fn execute_code(
     tool_type: DynamicToolType,
     code: String,
-    tools: Option<Vec<String>>,
+    tools: Vec<String>,
     parameters: Map<String, Value>,
     extra_config: Option<String>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,

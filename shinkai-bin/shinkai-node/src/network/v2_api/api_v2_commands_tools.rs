@@ -16,9 +16,9 @@ use serde_json::{json, Map, Value};
 
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, job::JobLike},
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::job_scope::JobScope,
+    schemas::{inbox_name::InboxName, job::JobLike, shinkai_name::ShinkaiSubidentityType},
+    shinkai_message::shinkai_message_schemas::{JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -37,6 +37,8 @@ use tokio::sync::{Mutex, RwLock};
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+use chrono::Utc;
 
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
@@ -570,13 +572,14 @@ impl Node {
         bearer: String,
         db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        let definitions = generate_tool_definitions(None, language, db, false).await;
+        let definitions = generate_tool_definitions(tools, language, db, false).await;
 
         match definitions {
             Ok(definitions) => {
@@ -656,7 +659,7 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         tool_type: DynamicToolType,
         code: String,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
@@ -705,7 +708,7 @@ impl Node {
         bearer: String,
         db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -739,7 +742,8 @@ impl Node {
             }
         };
 
-        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string()).await {
+        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string(), tools.clone()).await
+        {
             Ok(prompt) => prompt,
             Err(err) => {
                 let api_error = APIError {
@@ -765,10 +769,25 @@ impl Node {
             }
         };
 
+        let header_code =
+            match generate_tool_definitions(tools.clone(), language.clone(), sqlite_manager.clone(), true).await {
+                Ok(code) => code,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
         let _ = res
             .send(Ok(json!({
                 "availableTools": get_all_deno_tools(db.clone()).await.into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
                 "libraryCode": library_code.clone(),
+                "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
             })))
@@ -781,6 +800,7 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         job_message: JobMessage,
         language: CodeLanguage,
+        tools: Vec<String>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -796,7 +816,7 @@ impl Node {
             return Ok(());
         }
         // Generate tool definitions
-        let tool_definitions = match generate_tool_definitions(None, language.clone(), db.clone(), true).await {
+        let tool_definitions = match generate_tool_definitions(tools, language.clone(), db.clone(), true).await {
             Ok(definitions) => definitions,
             Err(err) => {
                 let api_error = APIError {
@@ -852,6 +872,7 @@ impl Node {
         bearer: String,
         job_id: String,
         language: CodeLanguage,
+        tools: Vec<String>,
         db_clone: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -939,7 +960,7 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation(language, code).await {
+        let metadata = match tool_metadata_implementation(language, code, tools).await {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
@@ -982,6 +1003,276 @@ impl Node {
                 return Ok(());
             }
         }
+    }
+
+    pub async fn v2_api_tool_implementation_undo_to(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        message_hash: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Use the fetch_message_and_hash method to retrieve the message
+        let (message, _hash) = match db.fetch_message_and_hash(&message_hash) {
+            Ok(result) => result,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Message not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Determine if it's an AI or user message, if it's a user message then we need to return an error
+        if message.is_receiver_subidentity_agent() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Undo operation not allowed for user messages".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let mut new_message = message.clone();
+        // Update the scheduled time to now so the messages are content wise the same but produce a different hash
+        new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
+
+        let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
+            Ok(inbox) => inbox.to_string(),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get job inbox name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Add the message as a response to the job inbox
+        let parent_hash = match db.get_parent_message_hash(&inbox_name, &message_hash) {
+            Ok(hash) => {
+                if let Some(hash) = hash {
+                    hash
+                } else {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get message parent key".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get message parent key: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let undo_result = db
+            .add_message_to_job_inbox(&job_id, &new_message, Some(parent_hash), None)
+            .await;
+
+        match undo_result {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Undo operation successful" });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to undo tool implementation: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_tool_implementation_code_update(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        job_id: String,
+        code: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        node_name: ShinkaiName,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        node_signing_sk: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Plan
+        // Create the user message and add it
+        // The user message should be something like: "Update the code to: <code>"
+
+        // Create the AI message and add it
+        // Updated code: <code>
+        // Done
+
+        // Get the main identity from the identity manager
+        let main_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(identity) => identity.clone(),
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Retrieve the job to get the llm_provider
+        let llm_provider = match db.get_job_with_options(&job_id, false, false) {
+            Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve job: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Create a new job message
+        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
+            Ok(name) => name,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create sender name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let recipient = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
+            node_name.node_name.clone(),
+            "main".to_string(),
+            ShinkaiSubidentityType::Agent,
+            llm_provider,
+        ) {
+            Ok(name) => name,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create recipient name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let job_message = JobMessage {
+            job_id: job_id.clone(),
+            content: format!("Update the code to: {}", code),
+            files_inbox: "".to_string(),
+            parent: None,
+            workflow_code: None,
+            workflow_name: None,
+            sheet_job_data: None,
+            callback: None,
+            metadata: None,
+        };
+
+        let shinkai_message = match Self::api_v2_create_shinkai_message(
+            sender,
+            recipient,
+            &serde_json::to_string(&job_message).unwrap(),
+            MessageSchemaType::JobMessageSchema,
+            node_encryption_sk,
+            node_signing_sk.clone(),
+            node_encryption_pk,
+            Some(job_id.clone()),
+        ) {
+            Ok(message) => message,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create Shinkai message: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Add the Shinkai message to the job inbox
+        let add_message_result = db.add_message_to_job_inbox(&job_id, &shinkai_message, None, None).await;
+
+        if let Err(err) = add_message_result {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to add Shinkai message to job inbox: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Create the AI message
+        let identity_secret_key_clone = clone_signature_secret_key(&node_signing_sk);
+        let ai_message_content = format!("```\n{}\n```", code);
+        let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+            job_id.to_string(),
+            ai_message_content,
+            "".to_string(),
+            None,
+            identity_secret_key_clone,
+            node_name.node_name.clone(),
+            node_name.node_name.clone(),
+        ).expect("Failed to build AI message");
+
+        // Add the AI message to the job inbox
+        let add_ai_message_result = db.add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None).await;
+
+        if let Err(err) = add_ai_message_result {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to add AI message to job inbox: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Send success response
+        let response = json!({ "status": "success", "message": "Code update operation successful" });
+        let _ = res.send(Ok(response)).await;
+
+        Ok(())
     }
 }
 

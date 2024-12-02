@@ -1,5 +1,6 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
+ARG BUILD_TYPE
 RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
 
 # Install nvm, npm and node
@@ -29,7 +30,23 @@ COPY . .
 
 RUN cargo clean
 RUN rustup component add rustfmt
-RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build
+RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] && echo "--release")
 
 COPY .github/run-main*.sh /entrypoints/
 RUN chmod 755 /entrypoints/*.sh
+
+# Runtime stage
+FROM debian:bookworm-slim as runner
+ARG BUILD_TYPE
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y libssl3 ca-certificates
+
+# Copy only necessary files from builder
+WORKDIR /app
+COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai_node /app/
+COPY --from=builder /entrypoints/*.sh /app/
+
+# Set entrypoint
+EXPOSE 9550
+ENTRYPOINT ["/bin/sh", "-c", "/app/shinkai_node"]

@@ -998,7 +998,7 @@ pub enum NodeCommand {
     V2ApiExecuteCode {
         bearer: String,
         code: String,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
         tool_id: String,
@@ -1009,18 +1009,20 @@ pub enum NodeCommand {
     V2ApiGenerateToolDefinitions {
         bearer: String,
         language: CodeLanguage,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolFetchQuery {
         bearer: String,
         language: CodeLanguage,
-        tools: Option<Vec<String>>,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolImplementation {
         bearer: String,
         message: JobMessage,
         language: CodeLanguage,
+        tools: Vec<String>,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
@@ -1028,6 +1030,7 @@ pub enum NodeCommand {
         bearer: String,
         job_id: String,
         language: CodeLanguage,
+        tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {
@@ -1053,6 +1056,18 @@ pub enum NodeCommand {
     V2ApiGetPlaygroundTool {
         bearer: String,
         tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiToolImplementationUndoTo {
+        bearer: String,
+        message_hash: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiToolImplementationCodeUpdate {
+        bearer: String,
+        job_id: String,
+        code: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

@@ -69,11 +69,7 @@ impl LLMService for Ollama {
             let url = format!("{}{}", base_url, "/api/chat");
 
             let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
-            let messages_result = if is_stream {
-                ollama_prepare_messages(&model, prompt)?
-            } else {
-                ollama_conversation_prepare_messages_with_tooling(&model, prompt)?
-            };
+            let messages_result = ollama_conversation_prepare_messages_with_tooling(&model, prompt)?;
             eprintln!("messages_result: {:?}", messages_result);
 
             let messages_json = match messages_result.messages {
@@ -210,6 +206,7 @@ async fn handle_streaming_response(
     let mut previous_json_chunk: String = String::new();
     let mut final_eval_count = None;
     let mut final_eval_duration = None;
+    let mut final_function_call = None;
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -248,7 +245,7 @@ async fn handle_streaming_response(
                         .await;
                 }
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), final_function_call, None));
             }
         }
 
@@ -263,6 +260,61 @@ async fn handle_streaming_response(
                     Ok(data) => {
                         previous_json_chunk = "".to_string();
                         response_text.push_str(&data.message.content);
+
+                        // Check for tool calls in the message
+                        if let Some(tool_calls) = data.message.tool_calls {
+                            for tool_call in tool_calls {
+                                let function = tool_call.function.clone();
+                                let name = function.name;
+                                let arguments = function.arguments.unwrap_or_default();
+
+                                // Store the function call
+                                final_function_call = Some(FunctionCall {
+                                    name: name.clone(),
+                                    arguments: arguments.clone(),
+                                    tool_router_key: None,
+                                });
+
+                                // Log the tool call
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    format!("Tool Call Detected: Name: {}, Arguments: {:?}", name, arguments).as_str(),
+                                );
+
+                                // Send WS message for tool call
+                                if let Some(ref manager) = ws_manager_trait {
+                                    if let Some(ref inbox_name) = inbox_name {
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+
+                                        let tool_metadata = ToolMetadata {
+                                            tool_name: name.clone(),
+                                            tool_router_key: None,
+                                            args: arguments,
+                                            result: None,
+                                            status: ToolStatus {
+                                                type_: ToolStatusType::Running,
+                                                reason: None,
+                                            },
+                                        };
+
+                                        let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                serde_json::to_string(&tool_call)
+                                                    .unwrap_or_else(|_| "{}".to_string()),
+                                                ws_message_type,
+                                                true,
+                                            )
+                                            .await;
+                                    }
+                                }
+                            }
+                        }
 
                         // Capture eval_count and eval_duration from the final response
                         if data.done {
@@ -340,7 +392,7 @@ async fn handle_streaming_response(
         None
     };
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), None, tps))
+    Ok(LLMInferenceResponse::new(response_text, json!({}), final_function_call, tps))
 }
 
 async fn handle_non_streaming_response(

@@ -685,20 +685,22 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns whether the given model supports tool/function calling capabilities
-    pub fn has_tool_capabilities(model: &LLMProviderInterface, stream: Option<bool>) -> bool {
+    pub fn has_tool_capabilities(model: &LLMProviderInterface, _stream: Option<bool>) -> bool {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
             LLMProviderInterface::OpenAI(_) => true,
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
-                (model.model_type.starts_with("llama3.1")
+                model.model_type.starts_with("llama3.1")
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("mistral-nemo")
                     || model.model_type.starts_with("mistral-small")
-                    || model.model_type.starts_with("mistral-large"))
-                    && stream.map_or(true, |s| !s)
+                    || model.model_type.starts_with("mistral-large")
+                    || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("qwen2.5-coder")
+                    || model.model_type.starts_with("qwq")
             }
             LLMProviderInterface::Groq(model) => {
                 model.model_type.starts_with("llama-3.2")

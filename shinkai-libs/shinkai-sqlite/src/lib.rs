@@ -165,6 +165,7 @@ impl SqliteManager {
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_uploaded_file_links_table(conn)?;
+        Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
         Ok(())
     }
@@ -773,6 +774,18 @@ impl SqliteManager {
         Ok(())
     }
 
+    // New method to initialize the version table
+    fn initialize_version_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS app_version (
+                version TEXT NOT NULL UNIQUE,
+                needs_global_reset INTEGER NOT NULL CHECK (needs_global_reset IN (0, 1))
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
     // Returns a connection from the pool
     pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
         self.pool.get().map_err(|e| {
@@ -816,5 +829,106 @@ impl SqliteManager {
     pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
         self.model_type = model;
         Ok(())
+    }
+    // Method to set the version and determine if a global reset is needed
+    pub fn set_version(&self, version: &str) -> Result<()> {
+        // Note: add breaking versions here as needed
+        let breaking_versions = vec!["0.9.0"];
+
+        let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
+            breaking_versions.iter().any(|&breaking_version| {
+                current_version.as_str() < breaking_version && version >= breaking_version
+            })
+        });
+
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM app_version;", [])?;
+        conn.execute(
+            "INSERT INTO app_version (version, needs_global_reset) VALUES (?, ?);",
+            &[&version as &dyn ToSql, &(needs_global_reset as i32) as &dyn ToSql],
+        )?;
+
+        Ok(())
+    }
+
+    // Method to get the version and reset status
+    pub fn get_version(&self) -> Result<(String, bool)> {
+        let conn = self.get_connection()?;
+        conn.query_row(
+            "SELECT version, needs_global_reset FROM app_version LIMIT 1;",
+            [],
+            |row| {
+                let version: String = row.get(0)?;
+                let needs_global_reset: i32 = row.get(1)?;
+                Ok((version, needs_global_reset != 0))
+            },
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use std::path::PathBuf;
+    use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
+
+    async fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_set_version_no_reset_needed() {
+        let manager = setup_test_db().await;
+        manager.set_version("1.0.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "1.0.0");
+        assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_reset_needed() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.8.0");
+        assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_update_no_reset() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        manager.set_version("1.0.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        eprintln!("version: {}", version);
+        assert_eq!(version, "1.0.0");
+        assert!(needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_update_from_breaking_version_no_reset() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.9.0").unwrap();
+        manager.set_version("0.9.1").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.9.1");
+        assert!(!needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_set_version_update_to_breaking_version() {
+        let manager = setup_test_db().await;
+        manager.set_version("0.8.0").unwrap();
+        manager.set_version("0.9.0").unwrap();
+        let (version, needs_reset) = manager.get_version().unwrap();
+        assert_eq!(version, "0.9.0");
+        assert!(needs_reset);
     }
 }

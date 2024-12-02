@@ -2915,11 +2915,17 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiGenerateToolDefinitions { bearer, language, res } => {
-                let db_clone = Arc::clone(&self.db);
+            NodeCommand::V2ApiGenerateToolDefinitions {
+                bearer,
+                language,
+                tools,
+                res,
+            } => {
+                let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::get_tool_definitions(bearer, db_clone, language, res).await;
+                    let _ =
+                        Node::get_tool_definitions(bearer, db_clone, language, tools, res).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolFetchQuery {
@@ -2938,6 +2944,7 @@ impl Node {
                 bearer,
                 message,
                 language,
+                tools,
                 raw,
                 res,
             } => {
@@ -2955,6 +2962,7 @@ impl Node {
                         db_clone,
                         message,
                         language,
+                        tools,
                         node_name_clone,
                         identity_manager_clone,
                         job_manager_clone,
@@ -2967,10 +2975,57 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiToolImplementationUndoTo {
+                bearer,
+                message_hash,
+                job_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_undo_to(
+                        bearer,
+                        db_clone,
+                        message_hash,
+                        job_id,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiToolImplementationCodeUpdate {
+                bearer,
+                job_id,
+                code,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let node_name_clone = self.node_name.clone();
+                let node_encryption_sk_clone = self.encryption_secret_key.clone();
+                let node_encryption_pk_clone = self.encryption_public_key.clone();
+                let node_signing_sk_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_code_update(
+                        bearer,
+                        db_clone,
+                        job_id,
+                        code,
+                        identity_manager_clone,
+                        node_name_clone,
+                        node_encryption_sk_clone,
+                        node_encryption_pk_clone,
+                        node_signing_sk_clone,
+                        res,
+                    ).await;
+                });
+            }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
                 bearer,
                 job_id,
                 language,
+                tools,
                 res,
             } => {
                 let job_manager_clone = self.job_manager.clone().unwrap();
@@ -2986,6 +3041,7 @@ impl Node {
                         bearer,
                         job_id,
                         language,
+                        tools,
                         db_clone,
                         node_name_clone,
                         identity_manager_clone,

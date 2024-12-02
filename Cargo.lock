@@ -8084,7 +8084,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8099,7 +8099,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_baml"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "baml-runtime",
@@ -8113,7 +8113,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "dashmap",
@@ -8129,7 +8129,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_db"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -8151,7 +8151,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -8176,7 +8176,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "serde",
@@ -8190,7 +8190,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -8216,14 +8216,14 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "shinkai_node"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -8294,7 +8294,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -8309,7 +8309,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "async-channel 1.9.0",
  "chrono",
@@ -8323,7 +8323,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "bincode",
  "blake3",
@@ -8353,7 +8353,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_subscription_manager"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
@@ -8378,7 +8378,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -8397,7 +8397,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "regex",
@@ -8412,9 +8412,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c370a926382ccfea49c78f327896599fd5feda79abcf44717e16f2d50baa824"
+checksum = "ea0cdcd242a2e18d6c1f03cabe058f3aebb09553402c1439af048d83506ac6e8"
 dependencies = [
  "anyhow",
  "base64-simd",
@@ -8444,7 +8444,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_vector_fs"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "bincode",
  "blake3",
@@ -8460,7 +8460,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_vector_resources"
-version = "0.8.15"
+version = "0.9.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
