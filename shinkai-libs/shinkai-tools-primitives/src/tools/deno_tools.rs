@@ -10,7 +10,7 @@ use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
-use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
+use shinkai_tools_runner::tools::deno_runner_options::{DenoRunnerOptions, ShinkaiNodeLocation};
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::tool::Tool;
@@ -57,6 +57,8 @@ impl DenoTool {
     pub fn run(
         &self,
         envs: HashMap<String, String>,
+        api_ip: String,
+        api_port: u16,
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
@@ -67,6 +69,8 @@ impl DenoTool {
     ) -> Result<RunResult, ToolError> {
         self.run_on_demand(
             envs,
+            api_ip,
+            api_port,
             header_code,
             parameters,
             extra_config,
@@ -80,6 +84,8 @@ impl DenoTool {
     pub fn run_on_demand(
         &self,
         envs: HashMap<String, String>,
+        api_ip: String,
+        api_port: u16,
         header_code: String,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
@@ -189,6 +195,11 @@ impl DenoTool {
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
                                     .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
                             ),
+                            shinkai_node_location: ShinkaiNodeLocation {
+                                protocol: String::from("http"),
+                                host: api_ip,
+                                port: api_port,
+                            },
                             ..Default::default()
                         }),
                     );

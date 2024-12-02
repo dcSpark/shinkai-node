@@ -138,7 +138,14 @@ impl ToolRouter {
         let rust_tools = get_rust_tools();
         let mut sqlite_manager = self.sqlite_manager.write().await;
         for tool in rust_tools {
-            let rust_tool = RustTool::new(tool.name, tool.description, tool.input_args, tool.output_arg, None, tool.tool_router_key);
+            let rust_tool = RustTool::new(
+                tool.name,
+                tool.description,
+                tool.input_args,
+                tool.output_arg,
+                None,
+                tool.tool_router_key,
+            );
             sqlite_manager
                 .add_tool(ShinkaiTool::Rust(rust_tool, true))
                 .await
@@ -428,7 +435,9 @@ impl ToolRouter {
                 envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
                 let result = deno_tool
                     .run(
-                        HashMap::new(),
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
                         header_code,
                         function_args,
                         function_config,
@@ -757,6 +766,8 @@ impl ToolRouter {
         let result = js_tool
             .run(
                 HashMap::new(),
+                node_env.api_listen_address.ip().to_string(),
+                node_env.api_listen_address.port(),
                 header_code,
                 function_args,
                 function_config,
