@@ -34,3 +34,19 @@ RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] &
 
 COPY .github/run-main*.sh /entrypoints/
 RUN chmod 755 /entrypoints/*.sh
+
+# Runtime stage
+FROM debian:bookworm-slim as runner
+ARG BUILD_TYPE
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y libssl3 ca-certificates
+
+# Copy only necessary files from builder
+WORKDIR /app
+COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai_node /app/
+COPY --from=builder /entrypoints/*.sh /app/
+
+# Set entrypoint
+EXPOSE 9550
+ENTRYPOINT ["/bin/sh", "-c", "/app/shinkai_node"]
