@@ -337,6 +337,7 @@ fn micropayment_flow_test() {
                 config: Some(vec![]),
                 usage_type: None,
                 tool_offering: Some(shinkai_tool_offering.clone()),
+                output_arg: ToolOutputArg { json: String::from("") },
             };
 
             {
@@ -498,6 +499,7 @@ fn micropayment_flow_test() {
                     output_arg: ToolOutputArg::empty(),
                     embedding: None,
                     restrictions: None,
+                    output_arg: ToolOutputArg { json: String::from("") },
                 };
 
                 let shinkai_tool = ShinkaiTool::Network(network_tool, true);

@@ -1,0 +1,47 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main, feature/tools-def-exec]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Check PR
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Cache cargo assets
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: (Linux) Install build deps
+        run: |
+          sudo apt-get install -y protobuf-compiler
+
+      - name: build workspace
+        run: cargo check --workspace
+
+      - name: run cargo test
+        run: cargo test --workspace -- --test-threads=1
+        env:
+          IS_TESTING: 1
+          WELCOME_MESSAGE: false
+          FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
+          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_URL: ${{ secrets.AWS_URL }}

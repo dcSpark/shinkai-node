@@ -81,29 +81,16 @@ For running a specific test (useful for debugging) you can use:
 cargo test tcp_node_test -- --nocapture --test-threads=1
 ```
 
-### Running Dockerized Tests
+### Running Tests
 
 #### Main tests
 
 ```
-# Build testing image
-docker build -t testing_image -f .github/Dockerfile .
+# Run tests
+cargo test --workspace
 
-# Run tests main cargo tests
-docker run --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image
-```
-
-#### WASM tests
-
-```
-# Build testing image - shinkai-message-wasm
-docker build -t testing_image_wasm -f .github/Dockerfile.wasm .
-
-# Run tests shinkai-message-wasm cargo tests
-docker run --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm
-
-# Run tests shinkai-message-wasm wasm-pack tests
-docker run --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm
+# For specific projects
+cargo test -p shinkai_message_primitives
 ```
 
 ### Shinkai App tests
