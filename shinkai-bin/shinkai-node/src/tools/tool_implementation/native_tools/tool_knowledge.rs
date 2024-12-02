@@ -39,12 +39,12 @@ impl KnowledgeTool {
                 name: "Shinkai Process Embeddings".to_string(),
                 toolkit_name: "shinkai_custom".to_string(),
                 description: r#"Tool for processing embeddings within a job scope. 
-                This tool processes resources and generates embeddings using a specified mapping function.
-                
-                Example usage:
-                - Provide a custom mapping function to transform resource content.
-                - Process resources in chunks to optimize performance.
-                - Collect and join processed embeddings for further analysis."#
+This tool processes resources and generates embeddings using a specified mapping function.
+
+Example usage:
+- Provide a custom mapping function to transform resource content.
+- Process resources in chunks to optimize performance.
+- Collect and join processed embeddings for further analysis."#
                     .to_string(),
                 tool_router_key: "local:::rust_toolkit:::shinkai_process_embeddings".to_string(),
                 tool_type: "Rust".to_string(),
@@ -55,7 +55,7 @@ impl KnowledgeTool {
                 input_args: vec![
                     ToolArgument::new(
                         "map_function".to_string(),
-                        "function".to_string(),
+                        "string".to_string(),
                         "A function to map over resource content".to_string(),
                         false,
                     ),

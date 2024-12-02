@@ -53,6 +53,8 @@ pub fn execute_deno_tool(
 
     match tool.run_on_demand(
         envs,
+        node_env.api_listen_address.ip().to_string(),
+        node_env.api_listen_address.port(),
         header_code,
         parameters,
         extra_config,
