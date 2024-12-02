@@ -2396,8 +2396,9 @@ impl Node {
             NodeCommand::V2ApiHealthCheck { res } => {
                 let db_clone = Arc::clone(&self.db);
                 let public_https_certificate_clone = self.public_https_certificate.clone();
+                let sqlite_manager = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_health_check(db_clone, public_https_certificate_clone, res).await;
+                    let _ = Node::v2_api_health_check(db_clone, sqlite_manager, public_https_certificate_clone, res).await;
                 });
             }
             NodeCommand::V2ApiScanOllamaModels { bearer, res } => {
@@ -3008,6 +3009,52 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiToolImplementationUndoTo {
+                bearer,
+                message_hash,
+                job_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_undo_to(
+                        bearer,
+                        db_clone,
+                        message_hash,
+                        job_id,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiToolImplementationCodeUpdate {
+                bearer,
+                job_id,
+                code,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let node_name_clone = self.node_name.clone();
+                let node_encryption_sk_clone = self.encryption_secret_key.clone();
+                let node_encryption_pk_clone = self.encryption_public_key.clone();
+                let node_signing_sk_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_tool_implementation_code_update(
+                        bearer,
+                        db_clone,
+                        job_id,
+                        code,
+                        identity_manager_clone,
+                        node_name_clone,
+                        node_encryption_sk_clone,
+                        node_encryption_pk_clone,
+                        node_signing_sk_clone,
+                        res,
+                    ).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
