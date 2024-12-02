@@ -339,6 +339,7 @@ impl CronManager {
             callback: None,
             sheet_job_data: None,
             metadata: None,
+            tool_key: None,
         };
 
         job_manager
