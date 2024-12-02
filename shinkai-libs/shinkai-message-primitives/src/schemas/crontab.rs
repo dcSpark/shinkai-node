@@ -1,5 +1,5 @@
+use crate::shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage};
 use serde::{Deserialize, Serialize};
-use crate::shinkai_message::shinkai_message_schemas::JobMessage;
 
 use super::job_config::JobConfig;
 
@@ -21,5 +21,6 @@ pub enum CronTaskAction {
     CreateJobWithConfigAndMessage {
         config: JobConfig,
         message: JobMessage,
+        job_creation_info: JobCreationInfo,
     },
 }

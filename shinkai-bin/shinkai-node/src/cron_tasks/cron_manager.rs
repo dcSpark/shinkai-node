@@ -8,29 +8,30 @@ use chrono::{Timelike, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_db::{
-    db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
-    schemas::{inbox_permission::InboxPermission, ws_types::WSUpdateHandler},
+    db::{db_errors::ShinkaiDBError, ShinkaiDB},
+    schemas::ws_types::WSUpdateHandler,
 };
 use shinkai_message_primitives::{
     schemas::{
+        crontab::{CronTask, CronTaskAction},
         inbox_name::{InboxName, InboxNameError},
         shinkai_name::ShinkaiName,
     },
-    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     shinkai_utils::{
-        job_scope::JobScope,
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::llm_provider::{error::LLMProviderError, job_manager::JobManager};
 
 pub struct CronManager {
     pub db: Weak<ShinkaiDB>,
+    pub sqlite_manager: Weak<RwLock<SqliteManager>>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
@@ -74,7 +75,7 @@ impl From<InboxNameError> for CronManagerError {
 impl CronManager {
     pub async fn new(
         db: Weak<ShinkaiDB>,
-        vector_fs: Weak<VectorFS>,
+        sqlite_manager: Weak<RwLock<SqliteManager>>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -82,17 +83,17 @@ impl CronManager {
     ) -> Self {
         let cron_processing_task = CronManager::process_job_queue(
             db.clone(),
-            vector_fs.clone(),
+            sqlite_manager.clone(),
             node_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
             Self::cron_interval_time(),
             job_manager.clone(),
             ws_manager.clone(),
-            |job, db, vector_fs, identity_sk, job_manager, node_name, profile, ws_manager| {
+            |job, db, sqlite_manager, identity_sk, job_manager, node_name, profile, ws_manager| {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db,
-                    vector_fs,
+                    sqlite_manager,
                     identity_sk,
                     job_manager,
                     node_name,
@@ -104,6 +105,7 @@ impl CronManager {
 
         Self {
             db,
+            sqlite_manager,
             identity_secret_key,
             node_profile_name: node_name,
             job_manager,
@@ -122,7 +124,7 @@ impl CronManager {
     #[allow(clippy::too_many_arguments)]
     pub fn process_job_queue(
         db: Weak<ShinkaiDB>,
-        vector_fs: Weak<VectorFS>,
+        sqlite_manager: Weak<RwLock<SqliteManager>>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
         cron_time_interval: u64,
@@ -131,7 +133,7 @@ impl CronManager {
         job_processing_fn: impl Fn(
                 CronTask,
                 Weak<ShinkaiDB>,
-                Weak<VectorFS>,
+                Weak<RwLock<SqliteManager>>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
                 ShinkaiName,
@@ -155,25 +157,29 @@ impl CronManager {
 
             loop {
                 let jobs_to_process: HashMap<String, Vec<(String, CronTask)>> = {
-                    let db_arc = db.upgrade();
-                    if db_arc.is_none() {
+                    let sqlite_manager_arc = sqlite_manager.upgrade();
+                    if sqlite_manager_arc.is_none() {
                         shinkai_log(
                             ShinkaiLogOption::CronExecution,
                             ShinkaiLogLevel::Error,
-                            "Failed to upgrade Weak reference to Arc for DB access. Exiting job queue processing loop.",
+                            "Failed to upgrade Weak reference to Arc for SqliteManager access. Exiting job queue processing loop.",
                         );
                         return;
                     }
-                    let db_arc = db_arc.unwrap();
-                    db_arc
-                        .get_all_cron_tasks_from_all_profiles(node_profile_name.clone())
+                    let sqlite_manager_arc = sqlite_manager_arc.unwrap();
+                    let sqlite_manager = sqlite_manager_arc.read().await;
+                    sqlite_manager
+                        .get_all_cron_tasks()
                         .unwrap_or_default()
+                        .into_iter()
+                        .map(|task| (task.created_at.clone(), vec![(task.task_id.to_string(), task)]))
+                        .collect()
                 };
                 if !jobs_to_process.is_empty() {
                     shinkai_log(
                         ShinkaiLogOption::CronExecution,
                         ShinkaiLogLevel::Debug,
-                        format!("Cron Jobs retrieved from DB: {:?}", jobs_to_process.len()).as_str(),
+                        format!("Cron Jobs retrieved from SqliteManager: {:?}", jobs_to_process.len()).as_str(),
                     );
                 }
                 let mut handles = Vec::new();
@@ -191,7 +197,7 @@ impl CronManager {
                         }
 
                         let db_clone = db.clone();
-                        let vector_fs_clone = vector_fs.clone();
+                        let sqlite_manager_clone = sqlite_manager.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_manager_clone = job_manager.clone();
                         let node_profile_name_clone = node_profile_name.clone();
@@ -203,7 +209,7 @@ impl CronManager {
                             let result = job_processing_fn_clone(
                                 cron_task,
                                 db_clone,
-                                vector_fs_clone,
+                                sqlite_manager_clone,
                                 identity_sk_clone,
                                 job_manager_clone,
                                 node_profile_name_clone,
@@ -242,7 +248,7 @@ impl CronManager {
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Weak<ShinkaiDB>,
-        _vector_fs: Weak<VectorFS>,
+        _sqlite_manager: Weak<RwLock<SqliteManager>>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
@@ -257,73 +263,63 @@ impl CronManager {
 
         let shinkai_profile = ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile)?;
 
-        let job_creation = JobCreationInfo {
-            scope: JobScope::new_default(),
-            is_hidden: Some(false),
-            associated_ui: None,
-        };
+        match cron_job.action {
+            CronTaskAction::CreateJobWithConfigAndMessage {
+                config,
+                message,
+                job_creation_info,
+            } => {
+                let job_id = job_manager
+                    .lock()
+                    .await
+                    .process_job_creation(job_creation_info, &shinkai_profile, &cron_job.task_id.to_string())
+                    .await?;
 
-        // Create Job
-        let job_id = job_manager
-            .lock()
-            .await
-            .process_job_creation(job_creation, &shinkai_profile, &cron_job.llm_provider_id)
-            .await?;
+                // Update the job configuration
+                let db_arc = db.upgrade().unwrap();
+                db_arc.update_job_config(&job_id, config)?;
 
-        let message_hash_id: String;
-        {
-            // Get the inbox name
-            let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
 
-            // Add permission
-            let db_arc = db.upgrade().unwrap();
-            db_arc.add_permission_with_profile(
-                inbox_name.to_string().as_str(),
-                shinkai_profile.clone(),
-                InboxPermission::Admin,
-            )?;
+                // TODO: it is not from an llm_provider lol but from the user
+                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+                    job_id.to_string(),
+                    message.content.clone(),
+                    "".to_string(),
+                    None,
+                    identity_secret_key,
+                    node_profile_name.node_name.clone(),
+                    node_profile_name.node_name.clone(),
+                )
+                .unwrap();
 
-            let cron_request_message = format!(
-                "My scheduled job \"{}\" created on \"{}\" is ready to be executed",
-                cron_job.prompt, cron_job.created_at
-            );
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
-                job_id.to_string(),
-                cron_request_message.to_string(),
-                "".to_string(),
-                None,
-                identity_secret_key,
-                node_profile_name.node_name.clone(),
-                node_profile_name.node_name.clone(),
-            )
-            .unwrap();
+                db_arc
+                    .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
+                    .await?;
+                db_arc.update_smart_inbox_name(inbox_name.to_string().as_str(), message.content.as_str())?;
+            }
+            CronTaskAction::SendMessageToJob { job_id, message } => {
+                let db_arc = db.upgrade().unwrap();
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
 
-            message_hash_id = shinkai_message.calculate_message_hash_for_pagination();
-            db_arc
-                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
-                .await?;
-            db_arc.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
+                // TODO: it is not from an llm_provider lol but from the user
+                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+                    job_id.clone(),
+                    message.content.clone(),
+                    "".to_string(),
+                    None,
+                    identity_secret_key,
+                    node_profile_name.node_name.clone(),
+                    node_profile_name.node_name.clone(),
+                )
+                .unwrap();
+
+                db_arc
+                    .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
+                    .await?;
+                db_arc.update_smart_inbox_name(inbox_name.to_string().as_str(), message.content.as_str())?;
+            }
         }
-
-        // Add Message to Job Queue
-        let job_message = JobMessage {
-            job_id: job_id.clone(),
-            content: "".to_string(),
-            files_inbox: "".to_string(), // TODO placeholder
-            parent: None,
-            workflow_code: None,
-            workflow_name: None,
-            callback: None,
-            sheet_job_data: None,
-            metadata: None,
-            tool_key: None,
-        };
-
-        job_manager
-            .lock()
-            .await
-            .add_job_message_to_job_queue(&job_message, &node_profile_name, Some(message_hash_id.clone()))
-            .await?;
 
         Ok(true)
     }
@@ -353,38 +349,5 @@ impl CronManager {
 
     pub fn is_valid_cron_expression(cron_expression: &str) -> bool {
         cron_parser::parse(cron_expression, &Utc::now()).is_ok()
-    }
-
-    // TODO: rename this or refactor it to a manager
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_arguments)]
-    pub async fn add_cron_task(
-        &self,
-        profile: ShinkaiName,
-        task_id: String,
-        cron: String,
-        prompt: String,
-        subprompt: String,
-        url: String,
-        crawl_links: bool,
-        llm_provider_id: String,
-    ) -> tokio::task::JoinHandle<Result<(), CronManagerError>> {
-        let db = self.db.clone();
-        // Note: needed to avoid a deadlock
-        tokio::spawn(async move {
-            let db_arc = db.upgrade().unwrap();
-            db_arc
-                .add_cron_task(
-                    profile,
-                    task_id,
-                    cron,
-                    prompt,
-                    subprompt,
-                    url,
-                    crawl_links,
-                    llm_provider_id,
-                )
-                .map_err(|e| CronManagerError::SomeError(e.to_string()))
-        })
     }
 }

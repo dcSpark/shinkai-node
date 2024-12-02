@@ -506,7 +506,6 @@ impl Node {
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
-                // Some(self.sqlite_logger.clone()),
                 self.llm_stopper.clone(),
             )
             .await,
@@ -527,7 +526,7 @@ impl Node {
 
         let cron_manager_result = CronManager::new(
             db_weak.clone(),
-            vector_fs_weak,
+            Arc::downgrade(&self.sqlite_manager),
             clone_signature_secret_key(&self.identity_secret_key),
             self.node_name.clone(),
             job_manager.clone(),

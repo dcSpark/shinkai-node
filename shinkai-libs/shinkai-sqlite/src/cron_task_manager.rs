@@ -5,7 +5,7 @@ use serde_json;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 
 impl SqliteManager {
-    fn add_cron_task(&self, cron: &str, action: &CronTaskAction) -> Result<i64, SqliteManagerError> {
+    pub fn add_cron_task(&self, cron: &str, action: &CronTaskAction) -> Result<i64, SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -23,13 +23,13 @@ impl SqliteManager {
         Ok(task_id)
     }
 
-    fn remove_cron_task(&self, task_id: i64) -> Result<(), SqliteManagerError> {
+    pub fn remove_cron_task(&self, task_id: i64) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         conn.execute("DELETE FROM cron_tasks WHERE task_id = ?1", params![task_id])?;
         Ok(())
     }
 
-    fn get_cron_task(&self, task_id: i64) -> Result<Option<CronTask>, SqliteManagerError> {
+    pub fn get_cron_task(&self, task_id: i64) -> Result<Option<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
             conn.prepare("SELECT task_id, cron, created_at, last_modified, action FROM cron_tasks WHERE task_id = ?1")?;
@@ -51,7 +51,7 @@ impl SqliteManager {
         }
     }
 
-    fn update_cron_task(&self, task_id: i64, cron: &str, action: &CronTaskAction) -> Result<(), SqliteManagerError> {
+    pub fn update_cron_task(&self, task_id: i64, cron: &str, action: &CronTaskAction) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -67,7 +67,7 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn get_all_cron_tasks(&self) -> Result<Vec<CronTask>, SqliteManagerError> {
+    pub fn get_all_cron_tasks(&self) -> Result<Vec<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT task_id, cron, created_at, last_modified, action FROM cron_tasks")?;
         let cron_task_iter = stmt.query_map([], |row| {
@@ -90,7 +90,7 @@ impl SqliteManager {
     }
 
     // Add a new execution record for a cron task
-    fn add_cron_task_execution(
+    pub fn add_cron_task_execution(
         &self,
         task_id: i64,
         execution_time: &str,
@@ -106,7 +106,7 @@ impl SqliteManager {
     }
 
     // Get all execution records
-    fn get_all_cron_task_executions(&self) -> Result<Vec<(i64, String, bool, Option<String>)>, SqliteManagerError> {
+    pub fn get_all_cron_task_executions(&self) -> Result<Vec<(i64, String, bool, Option<String>)>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
             conn.prepare("SELECT task_id, execution_time, success, error_message FROM cron_task_executions")?;
@@ -120,7 +120,7 @@ impl SqliteManager {
     }
 
     // Get all executions for a specific cron task
-    fn get_cron_task_executions(
+    pub fn get_cron_task_executions(
         &self,
         task_id: i64,
     ) -> Result<Vec<(String, bool, Option<String>)>, SqliteManagerError> {
@@ -137,7 +137,7 @@ impl SqliteManager {
     }
 
     // Get a specific execution record
-    fn get_cron_task_execution(
+    pub fn get_cron_task_execution(
         &self,
         execution_id: i64,
     ) -> Result<Option<(i64, String, bool, Option<String>)>, SqliteManagerError> {
