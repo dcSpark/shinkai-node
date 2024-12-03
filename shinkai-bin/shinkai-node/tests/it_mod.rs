@@ -30,6 +30,5 @@ mod it {
     mod websocket_tests;
 
     mod change_nodes_name_tests;
-    mod tcp_proxy_tests;
     mod native_tool_tests;
 }

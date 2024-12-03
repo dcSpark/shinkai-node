@@ -1077,6 +1077,7 @@ impl Node {
                     retry_message.message.external_metadata
                 ),
             );
+            
 
             // Retry the message
             Node::send(
