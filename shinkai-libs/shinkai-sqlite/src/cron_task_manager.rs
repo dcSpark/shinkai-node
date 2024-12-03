@@ -1,151 +1,183 @@
-use std::collections::HashMap;
-
-use chrono::Utc;
+use crate::SqliteManager;
+use crate::SqliteManagerError;
 use rusqlite::params;
-use shinkai_message_primitives::schemas::{cron_task::CronTask, shinkai_name::ShinkaiName};
-
-use crate::{SqliteManager, SqliteManagerError};
+use serde_json;
+use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 
 impl SqliteManager {
-    pub fn add_cron_task(
-        &self,
-        profile: ShinkaiName,
-        task_id: String,
-        cron: String,
-        prompt: String,
-        subprompt: String,
-        url: String,
-        crawl_links: bool,
-        llm_provider_id: String,
-    ) -> Result<(), SqliteManagerError> {
-        let conn = self.get_connection()?;
-        conn.execute(
-            "INSERT INTO cron_tasks (full_identity_name, task_id, cron, prompt, subprompt, url, crawl_links, created_at, llm_provider_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![profile.full_name, task_id, cron, prompt, subprompt, url, crawl_links, Utc::now().to_rfc3339(), llm_provider_id],
+    pub fn add_cron_task(&self, cron: &str, action: &CronTaskAction) -> Result<i64, SqliteManagerError> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let last_modified = created_at.clone();
+        let action_json = serde_json::to_string(action)?;
+
+        tx.execute(
+            "INSERT INTO cron_tasks (cron, created_at, last_modified, action) VALUES (?1, ?2, ?3, ?4)",
+            params![cron, created_at, last_modified, action_json],
         )?;
+
+        let task_id = tx.last_insert_rowid();
+        tx.commit()?;
+        Ok(task_id)
+    }
+
+    pub fn remove_cron_task(&self, task_id: i64) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM cron_tasks WHERE task_id = ?1", params![task_id])?;
         Ok(())
     }
 
-    pub fn remove_cron_task(&self, profile: ShinkaiName, task_id: String) -> Result<(), SqliteManagerError> {
+    pub fn get_cron_task(&self, task_id: i64) -> Result<Option<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        conn.execute(
-            "DELETE FROM cron_tasks WHERE full_identity_name = ?1 AND task_id = ?2",
-            params![profile.full_name, task_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_all_cron_tasks_from_all_profiles(
-        &self,
-        _node_name: ShinkaiName,
-    ) -> Result<HashMap<String, Vec<(String, CronTask)>>, SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT full_identity_name, task_id, cron, prompt, subprompt, url, crawl_links, created_at, llm_provider_id FROM cron_tasks")?;
-        let mut rows = stmt.query([])?;
-
-        let mut result: HashMap<String, Vec<(String, CronTask)>> = HashMap::new();
-        while let Some(row) = rows.next()? {
-            let full_identity_name: String = row.get(0)?;
-            let task_id: String = row.get(1)?;
-            let cron: String = row.get(2)?;
-            let prompt: String = row.get(3)?;
-            let subprompt: String = row.get(4)?;
-            let url: String = row.get(5)?;
-            let crawl_links: bool = row.get(6)?;
-            let created_at: String = row.get(7)?;
-            let llm_provider_id: String = row.get(8)?;
-
-            let cron_task = CronTask {
-                task_id: task_id.clone(),
-                cron,
-                prompt,
-                subprompt,
-                url,
-                crawl_links,
-                created_at,
-                llm_provider_id,
-            };
-
-            if let Some(tasks) = result.get_mut(&full_identity_name) {
-                tasks.push((task_id, cron_task));
-            } else {
-                result.insert(full_identity_name, vec![(task_id, cron_task)]);
-            }
-        }
-
-        Ok(result)
-    }
-
-    pub fn get_all_cron_tasks_for_profile(
-        &self,
-        profile: ShinkaiName,
-    ) -> Result<HashMap<String, CronTask>, SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT task_id, cron, prompt, subprompt, url, crawl_links, created_at, llm_provider_id FROM cron_tasks WHERE full_identity_name = ?1")?;
-        let mut rows = stmt.query(params![profile.full_name])?;
-
-        let mut result: HashMap<String, CronTask> = HashMap::new();
-        while let Some(row) = rows.next()? {
-            let task_id: String = row.get(0)?;
-            let cron: String = row.get(1)?;
-            let prompt: String = row.get(2)?;
-            let subprompt: String = row.get(3)?;
-            let url: String = row.get(4)?;
-            let crawl_links: bool = row.get(5)?;
-            let created_at: String = row.get(6)?;
-            let llm_provider_id: String = row.get(7)?;
-
-            let cron_task = CronTask {
-                task_id: task_id.clone(),
-                cron,
-                prompt,
-                subprompt,
-                url,
-                crawl_links,
-                created_at,
-                llm_provider_id,
-            };
-
-            result.insert(task_id, cron_task);
-        }
-
-        Ok(result)
-    }
-
-    pub fn get_cron_task(&self, profile: ShinkaiName, task_id: String) -> Result<CronTask, SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT cron, prompt, subprompt, url, crawl_links, created_at, llm_provider_id FROM cron_tasks WHERE full_identity_name = ?1 AND task_id = ?2")?;
-        let mut rows = stmt.query(params![profile.full_name, task_id])?;
+        let mut stmt =
+            conn.prepare("SELECT task_id, cron, created_at, last_modified, action FROM cron_tasks WHERE task_id = ?1")?;
+        let mut rows = stmt.query(params![task_id])?;
 
         if let Some(row) = rows.next()? {
-            let cron: String = row.get(0)?;
-            let prompt: String = row.get(1)?;
-            let subprompt: String = row.get(2)?;
-            let url: String = row.get(3)?;
-            let crawl_links: bool = row.get(4)?;
-            let created_at: String = row.get(5)?;
-            let llm_provider_id: String = row.get(6)?;
+            let action_json: String = row.get(4)?;
+            let action: CronTaskAction = serde_json::from_str(&action_json).map_err(SqliteManagerError::JsonError)?;
+
+            Ok(Some(CronTask {
+                task_id: row.get(0)?,
+                cron: row.get(1)?,
+                created_at: row.get(2)?,
+                last_modified: row.get(3)?,
+                action,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn update_cron_task(
+        &self,
+        task_id: i64,
+        cron: &str,
+        action: &CronTaskAction,
+    ) -> Result<(), SqliteManagerError> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        let last_modified = chrono::Utc::now().to_rfc3339();
+        let action_json = serde_json::to_string(action)?;
+
+        tx.execute(
+            "UPDATE cron_tasks SET cron = ?1, last_modified = ?2, action = ?3 WHERE task_id = ?4",
+            params![cron, last_modified, action_json, task_id],
+        )?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_all_cron_tasks(&self) -> Result<Vec<CronTask>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT task_id, cron, created_at, last_modified, action FROM cron_tasks")?;
+        let cron_task_iter = stmt.query_map([], |row| {
+            let action_json: String = row.get(4)?;
+            let action: CronTaskAction =
+                serde_json::from_str(&action_json).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
             Ok(CronTask {
-                task_id,
-                cron,
-                prompt,
-                subprompt,
-                url,
-                crawl_links,
-                created_at,
-                llm_provider_id,
+                task_id: row.get(0)?,
+                cron: row.get(1)?,
+                created_at: row.get(2)?,
+                last_modified: row.get(3)?,
+                action,
             })
+        })?;
+
+        cron_task_iter
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(SqliteManagerError::DatabaseError)
+    }
+
+    // Add a new execution record for a cron task
+    pub fn add_cron_task_execution(
+        &self,
+        task_id: i64,
+        execution_time: &str,
+        success: bool,
+        error_message: Option<&str>,
+    ) -> Result<i64, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO cron_task_executions (task_id, execution_time, success, error_message) VALUES (?1, ?2, ?3, ?4)",
+            params![task_id, execution_time, success as i32, error_message],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    // Get all execution records
+    pub fn get_all_cron_task_executions(&self) -> Result<Vec<(i64, String, bool, Option<String>)>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt =
+            conn.prepare("SELECT task_id, execution_time, success, error_message FROM cron_task_executions")?;
+        let execution_iter = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get::<_, i32>(2)? != 0, row.get(3)?))
+        })?;
+
+        execution_iter
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(SqliteManagerError::DatabaseError)
+    }
+
+    // Get all executions for a specific cron task
+    pub fn get_cron_task_executions(
+        &self,
+        task_id: i64,
+    ) -> Result<Vec<(String, bool, Option<String>)>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt =
+            conn.prepare("SELECT execution_time, success, error_message FROM cron_task_executions WHERE task_id = ?1")?;
+        let execution_iter = stmt.query_map(params![task_id], |row| {
+            Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get(2)?))
+        })?;
+
+        execution_iter
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(SqliteManagerError::DatabaseError)
+    }
+
+    // Get a specific execution record
+    pub fn get_cron_task_execution(
+        &self,
+        execution_id: i64,
+    ) -> Result<Option<(i64, String, bool, Option<String>)>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT task_id, execution_time, success, error_message FROM cron_task_executions WHERE execution_id = ?1",
+        )?;
+        let mut rows = stmt.query(params![execution_id])?;
+
+        if let Some(row) = rows.next()? {
+            Ok(Some((
+                row.get(0)?,
+                row.get(1)?,
+                row.get::<_, i32>(2)? != 0,
+                row.get(3)?,
+            )))
         } else {
-            Err(SqliteManagerError::DataNotFound)
+            Ok(None)
         }
+    }
+
+    pub fn update_cron_task_last_executed(&self, task_id: i64, last_executed: &str) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE cron_tasks SET last_executed = ?1 WHERE task_id = ?2",
+            params![last_executed, task_id],
+        )?;
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -162,171 +194,258 @@ mod tests {
 
     #[test]
     fn test_add_and_get_cron_task() {
-        let db = setup_test_db();
-        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
-        let task_id = "test_task_id".to_string();
-        let cron = "0 0 * * *".to_string();
-        let prompt = "test_prompt".to_string();
-        let subprompt = "test_subprompt".to_string();
-        let url = "https://example.com".to_string();
-        let crawl_links = true;
-        let llm_provider_id = "test_llm_provider_id".to_string();
+        let manager = setup_test_db();
+        let action = CronTaskAction::SendMessageToJob {
+            job_id: "test_job_id".to_string(),
+            message: JobMessage {
+                job_id: "test_job_id".to_string(),
+                content: "test_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron = "* * * * *";
 
-        db.add_cron_task(
-            profile.clone(),
-            task_id.clone(),
-            cron.clone(),
-            prompt.clone(),
-            subprompt.clone(),
-            url.clone(),
-            crawl_links,
-            llm_provider_id.clone(),
-        )
-        .unwrap();
+        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let retrieved_task = manager.get_cron_task(task_id).unwrap().unwrap();
 
-        let cron_task = db.get_cron_task(profile.clone(), task_id.clone()).unwrap();
-        assert_eq!(cron_task.task_id, task_id);
-        assert_eq!(cron_task.cron, cron);
-        assert_eq!(cron_task.prompt, prompt);
-        assert_eq!(cron_task.subprompt, subprompt);
-        assert_eq!(cron_task.url, url);
-        assert_eq!(cron_task.crawl_links, crawl_links);
-        assert_eq!(cron_task.llm_provider_id, llm_provider_id);
-    }
-
-    #[test]
-    fn test_get_all_cron_tasks_for_profile() {
-        let db = setup_test_db();
-        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
-        let task_id = "test_task_id".to_string();
-        let cron = "0 0 * * *".to_string();
-        let prompt = "test_prompt".to_string();
-        let subprompt = "test_subprompt".to_string();
-        let url = "https://example.com".to_string();
-        let crawl_links = true;
-        let llm_provider_id = "test_llm_provider_id".to_string();
-
-        db.add_cron_task(
-            profile.clone(),
-            task_id.clone(),
-            cron.clone(),
-            prompt.clone(),
-            subprompt.clone(),
-            url.clone(),
-            crawl_links,
-            llm_provider_id.clone(),
-        )
-        .unwrap();
-
-        let cron_tasks = db.get_all_cron_tasks_for_profile(profile.clone()).unwrap();
-        assert_eq!(cron_tasks.len(), 1);
-
-        let cron_task = cron_tasks.get(&task_id).unwrap();
-        assert_eq!(cron_task.task_id, task_id);
-        assert_eq!(cron_task.cron, cron);
-        assert_eq!(cron_task.prompt, prompt);
-        assert_eq!(cron_task.subprompt, subprompt);
-        assert_eq!(cron_task.url, url);
-        assert_eq!(cron_task.crawl_links, crawl_links);
-        assert_eq!(cron_task.llm_provider_id, llm_provider_id);
-    }
-
-    #[test]
-    fn test_get_all_cron_tasks_from_all_profiles() {
-        let db = setup_test_db();
-        let profile1 = ShinkaiName::new("@@test_user1.shinkai/main".to_string()).unwrap();
-        let profile2 = ShinkaiName::new("@@test_user2.shinkai/main".to_string()).unwrap();
-        let task_id1 = "test_task_id1".to_string();
-        let task_id2 = "test_task_id2".to_string();
-        let cron = "0 0 * * *".to_string();
-        let prompt = "test_prompt".to_string();
-        let subprompt = "test_subprompt".to_string();
-        let url = "https://example.com".to_string();
-        let crawl_links = true;
-        let llm_provider_id = "test_llm_provider_id".to_string();
-
-        db.add_cron_task(
-            profile1.clone(),
-            task_id1.clone(),
-            cron.clone(),
-            prompt.clone(),
-            subprompt.clone(),
-            url.clone(),
-            crawl_links,
-            llm_provider_id.clone(),
-        )
-        .unwrap();
-
-        db.add_cron_task(
-            profile2.clone(),
-            task_id2.clone(),
-            cron.clone(),
-            prompt.clone(),
-            subprompt.clone(),
-            url.clone(),
-            crawl_links,
-            llm_provider_id.clone(),
-        )
-        .unwrap();
-
-        let cron_tasks = db.get_all_cron_tasks_from_all_profiles(profile1.clone()).unwrap();
-        assert_eq!(cron_tasks.len(), 2);
-
-        let cron_task1 = cron_tasks.get(&profile1.full_name).unwrap();
-        assert_eq!(cron_task1.len(), 1);
-        let cron_task1 = cron_task1.get(0).unwrap();
-        assert_eq!(cron_task1.0, task_id1);
-        assert_eq!(cron_task1.1.task_id, task_id1);
-        assert_eq!(cron_task1.1.cron, cron);
-        assert_eq!(cron_task1.1.prompt, prompt);
-        assert_eq!(cron_task1.1.subprompt, subprompt);
-        assert_eq!(cron_task1.1.url, url);
-        assert_eq!(cron_task1.1.crawl_links, crawl_links);
-        assert_eq!(cron_task1.1.llm_provider_id, llm_provider_id);
-
-        let cron_task2 = cron_tasks.get(&profile2.full_name).unwrap();
-        assert_eq!(cron_task2.len(), 1);
-        let cron_task2 = cron_task2.get(0).unwrap();
-        assert_eq!(cron_task2.0, task_id2);
-        assert_eq!(cron_task2.1.task_id, task_id2);
-        assert_eq!(cron_task2.1.cron, cron);
-        assert_eq!(cron_task2.1.prompt, prompt);
-        assert_eq!(cron_task2.1.subprompt, subprompt);
-        assert_eq!(cron_task2.1.url, url);
-        assert_eq!(cron_task2.1.crawl_links, crawl_links);
-        assert_eq!(cron_task2.1.llm_provider_id, llm_provider_id);
+        assert_eq!(retrieved_task.cron, cron);
+        assert_eq!(retrieved_task.action, action);
     }
 
     #[test]
     fn test_remove_cron_task() {
-        let db = setup_test_db();
-        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
-        let task_id = "test_task_id".to_string();
-        let cron = "0 0 * * *".to_string();
-        let prompt = "test_prompt".to_string();
-        let subprompt = "test_subprompt".to_string();
-        let url = "https://example.com".to_string();
-        let crawl_links = true;
-        let llm_provider_id = "test_llm_provider_id".to_string();
+        let manager = setup_test_db();
+        let action = CronTaskAction::SendMessageToJob {
+            job_id: "test_job_id".to_string(),
+            message: JobMessage {
+                job_id: "test_job_id".to_string(),
+                content: "test_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron = "* * * * *";
 
-        db.add_cron_task(
-            profile.clone(),
-            task_id.clone(),
-            cron.clone(),
-            prompt.clone(),
-            subprompt.clone(),
-            url.clone(),
-            crawl_links,
-            llm_provider_id.clone(),
-        )
-        .unwrap();
+        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        manager.remove_cron_task(task_id).unwrap();
+        let retrieved_task = manager.get_cron_task(task_id).unwrap();
 
-        let cron_task = db.get_cron_task(profile.clone(), task_id.clone()).unwrap();
-        assert_eq!(cron_task.task_id, task_id);
+        assert!(retrieved_task.is_none());
+    }
 
-        db.remove_cron_task(profile.clone(), task_id.clone()).unwrap();
+    #[test]
+    fn test_add_multiple_and_get_all_cron_tasks() {
+        let manager = setup_test_db();
+        let action1 = CronTaskAction::SendMessageToJob {
+            job_id: "job_id_1".to_string(),
+            message: JobMessage {
+                job_id: "job_id_1".to_string(),
+                content: "message_1".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let action2 = CronTaskAction::SendMessageToJob {
+            job_id: "job_id_2".to_string(),
+            message: JobMessage {
+                job_id: "job_id_2".to_string(),
+                content: "message_2".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron1 = "0 0 * * *";
+        let cron2 = "0 12 * * *";
 
-        let cron_tasks = db.get_all_cron_tasks_for_profile(profile.clone()).unwrap();
-        assert_eq!(cron_tasks.len(), 0);
+        manager.add_cron_task(cron1, &action1).unwrap();
+        manager.add_cron_task(cron2, &action2).unwrap();
+
+        let all_tasks = manager.get_all_cron_tasks().unwrap();
+        assert_eq!(all_tasks.len(), 2);
+        assert_eq!(all_tasks[0].cron, cron1);
+        assert_eq!(all_tasks[1].cron, cron2);
+    }
+
+    #[test]
+    fn test_update_cron_task() {
+        let manager = setup_test_db();
+        let action = CronTaskAction::SendMessageToJob {
+            job_id: "test_job_id".to_string(),
+            message: JobMessage {
+                job_id: "test_job_id".to_string(),
+                content: "test_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron = "* * * * *";
+
+        let task_id = manager.add_cron_task(cron, &action).unwrap();
+
+        let updated_cron = "0 0 * * *";
+        let updated_action = CronTaskAction::SendMessageToJob {
+            job_id: "updated_job_id".to_string(),
+            message: JobMessage {
+                job_id: "updated_job_id".to_string(),
+                content: "updated_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+
+        manager
+            .update_cron_task(task_id, updated_cron, &updated_action)
+            .unwrap();
+        let updated_task = manager.get_cron_task(task_id).unwrap().unwrap();
+
+        assert_eq!(updated_task.cron, updated_cron);
+        assert_eq!(updated_task.action, updated_action);
+    }
+
+    #[test]
+    fn test_add_and_get_cron_task_execution() {
+        let manager = setup_test_db();
+        let action = CronTaskAction::SendMessageToJob {
+            job_id: "test_job_id".to_string(),
+            message: JobMessage {
+                job_id: "test_job_id".to_string(),
+                content: "test_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron = "* * * * *";
+
+        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let execution_time = chrono::Utc::now().to_rfc3339();
+        let success = true;
+        let error_message: Option<&str> = None;
+
+        let execution_id = manager
+            .add_cron_task_execution(task_id, &execution_time, success, error_message)
+            .unwrap();
+        let execution_record = manager.get_cron_task_execution(execution_id).unwrap().unwrap();
+
+        assert_eq!(execution_record.0, task_id);
+        assert_eq!(execution_record.1, execution_time);
+        assert_eq!(execution_record.2, success);
+        assert_eq!(execution_record.3, error_message.map(|s| s.to_string()));
+    }
+
+    #[test]
+    fn test_get_all_cron_task_executions() {
+        let manager = setup_test_db();
+        let action = CronTaskAction::SendMessageToJob {
+            job_id: "test_job_id".to_string(),
+            message: JobMessage {
+                job_id: "test_job_id".to_string(),
+                content: "test_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron = "* * * * *";
+
+        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let execution_time1 = chrono::Utc::now().to_rfc3339();
+        let execution_time2 = chrono::Utc::now().to_rfc3339();
+        let success = true;
+        let error_message = None;
+
+        manager
+            .add_cron_task_execution(task_id, &execution_time1, success, error_message)
+            .unwrap();
+        manager
+            .add_cron_task_execution(task_id, &execution_time2, success, error_message)
+            .unwrap();
+
+        let all_executions = manager.get_all_cron_task_executions().unwrap();
+        assert_eq!(all_executions.len(), 2);
+    }
+
+    #[test]
+    fn test_get_cron_task_executions_for_specific_task() {
+        let manager = setup_test_db();
+        let action = CronTaskAction::SendMessageToJob {
+            job_id: "test_job_id".to_string(),
+            message: JobMessage {
+                job_id: "test_job_id".to_string(),
+                content: "test_message".to_string(),
+                files_inbox: "".to_string(),
+                parent: None,
+                workflow_code: None,
+                workflow_name: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+            },
+        };
+        let cron = "* * * * *";
+
+        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let execution_time1 = chrono::Utc::now().to_rfc3339();
+        let execution_time2 = chrono::Utc::now().to_rfc3339();
+        let success = true;
+        let error_message = None;
+
+        manager
+            .add_cron_task_execution(task_id, &execution_time1, success, error_message)
+            .unwrap();
+        manager
+            .add_cron_task_execution(task_id, &execution_time2, success, error_message)
+            .unwrap();
+
+        let task_executions = manager.get_cron_task_executions(task_id).unwrap();
+        assert_eq!(task_executions.len(), 2);
     }
 }

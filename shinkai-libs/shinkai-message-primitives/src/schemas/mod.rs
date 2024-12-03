@@ -1,5 +1,6 @@
 pub mod coinbase_mpc_config;
 pub mod cron_task;
+pub mod crontab;
 pub mod custom_prompt;
 pub mod file_links;
 pub mod identity;

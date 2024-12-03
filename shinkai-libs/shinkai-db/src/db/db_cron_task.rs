@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
 
-use shinkai_message_primitives::schemas::{cron_task::CronTask, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 impl ShinkaiDB {
     #[allow(clippy::too_many_arguments)]

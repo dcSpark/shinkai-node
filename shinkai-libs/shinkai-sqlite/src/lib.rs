@@ -132,7 +132,8 @@ impl SqliteManager {
     // Initializes the required tables in the SQLite database
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_agents_table(conn)?;
-        Self::initialize_cron_task_table(conn)?;
+        Self::initialize_cron_tasks_table(conn)?;
+        Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_folder_subscriptions_requirements_table(conn)?;
         Self::initialize_folder_subscriptions_upload_credentials_table(conn)?;
@@ -183,25 +184,6 @@ impl SqliteManager {
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
                 config TEXT -- Store as a JSON string
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_cron_task_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS cron_tasks (
-                full_identity_name TEXT NOT NULL,
-                task_id TEXT NOT NULL,
-                cron TEXT NOT NULL,
-                prompt TEXT NOT NULL,
-                subprompt TEXT NOT NULL,
-                url TEXT NOT NULL,
-                crawl_links INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                llm_provider_id TEXT NOT NULL
             );",
             [],
         )?;
@@ -789,6 +771,38 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS app_version (
                 version TEXT NOT NULL UNIQUE,
                 needs_global_reset INTEGER NOT NULL CHECK (needs_global_reset IN (0, 1))
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Updated method to initialize the cron_tasks table
+    fn initialize_cron_tasks_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cron_tasks (
+                task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cron TEXT NOT NULL,
+                created_at TEXT NOT NULL, -- Field to track when the task was created
+                last_modified TEXT NOT NULL,
+                last_executed TEXT, -- Field to track the last execution time
+                action TEXT NOT NULL -- Store serialized CronTaskAction
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // New method to initialize the cron_task_executions table
+    fn initialize_cron_task_executions_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cron_task_executions (
+                execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                execution_time TEXT NOT NULL,
+                success INTEGER NOT NULL CHECK (success IN (0, 1)),
+                error_message TEXT,
+                FOREIGN KEY(task_id) REFERENCES cron_tasks(task_id)
             );",
             [],
         )?;
