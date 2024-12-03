@@ -3,7 +3,7 @@ use std::{env, fs, path::Path, sync::Arc};
 use crate::{
     llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
-    network::{network_manager::external_subscriber_manager::ExternalSubscriberManager, node_error::NodeError, Node},
+    network::{node_error::NodeError, Node},
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -23,7 +23,6 @@ use shinkai_message_primitives::{
         },
     },
 };
-use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
@@ -89,7 +88,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         Self::retrieve_path_json_common(
@@ -100,7 +98,6 @@ impl Node {
             identity_manager,
             encryption_secret_key,
             potentially_encrypted_msg,
-            ext_subscription_manager,
             res,
             false,
         )
@@ -116,7 +113,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         Self::retrieve_path_json_common(
@@ -127,7 +123,6 @@ impl Node {
             identity_manager,
             encryption_secret_key,
             potentially_encrypted_msg,
-            ext_subscription_manager,
             res,
             true,
         )
@@ -143,7 +138,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<Value, APIError>>,
         is_minimal: bool, // Determines which JSON representation to retrieve
     ) -> Result<(), NodeError> {
@@ -200,52 +194,9 @@ impl Node {
             vector_fs.retrieve_fs_path_simplified_json_value(&reader).await
         };
 
-        fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
-            if let Some(path) = obj.get("path") {
-                if let Some(path_str) = path.as_str() {
-                    if let Some(shared_folder) = shared_folders.iter().find(|sf| sf.path == path_str) {
-                        let mut shared_folder_info = serde_json::to_value(shared_folder).unwrap();
-                        // Remove the "tree" field from the shared_folder_info before adding it to the obj
-                        if let Some(obj) = shared_folder_info.as_object_mut() {
-                            obj.remove("tree");
-                        }
-                        obj.as_object_mut().unwrap().insert(
-                            "shared_folder_info".to_string(),
-                            serde_json::to_value(shared_folder).unwrap(),
-                        );
-                    }
-                }
-            }
-
-            if let Some(child_folders) = obj.get_mut("child_folders") {
-                if let Some(child_folders_array) = child_folders.as_array_mut() {
-                    for child_folder in child_folders_array {
-                        add_shared_folder_info(child_folder, shared_folders);
-                    }
-                }
-            }
-        }
-
         match result {
-            Ok(mut result_value) => {
-                let mut subscription_manager = ext_subscription_manager.lock().await;
-                let shared_folders_result = subscription_manager
-                    .available_shared_folders(
-                        requester_name.extract_node(),
-                        requester_name.get_profile_name_string().unwrap_or_default(),
-                        requester_name.extract_node(),
-                        requester_name.get_profile_name_string().unwrap_or_default(),
-                        input_payload.path,
-                    )
-                    .await;
-                drop(subscription_manager);
-
-                if let Ok(shared_folders) = shared_folders_result {
-                    add_shared_folder_info(&mut result_value, &shared_folders);
-                }
-
-                let _ = res.send(Ok(result_value)).await.map_err(|_| ());
-                Ok(())
+            Ok(result) => {
+                let _ = res.send(Ok(result)).await.map_err(|_| ());
             }
             Err(e) => {
                 let api_error = APIError {
@@ -254,9 +205,9 @@ impl Node {
                     message: format!("Failed to retrieve fs path json: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
-                Ok(())
             }
         }
+        Ok(())
     }
 
     pub async fn api_vec_fs_search_items(
@@ -1084,7 +1035,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1104,16 +1054,7 @@ impl Node {
                     return Ok(());
                 }
             };
-        Self::process_and_save_files(
-            db,
-            vector_fs,
-            input_payload,
-            requester_name,
-            embedding_generator,
-            external_subscriber_manager,
-            res,
-        )
-        .await
+        Self::process_and_save_files(db, vector_fs, input_payload, requester_name, embedding_generator, res).await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1123,7 +1064,6 @@ impl Node {
         input_payload: APIConvertFilesAndSaveToFolder,
         requester_name: ShinkaiName,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
         let destination_path = match VRPath::from_string(&input_payload.path) {
@@ -1244,11 +1184,6 @@ impl Node {
             }
         }
 
-        // We need to force ext_manager to update their cache
-        {
-            let mut ext_manager = external_subscriber_manager.lock().await;
-            let _ = ext_manager.update_shared_folders().await;
-        }
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
         Ok(())
     }

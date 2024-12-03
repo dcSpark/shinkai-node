@@ -45,7 +45,6 @@ reqwest = { workspace = true, features = [
     "stream",
 ] }
 keyphrases = "0.3.3"
-shinkai_subscription_manager = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }

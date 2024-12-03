@@ -482,7 +482,6 @@ async fn send_network_message(socket: &mut tokio::net::TcpStream, msg: &NetworkM
     let mut data_to_send = Vec::new();
     let header_data_to_send = vec![match msg.message_type {
         NetworkMessageType::ShinkaiMessage => 0x01,
-        NetworkMessageType::VRKaiPathPair => 0x02,
         NetworkMessageType::ProxyMessage => 0x03,
     }];
     data_to_send.extend_from_slice(&total_length);

@@ -20,7 +20,6 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -497,15 +496,15 @@ impl ExtAgentOfferingsManager {
     ///
     /// # Returns
     ///
-    /// * `Result<bool, SubscriberManagerError>` - True if successful, otherwise an error.
-    pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
+    /// * `Result<bool, AgentOfferingManagerError>` - True if successful, otherwise an error.
+    pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, AgentOfferingManagerError> {
         let db = self
             .db
             .upgrade()
-            .ok_or_else(|| SubscriberManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
         db.remove_tool_offering(&tool_key_name)
-            .map_err(|e| SubscriberManagerError::OperationFailed(format!("Failed to unshare tool: {:?}", e)))?;
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to unshare tool: {:?}", e)))?;
 
         Ok(true)
     }

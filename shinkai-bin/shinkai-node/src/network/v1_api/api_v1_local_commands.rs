@@ -1,8 +1,6 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
-use crate::network::network_manager::external_subscriber_manager::ExternalSubscriberManager;
-use crate::network::network_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::network::Node;
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -374,58 +372,5 @@ impl Node {
         )
         .await;
         let _ = res.send(result).await;
-    }
-
-    pub async fn local_ext_manager_process_subscription_updates(
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        res: Sender<Result<(), String>>,
-    ) {
-        {
-            let subscription_manager = ext_subscription_manager.lock().await;
-            subscription_manager.test_process_subscription_updates().await;
-        }
-
-        let _ = res.send(Ok(())).await;
-    }
-
-    pub async fn local_http_uploader_process_subscription_updates(
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        res: Sender<Result<(), String>>,
-    ) {
-        {
-            let subscription_manager = ext_subscription_manager.lock().await;
-            subscription_manager
-                .test_process_http_upload_subscription_updates()
-                .await;
-        }
-
-        let _ = res.send(Ok(())).await;
-    }
-
-    pub async fn local_mysubscription_manager_process_download_updates(
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        res: Sender<Result<(), String>>,
-    ) {
-        {
-            let subscription_manager = my_subscription_manager.lock().await;
-            let _ = subscription_manager
-                .call_process_subscription_job_message_queued()
-                .await;
-        }
-
-        let _ = res.send(Ok(())).await;
-    }
-
-    pub async fn local_mysubscription_trigger_http_download(
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        res: Sender<Result<(), String>>,
-    ) {
-        {
-            let subscription_manager = my_subscription_manager.lock().await;
-            let http_download_manager = subscription_manager.http_download_manager.lock().await;
-            let _ = http_download_manager.test_process_job_queue().await;
-        }
-
-        let _ = res.send(Ok(())).await;
     }
 }

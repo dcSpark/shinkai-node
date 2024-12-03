@@ -1,8 +1,6 @@
 #![recursion_limit = "512"]
 
 mod it {
-    mod a0_subscription_manager_tests;
-    mod a1_http_subscription_tests;
     mod a2_sheet_workflow_tests;
     mod a3_micropayment_flow_tests;
     mod cron_job_tests;
@@ -26,7 +24,6 @@ mod it {
     // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
-    mod subscription_http_upload_tests;
     mod utils;
     mod vector_fs_api_tests;
     mod vector_fs_tests;

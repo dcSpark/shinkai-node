@@ -12,14 +12,15 @@ use warp::{
 };
 
 use super::{
-    api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc, api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_subscriptions::SubscriptionsApiDoc, api_v2_handlers_tools::ToolsApiDoc, api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc
+    api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc,
+    api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_tools::ToolsApiDoc, api_v2_handlers_vecfs::VecFsApiDoc,
+    api_v2_handlers_wallets::WalletApiDoc,
 };
 
 pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let config = Arc::new(Config::new([
         "/v2/openapi/general.json",
         "/v2/openapi/jobs.json",
-        "/v2/openapi/subscriptions.json",
         "/v2/openapi/vecfs.json",
         "/v2/openapi/wallet.json",
         "/v2/openapi/tools.json",
@@ -33,10 +34,6 @@ pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = wa
     let jobs_schema_route = warp::path!("openapi" / "jobs.json")
         .and(warp::get())
         .map(|| warp::reply::json(&JobsApiDoc::openapi()));
-
-    let subscriptions_schema_route = warp::path!("openapi" / "subscriptions.json")
-        .and(warp::get())
-        .map(|| warp::reply::json(&SubscriptionsApiDoc::openapi()));
 
     let vecfs_schema_route = warp::path!("openapi" / "vecfs.json")
         .and(warp::get())
@@ -63,7 +60,6 @@ pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = wa
 
     general_schema_route
         .or(jobs_schema_route)
-        .or(subscriptions_schema_route)
         .or(vecfs_schema_route)
         .or(wallet_schema_route)
         .or(tools_schema_route)
