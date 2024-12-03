@@ -3,10 +3,11 @@ use crate::{
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
     tools::{
+        llm_language_support::file_support_ts::generate_file_support_ts,
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation},
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
 };
 use async_channel::Sender;
@@ -59,7 +60,7 @@ impl Node {
 
         // Perform the internal search using SqliteManager
         // TODO: implement something like BTS for tools
-        match db.read().await.tool_vector_search(&query, 5).await {
+        match db.read().await.tool_vector_search(&query, 5, false, true).await {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
@@ -731,32 +732,36 @@ impl Node {
             }
         };
 
-        let code_prompt = match generate_code_prompt(language.clone(), "".to_string(), tool_definitions).await {
-            Ok(prompt) => prompt,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate code prompt: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let is_memory_required = tools
+            .iter()
+            .any(|tool| tool.contains("local:::rust_toolkit:::shinkai_sqlite_query_executor"));
+        let code_prompt =
+            match generate_code_prompt(language.clone(), is_memory_required, "".to_string(), tool_definitions).await {
+                Ok(prompt) => prompt,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate code prompt: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
-        let metadata_prompt = match tool_metadata_implementation(language.clone(), "".to_string(), tools.clone()).await
-        {
-            Ok(prompt) => prompt,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to generate tool definitions: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let metadata_prompt =
+            match tool_metadata_implementation_prompt(language.clone(), "".to_string(), tools.clone()).await {
+                Ok(prompt) => prompt,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate tool definitions: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         let library_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), false).await {
             Ok(code) => code,
@@ -791,6 +796,8 @@ impl Node {
                 "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
+                "supportLibraryHeaders": generate_file_support_ts(true),
+                "supportLibrary": generate_file_support_ts(false),
             })))
             .await;
         Ok(())
@@ -817,7 +824,8 @@ impl Node {
             return Ok(());
         }
         // Generate tool definitions
-        let tool_definitions = match generate_tool_definitions(tools, language.clone(), db.clone(), true).await {
+        let tool_definitions = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await
+        {
             Ok(definitions) => definitions,
             Err(err) => {
                 let api_error = APIError {
@@ -831,11 +839,15 @@ impl Node {
         };
 
         let prompt = job_message.content.clone();
+        let is_memory_required = tools
+            .clone()
+            .iter()
+            .any(|tool| tool.contains("local:::rust_toolkit:::shinkai_sqlite_query_executor"));
 
         // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
-            false => match generate_code_prompt(language, prompt, tool_definitions).await {
+            false => match generate_code_prompt(language, is_memory_required, prompt, tool_definitions).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {
@@ -961,7 +973,7 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation(language, code, tools).await {
+        let metadata = match tool_metadata_implementation_prompt(language, code, tools).await {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
@@ -1200,7 +1212,7 @@ impl Node {
 
         let job_message = JobMessage {
             job_id: job_id.clone(),
-            content: format!("Update the code to: {}", code),
+            content: format!("<input_command>Update the code to: {}</input_command>", code),
             files_inbox: "".to_string(),
             parent: None,
             workflow_code: None,
@@ -1208,6 +1220,7 @@ impl Node {
             sheet_job_data: None,
             callback: None,
             metadata: None,
+            tool_key: None,
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
@@ -1251,7 +1264,9 @@ impl Node {
 
         // Create the AI message
         let identity_secret_key_clone = clone_signature_secret_key(&node_signing_sk);
-        let ai_message_content = format!("```\n{}\n```", code);
+        // TODO This should be retrieved from the job (?) or from the endpoint
+        let language = "typescript";
+        let ai_message_content = format!("```{}\n{}\n```", language, code);
         let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             ai_message_content,
@@ -1265,8 +1280,6 @@ impl Node {
 
         // Add the AI message to the job inbox
         let add_ai_message_result = db
-            .write()
-            .await
             .add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None)
             .await;
 

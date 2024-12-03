@@ -187,8 +187,9 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using SqliteManager
-        match db.read().await.prompt_vector_search(&query, 20).await {
+        match db.read().await.prompt_vector_search(&query, 20, false).await {
             Ok(prompts) => {
+                let prompts: Vec<CustomPrompt> = prompts.into_iter().map(|(p, _)| p).collect();
                 // Log the elapsed time if LOG_ALL is set to 1
                 if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                     let elapsed_time = start_time.elapsed();

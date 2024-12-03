@@ -203,6 +203,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
+    pub user_tool_selected: Option<String>,
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
@@ -230,6 +231,7 @@ impl InferenceChainContext {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
+        user_tool_selected: Option<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
@@ -251,6 +253,7 @@ impl InferenceChainContext {
             vector_fs,
             full_job,
             user_message,
+            user_tool_selected,
             message_hash_id,
             image_files,
             llm_provider,
@@ -289,6 +292,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("vector_fs", &self.vector_fs)
             .field("full_job", &self.full_job)
             .field("user_message", &self.user_message)
+            .field("user_tool_selected", &self.user_tool_selected)
             .field("message_hash_id", &self.message_hash_id)
             .field("image_files", &self.image_files.len())
             .field("llm_provider", &self.llm_provider)

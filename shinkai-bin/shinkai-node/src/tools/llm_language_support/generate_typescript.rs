@@ -32,7 +32,6 @@
         return response.data;
     }
 */
-use crate::utils::environment::fetch_node_environment;
 use serde_json::Value;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
 
@@ -105,14 +104,10 @@ pub fn generate_typescript_definition(
     tool_playground: Option<ToolPlayground>,
 ) -> String {
     let mut typescript_output = String::new();
-    let node_env = fetch_node_environment();
-    let api_port = node_env.api_listen_address.port();
-
-    // Create function name before using tool
     let function_name = create_function_name_set(&tool);
 
-    typescript_output.push_str("/**\n");
-    typescript_output.push_str(&format!(" * {}\n", tool.description));
+    // Combine JSDoc comment generation
+    typescript_output.push_str(&format!("/**\n * {}\n", tool.description));
 
     // Generate parameter documentation
     for arg in &tool.input_args {
@@ -131,7 +126,6 @@ pub fn generate_typescript_definition(
 
     // Generate return type documentation
     typescript_output.push_str(" * @returns {\n");
-    // Parse the output_arg.json to get the return type properties
     if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
         if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
             for (prop_name, prop_value) in properties {
@@ -153,10 +147,9 @@ pub fn generate_typescript_definition(
             }
         }
     }
-    typescript_output.push_str(" * }\n");
+    typescript_output.push_str(" * }\n */\n");
 
-    typescript_output.push_str(" */\n");
-
+    // Function signature
     typescript_output.push_str(&format!("export async function {}(", function_name));
 
     // Generate function parameters
@@ -194,77 +187,94 @@ pub fn generate_typescript_definition(
     } else {
         // Only include implementation if not generating .d.ts
         typescript_output.push_str(" {\n");
-        typescript_output.push_str(r#"    const _url = `${Deno.env.get('SHINKAI_NODE_LOCATION')}/v2/tool_execution`;"#);
-        typescript_output.push_str("");
-        typescript_output.push_str("    const data = {\n");
-        typescript_output.push_str(&format!("        tool_router_key: '{}',\n", tool.tool_router_key));
-        typescript_output.push_str(&format!("        tool_type: '{}',\n", tool.tool_type.to_lowercase()));
-        typescript_output.push_str("        llm_provider: `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`,\n");
-        typescript_output.push_str("        parameters: {\n");
+        typescript_output.push_str(&format!(
+            "
+    const _url = `${{Deno.env.get('SHINKAI_NODE_LOCATION')}}/v2/tool_execution`;
+    const data = {{
+        tool_router_key: '{}',
+        tool_type: '{}',
+        llm_provider: `${{Deno.env.get('X_SHINKAI_LLM_PROVIDER')}}`,
+        parameters: {{
+",
+            tool.tool_router_key,
+            tool.tool_type.to_lowercase()
+        ));
+
+        // Parameters
         for arg in &tool.input_args {
             typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));
         }
-        typescript_output.push_str("        },\n");
-        typescript_output.push_str("    };\n");
-        typescript_output.push_str("    try {\n");
-        typescript_output.push_str("    const response = await axios.post(_url, data, {\n");
-        typescript_output.push_str("        headers: {\n");
-        typescript_output.push_str("            'Authorization': `Bearer ${Deno.env.get('BEARER')}`,\n");
-        typescript_output.push_str("            'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,\n");
-        typescript_output.push_str("            'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,\n");
-        typescript_output
-            .push_str("            'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`\n");
-        typescript_output.push_str("        }\n");
-        typescript_output.push_str("    });\n");
-        typescript_output.push_str("    return response.data;\n");
-        typescript_output.push_str("    } catch (error) {\n");
-        typescript_output.push_str("        return manageAxiosError(error);\n");
-        typescript_output.push_str("    }\n");
-        typescript_output.push_str("}\n");
+
+        // Combine the rest of implementation
+        typescript_output.push_str(
+            "
+        },
+    };
+    try {
+        const response = await axios.post(_url, data, {
+            headers: {
+                'Authorization': `Bearer ${Deno.env.get('BEARER')}`,
+                'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,
+                'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,
+                'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`
+            }
+        });
+        return response.data;
+    } catch (error) {
+        return manageAxiosError(error);
+    }
+}
+",
+        );
     }
 
     // If SQL tables exist, generate a query function
     if let Some(playground) = &tool_playground {
         if !playground.metadata.sql_tables.is_empty() {
-            typescript_output.push_str("\n");
-            typescript_output.push_str("/**\n");
+            // Combine SQL documentation into a single format! macro
             typescript_output.push_str(&format!(
-                " * Query the SQL database for results from {}\n",
+                "/**
+ * Query the SQL database for results from {}
+ * 
+ * Available SQL Tables:
+",
                 function_name
             ));
-            typescript_output.push_str(" * \n");
-            typescript_output.push_str(" * Available SQL Tables:\n");
+
             for table in &playground.metadata.sql_tables {
-                typescript_output.push_str(&format!(" * {}\n", table.name));
-                typescript_output.push_str(&format!(" * {}\n", table.definition));
+                typescript_output.push_str(&format!(" * {}\n * {}\n", table.name, table.definition));
             }
 
             if !playground.metadata.sql_queries.is_empty() {
-                typescript_output.push_str(" * \n");
-                typescript_output.push_str(" * Example / Reference SQL Queries:\n");
+                typescript_output.push_str(
+                    " * 
+                     * Example / Reference SQL Queries:\n",
+                );
                 for query in &playground.metadata.sql_queries {
-                    typescript_output.push_str(&format!(" * {}\n", query.name));
-                    typescript_output.push_str(&format!(" * {}\n", query.query));
+                    typescript_output.push_str(&format!(" * {}\n * {}\n", query.name, query.query));
                 }
             }
-            typescript_output.push_str(" * \n");
-            typescript_output.push_str(" * @param query - SQL query to execute\n");
-            typescript_output.push_str(" * @param params - Optional array of parameters for the query\n");
-            typescript_output.push_str(" * @returns Query results\n");
-            typescript_output.push_str(" */\n");
 
-            let function_name = create_function_name_set(&tool);
+            // Combine parameter documentation
+            typescript_output.push_str(
+                " * 
+* @param query - SQL query to execute
+* @param params - Optional array of parameters for the query
+* @returns Query results
+*/
+",
+            );
+
+            // Combine function definition and implementation
             typescript_output.push_str(&format!(
-                "async function query_{}(query: string, params?: any[]) {{\n",
-                function_name
+                "
+async function query_{}(query: string, params?: any[]) {{
+    return shinkaiSqliteQueryExecutor('{}', query, params);
+}}
+",
+                function_name,
+                "default" // TODO: make this dynamic
             ));
-            // TODO: make this dynamic. This should be defined by the tool key path (?)
-            let db_name = "default";
-            typescript_output.push_str(&format!(
-                "    return shinkaiSqliteQueryExecutor('{}', query, params);\n",
-                db_name
-            ));
-            typescript_output.push_str("}\n");
         }
     }
 

@@ -8,13 +8,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::tools::llm_language_support::generate_python::{generate_python_definition, python_common_code};
 use crate::tools::llm_language_support::generate_typescript::{generate_typescript_definition, typescript_common_code};
 use crate::tools::tool_implementation;
 
 // TODO keep in sync with execution_custom.rs
 pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
-    custom_tools.push(tool_implementation::llm_prompt_processor::LmPromptProcessorTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LmPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
     custom_tools
@@ -58,8 +59,19 @@ pub async fn generate_tool_definitions(
     all_tools = all_tools
         .into_iter()
         .filter(|tool| tools.contains(&tool.tool_router_key))
+        //
+        // TODO
+        // Only generate definitions for tools that don't have a config
+        //
+        // This is a temporary filter to avoid generating definitions for tools that have a CONFIG
+        // Remove a soon CONFIGS are been passed to the tool.
+        //
+        .filter(|tool| tool.config == None || tool.config.as_ref().unwrap().is_empty())
         .collect();
 
+    if all_tools.is_empty() {
+        return Ok("".to_string());
+    }
     let mut output = String::new();
     let mut generated_names = HashSet::new();
 
@@ -70,7 +82,9 @@ pub async fn generate_tool_definitions(
             }
         }
         CodeLanguage::Python => {
-            output.push_str("import os\nimport requests\nfrom typing import TypedDict, Optional\n\n");
+            if !only_headers {
+                output.push_str(&python_common_code());
+            }
         }
     }
 
@@ -98,7 +112,18 @@ pub async fn generate_tool_definitions(
                 output.push_str(&generate_typescript_definition(tool, only_headers, tool_playground));
             }
             CodeLanguage::Python => {
-                output.push_str("import os\nimport requests\nfrom typing import TypedDict, Optional\n\n");
+                let function_name =
+                    crate::tools::llm_language_support::generate_python::create_function_name_set(&tool);
+                if generated_names.contains(&function_name) {
+                    eprintln!(
+                        "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",
+                        function_name,
+                        tool.name.clone()
+                    );
+                    continue;
+                }
+                generated_names.insert(function_name);
+                output.push_str(&generate_python_definition(tool, only_headers, tool_playground));
             }
         }
     }

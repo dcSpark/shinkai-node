@@ -71,6 +71,7 @@ impl JobManager {
             vector_fs,
             full_job.clone(),
             parsed_user_message,
+            job_message.tool_key,
             message_hash_id,
             image_files,
             llm_provider,

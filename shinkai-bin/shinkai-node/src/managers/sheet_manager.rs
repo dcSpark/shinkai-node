@@ -237,6 +237,7 @@ impl SheetManager {
                 sheet_job_data: Some(serde_json::to_string(&job_data).unwrap()),
                 callback: None,
                 metadata: None,
+                tool_key: None,
             };
 
             job_messages.push((job_message, job_data));

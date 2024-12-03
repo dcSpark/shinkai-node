@@ -1,138 +1,206 @@
-// TODO These definitions are not correct.
-// Example output:
-/*
-class GetWeatherResponse(TypedDict):
-    temperature: float
-    conditions: str
+use super::language_helpers::to_snake_case;
+use serde_json::Value;
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
 
-def get_weather(location: str, units: Optional[str] = None) -> GetWeatherResponse:
-    """
-    Get the current weather for a location
+fn json_type_to_python(type_value: &Value, items_value: Option<&Value>) -> String {
+    match type_value.as_str() {
+        Some("array") => {
+            if let Some(items) = items_value {
+                if let Some(item_type) = items.get("type") {
+                    let base_type = match item_type.as_str() {
+                        Some("string") => "str",
+                        Some("number") => "float",
+                        Some("integer") => "int",
+                        Some("boolean") => "bool",
+                        Some("object") => "Dict[str, Any]",
+                        Some("array") => "List[Any]",
+                        Some("any") => "Any",
+                        _ => "Any",
+                    };
+                    format!("List[{}]", base_type)
+                } else {
+                    "List[Any]".to_string()
+                }
+            } else {
+                "List[Any]".to_string()
+            }
+        }
+        Some("string") => "str".to_string(),
+        Some("number") => "float".to_string(),
+        Some("integer") => "int".to_string(),
+        Some("boolean") => "bool".to_string(),
+        Some("object") => "Dict[str, Any]".to_string(),
+        Some("any") => "Any".to_string(),
+        Some("Any") => "Any".to_string(),
+        Some("any[]") => "List[Any]".to_string(),
+        Some("function") => "str".to_string(),
 
+        Some(t) => {
+            // Check if this is actually an object with a "type" field
+            if let Some(obj_type) = type_value.get("type") {
+                json_type_to_python(obj_type, type_value.get("items"))
+            } else {
+                t.to_string()
+            }
+        }
+        None => "Any".to_string(),
+    }
+}
+
+pub fn create_function_name_set(tool: &ShinkaiToolHeader) -> String {
+    to_snake_case(&tool.name)
+}
+
+pub fn python_common_code() -> String {
+    "
+from typing import Optional, Any, Dict, List, Union
+import os
+import requests
+"
+    .to_string()
+}
+
+fn generate_parameters(tool: &ShinkaiToolHeader, include_defaults: bool) -> String {
+    let mut required_params: Vec<String> = Vec::new();
+    let mut optional_params: Vec<String> = Vec::new();
+
+    for arg in &tool.input_args {
+        let type_str = json_type_to_python(&Value::String(arg.arg_type.clone()), None);
+        let param = if arg.is_required {
+            format!("{}: {}", arg.name, type_str)
+        } else if include_defaults {
+            format!("{}: Optional[{}] = None", arg.name, type_str)
+        } else {
+            format!("{}: Optional[{}]", arg.name, type_str)
+        };
+
+        if arg.is_required {
+            required_params.push(param);
+        } else {
+            optional_params.push(param);
+        }
+    }
+
+    [required_params, optional_params].concat().join(", ")
+}
+
+fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
+    let mut doc = String::new();
+
+    // Main description
+    doc.push_str(&format!("{}\"\"\"{}\n\n", indent, tool.description));
+
+    // Parameter documentation
+    doc.push_str(&format!("{}Args:\n", indent));
+    for arg in &tool.input_args {
+        doc.push_str(&format!(
+            "{}    {}: {} {}\n",
+            indent,
+            arg.name,
+            if !arg.description.is_empty() {
+                &arg.description
+            } else {
+                "Parameter"
+            },
+            if arg.is_required { "(required)" } else { "(optional)" }
+        ));
+    }
+
+    // Returns documentation
+    doc.push_str(&format!("\n{}Returns:\n{}    Dict[str, Any]: {{\n", indent, indent));
+    if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
+        if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
+            for (prop_name, prop_value) in properties {
+                let type_str = json_type_to_python(
+                    prop_value.get("type").unwrap_or(&Value::String("Any".to_string())),
+                    prop_value.get("items"),
+                );
+                let desc = prop_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                doc.push_str(&format!(
+                    "{}        {}: {} {}\n",
+                    indent,
+                    prop_name,
+                    type_str,
+                    if !desc.is_empty() {
+                        format!("- {}", desc)
+                    } else {
+                        String::new()
+                    }
+                ));
+            }
+        }
+    }
+    doc.push_str(&format!("{}    }}\n{}\"\"\"", indent, indent));
+    doc
+}
+
+pub fn generate_python_definition(
+    tool: ShinkaiToolHeader,
+    generate_pyi: bool,
+    tool_playground: Option<ToolPlayground>,
+) -> String {
+    let mut python_output = String::new();
+    let function_name = create_function_name_set(&tool);
+
+    if generate_pyi {
+        // Generate .pyi stub file
+        python_output.push_str(&format!("def {}(", function_name));
+        python_output.push_str(&generate_parameters(&tool, false));
+        python_output.push_str(") -> Dict[str, Any]:\n");
+
+        // Add docstring to .pyi
+        python_output.push_str(&generate_docstring(&tool, "    "));
+        python_output.push_str("\n    ...\n");
+
+        // If SQL tables exist, generate query function stub with docs
+        if let Some(playground) = tool_playground {
+            if !playground.metadata.sql_tables.is_empty() {
+                python_output.push_str("\n\n");
+                python_output.push_str(&format!(
+                    "def query_{}(query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:\n",
+                    function_name
+                ));
+
+                // Add query function documentation
+                python_output.push_str(&format!(
+                    "    \"\"\"Query the SQL database for results from {}\n\n",
+                    function_name
+                ));
+                python_output.push_str("    Available SQL Tables:\n");
+                for table in &playground.metadata.sql_tables {
+                    python_output.push_str(&format!("    {}:\n        {}\n", table.name, table.definition));
+                }
+
+                if !playground.metadata.sql_queries.is_empty() {
+                    python_output.push_str("\n    Example / Reference SQL Queries:\n");
+                    for query in &playground.metadata.sql_queries {
+                        python_output.push_str(&format!("    {}:\n        {}\n", query.name, query.query));
+                    }
+                }
+
+                python_output.push_str(
+                    r#"
     Args:
-        location: The city or location to get weather for
-        units: Temperature units (celsius/fahrenheit)
+        query (str): SQL query to execute
+        params (Optional[List[Any]], optional): Query parameters. Defaults to None.
 
     Returns:
-        Response object
+        List[Dict[str, Any]]: Query results
     """
-    url = 'http://localhost:9550/v2/tool_execution'
-    data = {
-        'tool_router_key': f'local:::shinkai-tool-{location.lower()}:::shinkai_{location.lower()}',
-        'parameters': {
-            'location': location,
-            'units': units,
-        },
-    }
-    headers = {
-        'Authorization': f'Bearer {os.environ.get("BEARER")}'
-    }
-    response = requests.post(url, json=data, headers=headers)
-    response.raise_for_status()
-    return response.json()
-*/
-
-use super::language_helpers::to_camel_case;
-use super::language_helpers::to_snake_case;
-use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
-
-pub fn generate_python_definition(name: String, runner_def: &ToolDefinition) -> String {
-    let mut python_output = String::new();
-
-    let response_class = format!(
-        "{}Response",
-        to_camel_case(&runner_def.name)
-            .replace(' ', "")
-            .replace('-', "")
-            .replace(':', "")
-    );
-
-    python_output.push_str(&format!("class {}(TypedDict):\n", response_class));
-    if let Some(properties) = runner_def.result.get("properties").and_then(|v| v.as_object()) {
-        for (prop_name, prop_value) in properties {
-            let type_str = match prop_value.get("type").and_then(|t| t.as_str()) {
-                Some("string") => "str",
-                Some("number") => "float",
-                Some("integer") => "int",
-                Some("boolean") => "bool",
-                Some("array") => "list",
-                Some("object") => "dict",
-                _ => "any",
-            };
-            python_output.push_str(&format!("    {}: {}\n", prop_name, type_str));
+    ...
+"#,
+                );
+            }
         }
+
+        return python_output;
+    } else {
+        // Original implementation for .py file
+        python_output.push_str(&format!("def {}(", function_name));
+        python_output.push_str(&generate_parameters(&tool, true));
+        python_output.push_str(") -> Dict[str, Any]:\n");
+        python_output.push_str(&generate_docstring(&tool, "    "));
     }
-    python_output.push_str("\n");
-
-    let function_name = to_snake_case(&runner_def.name.replace("Shinkai: ", "").replace(':', "_"));
-
-    python_output.push_str(&format!("def {}(", function_name));
-
-    if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        let required = runner_def
-            .parameters
-            .get("required")
-            .and_then(|r| r.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-            .unwrap_or_default();
-
-        let params: Vec<String> = properties
-            .iter()
-            .map(|(param_name, param_value)| {
-                let type_str = match param_value.get("type").and_then(|t| t.as_str()) {
-                    Some("string") => "str",
-                    Some("number") => "float",
-                    Some("integer") => "int",
-                    Some("boolean") => "bool",
-                    Some("array") => "list",
-                    Some("object") => "dict",
-                    _ => "any",
-                };
-
-                if required.contains(&param_name.as_str()) {
-                    format!("{}: {}", param_name, type_str)
-                } else {
-                    format!("{}: Optional[{}] = None", param_name, type_str)
-                }
-            })
-            .collect();
-        python_output.push_str(&params.join(", "));
-    }
-    python_output.push_str(&format!(") -> {response_class}:\n"));
-
-    python_output.push_str("    \"\"\"\n");
-    python_output.push_str(&format!("    {}\n\n", runner_def.description));
-
-    if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        for (param_name, param_value) in properties {
-            let desc = param_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
-            python_output.push_str(&format!("    Args:\n        {}: {}\n", param_name, desc));
-        }
-    }
-    python_output.push_str("\n    Returns:\n        Response object\n    \"\"\"\n");
-
-    let url_function_name = function_name.replace(' ', "_");
-    python_output.push_str(&format!("    url = 'http://localhost:9550/v2/tool_execution'\n"));
-    python_output.push_str("    data = {\n");
-    python_output.push_str(&format!(
-        "        'tool_router_key': 'local:::shinkai-tool-{}:::shinkai__{}',\n",
-        name.to_lowercase(),
-        name.to_lowercase()
-    ));
-    python_output.push_str("        'parameters': {\n");
-    if let Some(properties) = runner_def.parameters.get("properties").and_then(|v| v.as_object()) {
-        for (param_name, _) in properties {
-            python_output.push_str(&format!("            '{}': {},\n", param_name, param_name));
-        }
-    }
-    python_output.push_str("        },\n");
-    python_output.push_str("    }\n");
-    python_output.push_str("    headers = {\n");
-    python_output.push_str("        'Authorization': f'Bearer {os.environ.get(\"BEARER\")}'\n");
-    python_output.push_str("    }\n");
-    python_output.push_str("    response = requests.post(url, json=data, headers=headers)\n");
-    python_output.push_str("    response.raise_for_status()\n");
-    python_output.push_str("    return response.json()\n\n");
 
     python_output
 }
