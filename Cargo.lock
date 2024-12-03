@@ -8323,6 +8323,7 @@ name = "shinkai_sqlite"
 version = "0.9.0"
 dependencies = [
  "bytemuck",
+ "chrono",
  "r2d2",
  "r2d2_sqlite",
  "reqwest 0.11.27",

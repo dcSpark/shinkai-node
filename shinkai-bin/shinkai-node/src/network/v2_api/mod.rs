@@ -8,3 +8,4 @@ pub mod api_v2_commands_subscriptions;
 pub mod api_v2_commands_vecfs;
 pub mod api_v2_commands_wallets;
 pub mod api_v2_commands_tools;
+pub mod api_v2_commands_cron;
