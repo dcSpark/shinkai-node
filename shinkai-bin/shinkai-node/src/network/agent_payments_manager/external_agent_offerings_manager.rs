@@ -8,7 +8,6 @@ use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum,
@@ -20,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -27,7 +27,7 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::{env, fmt};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -65,7 +65,7 @@ impl From<InvoiceError> for AgentOfferingManagerError {
 // should we use the name of the destination as part of the hash?
 
 pub struct ExtAgentOfferingsManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -105,7 +105,7 @@ impl ExtAgentOfferingsManager {
     ///
     /// * `Self` - A new instance of `ExtAgentOfferingsManager`.
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
@@ -117,13 +117,9 @@ impl ExtAgentOfferingsManager {
         // need tool_router
     ) -> Self {
         let db_prefix = "shinkai__tool__offering_"; // dont change it
-        let offerings_queue = JobQueueManager::<Invoice>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let offerings_queue = JobQueueManager::<Invoice>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
 
         let thread_number = env::var("AGENTS_OFFERING_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
@@ -205,7 +201,7 @@ impl ExtAgentOfferingsManager {
     /// * `tokio::task::JoinHandle<()>` - A handle to the spawned task.
     pub async fn process_offerings_queue(
         offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -217,7 +213,7 @@ impl ExtAgentOfferingsManager {
         tool_router: Weak<ToolRouter>,
         process_job: impl Fn(
                 Invoice,
-                Weak<ShinkaiDB>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -399,7 +395,7 @@ impl ExtAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
         _invoice: Invoice,
-        _db: Weak<ShinkaiDB>,
+        _db: Weak<RwLock<SqliteManager>>,
         _vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
         _my_signature_secret_key: SigningKey,
@@ -427,7 +423,7 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        let tools = db.get_all_tool_offerings().map_err(|e| {
+        let tools = db.read().await.get_all_tool_offerings().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
         })?;
 
@@ -455,7 +451,7 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        db.set_tool_offering(updated_offering).map_err(|e| {
+        db.write().await.set_tool_offering(updated_offering).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to update tool offering: {:?}", e))
         })?;
 
@@ -481,7 +477,9 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        db.set_tool_offering(offering)
+        db.write()
+            .await
+            .set_tool_offering(offering)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to share tool: {:?}", e)))?;
 
         Ok(true)
@@ -503,7 +501,9 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        db.remove_tool_offering(&tool_key_name)
+        db.write()
+            .await
+            .remove_tool_offering(&tool_key_name)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to unshare tool: {:?}", e)))?;
 
         Ok(true)
@@ -533,9 +533,10 @@ impl ExtAgentOfferingsManager {
         // Validate and convert the tool_key_name
         let actual_tool_key_name = invoice_request.validate_and_convert_tool_key(&self.node_name)?;
 
-        let shinkai_offering = db
-            .get_tool_offering(&actual_tool_key_name)
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
+        let shinkai_offering =
+            db.read().await.get_tool_offering(&actual_tool_key_name).map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e))
+            })?;
 
         let usage_type = match invoice_request.usage_type_inquiry {
             UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
@@ -559,7 +560,7 @@ impl ExtAgentOfferingsManager {
         };
 
         // Check if an invoice with the same ID already exists
-        if db.get_invoice(&invoice_request.unique_id).is_ok() {
+        if db.read().await.get_invoice(&invoice_request.unique_id).is_ok() {
             return Err(AgentOfferingManagerError::OperationFailed(
                 "Invoice with the same ID already exists".to_string(),
             ));
@@ -599,7 +600,9 @@ impl ExtAgentOfferingsManager {
         };
 
         // Store the new invoice in the database
-        db.set_invoice(&invoice)
+        db.write()
+            .await
+            .set_invoice(&invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
 
         Ok(invoice)
@@ -758,6 +761,8 @@ impl ExtAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
         let mut local_invoice = db
+            .read()
+            .await
             .get_invoice(&invoice.invoice_id)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
@@ -799,7 +804,9 @@ impl ExtAgentOfferingsManager {
             local_invoice.status = InvoiceStatusEnum::Processed;
             local_invoice.response_date_time = Some(Utc::now());
 
-            db.set_invoice(&local_invoice)
+            db.write()
+                .await
+                .set_invoice(&local_invoice)
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
 

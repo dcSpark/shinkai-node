@@ -144,7 +144,7 @@ fn create_a_sheet_and_check_workflows() {
                 let mut sheet_manager = sheet_manager.lock().await;
 
                 // Create a new empty sheet
-                sheet_manager.create_empty_sheet().unwrap();
+                sheet_manager.create_empty_sheet().await.unwrap();
 
                 // Get the ID of the newly created sheet
                 let sheets = sheet_manager.get_user_sheets().await.unwrap();

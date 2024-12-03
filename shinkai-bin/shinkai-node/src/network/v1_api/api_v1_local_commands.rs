@@ -5,10 +5,11 @@ use crate::network::Node;
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use log::error;
-use shinkai_db::{db::ShinkaiDB, schemas::inbox_permission::InboxPermission};
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::Identity;
+use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
     shinkai_message::{
@@ -16,13 +17,14 @@ use shinkai_message_primitives::{
         shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
     },
 };
+use shinkai_sqlite::SqliteManager;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 impl Node {
     pub async fn local_get_last_unread_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         limit: usize,
         offset: Option<String>,
@@ -35,7 +37,7 @@ impl Node {
     }
 
     pub async fn local_get_last_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
@@ -53,7 +55,7 @@ impl Node {
     }
 
     pub async fn local_get_last_messages_from_inbox_with_branches(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
@@ -69,7 +71,7 @@ impl Node {
     }
 
     pub async fn local_mark_as_read_up_to(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         up_to_time: String,
         res: Sender<String>,
@@ -91,12 +93,12 @@ impl Node {
     }
 
     pub async fn local_create_and_send_registration_code(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let code = match db.generate_registration_new_code(permissions, code_type) {
+        let code = match db.write().await.generate_registration_new_code(permissions, code_type) {
             Ok(code) => code,
             Err(e) => {
                 error!("Failed to generate registration new code: {}", e);
@@ -130,7 +132,7 @@ impl Node {
 
     pub async fn local_add_inbox_permission(
         identity_manager: Arc<Mutex<IdentityManager>>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         perm_type: String,
         identity_name: String,
@@ -171,7 +173,7 @@ impl Node {
         };
 
         let perm = InboxPermission::from_str(&perm_type).unwrap();
-        let result = match db.add_permission(&inbox_name, &standard_identity, perm) {
+        let result = match db.write().await.add_permission(&inbox_name, &standard_identity, perm) {
             Ok(_) => "Success".to_string(),
             Err(e) => e.to_string(),
         };
@@ -180,7 +182,7 @@ impl Node {
     }
 
     pub async fn local_remove_inbox_permission(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         inbox_name: String,
         _: String, // perm_type
@@ -222,7 +224,7 @@ impl Node {
         };
 
         // First, check if permission exists and remove it if it does
-        match db.remove_permission(&inbox_name, &standard_identity) {
+        match db.write().await.remove_permission(&inbox_name, &standard_identity) {
             Ok(()) => {
                 let _ = res
                     .send(format!(
@@ -238,7 +240,7 @@ impl Node {
     }
 
     pub async fn local_create_new_job(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         shinkai_message: ShinkaiMessage,
@@ -298,7 +300,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn local_add_llm_provider(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
@@ -325,7 +327,7 @@ impl Node {
     }
 
     pub async fn local_available_llm_providers(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: &ShinkaiName,
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
@@ -340,8 +342,8 @@ impl Node {
         }
     }
 
-    pub async fn local_is_pristine(db: Arc<ShinkaiDB>, res: Sender<bool>) {
-        let has_any_profile = db.has_any_profile().unwrap_or(false);
+    pub async fn local_is_pristine(db: Arc<RwLock<SqliteManager>>, res: Sender<bool>) {
+        let has_any_profile = db.read().await.has_any_profile().unwrap_or(false);
         let _ = res.send(!has_any_profile).await;
     }
 
@@ -352,7 +354,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn local_add_ollama_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,

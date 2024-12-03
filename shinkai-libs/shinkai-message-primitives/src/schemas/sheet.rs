@@ -68,3 +68,20 @@ pub struct WorkflowSheetJobData {
     pub llm_provider_name: String,
     pub input_cells: Vec<(UuidString, UuidString, ColumnDefinition)>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CellUpdateInfo {
+    pub sheet_id: String,
+    pub update_type: String,
+    pub data: CellUpdateData,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CellUpdateData {
+    pub column_id: ColumnUuid,
+    pub input_hash: Option<String>,
+    pub last_updated: DateTime<Utc>,
+    pub row_id: RowUuid,
+    pub status: CellStatus,
+    pub value: Option<String>,
+}

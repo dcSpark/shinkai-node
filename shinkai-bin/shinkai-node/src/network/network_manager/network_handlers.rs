@@ -10,7 +10,8 @@ use crate::{
     },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
+
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
         invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError},
@@ -29,9 +30,10 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
+use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::network_job_manager_error::NetworkJobQueueError;
@@ -50,7 +52,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
-    maybe_db: Arc<ShinkaiDB>,
+    maybe_db: Arc<RwLock<SqliteManager>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -244,7 +246,7 @@ pub async fn handle_ping(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<ShinkaiDB>,
+    maybe_db: Arc<RwLock<SqliteManager>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -277,7 +279,7 @@ pub async fn handle_default_encryption(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<ShinkaiDB>,
+    maybe_db: Arc<RwLock<SqliteManager>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
@@ -367,7 +369,7 @@ pub async fn handle_network_message_cases(
     my_node_full_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<ShinkaiDB>,
+    maybe_db: Arc<RwLock<SqliteManager>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
@@ -504,7 +506,11 @@ pub async fn handle_network_message_cases(
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<InvoiceRequestNetworkError>(&content) {
                         Ok(invoice_request_network_error) => {
-                            if let Err(e) = maybe_db.set_invoice_network_error(&invoice_request_network_error) {
+                            if let Err(e) = maybe_db
+                                .write()
+                                .await
+                                .set_invoice_network_error(&invoice_request_network_error)
+                            {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Error,
@@ -687,7 +693,7 @@ pub async fn send_ack(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<ShinkaiDB>,
+    maybe_db: Arc<RwLock<SqliteManager>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -724,7 +730,7 @@ pub async fn ping_pong(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<ShinkaiDB>,
+    maybe_db: Arc<RwLock<SqliteManager>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,

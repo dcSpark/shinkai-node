@@ -12,11 +12,11 @@ use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::inbox_permission::InboxPermission;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentity};
+use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -33,11 +33,12 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::welcome_files::welcome_message::WELCOME_MESSAGE;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -66,13 +67,17 @@ impl Node {
     }
 
     pub async fn internal_get_last_unread_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
     ) -> Vec<ShinkaiMessage> {
         // Query the database for the last `limit` number of messages from the specified inbox.
-        let result = match db.get_last_unread_messages_from_inbox(inbox_name, limit, offset_key) {
+        let result = match db
+            .read()
+            .await
+            .get_last_unread_messages_from_inbox(inbox_name, limit, offset_key)
+        {
             Ok(messages) => messages,
             Err(e) => {
                 shinkai_log(
@@ -89,7 +94,7 @@ impl Node {
 
     pub async fn internal_get_all_inboxes_for_profile(
         identity_manager: Arc<Mutex<IdentityManager>>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         full_profile_name: ShinkaiName,
     ) -> Vec<String> {
         // Obtain the IdentityManager and ShinkaiDB locks
@@ -125,7 +130,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_inboxes_for_profile(standard_identity) {
+        let result = match db.read().await.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -141,11 +146,11 @@ impl Node {
     }
 
     pub async fn internal_update_smart_inbox_name(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_id: String,
         new_name: String,
     ) -> Result<(), String> {
-        match db.update_smart_inbox_name(&inbox_id, &new_name) {
+        match db.write().await.update_smart_inbox_name(&inbox_id, &new_name) {
             Ok(_) => Ok(()),
             Err(e) => {
                 shinkai_log(
@@ -159,7 +164,7 @@ impl Node {
     }
 
     pub async fn internal_get_all_smart_inboxes_for_profile(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         full_profile_name: String,
     ) -> Vec<SmartInbox> {
@@ -193,7 +198,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_all_smart_inboxes_for_profile(standard_identity) {
+        let result = match db.read().await.get_all_smart_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -209,13 +214,17 @@ impl Node {
     }
 
     pub async fn internal_get_last_messages_from_inbox(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
     ) -> Vec<Vec<ShinkaiMessage>> {
         // Query the database for the last `limit` number of messages from the specified inbox.
-        let result = match db.get_last_messages_from_inbox(inbox_name, limit, offset_key) {
+        let result = match db
+            .read()
+            .await
+            .get_last_messages_from_inbox(inbox_name, limit, offset_key)
+        {
             Ok(messages) => messages,
             Err(e) => {
                 shinkai_log(
@@ -243,32 +252,39 @@ impl Node {
     }
 
     pub async fn fetch_and_send_last_messages(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     ) -> Result<(), Error> {
-        let messages = db.get_last_messages_from_all(limit).unwrap_or_else(|_| vec![]);
+        let messages = db
+            .read()
+            .await
+            .get_last_messages_from_all(limit)
+            .unwrap_or_else(|_| vec![]);
         let _ = res.send(messages).await.map_err(|_| ());
         Ok(())
     }
 
     pub async fn internal_mark_as_read_up_to(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         up_to_time: String,
     ) -> Result<bool, NodeError> {
         // Attempt to mark messages as read in the database
-        db.mark_as_read_up_to(inbox_name, up_to_time).map_err(|e| {
-            let error_message = format!("Failed to mark messages as read: {}", e);
-            error!("{}", &error_message);
-            NodeError { message: error_message }
-        })?;
+        db.write()
+            .await
+            .mark_as_read_up_to(inbox_name, up_to_time)
+            .map_err(|e| {
+                let error_message = format!("Failed to mark messages as read: {}", e);
+                error!("{}", &error_message);
+                NodeError { message: error_message }
+            })?;
         Ok(true)
     }
 
     pub async fn has_inbox_permission(
         identity_manager: Arc<Mutex<IdentityManager>>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         inbox_name: String,
         perm_type: String,
         identity_name: String,
@@ -312,7 +328,7 @@ impl Node {
             }
         };
 
-        match db.has_permission(&inbox_name, &standard_identity, perm) {
+        match db.read().await.has_permission(&inbox_name, &standard_identity, perm) {
             Ok(result) => {
                 let _ = res.send(result).await;
             }
@@ -324,7 +340,7 @@ impl Node {
 
     pub async fn internal_create_new_job(
         job_manager: Arc<Mutex<JobManager>>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         shinkai_message: ShinkaiMessage,
         sender: Identity,
     ) -> Result<String, NodeError> {
@@ -340,7 +356,9 @@ impl Node {
                         })
                     }
                 };
-                db.add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
+                db.write()
+                    .await
+                    .add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
                 Ok(job_id)
             }
             Err(err) => {
@@ -351,7 +369,7 @@ impl Node {
     }
 
     pub async fn internal_get_llm_providers_for_profile(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: String,
         profile: String,
     ) -> Result<Vec<SerializedLLMProvider>, NodeError> {
@@ -364,7 +382,7 @@ impl Node {
             }
         };
 
-        let result = match db.get_llm_providers_for_profile(profile_name) {
+        let result = match db.read().await.get_llm_providers_for_profile(profile_name) {
             Ok(llm_providers) => llm_providers,
             Err(e) => {
                 return Err(NodeError {
@@ -390,7 +408,7 @@ impl Node {
     }
 
     pub async fn internal_add_llm_provider(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
@@ -398,8 +416,10 @@ impl Node {
         profile: &ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
-        match db.add_llm_provider(llm_provider.clone(), profile) {
+        let db_write = db.write().await;
+        match db_write.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
+                drop(db_write);
                 let mut subidentity_manager = identity_manager.lock().await;
                 match subidentity_manager
                     .add_llm_provider_subidentity(llm_provider.clone())
@@ -467,8 +487,12 @@ impl Node {
                                     })
                                 }
                             };
-                            db.add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
-                            db.update_smart_inbox_name(
+                            db.write().await.add_permission(
+                                &inbox_name.to_string(),
+                                &sender_standard,
+                                InboxPermission::Admin,
+                            )?;
+                            db.write().await.update_smart_inbox_name(
                                 &inbox_name.to_string(),
                                 "Welcome to Shinkai! Brief onboarding here.",
                             )?;
@@ -488,7 +512,9 @@ impl Node {
                                 )
                                 .unwrap();
 
-                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
+                                db.write()
+                                    .await
+                                    .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
                                     .await?;
                             }
                         }
@@ -508,12 +534,12 @@ impl Node {
 
     #[allow(dead_code)]
     pub async fn internal_remove_agent(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         agent_id: String,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
-        match db.remove_llm_provider(&agent_id, profile) {
+        match db.write().await.remove_llm_provider(&agent_id, profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
                 match subidentity_manager.remove_agent_subidentity(&agent_id).await {
@@ -536,7 +562,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
         peers: CHashMap<(SocketAddr, String), chrono::DateTime<Utc>>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
@@ -623,7 +649,7 @@ impl Node {
     }
 
     pub async fn internal_add_ollama_models(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,

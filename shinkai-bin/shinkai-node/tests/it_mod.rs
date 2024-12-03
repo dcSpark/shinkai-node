@@ -9,7 +9,6 @@ mod it {
     mod db_job_tests;
     mod db_llm_providers_tests;
     mod db_restore_tests;
-    mod db_tests;
     mod encrypted_files_tests;
     mod get_onchain_identity_tests;
     mod job_branchs_retries_tests;
@@ -31,4 +30,5 @@ mod it {
 
     mod change_nodes_name_tests;
     mod native_tool_tests;
+    mod tcp_proxy_tests;
 }

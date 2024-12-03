@@ -6,15 +6,15 @@ use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
 use futures::SinkExt;
 use futures::StreamExt;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::inbox_permission::InboxPermission;
-use shinkai_db::schemas::ws_types::WSMessagePayload;
-use shinkai_db::schemas::ws_types::WSMessageType;
+
 use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
 use shinkai_message_primitives::schemas::identity::StandardIdentityType;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::WSMessagePayload;
+use shinkai_message_primitives::schemas::ws_types::WSMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -31,11 +31,14 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
+use shinkai_sqlite::SqliteManager;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::utils::hash_string;
-use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
+use tempfile::NamedTempFile;
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio_tungstenite::tungstenite;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -149,22 +152,23 @@ fn generate_message_with_text(
         .unwrap()
 }
 
-fn setup() {
-    let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(path);
+fn setup_test_db() -> SqliteManager {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = PathBuf::from(temp_file.path());
+    let api_url = String::new();
+    let model_type =
+        EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+    SqliteManager::new(db_path, api_url, model_type).unwrap()
 }
 
 #[tokio::test]
 async fn test_websocket() {
-    // Setup
-    setup();
-
     let job_id1 = "test_job".to_string();
     let job_id2 = "test_job2".to_string();
     let agent_id = "agent3".to_string();
-    let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    let shinkai_db = Arc::new(shinkai_db);
+    let db = setup_test_db();
+    let shinkai_db = Arc::new(RwLock::new(db));
     let shinkai_db_weak = Arc::downgrade(&shinkai_db);
 
     let node1_identity_name = "@@node1.shinkai";
@@ -259,20 +263,32 @@ async fn test_websocket() {
             }
         };
 
-        let _ = shinkai_db.insert_profile(sender_subidentity.clone());
+        let _ = shinkai_db.write().await.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
-        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None) {
+        match shinkai_db
+            .write()
+            .await
+            .create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None)
+        {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
-        match shinkai_db.create_new_job(job_id2, agent_id, scope, false, None, None) {
+        match shinkai_db
+            .write()
+            .await
+            .create_new_job(job_id2, agent_id, scope, false, None, None)
+        {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
         shinkai_db
+            .write()
+            .await
             .add_permission(&inbox_name1_string, &sender_subidentity, InboxPermission::Admin)
             .unwrap();
         shinkai_db
+            .write()
+            .await
             .add_permission(&inbox_name2_string, &sender_subidentity, InboxPermission::Admin)
             .unwrap();
     }
@@ -332,6 +348,8 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
+            .write()
+            .await
             .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager.clone()))
             .await;
         // eprintln!("result: {:?}", result);
@@ -369,6 +387,8 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
+            .write()
+            .await
             .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager.clone()))
             .await;
 
@@ -445,6 +465,8 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
+            .write()
+            .await
             .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager))
             .await;
 
@@ -468,15 +490,11 @@ async fn test_websocket() {
 
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
-    // Setup
-    setup();
-
     let job_id1 = "test_job".to_string();
     let no_access_job_id = "no_access_job_id".to_string();
     let agent_id = "agent4".to_string();
-    let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    let shinkai_db = Arc::new(shinkai_db);
+    let db = setup_test_db();
+    let shinkai_db = Arc::new(RwLock::new(db));
     let shinkai_db_weak = Arc::downgrade(&shinkai_db);
 
     let node1_identity_name = "@@node1.shinkai";
@@ -564,17 +582,27 @@ async fn test_websocket_smart_inbox() {
             }
         };
 
-        let _ = shinkai_db.insert_profile(sender_subidentity.clone());
+        let _ = shinkai_db.write().await.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
-        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None) {
+        match shinkai_db
+            .write()
+            .await
+            .create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None)
+        {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
         shinkai_db
+            .write()
+            .await
             .add_permission(&inbox_name1_string, &sender_subidentity, InboxPermission::Admin)
             .unwrap();
 
-        match shinkai_db.create_new_job(no_access_job_id, agent_id, scope, false, None, None) {
+        match shinkai_db
+            .write()
+            .await
+            .create_new_job(no_access_job_id, agent_id, scope, false, None, None)
+        {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
@@ -606,6 +634,8 @@ async fn test_websocket_smart_inbox() {
         );
 
         let _ = shinkai_db
+            .write()
+            .await
             .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager.clone()))
             .await;
     }
@@ -639,6 +669,8 @@ async fn test_websocket_smart_inbox() {
         );
 
         let _ = shinkai_db
+            .write()
+            .await
             .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager))
             .await;
     }

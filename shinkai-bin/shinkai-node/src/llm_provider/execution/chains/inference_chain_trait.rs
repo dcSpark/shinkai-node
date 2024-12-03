@@ -8,18 +8,19 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
+use shinkai_sqlite::SqliteManager;
 // use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::fmt;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 /// Trait that abstracts top level functionality between the inference chains. This allows
 /// the inference chain router to work with them all easily.
@@ -57,7 +58,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn update_iteration_count(&mut self, new_iteration_count: u64);
     fn update_message(&mut self, new_message: ParsedUserMessage);
 
-    fn db(&self) -> Arc<ShinkaiDB>;
+    fn db(&self) -> Arc<RwLock<SqliteManager>>;
     fn vector_fs(&self) -> Arc<VectorFS>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
@@ -105,7 +106,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.user_message = new_message;
     }
 
-    fn db(&self) -> Arc<ShinkaiDB> {
+    fn db(&self) -> Arc<RwLock<SqliteManager>> {
         Arc::clone(&self.db)
     }
 
@@ -198,7 +199,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
 /// using all fields in this struct, but they are available nonetheless.
 #[derive(Clone)]
 pub struct InferenceChainContext {
-    pub db: Arc<ShinkaiDB>,
+    pub db: Arc<RwLock<SqliteManager>>,
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
@@ -226,7 +227,7 @@ pub struct InferenceChainContext {
 impl InferenceChainContext {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
@@ -423,7 +424,7 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).update_message(new_message)
     }
 
-    fn db(&self) -> Arc<ShinkaiDB> {
+    fn db(&self) -> Arc<RwLock<SqliteManager>> {
         (**self).db()
     }
 
@@ -522,7 +523,7 @@ pub struct MockInferenceChainContext {
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub raw_files: RawFiles,
-    pub db: Option<Arc<ShinkaiDB>>,
+    pub db: Option<Arc<RwLock<SqliteManager>>>,
     pub vector_fs: Option<Arc<VectorFS>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -540,7 +541,7 @@ impl MockInferenceChainContext {
         iteration_count: u64,
         max_tokens_in_prompt: usize,
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
-        db: Option<Arc<ShinkaiDB>>,
+        db: Option<Arc<RwLock<SqliteManager>>>,
         vector_fs: Option<Arc<VectorFS>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -606,7 +607,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.user_message = new_message;
     }
 
-    fn db(&self) -> Arc<ShinkaiDB> {
+    fn db(&self) -> Arc<RwLock<SqliteManager>> {
         self.db.clone().expect("DB is not set")
     }
 

@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use async_channel::Sender;
 use reqwest::StatusCode;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use shinkai_sqlite::SqliteManager;
@@ -12,8 +12,7 @@ use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_add_custom_prompt(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -24,7 +23,7 @@ impl Node {
         }
 
         // Save the new prompt to the LanceShinkaiDb
-        match sqlite_manager.write().await.add_prompt(&prompt).await {
+        match db.write().await.add_prompt(&prompt).await {
             Ok(_) => {
                 let _ = res.send(Ok(prompt)).await;
                 Ok(())
@@ -42,8 +41,7 @@ impl Node {
     }
 
     pub async fn v2_api_delete_custom_prompt(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -54,14 +52,14 @@ impl Node {
         }
 
         // Get the prompt before deleting
-        let prompt = sqlite_manager.read().await.get_prompts(Some(&prompt_name), None, None);
+        let prompt = db.read().await.get_prompts(Some(&prompt_name), None, None);
 
         // Check for errors or multiple prompts
         match prompt {
             Ok(prompts) if prompts.len() == 1 => {
                 let prompt = prompts.into_iter().next().unwrap();
                 // Delete the prompt from the LanceShinkaiDb
-                match sqlite_manager.write().await.remove_prompt(&prompt_name) {
+                match db.write().await.remove_prompt(&prompt_name) {
                     Ok(_) => {
                         let _ = res.send(Ok(prompt)).await;
                         Ok(())
@@ -99,8 +97,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_all_custom_prompts(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -110,7 +107,7 @@ impl Node {
         }
 
         // Get all prompts from the LanceShinkaiDb
-        match sqlite_manager.read().await.get_all_prompts() {
+        match db.read().await.get_all_prompts() {
             Ok(prompts) => {
                 let _ = res.send(Ok(prompts)).await;
                 Ok(())
@@ -128,8 +125,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_custom_prompt(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt_name: String,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -140,7 +136,7 @@ impl Node {
         }
 
         // Get the prompt from the LanceShinkaiDb with optional filters
-        match sqlite_manager.read().await.get_prompts(Some(&prompt_name), None, None) {
+        match db.read().await.get_prompts(Some(&prompt_name), None, None) {
             Ok(prompts) if prompts.len() == 1 => {
                 let prompt = prompts.into_iter().next().unwrap();
                 let _ = res.send(Ok(prompt)).await;
@@ -177,8 +173,7 @@ impl Node {
     }
 
     pub async fn v2_api_search_custom_prompts(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
         res: Sender<Result<Vec<CustomPrompt>, APIError>>,
@@ -192,7 +187,7 @@ impl Node {
         let start_time = Instant::now();
 
         // Perform the internal search using SqliteManager
-        match sqlite_manager.read().await.prompt_vector_search(&query, 20, false).await {
+        match db.read().await.prompt_vector_search(&query, 20, false).await {
             Ok(prompts) => {
                 let prompts: Vec<CustomPrompt> = prompts.into_iter().map(|(p, _)| p).collect();
                 // Log the elapsed time if LOG_ALL is set to 1
@@ -217,8 +212,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_custom_prompt(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         prompt: CustomPrompt,
         res: Sender<Result<CustomPrompt, APIError>>,
@@ -229,7 +223,7 @@ impl Node {
         }
 
         // Update the prompt in the LanceShinkaiDb
-        match sqlite_manager.write().await.update_prompt(&prompt).await {
+        match db.write().await.update_prompt(&prompt).await {
             Ok(_) => {
                 let _ = res.send(Ok(prompt)).await;
                 Ok(())

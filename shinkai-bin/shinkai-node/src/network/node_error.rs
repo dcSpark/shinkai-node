@@ -1,8 +1,8 @@
-use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -78,8 +78,8 @@ impl From<LLMProviderError> for NodeError {
     }
 }
 
-impl From<ShinkaiDBError> for NodeError {
-    fn from(error: ShinkaiDBError) -> Self {
+impl From<SqliteManagerError> for NodeError {
+    fn from(error: SqliteManagerError) -> Self {
         NodeError {
             message: format!("Database error: {}", error),
         }

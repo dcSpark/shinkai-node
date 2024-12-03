@@ -1,21 +1,21 @@
 use crate::llm_provider::job_manager::JobManagerTrait;
 use async_channel::{Receiver, Sender};
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::{WSMessageType, WSUpdateHandler};
 use shinkai_message_primitives::schemas::sheet::{
     APIColumnDefinition, ColumnDefinition, ColumnUuid, RowUuid, WorkflowSheetJobData,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSUpdateHandler};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
 use shinkai_sheet::sheet::{Sheet, SheetUpdate};
+use shinkai_sqlite::errors::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -32,7 +32,7 @@ impl std::error::Error for SheetManagerError {}
 
 pub struct SheetManager {
     pub sheets: HashMap<String, (Sheet, Sender<SheetUpdate>)>,
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub user_profile: ShinkaiName,
     pub job_manager: Option<Arc<Mutex<dyn JobManagerTrait + Send>>>,
     pub update_handles: Vec<JoinHandle<()>>,
@@ -44,7 +44,7 @@ pub struct SheetManager {
 
 impl SheetManager {
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<Self, SheetManagerError> {
@@ -56,6 +56,8 @@ impl SheetManager {
             .ok_or_else(|| SheetManagerError("Couldn't convert to strong db".to_string()))?;
 
         let sheets_vec = db_strong
+            .read()
+            .await
             .list_all_sheets_for_user(&user_profile)
             .map_err(|e| SheetManagerError(e.to_string()))?;
 
@@ -90,7 +92,7 @@ impl SheetManager {
         self.job_manager = Some(job_manager);
     }
 
-    pub fn create_empty_sheet(&mut self) -> Result<String, ShinkaiDBError> {
+    pub async fn create_empty_sheet(&mut self) -> Result<String, SqliteManagerError> {
         let sheet = Sheet::new();
         let sheet_id = sheet.uuid.clone();
         let (sender, receiver) = async_channel::unbounded();
@@ -105,11 +107,10 @@ impl SheetManager {
         self.update_handles.push(handle);
 
         // Add the sheet to the database
-        let db_strong = self
-            .db
-            .upgrade()
-            .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
-        db_strong.save_sheet(sheet, self.user_profile.clone())?;
+        let db_strong = self.db.upgrade().ok_or(SqliteManagerError::SomeError(
+            "Couldn't convert to strong db".to_string(),
+        ))?;
+        db_strong.write().await.save_sheet(sheet, self.user_profile.clone())?;
 
         Ok(sheet_id)
     }
@@ -122,7 +123,7 @@ impl SheetManager {
             .cloned()
     }
 
-    pub fn add_sheet(&mut self, sheet: Sheet) -> Result<String, ShinkaiDBError> {
+    pub async fn add_sheet(&mut self, sheet: Sheet) -> Result<String, SqliteManagerError> {
         let (sender, receiver) = async_channel::unbounded();
         let sheet_id = sheet.uuid.clone();
         let mut sheet_clone = sheet.clone();
@@ -136,27 +137,25 @@ impl SheetManager {
         self.update_handles.push(handle);
 
         // Add the sheet to the database
-        let db_strong = self
-            .db
-            .upgrade()
-            .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
-        db_strong.save_sheet(sheet, self.user_profile.clone())?;
+        let db_strong = self.db.upgrade().ok_or(SqliteManagerError::SomeError(
+            "Couldn't convert to strong db".to_string(),
+        ))?;
+        db_strong.write().await.save_sheet(sheet, self.user_profile.clone())?;
 
         Ok(sheet_id)
     }
 
-    pub fn remove_sheet(&mut self, sheet_id: &str) -> Result<(), ShinkaiDBError> {
+    pub async fn remove_sheet(&mut self, sheet_id: &str) -> Result<(), SqliteManagerError> {
         // Remove the sheet from the HashMap
         if self.sheets.remove(sheet_id).is_none() {
-            return Err(ShinkaiDBError::SomeError("Sheet ID not found".to_string()));
+            return Err(SqliteManagerError::SomeError("Sheet ID not found".to_string()));
         }
 
         // Remove the sheet from the database
-        let db_strong = self
-            .db
-            .upgrade()
-            .ok_or(ShinkaiDBError::SomeError("Couldn't convert to strong db".to_string()))?;
-        db_strong.remove_sheet(sheet_id, &self.user_profile)?;
+        let db_strong = self.db.upgrade().ok_or(SqliteManagerError::SomeError(
+            "Couldn't convert to strong db".to_string(),
+        ))?;
+        db_strong.write().await.remove_sheet(sheet_id, &self.user_profile)?;
 
         Ok(())
     }
@@ -168,6 +167,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -193,6 +194,8 @@ impl SheetManager {
         // Add the new sheet to the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(new_sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -258,7 +261,7 @@ impl SheetManager {
         if let Some((first_job_message, _)) = job_messages.first() {
             let mut job_manager = job_manager.lock().await;
             job_manager
-            // TODO: I'm not sure about this one
+                // TODO: I'm not sure about this one
                 .queue_job_message(first_job_message, user_profile, "")
                 .await
                 .map_err(|e| e.to_string())?;
@@ -294,6 +297,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -314,6 +319,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -335,6 +342,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -358,6 +367,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -366,7 +377,8 @@ impl SheetManager {
 
     pub async fn get_user_sheets(&self) -> Result<Vec<Sheet>, String> {
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
-        db_strong
+        let db_read = db_strong.read().await;
+        db_read
             .list_all_sheets_for_user(&self.user_profile)
             .map_err(|e| e.to_string())
     }
@@ -389,6 +401,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
@@ -416,7 +430,7 @@ impl SheetManager {
         }
     }
 
-    pub fn set_uploaded_files(
+    pub async fn set_uploaded_files(
         &mut self,
         sheet_id: &str,
         row: RowUuid,
@@ -429,6 +443,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 
