@@ -533,7 +533,6 @@ impl Node {
 
         let cron_manager_result = CronManager::new(
             db_weak.clone(),
-            Arc::downgrade(&self.sqlite_manager),
             clone_signature_secret_key(&self.identity_secret_key),
             self.node_name.clone(),
             job_manager.clone(),

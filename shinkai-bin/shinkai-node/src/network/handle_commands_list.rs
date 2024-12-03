@@ -3013,37 +3013,44 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_cron_task(db_clone, sqlite_manager_clone, bearer, cron, action, res).await;
+                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, res).await;
                 });
             }
             NodeCommand::V2ApiListAllCronTasks { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_all_cron_tasks(db_clone, sqlite_manager_clone, bearer, res).await;
+                    let _ = Node::v2_api_list_all_cron_tasks(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiGetSpecificCronTask { bearer, cron_task_id, res } => {
+            NodeCommand::V2ApiGetSpecificCronTask {
+                bearer,
+                cron_task_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
-                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_specific_cron_task(db_clone, sqlite_manager_clone, bearer, cron_task_id, res).await;
+                    let _ = Node::v2_api_get_specific_cron_task(db_clone, bearer, cron_task_id, res).await;
                 });
             }
-            NodeCommand::V2ApiRemoveCronTask { bearer, cron_task_id, res } => {
+            NodeCommand::V2ApiRemoveCronTask {
+                bearer,
+                cron_task_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
-                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_cron_task(db_clone, sqlite_manager_clone, bearer, cron_task_id, res).await;
+                    let _ = Node::v2_api_remove_cron_task(db_clone, bearer, cron_task_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetCronTaskLogs { bearer, cron_task_id, res } => {
+            NodeCommand::V2ApiGetCronTaskLogs {
+                bearer,
+                cron_task_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
-                let sqlite_manager_clone = self.sqlite_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_cron_task_logs(db_clone, sqlite_manager_clone, bearer, cron_task_id, res).await;
+                    let _ = Node::v2_api_get_cron_task_logs(db_clone, bearer, cron_task_id, res).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
