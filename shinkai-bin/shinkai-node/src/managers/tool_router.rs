@@ -9,7 +9,6 @@ use crate::tools::tool_definitions::definition_generation::{generate_tool_defini
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_db::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -18,10 +17,12 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
+use shinkai_message_primitives::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
-use shinkai_sqlite::{SqliteManager, SqliteManagerError};
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::argument::ToolArgument;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::error::ToolError;
@@ -552,7 +553,12 @@ impl ToolRouter {
                     }
 
                     // Check if the invoice is paid
-                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
+                    match context
+                        .db()
+                        .read()
+                        .await
+                        .get_invoice(&internal_invoice_request.unique_id.clone())
+                    {
                         Ok(invoice) => {
                             eprintln!("invoice found: {:?}", invoice);
 
@@ -566,6 +572,8 @@ impl ToolRouter {
                             // If invoice is not found, check for InvoiceNetworkError
                             match context
                                 .db()
+                                .read()
+                                .await
                                 .get_invoice_network_error(&internal_invoice_request.unique_id.clone())
                             {
                                 Ok(network_error) => {
@@ -678,7 +686,12 @@ impl ToolRouter {
                     }
 
                     // Check if the invoice is paid
-                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
+                    match context
+                        .db()
+                        .read()
+                        .await
+                        .get_invoice(&internal_invoice_request.unique_id.clone())
+                    {
                         Ok(invoice) => {
                             if invoice.status == InvoiceStatusEnum::Processed {
                                 invoice_result = invoice;

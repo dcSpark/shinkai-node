@@ -32,22 +32,21 @@ use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::{Rng, RngCore};
 use reqwest::StatusCode;
-use shinkai_db::db::db_errors::ShinkaiDBError;
-use shinkai_db::db::db_retry::RetryMessage;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::retry::RetryMessage;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -103,7 +102,7 @@ pub struct Node {
     // The manager for subidentities.
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
-    pub db: Arc<ShinkaiDB>,
+    pub db: Arc<RwLock<SqliteManager>>,
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
@@ -114,8 +113,6 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // The Node's VectorFS
     pub vector_fs: Arc<VectorFS>,
-    // Sqlite3
-    pub sqlite_manager: Arc<RwLock<SqliteManager>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
@@ -190,17 +187,29 @@ impl Node {
             Err(_) => panic!("Invalid node identity name: {}", node_name),
         }
 
+        // Initialize default RemoteEmbeddingGenerator if none provided
+        let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
+
+        // Initialize SqliteManager
+        let embedding_api_url = embedding_generator.api_url.clone();
+        let db_arc = Arc::new(RwLock::new(
+            SqliteManager::new(main_db_path.clone(), embedding_api_url, default_embedding_model.clone())
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {:?}", e);
+                    panic!("Failed to open database: {}", main_db_path)
+                }),
+        ));
+
         // Get public keys, and update the local node keys in the db
-        let db = ShinkaiDB::new(&main_db_path).unwrap_or_else(|e| {
-            eprintln!("Error: {:?}", e);
-            panic!("Failed to open database: {}", main_db_path)
-        });
-        let db_arc = Arc::new(db);
         let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_name = ShinkaiName::new(node_name).unwrap();
         {
-            match db_arc.update_local_node_keys(node_name.clone(), encryption_public_key, identity_public_key) {
+            match db_arc.write().await.update_local_node_keys(
+                node_name.clone(),
+                encryption_public_key,
+                identity_public_key,
+            ) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
@@ -209,14 +218,13 @@ impl Node {
 
         // Setup Identity Manager
         let db_weak = Arc::downgrade(&db_arc);
-        let subidentity_manager = IdentityManager::new(db_weak.clone(), node_name.clone()).await.unwrap();
+        let subidentity_manager = IdentityManager::new(Arc::downgrade(&db_arc), node_name.clone())
+            .await
+            .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
-        // Initialize default RemoteEmbeddingGenerator if none provided
-        let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
-
         // Fetch list of existing profiles from the node to push into the VectorFS
-        let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
+        let profile_list = match db_arc.read().await.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
@@ -324,17 +332,11 @@ impl Node {
             .await,
         ));
 
-        // Initialize SqliteManager
-        let embedding_api_url = embedding_generator.api_url.clone();
-        let sqlite_manager = Arc::new(RwLock::new(
-            SqliteManager::new(main_db_path, embedding_api_url, default_embedding_model.clone()).unwrap(),
-        ));
-
         // Initialize ToolRouter
-        let tool_router = ToolRouter::new(sqlite_manager.clone());
+        let tool_router = ToolRouter::new(db_arc.clone());
 
         // Read wallet_manager from db if it exists, if not, None
-        let mut wallet_manager: Option<WalletManager> = match db_arc.read_wallet_manager() {
+        let mut wallet_manager: Option<WalletManager> = match db_arc.read().await.read_wallet_manager() {
             Ok(manager_value) => match serde_json::from_value::<WalletManager>(manager_value) {
                 Ok(manager) => Some(manager),
                 Err(e) => {
@@ -342,21 +344,21 @@ impl Node {
                     None
                 }
             },
-            Err(ShinkaiDBError::DataNotFound) => None,
+            Err(SqliteManagerError::WalletManagerNotFound) => None,
             Err(e) => panic!("Failed to read wallet manager from database: {}", e),
         };
 
         // Update LanceDB in CoinbaseMPCWallet if it exists
         if let Some(ref mut manager) = wallet_manager {
             if let Some(coinbase_wallet) = manager.payment_wallet.as_any_mut().downcast_mut::<CoinbaseMPCWallet>() {
-                coinbase_wallet.update_sqlite_manager(sqlite_manager.clone());
+                coinbase_wallet.update_sqlite_manager(db_arc.clone());
             }
             if let Some(coinbase_wallet) = manager
                 .receiving_wallet
                 .as_any_mut()
                 .downcast_mut::<CoinbaseMPCWallet>()
             {
-                coinbase_wallet.update_sqlite_manager(sqlite_manager.clone());
+                coinbase_wallet.update_sqlite_manager(db_arc.clone());
             }
         }
 
@@ -425,15 +427,21 @@ impl Node {
         // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in the db
         let api_v2_key = if let Some(key) = api_v2_key {
             db_arc
+                .write()
+                .await
                 .set_api_v2_key(&key)
                 .expect("Failed to set api_v2_key in the database");
             key
         } else {
-            match db_arc.read_api_v2_key() {
+            let db_read = db_arc.read().await;
+            match db_read.read_api_v2_key() {
                 Ok(Some(key)) => key,
                 Ok(None) | Err(_) => {
+                    std::mem::drop(db_read);
                     let new_key = Node::generate_api_v2_key();
                     db_arc
+                        .write()
+                        .await
                         .set_api_v2_key(&new_key)
                         .expect("Failed to set api_v2_key in the database");
                     new_key
@@ -463,7 +471,6 @@ impl Node {
             first_device_needs_registration_code,
             initial_llm_providers,
             vector_fs: vector_fs_arc.clone(),
-            sqlite_manager,
             embedding_generator,
             conn_limiter,
             ext_subscription_manager: ext_subscriber_manager,
@@ -526,7 +533,6 @@ impl Node {
 
         let cron_manager_result = CronManager::new(
             db_weak.clone(),
-            Arc::downgrade(&self.sqlite_manager),
             clone_signature_secret_key(&self.identity_secret_key),
             self.node_name.clone(),
             job_manager.clone(),
@@ -565,7 +571,7 @@ impl Node {
             let version = env!("CARGO_PKG_VERSION");
 
             // Update the version in the database
-            let sqlite_manager = self.sqlite_manager.write().await;
+            let sqlite_manager = self.db.write().await;
             sqlite_manager.set_version(version).expect("Failed to set version");
         }
 
@@ -684,35 +690,58 @@ impl Node {
     // A function that initializes the embedding models from the database
     async fn initialize_embedding_models(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Read the default embedding model from the database
-        match self.db.get_default_embedding_model() {
-            Ok(model) => {
-                let mut default_model_guard = self.default_embedding_model.lock().await;
-                *default_model_guard = model;
+        {
+            let db_read = self.db.read().await;
+            match db_read.get_default_embedding_model() {
+                Ok(model) => {
+                    let mut default_model_guard = self.default_embedding_model.lock().await;
+                    *default_model_guard = model;
+                }
+                Err(SqliteManagerError::DataNotFound) => {
+                    std::mem::drop(db_read);
+                    // If not found, update the database with the current value
+                    let default_model_guard = self.default_embedding_model.lock().await;
+                    self.db
+                        .write()
+                        .await
+                        .update_default_embedding_model(default_model_guard.clone())
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+                }
+                Err(e) => return Err(Box::new(NodeError::from(e.to_string())) as Box<dyn std::error::Error + Send>),
             }
-            Err(ShinkaiDBError::DataNotFound) => {
-                // If not found, update the database with the current value
-                let default_model_guard = self.default_embedding_model.lock().await;
-                self.db
-                    .update_default_embedding_model(default_model_guard.clone())
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-            }
-            Err(e) => return Err(Box::new(NodeError::from(e)) as Box<dyn std::error::Error + Send>),
         }
 
         // Read the supported embedding models from the database
-        match self.db.get_supported_embedding_models() {
-            Ok(models) => {
-                let mut supported_models_guard = self.supported_embedding_models.lock().await;
-                *supported_models_guard = models;
+        {
+            let db_read = self.db.read().await;
+            match db_read.get_supported_embedding_models() {
+                Ok(models) => {
+                    std::mem::drop(db_read);
+                    // If empty, update the database with the current value
+                    if models.is_empty() {
+                        let supported_models_guard = self.supported_embedding_models.lock().await;
+                        self.db
+                            .write()
+                            .await
+                            .update_supported_embedding_models(supported_models_guard.clone())
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+                    } else {
+                        let mut supported_models_guard = self.supported_embedding_models.lock().await;
+                        *supported_models_guard = models;
+                    }
+                }
+                Err(SqliteManagerError::DataNotFound) => {
+                    std::mem::drop(db_read);
+                    // If not found, update the database with the current value
+                    let supported_models_guard = self.supported_embedding_models.lock().await;
+                    self.db
+                        .write()
+                        .await
+                        .update_supported_embedding_models(supported_models_guard.clone())
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+                }
+                Err(e) => return Err(Box::new(NodeError::from(e.to_string())) as Box<dyn std::error::Error + Send>),
             }
-            Err(ShinkaiDBError::DataNotFound) => {
-                // If not found, update the database with the current value
-                let supported_models_guard = self.supported_embedding_models.lock().await;
-                self.db
-                    .update_supported_embedding_models(supported_models_guard.clone())
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-            }
-            Err(e) => return Err(Box::new(NodeError::from(e)) as Box<dyn std::error::Error + Send>),
         }
 
         Ok(())
@@ -1094,13 +1123,17 @@ impl Node {
     }
 
     async fn retry_messages(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         encryption_secret_key: EncryptionStaticKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
-        let messages_to_retry = db.get_messages_to_retry_before(None)?;
+        let messages_to_retry = db
+            .read()
+            .await
+            .get_messages_to_retry_before(None)
+            .map_err(|e| NodeError::from(e.to_string()))?;
 
         for retry_message in messages_to_retry {
             let encrypted_secret_key = clone_static_secret_key(&encryption_secret_key);
@@ -1108,7 +1141,10 @@ impl Node {
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
-            db.remove_message_from_retry(&retry_message.message).unwrap();
+            db.write()
+                .await
+                .remove_message_from_retry(&retry_message.message)
+                .unwrap();
 
             shinkai_log(
                 ShinkaiLogOption::Node,
@@ -1154,7 +1190,7 @@ impl Node {
         my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         save_to_db_flag: bool,
@@ -1229,7 +1265,10 @@ impl Node {
                 // Calculate the delay for the next retry
                 let delay_seconds = 4_u64.pow(retry_count - 1);
                 let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-                db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                db.write()
+                    .await
+                    .add_message_to_retry(&retry_message, retry_time)
+                    .unwrap();
             }
             let end_time = Utc::now();
             let duration = end_time - start_time;
@@ -1356,7 +1395,7 @@ impl Node {
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> io::Result<()> {
@@ -1439,7 +1478,11 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let db_result = db.unsafe_insert_inbox_message(&message_to_save, None, ws_manager).await;
+        let db_result = db
+            .write()
+            .await
+            .unsafe_insert_inbox_message(&message_to_save, None, ws_manager)
+            .await;
         match db_result {
             Ok(_) => (),
             Err(e) => {

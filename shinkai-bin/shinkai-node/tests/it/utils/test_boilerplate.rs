@@ -1,15 +1,16 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_node::network::network_manager::external_subscriber_manager::ExternalSubscriberManager;
 use shinkai_node::network::network_manager::my_subscription_manager::MySubscriptionsManager;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -50,7 +51,7 @@ pub struct TestEnvironment {
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
     pub node1_vecfs: Arc<VectorFS>,
-    pub node1_db: Arc<ShinkaiDB>,
+    pub node1_db: Arc<RwLock<SqliteManager>>,
     pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,

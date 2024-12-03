@@ -8,11 +8,10 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
@@ -23,6 +22,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
+use shinkai_sqlite::SqliteManager;
 // use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -32,7 +32,7 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 const NUM_THREADS: usize = 4;
 
@@ -54,7 +54,7 @@ pub trait JobManagerTrait {
 
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub identity_secret_key: SigningKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
@@ -67,7 +67,7 @@ pub struct JobManager {
 impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
@@ -85,7 +85,7 @@ impl JobManager {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
             let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-            let all_jobs = db_arc.get_all_jobs().unwrap();
+            let all_jobs = db_arc.read().await.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
@@ -93,13 +93,9 @@ impl JobManager {
         }
 
         let db_prefix = "job_manager_abcdeprefix_";
-        let job_queue = JobQueueManager::<JobForProcessing>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("JOB_MANAGER_THREADS")
@@ -175,7 +171,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
@@ -191,7 +187,7 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
-                Weak<ShinkaiDB>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -449,7 +445,7 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
-            match db_arc.create_new_job(
+            match db_arc.write().await.create_new_job(
                 job_id.clone(),
                 llm_or_agent_provider_id.clone(),
                 job_creation.scope,
@@ -461,9 +457,12 @@ impl JobManager {
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
             };
 
-            match db_arc.get_job(&job_id) {
+            let db_read = db_arc.read().await;
+
+            match db_read.get_job(&job_id) {
                 Ok(job) => {
-                    std::mem::drop(db_arc); // require to avoid deadlock
+                    std::mem::drop(db_read); // require to avoid deadlock
+                    std::mem::drop(db_arc);
                     self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
                     Ok(job_id.clone())
                 }
@@ -490,7 +489,7 @@ impl JobManager {
         };
 
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
+        let is_empty = db_arc.read().await.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
             let mut content = job_message.clone().content;
             if content.chars().count() > 120 {
@@ -498,10 +497,15 @@ impl JobManager {
                 content = format!("{}...", truncated_content);
             }
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
-            db_arc.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
+            db_arc
+                .write()
+                .await
+                .update_smart_inbox_name(&inbox_name.to_string(), &content)?;
         }
 
         db_arc
+            .write()
+            .await
             .add_message_to_job_inbox(
                 &job_message.job_id.clone(),
                 &message,

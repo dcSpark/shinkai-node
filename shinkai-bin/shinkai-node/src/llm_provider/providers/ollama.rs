@@ -14,13 +14,13 @@ use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_db::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
-};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;

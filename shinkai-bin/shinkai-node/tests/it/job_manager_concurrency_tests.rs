@@ -1,5 +1,4 @@
 use ed25519_dalek::SigningKey;
-use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -19,6 +18,7 @@ use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::llm_stopper::LLMStopper;
 use shinkai_node::managers::sheet_manager::SheetManager;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -26,7 +26,7 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::time::Duration;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
@@ -102,18 +102,16 @@ async fn setup_default_vector_fs() -> VectorFS {
 
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    utils::db_handlers::setup();
-
     let num_threads = 8;
-    let db_path = "db_tests/";
-    let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
+    let db = utils::db_handlers::setup_test_db();
+    let db = Arc::new(RwLock::new(db));
     let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<ShinkaiDB>,
+                              db: Weak<RwLock<SqliteManager>>,
                               _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
@@ -145,7 +143,11 @@ async fn test_process_job_queue_concurrency() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None, None).await;
+            let _ = db_arc
+                .write()
+                .await
+                .unsafe_insert_inbox_message(&message.clone(), None, None)
+                .await;
 
             Ok("Success".to_string())
         })
@@ -153,10 +155,9 @@ async fn test_process_job_queue_concurrency() {
 
     let db_weak = Arc::downgrade(&db);
     let vector_fs_weak = Arc::downgrade(&vector_fs);
-    let mut job_queue =
-        JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
+        .await
+        .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
@@ -194,7 +195,7 @@ async fn test_process_job_queue_concurrency() {
               _job_queue_manager,
               _my_agent_payments_manager,
               _ext_agent_payments_manager,
-            //   _sqlite_logger,
+              //   _sqlite_logger,
               _llm_stopper| {
             mock_processing_fn(
                 job,
@@ -239,7 +240,7 @@ async fn test_process_job_queue_concurrency() {
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        let last_messages_all = db.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db.read().await.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 8);
     });
 
@@ -260,18 +261,16 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequential_process_for_same_job_id() {
-    super::utils::db_handlers::setup();
-
     let num_threads = 8;
-    let db_path = "db_tests/";
-    let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
+    let db = utils::db_handlers::setup_test_db();
+    let db = Arc::new(RwLock::new(db));
     let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<ShinkaiDB>,
+                              db: Weak<RwLock<SqliteManager>>,
                               _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
@@ -303,7 +302,11 @@ async fn test_sequential_process_for_same_job_id() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None, None).await;
+            let _ = db_arc
+                .write()
+                .await
+                .unsafe_insert_inbox_message(&message.clone(), None, None)
+                .await;
 
             Ok("Success".to_string())
         })
@@ -311,10 +314,9 @@ async fn test_sequential_process_for_same_job_id() {
 
     let db_weak = Arc::downgrade(&db);
     let vector_fs_weak = Arc::downgrade(&vector_fs);
-    let mut job_queue =
-        JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
+        .await
+        .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
@@ -352,7 +354,7 @@ async fn test_sequential_process_for_same_job_id() {
               _job_queue_manager,
               _my_agent_payments_manager,
               _ext_agent_payments_manager,
-            //   _sqlite_logger,
+              //   _sqlite_logger,
               _llm_stopper| {
             mock_processing_fn(
                 job,
@@ -394,7 +396,7 @@ async fn test_sequential_process_for_same_job_id() {
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let last_messages_all = db_copy.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db_copy.read().await.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 1);
     });
 

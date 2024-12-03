@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::{LLMInferenceResponse, FunctionCall};
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
@@ -13,11 +13,11 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenRouter};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
@@ -128,7 +128,16 @@ impl LLMService for OpenRouter {
                     )
                     .await
                 } else {
-                    handle_non_streaming_response(client, url, payload, key.clone(), inbox_name, llm_stopper, Some(tools_json)).await
+                    handle_non_streaming_response(
+                        client,
+                        url,
+                        payload,
+                        key.clone(),
+                        inbox_name,
+                        llm_stopper,
+                        Some(tools_json),
+                    )
+                    .await
                 }
             } else {
                 Err(LLMProviderError::ApiKeyNotSet)
@@ -210,7 +219,8 @@ async fn handle_streaming_response(
                                             let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                                 tools_array.iter().find_map(|tool| {
                                                     if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                        tool.get("tool_router_key")
+                                                            .and_then(|key| key.as_str().map(|s| s.to_string()))
                                                     } else {
                                                         None
                                                     }

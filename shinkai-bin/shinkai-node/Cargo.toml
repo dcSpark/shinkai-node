@@ -57,7 +57,6 @@ shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_sheet = { workspace = true }
 # shinkai_baml = { workspace = true }
-shinkai_db = { workspace = true }
 bincode = "1.3.3"
 qrcode = "0.12"
 image = "0.23"

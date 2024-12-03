@@ -7,10 +7,13 @@ use rocksdb::{Error, WriteBatch};
 
 use serde_json::Value;
 use shinkai_message_primitives::schemas::identity::StandardIdentity;
+use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::smart_inbox::LLMProviderSubset;
 use shinkai_message_primitives::schemas::smart_inbox::ProviderType;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
+use shinkai_message_primitives::schemas::ws_types::WSMessageType;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
@@ -19,11 +22,7 @@ use shinkai_message_primitives::{
 };
 use tokio::sync::Mutex;
 
-use crate::schemas::inbox_permission::InboxPermission;
-use crate::schemas::ws_types::WSMessageType;
-use crate::schemas::ws_types::WSUpdateHandler;
-
-use super::{db_main::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_errors::ShinkaiDBError, db_main::Topic, ShinkaiDB};
 
 impl ShinkaiDB {
     pub fn create_empty_inbox(&self, inbox_name: String) -> Result<(), Error> {
@@ -191,7 +190,15 @@ impl ShinkaiDB {
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
                 if let Ok(msg_string) = message.to_string() {
-                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, WSMessageType::None, false).await;
+                    let _ = m
+                        .queue_message(
+                            WSTopic::Inbox,
+                            inbox_name_string,
+                            msg_string,
+                            WSMessageType::None,
+                            false,
+                        )
+                        .await;
                 }
             }
         }
@@ -408,7 +415,8 @@ impl ShinkaiDB {
                 let stored_perm_val = val_str
                     .parse::<i32>()
                     .map_err(|_| ShinkaiDBError::SomeError("Permission value parse error".to_string()))?;
-                let stored_perm = InboxPermission::from_i32(stored_perm_val)?;
+                let stored_perm = InboxPermission::from_i32(stored_perm_val)
+                    .map_err(|e| ShinkaiDBError::InvalidInboxPermission(e.to_string()))?;
 
                 // Check if the stored permission is greater than or equal to the requested permission
                 Ok(stored_perm >= perm)
@@ -555,9 +563,14 @@ impl ShinkaiDB {
                                             match self.get_agent(&agent_id) {
                                                 Ok(Some(agent)) => {
                                                     // Fetch the serialized LLM provider
-                                                    if let Ok(Some(serialized_llm_provider)) = self.get_llm_provider(&agent.llm_provider_id, &p) {
+                                                    if let Ok(Some(serialized_llm_provider)) =
+                                                        self.get_llm_provider(&agent.llm_provider_id, &p)
+                                                    {
                                                         (
-                                                            Some(LLMProviderSubset::from_agent(agent, serialized_llm_provider)),
+                                                            Some(LLMProviderSubset::from_agent(
+                                                                agent,
+                                                                serialized_llm_provider,
+                                                            )),
                                                             ProviderType::Agent,
                                                         )
                                                     } else {
@@ -623,4 +636,3 @@ impl ShinkaiDB {
         Ok(())
     }
 }
-

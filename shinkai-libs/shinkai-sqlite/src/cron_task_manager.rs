@@ -164,11 +164,7 @@ impl SqliteManager {
         }
     }
 
-    pub fn update_cron_task_last_executed(
-        &self,
-        task_id: i64,
-        last_executed: &str,
-    ) -> Result<(), SqliteManagerError> {
+    pub fn update_cron_task_last_executed(&self, task_id: i64, last_executed: &str) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         conn.execute(
             "UPDATE cron_tasks SET last_executed = ?1 WHERE task_id = ?2",

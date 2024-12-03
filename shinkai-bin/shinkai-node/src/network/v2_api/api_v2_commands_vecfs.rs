@@ -5,7 +5,7 @@ use base64::Engine;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::identity::Identity,
@@ -15,10 +15,11 @@ use shinkai_message_primitives::{
         APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, source::SourceFile, vector_resource::VRPath};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     managers::IdentityManager,
@@ -27,7 +28,7 @@ use crate::{
 
 impl Node {
     pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrievePathSimplifiedJson,
@@ -143,7 +144,7 @@ impl Node {
     }
 
     pub async fn v2_convert_files_and_save_to_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
@@ -183,7 +184,7 @@ impl Node {
     }
 
     pub async fn v2_create_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCreateFolder,
@@ -256,7 +257,7 @@ impl Node {
     }
 
     pub async fn v2_move_item(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveItem,
@@ -341,7 +342,7 @@ impl Node {
     }
 
     pub async fn v2_copy_item(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyItem,
@@ -426,7 +427,7 @@ impl Node {
     }
 
     pub async fn v2_move_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveFolder,
@@ -511,7 +512,7 @@ impl Node {
     }
 
     pub async fn v2_copy_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyFolder,
@@ -596,7 +597,7 @@ impl Node {
     }
 
     pub async fn v2_delete_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteFolder,
@@ -668,7 +669,7 @@ impl Node {
     }
 
     pub async fn v2_delete_item(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteItem,
@@ -740,7 +741,7 @@ impl Node {
     }
 
     pub async fn v2_search_items(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsSearchItems,
@@ -817,7 +818,7 @@ impl Node {
     }
 
     pub async fn v2_retrieve_vector_resource(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         path: String,
@@ -902,7 +903,7 @@ impl Node {
     }
 
     pub async fn v2_upload_file_to_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -921,15 +922,6 @@ impl Node {
 
         // Step 1: Create a file inbox
         let hash_hex = uuid::Uuid::new_v4().to_string();
-        if let Err(err) = db.create_files_message_inbox(hash_hex.clone()) {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: format!("Failed to create files message inbox: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
         let file_inbox_name = hash_hex;
 
         // Step 2: Add the file to the inbox
@@ -1033,7 +1025,7 @@ impl Node {
     }
 
     pub async fn v2_retrieve_source_file(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,

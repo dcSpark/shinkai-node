@@ -3,10 +3,9 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 
-use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
-use shinkai_sqlite::{SqliteManager, SqliteManagerError};
+use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use tokio::sync::RwLock;
 
@@ -14,7 +13,7 @@ use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_get_tool_offering(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -25,7 +24,7 @@ impl Node {
         }
 
         // Fetch the tool offering
-        match db.get_tool_offering(&tool_key_name) {
+        match db.read().await.get_tool_offering(&tool_key_name) {
             Ok(tool_offering) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }
@@ -43,7 +42,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_tool_offering(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -54,7 +53,7 @@ impl Node {
         }
 
         // Attempt to get the tool offering before removing it
-        let tool_offering = match db.get_tool_offering(&tool_key_name) {
+        let tool_offering = match db.read().await.get_tool_offering(&tool_key_name) {
             Ok(tool_offering) => tool_offering,
             Err(err) => {
                 let api_error = APIError {
@@ -68,7 +67,7 @@ impl Node {
         };
 
         // Remove the tool offering
-        match db.remove_tool_offering(&tool_key_name) {
+        match db.write().await.remove_tool_offering(&tool_key_name) {
             Ok(_) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }
@@ -86,8 +85,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_all_tool_offering(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -97,7 +95,7 @@ impl Node {
         }
 
         // Fetch all tool offerings
-        let tool_offerings = match db.get_all_tool_offerings() {
+        let tool_offerings = match db.read().await.get_all_tool_offerings() {
             Ok(tool_offerings) => tool_offerings,
             Err(err) => {
                 let api_error = APIError {
@@ -114,7 +112,7 @@ impl Node {
         let mut detailed_tool_headers = Vec::new();
         for tool_offering in tool_offerings {
             let tool_key = &tool_offering.tool_key;
-            match sqlite_manager.read().await.get_tool_by_key(tool_key) {
+            match db.read().await.get_tool_by_key(tool_key) {
                 Ok(tool) => {
                     let mut tool_header = tool.to_header();
                     tool_header.sanitize_config();
@@ -148,8 +146,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_tool_offering(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -160,7 +157,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match sqlite_manager.read().await.tool_exists(&tool_offering.tool_key) {
+        match db.read().await.tool_exists(&tool_offering.tool_key) {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {
@@ -184,7 +181,7 @@ impl Node {
         }
 
         // Save the tool offering
-        match db.set_tool_offering(tool_offering.clone()) {
+        match db.write().await.set_tool_offering(tool_offering.clone()) {
             Ok(_) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }

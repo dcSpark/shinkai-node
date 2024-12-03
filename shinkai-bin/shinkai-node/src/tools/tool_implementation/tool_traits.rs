@@ -1,6 +1,6 @@
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
@@ -17,9 +17,8 @@ pub trait ToolExecutor {
         bearer: String,
         tool_id: String,
         app_id: String,
-        db_clone: Arc<ShinkaiDB>,
+        db_clone: Arc<RwLock<SqliteManager>>,
         vector_fs_clone: Arc<VectorFS>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,

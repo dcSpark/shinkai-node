@@ -1,12 +1,12 @@
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::file_links::FileLink;
 use shinkai_message_primitives::schemas::shinkai_subscription::ShinkaiSubscription;
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_subscription::SubscriptionId};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use std::cmp::Ordering;
@@ -63,7 +63,7 @@ impl HttpDownloadJob {
 }
 
 pub struct HttpDownloadManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub vector_fs: Weak<VectorFS>,
     pub node_profile_name: ShinkaiName,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<HttpDownloadJob>>>,
@@ -71,15 +71,15 @@ pub struct HttpDownloadManager {
 }
 
 impl HttpDownloadManager {
-    pub async fn new(db: Weak<ShinkaiDB>, vector_fs: Weak<VectorFS>, node_profile_name: ShinkaiName) -> Self {
+    pub async fn new(
+        db: Weak<RwLock<SqliteManager>>,
+        vector_fs: Weak<VectorFS>,
+        node_profile_name: ShinkaiName,
+    ) -> Self {
         let db_prefix = "http_downloader_manager_";
-        let job_queue = JobQueueManager::<HttpDownloadJob>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let job_queue = JobQueueManager::<HttpDownloadJob>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("HTTP_DOWNLOAD_MANAGER_THREADS")
@@ -107,7 +107,7 @@ impl HttpDownloadManager {
     pub async fn process_download_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<HttpDownloadJob>>>,
         vector_fs: Weak<VectorFS>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         max_parallel_downloads: usize,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
@@ -169,7 +169,7 @@ impl HttpDownloadManager {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<HttpDownloadJob>>>,
         vector_fs: Weak<VectorFS>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         max_parallel_downloads: usize,
         semaphore: Arc<Semaphore>,
         active_jobs: Arc<RwLock<HashMap<String, usize>>>,
@@ -187,18 +187,21 @@ impl HttpDownloadManager {
             }
             let db_strong = db_strong.unwrap();
 
-            let filtered_jobs = all_jobs
-                .into_iter()
-                .filter(|job| {
-                    let subscription = db_strong.get_my_subscription(job.subscription_id.get_unique_id());
-                    if let Ok(subscription) = subscription {
-                        subscription.subscription_id == job.subscription_id
-                    } else {
-                        false
-                    }
-                })
-                .take(max_parallel_downloads)
-                .collect::<Vec<HttpDownloadJob>>();
+            let filtered_jobs = {
+                let db_read = db_strong.read().await;
+                all_jobs
+                    .into_iter()
+                    .filter(|job| {
+                        let subscription = db_read.get_my_subscription(job.subscription_id.get_unique_id());
+                        if let Ok(subscription) = subscription {
+                            subscription.subscription_id == job.subscription_id
+                        } else {
+                            false
+                        }
+                    })
+                    .take(max_parallel_downloads)
+                    .collect::<Vec<HttpDownloadJob>>()
+            };
 
             // Check if the number of jobs to process is equal to max_parallel_downloads
             *continue_immediately = filtered_jobs.len() == max_parallel_downloads;
@@ -249,6 +252,8 @@ impl HttpDownloadManager {
                         // Send notification
                         if let Some(db_lock) = db_clone.upgrade() {
                             let subscription = db_lock
+                                .read()
+                                .await
                                 .get_my_subscription(job_id.subscription_id.get_unique_id())
                                 .unwrap();
                             let user_profile = subscription.get_subscriber_with_profile().unwrap();
@@ -258,7 +263,11 @@ impl HttpDownloadManager {
                                 "Downloaded {} {} for subscription '{}' from user '{}'.",
                                 *counter, file_word, subscription.shared_folder, streamer_node
                             );
-                            db_lock.write_notification(user_profile, notification_message).unwrap();
+                            db_lock
+                                .write()
+                                .await
+                                .write_notification(user_profile, notification_message)
+                                .unwrap();
                         }
                         // Reset the counter
                         active_jobs.insert(job_id.subscription_id.get_unique_id().to_string(), 0);

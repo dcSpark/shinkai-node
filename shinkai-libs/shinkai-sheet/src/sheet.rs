@@ -2,7 +2,8 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::sheet::{
-    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnUuid, RowUuid, UuidString, WorkflowSheetJobData,
+    Cell, CellId, CellStatus, CellUpdateData, CellUpdateInfo, ColumnBehavior, ColumnDefinition, ColumnUuid, RowUuid,
+    UuidString, WorkflowSheetJobData,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -18,24 +19,6 @@ const MAX_DEPENDENCY_DEPTH: usize = 20;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SheetUpdate {
     CellUpdated(CellUpdateInfo),
-}
-
-// Define the new struct
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct CellUpdateInfo {
-    pub sheet_id: String,
-    pub update_type: String,
-    pub data: CellUpdateData,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct CellUpdateData {
-    pub column_id: ColumnUuid,
-    pub input_hash: Option<String>,
-    pub last_updated: DateTime<Utc>,
-    pub row_id: RowUuid,
-    pub status: CellStatus,
-    pub value: Option<String>,
 }
 
 #[derive(Debug, Clone)]
