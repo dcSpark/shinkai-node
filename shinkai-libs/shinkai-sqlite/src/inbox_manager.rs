@@ -119,8 +119,8 @@ impl SqliteManager {
 
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO inbox_messages (message_hash, inbox_name, shinkai_message, parent_message_hash, time_key) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![message.calculate_message_hash_for_pagination(), inbox_name, encoded_message, parent_key, time_key],
+            "INSERT OR REPLACE INTO inbox_messages (message_hash, inbox_name, shinkai_message, parent_message_hash, time_key) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![hash_key, inbox_name, encoded_message, parent_key, time_key],
         )?;
 
         {
@@ -168,7 +168,11 @@ impl SqliteManager {
             conn.prepare("SELECT parent_message_hash FROM inbox_messages WHERE inbox_name = ?1 AND message_hash = ?2")?;
         let mut rows = stmt.query(params![inbox_name, hash_key])?;
 
-        let parent_key: Option<String> = rows.next()?.map(|row| row.get(0)).transpose()?;
+        let parent_key: Option<String> = match rows.next()? {
+            Some(row) => row.get(0)?,
+            None => return Ok(None),
+        };
+
         Ok(parent_key)
     }
 
@@ -235,7 +239,7 @@ impl SqliteManager {
             let message = messages
                 .iter()
                 .find(|(message_key, _, _)| {
-                    return message_key == &key;
+                    message_key == &key
                 })
                 .ok_or(SqliteManagerError::SomeError(format!(
                     "Message with key not found: {}",

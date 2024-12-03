@@ -22,7 +22,6 @@ mod tests {
         shinkai_name::ShinkaiName,
     };
     use shinkai_sqlite::errors::SqliteManagerError;
-    use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
 
@@ -97,7 +96,7 @@ mod tests {
         let result = db.write().await.remove_llm_provider(&test_agent.id, &profile);
         assert!(
             matches!(result, Err(SqliteManagerError::DataNotFound)),
-            "Expected RocksDBError error"
+            "Expected SqliteManagerError error"
         );
     }
 

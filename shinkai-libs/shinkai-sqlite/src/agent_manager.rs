@@ -10,7 +10,7 @@ impl SqliteManager {
 
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM shinkai_agents WHERE agent_id = ?)",
-            &[&agent.agent_id],
+            [&agent.agent_id],
             |row| row.get(0),
         )?;
 
@@ -59,7 +59,7 @@ impl SqliteManager {
 
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM shinkai_agents WHERE agent_id = ?)",
-            &[&agent_id],
+            [&agent_id],
             |row| row.get(0),
         )?;
 
@@ -67,7 +67,7 @@ impl SqliteManager {
             return Err(SqliteManagerError::DataNotFound);
         }
 
-        tx.execute("DELETE FROM shinkai_agents WHERE agent_id = ?", &[&agent_id])?;
+        tx.execute("DELETE FROM shinkai_agents WHERE agent_id = ?", [&agent_id])?;
 
         tx.commit()?;
         Ok(())
@@ -126,7 +126,7 @@ impl SqliteManager {
     pub fn get_agent(&self, agent_id: &str) -> Result<Option<Agent>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM shinkai_agents WHERE agent_id = ?")?;
-        let agent = stmt.query_row(&[&agent_id], |row| {
+        let agent = stmt.query_row([&agent_id], |row| {
             let full_identity_name: String = row.get(2)?;
             let knowledge: String = row.get(5)?;
             let tools: String = row.get(7)?;
@@ -178,7 +178,7 @@ impl SqliteManager {
 
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM shinkai_agents WHERE agent_id = ?)",
-            &[&updated_agent.agent_id],
+            [&updated_agent.agent_id],
             |row| row.get(0),
         )?;
 

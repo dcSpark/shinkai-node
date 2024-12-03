@@ -91,6 +91,17 @@ impl SqliteManager {
     pub fn remove_llm_provider(&self, llm_provider_id: &str, profile: &ShinkaiName) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let llm_provider_id = Self::db_llm_provider_id(llm_provider_id, profile)?;
+
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM llm_providers WHERE db_llm_provider_id = ?1)",
+            params![&llm_provider_id],
+            |row| row.get(0),
+        )?;
+
+        if !exists {
+            return Err(SqliteManagerError::DataNotFound);
+        }
+
         conn.execute(
             "DELETE FROM llm_providers WHERE db_llm_provider_id = ?1",
             params![&llm_provider_id],
@@ -130,6 +141,10 @@ impl SqliteManager {
         let mut result = Vec::new();
         for llm_provider in llm_providers {
             result.push(llm_provider?);
+        }
+
+        if result.is_empty() {
+            return Err(SqliteManagerError::DataNotFound);
         }
 
         Ok(result.pop())
@@ -185,9 +200,9 @@ impl SqliteManager {
 
         let rows = stmt.query_map(params![&llm_provider_id], |row| {
             let full_identity_name = row.get::<_, String>(0)?;
-            Ok(ShinkaiName::new(full_identity_name).map_err(|e| {
+            ShinkaiName::new(full_identity_name).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?)
+            })
         })?;
 
         let mut identities = Vec::new();
@@ -317,10 +332,15 @@ mod tests {
 
         db.remove_llm_provider(&test_agent.id, &profile)
             .expect("Failed to remove agent");
-        let retrieved_agent = db
-            .get_llm_provider(&test_agent.id, &profile)
-            .expect("Failed to get llm provider");
-        assert_eq!(None, retrieved_agent);
+
+        let retrieved_agent_result = db.get_llm_provider(&test_agent.id, &profile);
+        match retrieved_agent_result {
+            Ok(_) => panic!("Expected error, but got Ok"),
+            Err(e) => assert!(
+                matches!(e, SqliteManagerError::DataNotFound),
+                "Expected FailedFetchingValue error"
+            ),
+        }
     }
 
     #[test]

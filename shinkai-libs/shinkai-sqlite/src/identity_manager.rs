@@ -1,7 +1,7 @@
 use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::{
-        identity::{self, DeviceIdentity, Identity, StandardIdentity},
+        identity::{DeviceIdentity, Identity, StandardIdentity},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message_schemas::IdentityPermissions,
@@ -20,7 +20,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM standard_identities")?;
         let count: i64 = stmt
             .query_row([], |row| row.get(0))
-            .map_err(|e| SqliteManagerError::DatabaseError(e))?;
+            .map_err(SqliteManagerError::DatabaseError)?;
         Ok(count > 0)
     }
 
@@ -33,8 +33,8 @@ impl SqliteManager {
 
         let identities: Vec<Identity> = standard_identities
             .into_iter()
-            .map(|identity| Identity::Standard(identity))
-            .chain(devices.into_iter().map(|identity| Identity::Device(identity)))
+            .map(Identity::Standard)
+            .chain(devices.into_iter().map(Identity::Device))
             .collect();
 
         Ok(identities)
@@ -259,7 +259,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM standard_identities WHERE profile_name = ?")?;
         let count: i64 = stmt
             .query_row([profile_name], |row| row.get(0))
-            .map_err(|e| SqliteManagerError::DatabaseError(e))?;
+            .map_err(SqliteManagerError::DatabaseError)?;
         Ok(count > 0)
     }
 
@@ -272,7 +272,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare("SELECT permission_type FROM standard_identities WHERE profile_name = ?")?;
         let permission_type: String = stmt
             .query_row([profile_name], |row| row.get(0))
-            .map_err(|e| SqliteManagerError::DatabaseError(e))?;
+            .map_err(SqliteManagerError::DatabaseError)?;
         Ok(serde_json::from_str(&permission_type)?)
     }
 
@@ -285,7 +285,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare("SELECT permission_type FROM device_identities WHERE device_name = ?")?;
         let permission_type: String = stmt
             .query_row([device_name], |row| row.get(0))
-            .map_err(|e| SqliteManagerError::DatabaseError(e))?;
+            .map_err(SqliteManagerError::DatabaseError)?;
         Ok(serde_json::from_str(&permission_type)?)
     }
 
@@ -582,9 +582,8 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use identity::StandardIdentityType;
     use shinkai_message_primitives::{
-        schemas::shinkai_name::ShinkaiName,
+        schemas::{identity::StandardIdentityType, shinkai_name::ShinkaiName},
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },

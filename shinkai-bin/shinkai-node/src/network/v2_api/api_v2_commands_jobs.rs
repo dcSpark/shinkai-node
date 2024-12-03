@@ -661,8 +661,11 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        let db_read = db.read().await;
+        match db_read.get_job_with_options(&job_id, false, false) {
             Ok(_) => {
+                drop(db_read);
+
                 // Job exists, proceed with updating the config
                 match db.write().await.update_job_config(&job_id, config) {
                     Ok(_) => {

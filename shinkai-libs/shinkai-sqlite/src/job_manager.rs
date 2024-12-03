@@ -503,7 +503,7 @@ impl SqliteManager {
             None => {
                 // Fetch the most recent message from the job's inbox
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).map_err(|e| {
-                    SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e.to_string()))
+                    SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e))
                 })?;
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
                 if let Some(message) = last_messages.first() {
@@ -532,7 +532,7 @@ impl SqliteManager {
         job_step_result.add_new_step_revision(prompt);
 
         let step_result_bytes = serde_json::to_vec(&job_step_result).map_err(|e| {
-            SqliteManagerError::SerializationError(format!("Error serializing JobStepResult: {}", e.to_string()))
+            SqliteManagerError::SerializationError(format!("Error serializing JobStepResult: {}", e))
         })?;
 
         let conn = self.get_connection()?;
@@ -553,7 +553,7 @@ impl SqliteManager {
         }
 
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())
-            .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e.to_string())))?;
+            .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
         let mut step_history: Vec<JobStepResult> = Vec::new();
         let mut until_offset_key: Option<String> = None;
 
@@ -609,7 +609,7 @@ impl SqliteManager {
         let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
         let inbox_name: String = row.get(0)?;
 
-        Ok(self.is_inbox_empty(&inbox_name)?)
+        self.is_inbox_empty(&inbox_name)
     }
 
     pub async fn add_message_to_job_inbox(
@@ -637,7 +637,7 @@ impl SqliteManager {
         let tx = conn.transaction()?;
 
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())
-            .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e.to_string())))?;
+            .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
 
         tx.execute(
             "DELETE FROM inbox_profile_permissions WHERE inbox_name = ?1",

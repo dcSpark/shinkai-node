@@ -842,7 +842,7 @@ impl SqliteManager {
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = vec!["0.9.0"];
+        let breaking_versions = ["0.9.0"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions
@@ -854,7 +854,7 @@ impl SqliteManager {
         conn.execute("DELETE FROM app_version;", [])?;
         conn.execute(
             "INSERT INTO app_version (version, needs_global_reset) VALUES (?, ?);",
-            &[&version as &dyn ToSql, &(needs_global_reset as i32) as &dyn ToSql],
+            [&version as &dyn ToSql, &(needs_global_reset as i32) as &dyn ToSql],
         )?;
 
         Ok(())

@@ -193,7 +193,7 @@ mod tests {
         shinkai_message::shinkai_message_schemas::FileDestinationSourceType,
     };
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-    use std::path::{self, PathBuf};
+    use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
     fn setup_test_db() -> SqliteManager {

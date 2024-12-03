@@ -133,7 +133,7 @@ impl SqliteManager {
                             e.to_string(),
                         )))
                     })?,
-                http_preferred: http_preferred,
+                http_preferred,
             })
         }
 

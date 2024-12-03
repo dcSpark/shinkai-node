@@ -144,7 +144,7 @@ impl SqliteManager {
                                 e.to_string(),
                             )))
                         })?,
-                    http_preferred: http_preferred,
+                    http_preferred,
                 })
             })?
             .collect::<Result<Vec<ShinkaiSubscription>, _>>()?;

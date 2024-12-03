@@ -1280,6 +1280,8 @@ impl Node {
 
         // Add the AI message to the job inbox
         let add_ai_message_result = db
+            .write()
+            .await
             .add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None)
             .await;
 

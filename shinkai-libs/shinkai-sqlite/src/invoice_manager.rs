@@ -256,7 +256,7 @@ impl SqliteManager {
                     result_str: row.get(13)?,
                 })
             })
-            .map_err(|e| SqliteManagerError::DatabaseError(e))?;
+            .map_err(SqliteManagerError::DatabaseError)?;
 
         let mut results = Vec::new();
         for invoice in invoices {
@@ -393,7 +393,7 @@ impl SqliteManager {
                     error_message: row.get(6)?,
                 })
             })
-            .map_err(|e| SqliteManagerError::DatabaseError(e))?;
+            .map_err(SqliteManagerError::DatabaseError)?;
 
         let mut results = Vec::new();
         for error in errors {

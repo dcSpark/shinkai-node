@@ -213,7 +213,8 @@ impl GenericInferenceChain {
                 llm_provider.clone(),
                 db.clone(),
                 stream,
-            );
+            )
+            .await;
 
             // Only proceed with tool selection if both conditions are met:
             // - Tools are allowed by configuration
