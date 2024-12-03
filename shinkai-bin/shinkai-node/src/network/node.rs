@@ -530,6 +530,10 @@ impl Node {
             clone_signature_secret_key(&self.identity_secret_key),
             self.node_name.clone(),
             job_manager.clone(),
+            self.identity_manager.clone(),
+            self.encryption_secret_key.clone(),
+            self.encryption_public_key.clone(),
+            self.identity_secret_key.clone(),
             self.ws_manager_trait.clone(),
         )
         .await;

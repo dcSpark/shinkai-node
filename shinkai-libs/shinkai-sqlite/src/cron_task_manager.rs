@@ -51,7 +51,12 @@ impl SqliteManager {
         }
     }
 
-    pub fn update_cron_task(&self, task_id: i64, cron: &str, action: &CronTaskAction) -> Result<(), SqliteManagerError> {
+    pub fn update_cron_task(
+        &self,
+        task_id: i64,
+        cron: &str,
+        action: &CronTaskAction,
+    ) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -158,14 +163,25 @@ impl SqliteManager {
             Ok(None)
         }
     }
+
+    pub fn update_cron_task_last_executed(
+        &self,
+        task_id: i64,
+        last_executed: &str,
+    ) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE cron_tasks SET last_executed = ?1 WHERE task_id = ?2",
+            params![last_executed, task_id],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::{
-        schemas::crontab::CronTaskAction, shinkai_message::shinkai_message_schemas::JobMessage,
-    };
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -195,6 +211,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron = "* * * * *";
@@ -221,6 +238,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron = "* * * * *";
@@ -247,6 +265,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let action2 = CronTaskAction::SendMessageToJob {
@@ -261,6 +280,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron1 = "0 0 * * *";
@@ -290,6 +310,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron = "* * * * *";
@@ -309,6 +330,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
 
@@ -336,6 +358,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron = "* * * * *";
@@ -371,6 +394,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron = "* * * * *";
@@ -407,6 +431,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
         };
         let cron = "* * * * *";
