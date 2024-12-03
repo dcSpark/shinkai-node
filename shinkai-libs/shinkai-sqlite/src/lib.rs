@@ -13,6 +13,7 @@ pub mod embedding_function;
 pub mod files;
 pub mod prompt_manager;
 pub mod shinkai_tool_manager;
+pub mod cron_task_manager;
 pub mod tool_playground;
 
 #[derive(Error, Debug)]
@@ -133,6 +134,8 @@ impl SqliteManager {
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_version_table(conn)?;
+        Self::initialize_cron_tasks_table(conn)?;
+        Self::initialize_cron_task_executions_table(conn)?;
         Ok(())
     }
 
@@ -288,6 +291,38 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS app_version (
                 version TEXT NOT NULL UNIQUE,
                 needs_global_reset INTEGER NOT NULL CHECK (needs_global_reset IN (0, 1))
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Updated method to initialize the cron_tasks table
+    fn initialize_cron_tasks_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cron_tasks (
+                task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cron TEXT NOT NULL,
+                created_at TEXT NOT NULL, -- Field to track when the task was created
+                last_modified TEXT NOT NULL,
+                last_executed TEXT, -- Field to track the last execution time
+                action TEXT NOT NULL -- Store serialized CronTaskAction
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // New method to initialize the cron_task_executions table
+    fn initialize_cron_task_executions_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cron_task_executions (
+                execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                execution_time TEXT NOT NULL,
+                success INTEGER NOT NULL CHECK (success IN (0, 1)),
+                error_message TEXT,
+                FOREIGN KEY(task_id) REFERENCES cron_tasks(task_id)
             );",
             [],
         )?;

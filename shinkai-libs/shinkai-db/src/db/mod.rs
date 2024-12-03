@@ -2,7 +2,6 @@ pub mod db_main;
 pub use db_main::ShinkaiDB;
 pub use db_main::Topic;
 pub mod db_llm_providers;
-pub mod db_cron_task;
 pub mod db_errors;
 pub mod db_files_transmission;
 pub mod db_identity;

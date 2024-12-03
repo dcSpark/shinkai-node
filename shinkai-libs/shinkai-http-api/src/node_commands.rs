@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
         coinbase_mpc_config::CoinbaseMPCWalletConfig,
+        crontab::{CronTask, CronTaskAction},
         custom_prompt::CustomPrompt,
         identity::{Identity, StandardIdentity},
         job_config::JobConfig,
@@ -1068,6 +1069,31 @@ pub enum NodeCommand {
         bearer: String,
         job_id: String,
         code: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAddCronTask {
+        bearer: String,
+        cron: String,
+        action: CronTaskAction,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListAllCronTasks {
+        bearer: String,
+        res: Sender<Result<Vec<CronTask>, APIError>>,
+    },
+    V2ApiGetSpecificCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Option<CronTask>, APIError>>,
+    },
+    V2ApiRemoveCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetCronTaskLogs {
+        bearer: String,
+        cron_task_id: i64,
         res: Sender<Result<Value, APIError>>,
     },
 }
