@@ -197,7 +197,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
             ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
-            ShinkaiTool::Python(p, _) => p.tool_embedding = Some(embedding),
+            ShinkaiTool::Python(p, _) => p.embedding = Some(embedding),
         }
     }
 
@@ -253,7 +253,7 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
             ShinkaiTool::Deno(d, _) => d.embedding.clone(),
-            ShinkaiTool::Python(p, _) => p.tool_embedding.clone(),
+            ShinkaiTool::Python(p, _) => p.embedding.clone(),
         }
     }
 

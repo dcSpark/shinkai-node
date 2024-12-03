@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::RandomState;
 use std::path::{Path, PathBuf};
 use std::{env, thread};
 
@@ -56,10 +57,10 @@ impl DenoTool {
 
     pub fn run(
         &self,
-        envs: HashMap<String, String>,
+        envs: HashMap<String, String, RandomState>,
         api_ip: String,
         api_port: u16,
-        header_code: String,
+        support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
         node_storage_path: String,
@@ -71,7 +72,7 @@ impl DenoTool {
             envs,
             api_ip,
             api_port,
-            header_code,
+            support_files,
             parameters,
             extra_config,
             node_storage_path,
@@ -86,7 +87,7 @@ impl DenoTool {
         envs: HashMap<String, String>,
         api_ip: String,
         api_port: u16,
-        header_code: String,
+        support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Option<String>,
         node_storage_path: String,
@@ -142,11 +143,9 @@ impl DenoTool {
                 rt.block_on(async {
                     println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
                     println!(
-                        "[Running DenoTool] Code: {} ... {}, Header Code: {} ... {}",
+                        "[Running DenoTool] Code: {} ... {}",
                         &code[..120.min(code.len())],
-                        &code[code.len().saturating_sub(400)..],
-                        &header_code[..120.min(header_code.len())],
-                        &header_code[header_code.len().saturating_sub(400)..]
+                        &code[code.len().saturating_sub(400)..]
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
@@ -173,12 +172,12 @@ impl DenoTool {
                         })?;
                     }
 
+                    let mut files = support_files.clone();
+                    files.insert("index.ts".to_string(), code);
+
                     let tool = Tool::new(
                         CodeFiles {
-                            files: HashMap::from([
-                                (String::from("index.ts"), code),
-                                (String::from("./shinkai-local-tools.ts"), header_code),
-                            ]),
+                            files,
                             entrypoint: "index.ts".to_string(),
                         },
                         config_json,

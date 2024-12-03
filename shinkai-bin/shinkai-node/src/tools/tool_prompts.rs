@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
@@ -5,7 +7,7 @@ pub async fn generate_code_prompt(
     language: CodeLanguage,
     is_memory_required: bool,
     prompt: String,
-    tool_definitions: String,
+    support_files: HashMap<String, String>,
 ) -> Result<String, APIError> {
     match language {
         CodeLanguage::Typescript => {
@@ -15,15 +17,29 @@ pub async fn generate_code_prompt(
             } else {
                 "".to_string()
             };
-            let tool_section = if !tool_definitions.is_empty() {
-                format!("
+            let ts_support_files_section = support_files
+                .iter()
+                .map(|(name, content)| {
+                    format!(
+                        "Import these functions with the format: `import {{ xx }} from './{name}.ts'                   
+# <{name}>
+```{language}
+{content}
+```
+  </{name}>
+"
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            return Ok(format!(
+                r#"
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
-  * Import them with the format: `import {{ xx }} from './shinkai-local-tools.ts'`
-  * This is the content of './shinkai-local-tools.ts':
-  ```{language}
-  {tool_definitions}
-  ```
+  * These are the libraries available in the same directory:
+
+  {ts_support_files_section}
 </agent_libraries>
 
 <agent_deno_libraries>
@@ -34,21 +50,6 @@ pub async fn generate_code_prompt(
     4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
     5. If an external system requires to be used through a package (Deno, Node or NPM), or the API is unknown the NPM library may be used with the 'npm:' prefix.
 </agent_deno_libraries>
-").to_string()
-            } else {
-                r#"
-<agent_deno_libraries>
-  * Prefer libraries in the following order: Deno, Node, NPM
-    1. If fetch is required, it is available in the global scope without any import.
-    2. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
-    3. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
-    4. If an external system requires to be used through a package, or the API is unknown the NPM library may be used with the 'npm:' prefix.
-</agent_deno_libraries>
-"#.to_string()
-            };
-            return Ok(format!(
-                r#"
-{tool_section}
 
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
@@ -64,6 +65,8 @@ pub async fn generate_code_prompt(
 </agent_code_format>
 
 <agent_code_rules>
+  * All import must be in the beginning of the file. Do not use dynamic imports.
+  * If "Buffer" is used, then import it with `import {{ Buffer }} from 'node:buffer';`
   * The code will be shared as a library, when used it run(...) function will be called.
   * The function signature MUST be: `export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT>`
   {is_memory_required_message}
@@ -76,6 +79,26 @@ pub async fn generate_code_prompt(
   * Write a single implementation file, only one typescript code block.
   * Implements the code in {language} for the following input_command tag.
 </agent_code_implementation>
+
+<agent_libraries_documentation>
+  <deno>
+    Native Deno Library to Write Files `Deno.writeFile(path, data, options)`
+    This function is available in the global scope without any import.
+    The home path for files is available in through the `getHomePath()` function.
+    ```typescript
+      Deno.writeFile(
+        path: string | URL,
+        data: Uint8Array | ReadableStream<Uint8Array>,
+        options?: WriteFileOptions,
+      ): Promise<void>
+    ```
+    Examples:
+    ```typescript
+      await Deno.writeFile(`${{getHomePath()}}/hello1.txt`, new TextEncoder().encode("Hello world\n")); 
+      await Deno.writeFile(`${{getHomePath()}}/image.png`, data);
+    ```
+  </deno>
+</agent_libraries_documentation>
 
 <input_command>
 {prompt}
@@ -91,16 +114,29 @@ pub async fn generate_code_prompt(
             } else {
                 "".to_string()
             };
-            let tool_section = if !tool_definitions.is_empty() {
+            let py_support_files_section = support_files
+                .iter()
+                .map(|(name, content)| {
+                    format!(
+                        "Import these functions with the format: `from ./{name} import xx`                  
+# <{name}>
+```{language}
+{content}
+```
+"
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            let files = if !py_support_files_section.is_empty() {
                 format!(
                     r#"
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
   * Import them with the format: `from shinkai_local_tools import xx`
-  * This is the content of './shinkai_local_tools.py':
-  ```{language}
-  {tool_definitions}
-  ```
+  
+  {py_support_files_section}
 </agent_libraries>
 
 <agent_python_libraries>
@@ -108,8 +144,8 @@ pub async fn generate_code_prompt(
   1. A function provided by './shinkai_local_tools.py' that resolves correctly the requierement.
   2. If network fetch is required, use the "requests" library and import it with using `import requests`.
   3. The code will be ran with Python Runtime, so prefer Python default and standard libraries. Import all used libraries as `from <library> import <function>` for exmaple for Lists use `from typing import List`.
-  4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
-  5. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
+  4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
+  5. If an external system has a well known and defined API, call the API endpoints.
 </agent_python_libraries>
 "#
                 )
@@ -128,7 +164,7 @@ pub async fn generate_code_prompt(
             };
             return Ok(format!(
                 r#"
-{tool_section}
+{files}
 
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:

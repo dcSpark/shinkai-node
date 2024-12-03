@@ -15,7 +15,7 @@ pub fn execute_deno_tool(
     app_id: String,
     llm_provider: String,
     extra_config: Option<String>,
-    header_code: String,
+    support_files: HashMap<String, String>,
     code: String,
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
@@ -55,7 +55,7 @@ pub fn execute_deno_tool(
         envs,
         node_env.api_listen_address.ip().to_string(),
         node_env.api_listen_address.port(),
-        header_code,
+        support_files,
         parameters,
         extra_config,
         node_storage_path,

@@ -423,7 +423,7 @@ impl ToolRouter {
                 let app_id = context.full_job().job_id().to_string();
                 let tool_id = shinkai_tool.tool_router_key().clone();
                 let tools = deno_tool.tools.clone().unwrap_or_default();
-                let header_code =
+                let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
@@ -438,7 +438,7 @@ impl ToolRouter {
                         envs,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
-                        header_code,
+                        support_files,
                         function_args,
                         function_config,
                         node_storage_path,
@@ -752,7 +752,7 @@ impl ToolRouter {
         let tools = js_tool.clone().tools.unwrap_or_default();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
         let tool_id = shinkai_tool.tool_router_key().clone();
-        let header_code =
+        let support_files =
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
@@ -768,7 +768,7 @@ impl ToolRouter {
                 HashMap::new(),
                 node_env.api_listen_address.ip().to_string(),
                 node_env.api_listen_address.port(),
-                header_code,
+                support_files,
                 function_args,
                 function_config,
                 node_storage_path,

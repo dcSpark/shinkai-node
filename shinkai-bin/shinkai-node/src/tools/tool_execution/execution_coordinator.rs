@@ -87,7 +87,7 @@ pub async fn execute_tool(
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let header_code = generate_tool_definitions(
+                let support_files = generate_tool_definitions(
                     deno_tool.tools.clone().unwrap_or_default(),
                     CodeLanguage::Typescript,
                     sqlite_manager,
@@ -101,7 +101,7 @@ pub async fn execute_tool(
                         envs,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
-                        header_code,
+                        support_files,
                         parameters,
                         extra_config,
                         node_storage_path,
@@ -135,7 +135,7 @@ pub async fn execute_code(
     // Route based on the prefix
     match tool_type {
         DynamicToolType::DenoDynamic => {
-            let header_code = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(
@@ -145,7 +145,7 @@ pub async fn execute_code(
                 app_id,
                 llm_provider,
                 extra_config,
-                header_code,
+                support_files,
                 code,
             )
         }

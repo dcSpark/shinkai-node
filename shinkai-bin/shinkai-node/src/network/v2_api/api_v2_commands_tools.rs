@@ -61,7 +61,12 @@ impl Node {
 
         // Perform the internal search using SqliteManager
         // TODO: implement something like BTS for tools
-        match sqlite_manager.read().await.tool_vector_search(&query, 5, false, true).await {
+        match sqlite_manager
+            .read()
+            .await
+            .tool_vector_search(&query, 5, false, true)
+            .await
+        {
             Ok(tools) => {
                 let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
@@ -593,10 +598,14 @@ impl Node {
         }
 
         let definitions = generate_tool_definitions(tools, language, sqlite_manager, false).await;
-
         match definitions {
             Ok(definitions) => {
-                let _ = res.send(Ok(Value::String(definitions))).await;
+                let mut map: Map<String, Value> = Map::new();
+                definitions.into_iter().for_each(|(key, value)| {
+                    map.insert(key, Value::String(value));
+                });
+
+                let _ = res.send(Ok(Value::Object(map))).await;
             }
             Err(e) => {
                 let _ = res.send(Err(e)).await;

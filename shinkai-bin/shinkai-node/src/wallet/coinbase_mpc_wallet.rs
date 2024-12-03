@@ -329,13 +329,13 @@ impl CoinbaseMPCWallet {
                 .ok_or_else(|| WalletError::FunctionExecutionError("Node storage path is not set".to_string()))?;
             let app_id = format!("coinbase_{}", uuid::Uuid::new_v4());
             let tool_id = js_tool.name.clone();
-            let header_code = "";
+            let support_files = HashMap::new();
             let result = js_tool
                 .run(
                     HashMap::new(), // Note: we don't need envs for this function - as it doesn't call other tools
                     node_env.api_listen_address.ip().to_string(),
                     node_env.api_listen_address.port(),
-                    header_code.to_string(),
+                    support_files,
                     params,
                     Some(function_config_str),
                     node_storage_path,
