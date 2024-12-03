@@ -14,20 +14,24 @@ use shinkai_db::{
 use shinkai_message_primitives::{
     schemas::{
         crontab::{CronTask, CronTaskAction},
-        inbox_name::{InboxName, InboxNameError},
+        inbox_name::InboxNameError,
         shinkai_name::ShinkaiName,
     },
+    shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
     },
 };
-use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use tokio::sync::{Mutex, RwLock};
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::llm_provider::{error::LLMProviderError, job_manager::JobManager};
+use crate::{
+    llm_provider::{error::LLMProviderError, job_manager::JobManager},
+    managers::IdentityManager,
+    network::{node_error::NodeError, Node},
+};
 
 #[derive(Debug)]
 pub enum CronManagerError {
@@ -62,6 +66,18 @@ impl From<InboxNameError> for CronManagerError {
     }
 }
 
+impl From<NodeError> for CronManagerError {
+    fn from(error: NodeError) -> Self {
+        CronManagerError::SomeError(error.to_string())
+    }
+}
+
+impl From<SqliteManagerError> for CronManagerError {
+    fn from(error: SqliteManagerError) -> Self {
+        CronManagerError::SomeError(error.to_string())
+    }
+}
+
 pub struct CronManager {
     pub db: Weak<ShinkaiDB>,
     pub sqlite_manager: Weak<RwLock<SqliteManager>>,
@@ -71,7 +87,6 @@ pub struct CronManager {
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub node_encryption_sk: EncryptionStaticKey,
     pub node_encryption_pk: EncryptionPublicKey,
-    pub node_signing_sk: SigningKey,
     pub cron_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
@@ -86,7 +101,6 @@ impl CronManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
-        node_signing_sk: SigningKey,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let cron_processing_task = CronManager::process_job_queue(
@@ -99,7 +113,6 @@ impl CronManager {
             identity_manager.clone(),
             node_encryption_sk.clone(),
             node_encryption_pk.clone(),
-            node_signing_sk.clone(),
             ws_manager.clone(),
             |job,
              db,
@@ -109,7 +122,6 @@ impl CronManager {
              identity_manager,
              node_encryption_sk,
              node_encryption_pk,
-             node_signing_sk,
              node_name,
              profile,
              ws_manager| {
@@ -122,7 +134,6 @@ impl CronManager {
                     identity_manager,
                     node_encryption_sk,
                     node_encryption_pk,
-                    node_signing_sk,
                     node_name,
                     profile,
                     ws_manager.clone(),
@@ -139,7 +150,6 @@ impl CronManager {
             identity_manager,
             node_encryption_sk,
             node_encryption_pk,
-            node_signing_sk,
             cron_processing_task: Some(cron_processing_task),
             ws_manager,
         }
@@ -163,7 +173,6 @@ impl CronManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
-        node_signing_sk: SigningKey,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 CronTask,
@@ -174,7 +183,6 @@ impl CronManager {
                 Arc<Mutex<IdentityManager>>,
                 EncryptionStaticKey,
                 EncryptionPublicKey,
-                SigningKey,
                 ShinkaiName,
                 String,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -239,6 +247,9 @@ impl CronManager {
                         let sqlite_manager_clone = sqlite_manager.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_manager_clone = job_manager.clone();
+                        let identity_manager_clone = identity_manager.clone();
+                        let node_encryption_sk_clone = node_encryption_sk.clone();
+                        let node_encryption_pk_clone = node_encryption_pk.clone();
                         let node_profile_name_clone = node_profile_name.clone();
                         let job_processing_fn_clone = Arc::clone(&job_processing_fn);
                         let profile_clone = profile.clone();
@@ -254,7 +265,6 @@ impl CronManager {
                                 identity_manager_clone,
                                 node_encryption_sk_clone,
                                 node_encryption_pk_clone,
-                                node_signing_sk_clone,
                                 node_profile_name_clone,
                                 profile_clone,
                                 ws_manager,
@@ -297,23 +307,22 @@ impl CronManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
-        node_signing_sk: SigningKey,
         node_profile_name: ShinkaiName,
         profile: String,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<bool, CronManagerError> {
         shinkai_log(
             ShinkaiLogOption::CronExecution,
             ShinkaiLogLevel::Debug,
             format!("Processing job: {:?}", cron_job).as_str(),
         );
+        let sqlite_manager = sqlite_manager.upgrade().unwrap();
 
         // Update the last executed time
         {
             let current_time = Utc::now().to_rfc3339();
-            let sqlite_manager_arc = sqlite_manager.upgrade().unwrap();
-            let sqlite_manager = sqlite_manager_arc.read().await;
-            sqlite_manager.update_cron_task_last_executed(cron_job.task_id, &current_time)?;
+            let sqlite_manager = sqlite_manager.read().await;
+            sqlite_manager.update_cron_task_last_executed(cron_job.task_id.into(), &current_time)?;
         }
 
         let shinkai_profile = ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile)?;
@@ -345,7 +354,7 @@ impl CronManager {
                     node_encryption_sk.clone(),
                     node_encryption_pk.clone(),
                     identity_secret_key.clone(),
-                    cron_job.task_id,
+                    cron_job.task_id.into(),
                 )
                 .await?;
             }
@@ -363,7 +372,7 @@ impl CronManager {
                     node_encryption_sk.clone(),
                     node_encryption_pk.clone(),
                     identity_secret_key.clone(),
-                    cron_job.task_id,
+                    cron_job.task_id.into(),
                 )
                 .await?;
             }
@@ -415,11 +424,11 @@ impl CronManager {
         let bearer = match db.read_api_v2_key() {
             Ok(Some(token)) => token,
             Ok(None) => {
-                log_error_to_sqlite(&sqlite_manager, task_id, "Bearer token not found").await;
+                Self::log_error_to_sqlite(&sqlite_manager, task_id, "Bearer token not found").await;
                 return Ok(());
             }
             Err(err) => {
-                log_error_to_sqlite(
+                Self::log_error_to_sqlite(
                     &sqlite_manager,
                     task_id,
                     &format!("Failed to retrieve bearer token: {}", err),
@@ -447,7 +456,7 @@ impl CronManager {
         )
         .await
         {
-            log_error_to_sqlite(
+            Self::log_error_to_sqlite(
                 &sqlite_manager,
                 task_id,
                 &format!("Failed to send job message: {}", err),
@@ -457,7 +466,7 @@ impl CronManager {
 
         // Handle the response
         if let Err(err) = res_rx.recv().await {
-            log_error_to_sqlite(
+            Self::log_error_to_sqlite(
                 &sqlite_manager,
                 task_id,
                 &format!("Failed to receive response: {}", err),
@@ -470,7 +479,7 @@ impl CronManager {
 
     async fn log_error_to_sqlite(sqlite_manager: &Arc<RwLock<SqliteManager>>, task_id: i64, error_message: &str) {
         let execution_time = chrono::Utc::now().to_rfc3339();
-        let sqlite_manager = sqlite_manager.read().await;
+        let sqlite_manager = sqlite_manager.write().await;
         if let Err(err) = sqlite_manager.add_cron_task_execution(task_id, &execution_time, false, Some(error_message)) {
             eprintln!("Failed to log error to SQLite: {}", err);
         }

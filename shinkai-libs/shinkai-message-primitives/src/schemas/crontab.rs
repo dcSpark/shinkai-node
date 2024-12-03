@@ -1,9 +1,10 @@
 use crate::shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use super::job_config::JobConfig;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct CronTask {
     pub task_id: i32,
     pub cron: String,
@@ -12,7 +13,7 @@ pub struct CronTask {
     pub action: CronTaskAction,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum CronTaskAction {
     SendMessageToJob {
         job_id: String,

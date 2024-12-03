@@ -533,7 +533,6 @@ impl Node {
             self.identity_manager.clone(),
             self.encryption_secret_key.clone(),
             self.encryption_public_key.clone(),
-            self.identity_secret_key.clone(),
             self.ws_manager_trait.clone(),
         )
         .await;
