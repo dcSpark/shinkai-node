@@ -362,8 +362,8 @@ pub async fn tool_metadata_implementation_prompt(
   ## Example 1:
   Output: ```json
   {{
-    "id": "shinkai-tool-coinbase-create-wallet",
-    "name": "Shinkai: Coinbase Wallet Creator",
+    "id": "coinbase-create-wallet",
+    "name": "Coinbase Wallet Creator",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
     "keywords": [
@@ -420,8 +420,8 @@ pub async fn tool_metadata_implementation_prompt(
   ## Example 2:
   Output:```json
   {{
-    "id": "shinkai-tool-download-pages",
-    "name": "Shinkai: Download Pages",
+    "id": "tool-download-pages",
+    "name": "Download Pages",
     "description": "Downloads one or more URLs and converts their HTML content to Markdown",
     "author": "Shinkai",
     "keywords": [
