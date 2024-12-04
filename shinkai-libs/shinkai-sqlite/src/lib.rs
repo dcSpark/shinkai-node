@@ -155,7 +155,6 @@ impl SqliteManager {
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
-        Self::initialize_uploaded_file_links_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
         Ok(())
@@ -259,6 +258,12 @@ impl SqliteManager {
         // Create an index for the message_hash column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_inbox_messages_message_hash ON inbox_messages (message_hash);",
+            [],
+        )?;
+
+        // Create an index for the time_key column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_time_key ON inbox_messages (time_key);",
             [],
         )?;
 
@@ -576,19 +581,6 @@ impl SqliteManager {
             );",
             [],
         )?;
-        Ok(())
-    }
-
-    fn initialize_uploaded_file_links_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS uploaded_file_links (
-                path TEXT NOT NULL UNIQUE,
-                metadata BLOB NOT NULL,
-                file_links BLOB NOT NULL
-            );",
-            [],
-        )?;
-
         Ok(())
     }
 
