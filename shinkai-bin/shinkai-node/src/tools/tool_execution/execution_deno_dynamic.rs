@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde_json::{Map, Value};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
@@ -10,6 +11,7 @@ use crate::utils::environment::fetch_node_environment;
 
 pub fn execute_deno_tool(
     bearer: String,
+    node_name: ShinkaiName,
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
@@ -61,6 +63,7 @@ pub fn execute_deno_tool(
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),
+        node_name,
         false,
     ) {
         Ok(run_result) => Ok(run_result.data),

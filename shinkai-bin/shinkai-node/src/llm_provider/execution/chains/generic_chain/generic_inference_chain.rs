@@ -201,13 +201,13 @@ impl GenericInferenceChain {
         } else {
             // CASE 2: No specific tool selected - use automatic tool selection
             // Check various conditions to determine if and which tools should be available
-            
+
             // 2a. Check if streaming is enabled in job config
             let stream = job_config.as_ref().and_then(|config| config.stream);
-            
+
             // 2b. Check if tools are allowed by job config (defaults to true if not specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(true);
-            
+
             // 2c. Check if the LLM provider/agent has tool capabilities
             let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
                 llm_provider.clone(),
@@ -297,13 +297,18 @@ impl GenericInferenceChain {
             }
         });
 
-        let custom_system_prompt = job_config.and_then(|config| config.custom_system_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_system_prompt.clone())
-            } else {
-                None
-            }
-        });
+        let custom_system_prompt = job_config
+            .and_then(|config| config.custom_system_prompt.clone())
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent
+                        .config
+                        .as_ref()
+                        .and_then(|config| config.custom_system_prompt.clone())
+                } else {
+                    None
+                }
+            });
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_system_prompt.clone(),
@@ -395,7 +400,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call.clone(), &context, &shinkai_tool)
+                    .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
                     .await
                 {
                     Ok(response) => response,

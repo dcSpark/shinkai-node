@@ -105,9 +105,9 @@ pub async fn execute_tool(
                         parameters,
                         extra_config,
                         node_storage_path,
-                        // TODO REMOVE UNWRAP ONCE THE FRONTEND SENDS THE APP ID AND TOOL ID
                         app_id.clone(),
                         tool_id.clone(),
+                        node_name,
                         true,
                     )
                     .map(|result| json!(result.data))
@@ -129,6 +129,7 @@ pub async fn execute_code(
     app_id: String,
     llm_provider: String,
     bearer: String,
+    node_name: ShinkaiName,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
 
@@ -140,6 +141,7 @@ pub async fn execute_code(
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(
                 bearer.clone(),
+                node_name,
                 parameters,
                 tool_id,
                 app_id,

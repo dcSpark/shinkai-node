@@ -384,6 +384,7 @@ impl ToolRouter {
         function_call: FunctionCall,
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
+        node_name: ShinkaiName,
     ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
         let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
@@ -444,6 +445,7 @@ impl ToolRouter {
                         node_storage_path,
                         app_id,
                         tool_id,
+                        node_name,
                         false,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -476,7 +478,7 @@ impl ToolRouter {
                     };
 
                     // Get wallet balances
-                    let balances = match my_agent_payments_manager.get_balances().await {
+                    let balances = match my_agent_payments_manager.get_balances(node_name.clone()).await {
                         Ok(balances) => balances,
                         Err(e) => {
                             eprintln!("Failed to get balances: {}", e);
@@ -728,6 +730,7 @@ impl ToolRouter {
     pub async fn call_js_function(
         &self,
         function_args: serde_json::Map<String, Value>,
+        requester_node_name: ShinkaiName,
         js_tool_name: &str,
     ) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
@@ -774,6 +777,8 @@ impl ToolRouter {
                 node_storage_path,
                 app_id,
                 tool_id,
+                // TODO Is this correct?
+                requester_node_name,
                 true,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;

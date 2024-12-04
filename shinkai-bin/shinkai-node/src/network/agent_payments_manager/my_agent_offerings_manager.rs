@@ -234,7 +234,11 @@ impl MyAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Payment, AgentOfferingManagerError>` - The payment information or an error.
-    pub async fn pay_invoice(&self, invoice: &Invoice) -> Result<Payment, AgentOfferingManagerError> {
+    pub async fn pay_invoice(
+        &self,
+        invoice: &Invoice,
+        node_name: ShinkaiName,
+    ) -> Result<Payment, AgentOfferingManagerError> {
         // Mocking the payment process
         println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
 
@@ -280,7 +284,11 @@ impl MyAgentOfferingsManager {
 
         // Check the balance before attempting to pay
         let balance = match wallet
-            .check_balance_payment_wallet(my_address.clone().into(), asset_payment.asset.clone())
+            .check_balance_payment_wallet(
+                my_address.clone().into(),
+                asset_payment.asset.clone(),
+                node_name.clone(),
+            )
             .await
         {
             Ok(balance) => balance,
@@ -309,7 +317,7 @@ impl MyAgentOfferingsManager {
             ));
         }
 
-        let payment = match wallet.pay_invoice(invoice.clone()).await {
+        let payment = match wallet.pay_invoice(invoice.clone(), node_name.clone()).await {
             Ok(payment) => {
                 println!("Payment successful: {:?}", payment);
                 payment
@@ -380,6 +388,7 @@ impl MyAgentOfferingsManager {
         &self,
         invoice_id: String,
         tool_data: Value,
+        node_name: ShinkaiName,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // TODO: check that the invoice is valid (exists) and still valid (not expired)
 
@@ -402,7 +411,7 @@ impl MyAgentOfferingsManager {
         }
 
         // Step 2: Pay the invoice
-        let payment = self.pay_invoice(&invoice).await?;
+        let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
 
         // Create a new updated invoice with the payment information
         let mut updated_invoice = invoice.clone();
@@ -429,7 +438,11 @@ impl MyAgentOfferingsManager {
     // TODO: it could be re-purposed for auto-payment if we have a preset of rules and whitelisted tools
     // We want to have a way to confirm payment from the user perspective
     // Fn: Automatically verify and pay an invoice, then send receipt and data to the provider
-    pub async fn auto_pay_invoice(&self, invoice: Invoice) -> Result<(), AgentOfferingManagerError> {
+    pub async fn auto_pay_invoice(
+        &self,
+        invoice: Invoice,
+        node_name: ShinkaiName,
+    ) -> Result<(), AgentOfferingManagerError> {
         // Step 1: Verify the invoice
         let is_valid = self.verify_invoice(&invoice).await?;
         if !is_valid {
@@ -439,7 +452,7 @@ impl MyAgentOfferingsManager {
         }
 
         // Step 2: Pay the invoice
-        let payment = self.pay_invoice(&invoice).await?;
+        let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
 
         // Create a new updated invoice with the payment information
         let mut updated_invoice = invoice.clone();
@@ -588,7 +601,7 @@ impl MyAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<AddressBalanceList, AgentOfferingManagerError>` - The list of address balances or an error.
-    pub async fn get_balances(&self) -> Result<AddressBalanceList, AgentOfferingManagerError> {
+    pub async fn get_balances(&self, node_name: ShinkaiName) -> Result<AddressBalanceList, AgentOfferingManagerError> {
         let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
             AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
         })?;
@@ -608,7 +621,7 @@ impl MyAgentOfferingsManager {
 
         wallet
             .payment_wallet
-            .check_balances()
+            .check_balances(node_name.clone())
             .await
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get balances: {:?}", e)))
     }

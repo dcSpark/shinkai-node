@@ -5,7 +5,7 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_db::db::ShinkaiDB;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
+use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageTypeInquiry};
 use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::{Mutex, RwLock};
@@ -105,6 +105,7 @@ impl Node {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -209,7 +210,7 @@ impl Node {
         let payment = match my_agent_offerings_manager
             .lock()
             .await
-            .pay_invoice_and_send_receipt(invoice_id, data_for_tool)
+            .pay_invoice_and_send_receipt(invoice_id, data_for_tool, node_name.clone())
             .await
         {
             Ok(payment) => payment,

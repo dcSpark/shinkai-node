@@ -12,6 +12,7 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::deno_runner_options::{DenoRunnerOptions, ShinkaiNodeLocation};
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
@@ -68,6 +69,7 @@ impl DenoTool {
         node_storage_path: String,
         app_id: String,
         tool_id: String,
+        node_name: ShinkaiName,
         is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
         self.run_on_demand(
@@ -80,6 +82,7 @@ impl DenoTool {
             node_storage_path,
             app_id,
             tool_id,
+            node_name,
             is_temporary,
         )
     }
@@ -95,6 +98,7 @@ impl DenoTool {
         node_storage_path: String,
         app_id: String,
         tool_id: String,
+        node_name: ShinkaiName,
         is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
         println!(
@@ -269,14 +273,17 @@ impl DenoTool {
                         .map_err(|e| ToolError::ExecutionError(e.to_string()));
                     print_result(&result);
 
-                    pub fn convert_to_shinkai_file_protocol(path: &str, app_id: &str) -> String {
+                    pub fn convert_to_shinkai_file_protocol(
+                        node_name: &ShinkaiName,
+                        path: &str,
+                        app_id: &str,
+                    ) -> String {
                         // Find the position after app_id in the path
                         if let Some(pos) = path.find(&format!("tools_storage/{}/", app_id)) {
                             // Get the relative path after app_id
                             let relative_path = &path[pos + format!("tools_storage/{}", app_id).len()..];
-                            let user_name = "@@local";
                             // Construct the shinkai URL preserving the path structure
-                            format!("shinkai://{}/{}{}", user_name, app_id, relative_path)
+                            format!("shinkai://{}/{}{}", node_name, app_id, relative_path)
                         } else {
                             return "".to_string();
                         }
@@ -297,7 +304,7 @@ impl DenoTool {
                                             .into_iter()
                                             .map(|(name, _)| {
                                                 serde_json::Value::String(convert_to_shinkai_file_protocol(
-                                                    &name, &app_id,
+                                                    &node_name, &name, &app_id,
                                                 ))
                                             })
                                             .collect(),

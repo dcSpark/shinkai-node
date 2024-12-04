@@ -2580,6 +2580,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager = self.sqlite_manager.clone();
                 let wallet_manager_clone = self.wallet_manager.clone();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_restore_coinbase_mpc_wallet(
                         db_clone,
@@ -2590,6 +2591,7 @@ impl Node {
                         config,
                         wallet_id,
                         role,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2605,6 +2607,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager = self.sqlite_manager.clone();
                 let wallet_manager_clone = self.wallet_manager.clone();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_create_coinbase_mpc_wallet(
                         db_clone,
@@ -2614,6 +2617,7 @@ impl Node {
                         network,
                         config,
                         role,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2657,6 +2661,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let my_agent_payments_manager_clone = self.my_agent_payments_manager.clone();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_pay_invoice(
                         db_clone,
@@ -2665,6 +2670,7 @@ impl Node {
                         bearer,
                         invoice_id,
                         data_for_tool,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2920,7 +2926,7 @@ impl Node {
             } => {
                 let sqlite_manager_clone = self.sqlite_manager.clone();
                 let db_clone: Arc<shinkai_db::db::ShinkaiDB> = self.db.clone();
-
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::run_execute_code(
                         bearer,
@@ -2933,6 +2939,7 @@ impl Node {
                         tool_id,
                         app_id,
                         llm_provider,
+                        node_name,
                         res,
                     )
                     .await;

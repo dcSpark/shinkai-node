@@ -396,7 +396,7 @@ impl SheetUIInferenceChain {
                     match tool_router
                         .as_ref()
                         .unwrap()
-                        .call_function(function_call, &context, shinkai_tool.unwrap())
+                        .call_function(function_call, &context, shinkai_tool.unwrap(), user_profile.clone())
                         .await
                     {
                         Ok(response) => response,

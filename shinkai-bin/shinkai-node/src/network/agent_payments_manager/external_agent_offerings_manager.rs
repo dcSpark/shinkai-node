@@ -788,7 +788,7 @@ impl ExtAgentOfferingsManager {
             })?;
 
             let result = tool_router
-                .call_js_function(data_payload, &local_tool_key)
+                .call_js_function(data_payload, _requester_node_name, &local_tool_key)
                 .await
                 .map_err(|e: LLMProviderError| {
                     AgentOfferingManagerError::OperationFailed(format!("LLMProviderError: {:?}", e))

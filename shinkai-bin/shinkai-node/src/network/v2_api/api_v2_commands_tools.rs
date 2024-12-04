@@ -692,6 +692,7 @@ impl Node {
         tool_id: String,
         app_id: String,
         llm_provider: String,
+        node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -710,6 +711,7 @@ impl Node {
             app_id,
             llm_provider,
             bearer,
+            node_name,
         )
         .await;
 
