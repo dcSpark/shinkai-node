@@ -499,12 +499,6 @@ impl SqliteManager {
             }
         }
 
-        shinkai_log(
-            ShinkaiLogOption::Api,
-            ShinkaiLogLevel::Debug,
-            &format!("Inboxes: {}", inboxes.join(", ")),
-        );
-
         Ok(inboxes)
     }
 
