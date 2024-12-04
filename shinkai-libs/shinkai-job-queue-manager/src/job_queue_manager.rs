@@ -207,7 +207,9 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
             let b_first = db_queues.get(b).and_then(|q| q.first());
             match (a_first, b_first) {
                 (Some(a), Some(b)) => a.cmp(b),
-                _ => a.cmp(b),
+                (Some(_), None) => Ordering::Less,  // Consider Some < None
+                (None, Some(_)) => Ordering::Greater, // Consider None > Some
+                (None, None) => a.cmp(b), // Fallback to key comparison if both are None
             }
         });
 

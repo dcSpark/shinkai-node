@@ -219,12 +219,23 @@ impl ShinkaiTool {
             }
         }
 
+        // Store the tool_router_key in a variable to extend its lifetime
+        let tool_router_key = self.tool_router_key().clone();
+        let key_parts: Vec<&str> = tool_router_key.split(":::").collect();
+        let tool_name = if key_parts.len() == 3 {
+            key_parts[2].to_string()
+        } else {
+            return Err(ToolError::InvalidToolRouterKey(
+                "Tool router key is not in the expected format".to_string(),
+            ));
+        };
+
         let summary = serde_json::json!({
             "type": "function",
             "function": {
-                "name": self.name(),
+                "name": tool_name,
                 "description": self.description(),
-                "tool_router_key": self.tool_router_key(),
+                "tool_router_key": tool_router_key,
                 "parameters": {
                     "type": "object",
                     "properties": properties,

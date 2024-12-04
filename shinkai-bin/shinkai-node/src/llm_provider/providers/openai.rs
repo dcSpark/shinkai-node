@@ -180,6 +180,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut function_call: Option<FunctionCall> = None;
+    let mut error_message: Option<String> = None;
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -290,6 +291,7 @@ async fn handle_streaming_response(
                             ShinkaiLogLevel::Error,
                             format!("Error while receiving chunk: {:?} with chunk: {:?}", _e, trimmed_chunk_str).as_str(),
                         );
+                        error_message = Some(format!("Error while receiving chunk: {:?} with chunk: {:?}", _e, trimmed_chunk_str));
                     }
                 }
             }
@@ -301,6 +303,12 @@ async fn handle_streaming_response(
                 );
                 return Err(LLMProviderError::NetworkError(e.to_string()));
             }
+        }
+    }
+
+    if let Some(ref error_message) = error_message {
+        if response_text.is_empty() {
+            return Err(LLMProviderError::LLMServiceUnexpectedError(error_message.to_string()));
         }
     }
 
