@@ -71,7 +71,7 @@ pub async fn generate_tool_definitions(
         }
     };
     // Filter tools
-    let all_tools = get_all_deno_tools(sqlite_manager.clone())
+    let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
         .await
         .into_iter()
         .filter(|tool| tools.contains(&tool.tool_router_key))

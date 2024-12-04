@@ -821,8 +821,6 @@ impl Node {
                 "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
-                "supportLibraryHeaders": generate_file_support_ts(true),
-                "supportLibrary": generate_file_support_ts(false),
             })))
             .await;
         Ok(())
