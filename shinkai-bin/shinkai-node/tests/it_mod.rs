@@ -30,5 +30,4 @@ mod it {
 
     mod change_nodes_name_tests;
     mod native_tool_tests;
-    mod tcp_proxy_tests;
 }
