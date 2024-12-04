@@ -1071,6 +1071,11 @@ pub enum NodeCommand {
         code: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiResolveShinkaiFileProtocol {
+        bearer: String,
+        shinkai_file_protocol: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
     V2ApiAddCronTask {
         bearer: String,
         cron: String,

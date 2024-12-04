@@ -43,6 +43,9 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use chrono::Utc;
 
+use std::path::PathBuf;
+use tokio::fs;
+
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<ShinkaiDB>,
@@ -1311,6 +1314,59 @@ impl Node {
         // Send success response
         let response = json!({ "status": "success", "message": "Code update operation successful" });
         let _ = res.send(Ok(response)).await;
+
+        Ok(())
+    }
+
+    pub async fn v2_api_resolve_shinkai_file_protocol(
+        bearer: String,
+        db: Arc<ShinkaiDB>,
+        shinkai_file_protocol: String,
+        node_storage_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Parse the shinkai file protocol
+        // Format: shinkai://{user_name}/{app-id}/{full-path}
+        let parts: Vec<&str> = shinkai_file_protocol.split('/').collect();
+        if parts.len() < 4 || !shinkai_file_protocol.starts_with("shinkai://") {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Invalid Protocol".to_string(),
+                message: "Invalid shinkai file protocol format".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let user_name = parts[2];
+        let app_id = parts[3];
+        let remaining_path = parts[4..].join("/");
+
+        // Construct the full file path
+        let mut file_path = PathBuf::from(&node_storage_path);
+        file_path.push("tools_storage");
+        file_path.push(app_id);
+        file_path.push(&remaining_path);
+
+        // Read and return the file directly
+        match fs::read(&file_path).await {
+            Ok(contents) => {
+                let _ = res.send(Ok(contents)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "File Not Found".to_string(),
+                    message: format!("Failed to read file: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
         Ok(())
     }
