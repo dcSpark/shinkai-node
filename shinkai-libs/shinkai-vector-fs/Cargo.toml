@@ -6,6 +6,7 @@ authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+shinkai_sqlite = { workspace = true }
 shinkai_vector_resources = { workspace = true }
 bincode = "1.3.3"
 serde_json = { workspace = true }

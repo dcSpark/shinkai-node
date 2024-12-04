@@ -101,24 +101,6 @@ impl VectorFSDB {
         })
     }
 
-    pub fn new_empty() -> Result<Self, Error> {
-        let random_string: String = thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(8)
-            .map(char::from)
-            .collect();
-        let db_path = format!("db_tests/empty_vector_fs_db_{}", random_string);
-
-        // Set up default options for the database
-        let mut db_opts = Options::default();
-        db_opts.create_if_missing(true); // Ensure the database is created if it does not exist
-
-        // Open an OptimisticTransactionDB with the specified options
-        let db = OptimisticTransactionDB::<SingleThreaded>::open(&db_opts, &db_path)?;
-
-        Ok(Self { db, path: db_path })
-    }
-
     /// Fetches the ColumnFamily handle.
     pub fn get_cf_handle(&self, topic: FSTopic) -> Result<&ColumnFamily, VectorFSError> {
         let handle = self
@@ -141,37 +123,6 @@ impl VectorFSDB {
     pub fn get_cf_pb(&self, topic: FSTopic, key: &str, profile: &ShinkaiName) -> Result<Vec<u8>, VectorFSError> {
         let new_key = Self::generate_profile_bound_key(key, profile)?;
         self.get_cf(topic, new_key)
-    }
-
-    /// Iterates over the provided column family
-    pub fn iterator_cf<'a>(
-        &'a self,
-        cf_name: &str,
-    ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), VectorFSError>> + 'a, VectorFSError> {
-        let cf_handle = self.db.cf_handle(cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
-        let iterator = self.db.iterator_cf(cf_handle, IteratorMode::Start);
-
-        // Create a new iterator that maps over the original iterator, converting any RocksDB errors into VectorFSError
-        let mapped_iterator = iterator.map(|result| result.map_err(VectorFSError::from));
-
-        Ok(mapped_iterator)
-    }
-
-    /// Iterates over the provided column family profile-bounded, meaning that
-    /// we filter out all keys in the iterator which are not profile-bounded to the
-    /// correct profile, before returning the iterator.
-    pub fn iterator_cf_pb<'a>(
-        &'a self,
-        cf: &impl AsColumnFamilyRef,
-        profile: &ShinkaiName,
-    ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>> + 'a, VectorFSError> {
-        let profile_prefix = Self::get_profile_name_string(profile)?.into_bytes();
-        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
-        let filtered_iter = iter.filter(move |result| match result {
-            Ok((key, _)) => key.starts_with(&profile_prefix),
-            Err(_) => false,
-        });
-        Ok(filtered_iter)
     }
 
     /// Saves the value inside of the key at the provided column family
@@ -211,17 +162,6 @@ impl VectorFSDB {
         Ok(())
     }
 
-    /// Deletes the key (profile-bound) from the provided column family.
-    pub fn delete_cf_pb(&self, cf: &str, key: &str, profile: &ShinkaiName) -> Result<(), VectorFSError> {
-        let new_key = Self::generate_profile_bound_key(key, profile)?;
-        self.delete_cf(cf, new_key)
-    }
-
-    /// Fetches the ColumnFamily handle.
-    pub fn cf_handle(&self, name: &str) -> Result<&ColumnFamily, VectorFSError> {
-        self.db.cf_handle(name).ok_or(VectorFSError::FailedFetchingCF)
-    }
-
     /// Commits a series of operations as a single transaction.
     pub fn commit_operations(&self, operations: Vec<TransactionOperation>) -> Result<(), VectorFSError> {
         let txn = self.db.transaction();
@@ -254,12 +194,6 @@ impl VectorFSDB {
         self.commit_operations(operations)
     }
 
-    /// Validates if the key has the provided profile name properly prepended to it
-    pub fn validate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<bool, VectorFSError> {
-        let profile_name = Self::get_profile_name_string(profile)?;
-        Ok(key.starts_with(&profile_name))
-    }
-
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<String, VectorFSError> {
         let prof_name = Self::get_profile_name_string(profile)?;
@@ -278,37 +212,6 @@ impl VectorFSDB {
         profile
             .get_profile_name_string()
             .ok_or(VectorFSError::ShinkaiNameLacksProfile)
-    }
-
-    /// Debugging method to print all keys, their values' lengths, and their column families across all columns.
-    pub fn debug_print_all_columns(&self) -> Result<(), VectorFSError> {
-        let topics = [
-            FSTopic::VectorResources,
-            FSTopic::FileSystem,
-            FSTopic::SourceFiles,
-            FSTopic::ReadAccessLogs,
-            FSTopic::WriteAccessLogs,
-        ];
-
-        for topic in topics.clone().iter() {
-            let cf_handle = self.get_cf_handle(topic.clone())?;
-            let iterator = self.db.iterator_cf(cf_handle, IteratorMode::Start);
-            eprintln!("Iterating over keys in the {:?} column family:", topic.as_str());
-            for item in iterator {
-                match item {
-                    Ok((key, value)) => {
-                        eprintln!(
-                            "Column: {:?}, Key: {:?}, Value Length: {}",
-                            topic.as_str(),
-                            String::from_utf8_lossy(&key),
-                            value.len()
-                        );
-                    }
-                    Err(e) => eprintln!("Error reading from iterator: {:?}", e),
-                }
-            }
-        }
-        Ok(())
     }
 }
 

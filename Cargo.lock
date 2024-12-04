@@ -8210,6 +8210,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shinkai_message_primitives",
+ "shinkai_sqlite",
  "shinkai_vector_resources",
  "tokio",
 ]
