@@ -7,7 +7,6 @@ members = [
   "shinkai-libs/shinkai-tcp-relayer",
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-libs/shinkai-vector-fs",
-  "shinkai-libs/shinkai-db",
   "shinkai-libs/shinkai-job-queue-manager",
   "shinkai-libs/shinkai-baml",
   "shinkai-libs/shinkai-http-api",
