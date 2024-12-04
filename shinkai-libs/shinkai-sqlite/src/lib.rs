@@ -23,18 +23,13 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
-pub mod my_subscriptions_manager;
-pub mod network_notifications_manager;
 pub mod prompt_manager;
 pub mod retry_manager;
 pub mod settings_manager;
-pub mod shared_folder_req_manager;
 pub mod sheet_manager;
 pub mod shinkai_tool_manager;
-pub mod subscriber_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
-pub mod uploaded_file_links_manager;
 pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -135,8 +130,6 @@ impl SqliteManager {
         Self::initialize_cron_tasks_table(conn)?;
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
-        Self::initialize_folder_subscriptions_requirements_table(conn)?;
-        Self::initialize_folder_subscriptions_upload_credentials_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
@@ -150,15 +143,12 @@ impl SqliteManager {
         Self::initialize_llm_providers_table(conn)?;
         Self::initialize_local_node_keys_table(conn)?;
         Self::initialize_message_box_symmetric_keys_table(conn)?;
-        Self::initialize_my_subscriptions_table(conn)?;
-        Self::initialize_network_notifications_table(conn)?;
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
         Self::initialize_registration_code_table(conn)?;
         Self::initialize_retry_messages_table(conn)?;
         Self::initialize_settings_table(conn)?;
         Self::initialize_sheets_table(conn)?;
-        Self::initialize_subscriptions_table(conn)?;
         Self::initialize_step_history_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
@@ -185,6 +175,12 @@ impl SqliteManager {
                 debug_mode INTEGER NOT NULL,
                 config TEXT -- Store as a JSON string
             );",
+            [],
+        )?;
+
+        // Create an index for the agent_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shinkai_agents_agent_id ON shinkai_agents (agent_id);",
             [],
         )?;
 
@@ -233,6 +229,12 @@ impl SqliteManager {
             [],
         )?;
 
+        // Create an index for the inbox_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_inbox_name ON inboxes (inbox_name);",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -245,6 +247,18 @@ impl SqliteManager {
                 parent_message_hash TEXT,
                 time_key TEXT NOT NULL
             );",
+            [],
+        )?;
+
+        // Create an index for the inbox_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_inbox_name ON inbox_messages (inbox_name);",
+            [],
+        )?;
+
+        // Create an index for the message_hash column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_message_hash ON inbox_messages (message_hash);",
             [],
         )?;
 
@@ -368,84 +382,6 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_folder_subscriptions_requirements_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS folder_subscriptions_requirements (
-                path TEXT NOT NULL UNIQUE,
-                minimum_token_delegation INTEGER,
-                minimum_time_delegated_hours INTEGER,
-                monthly_payment TEXT,
-                is_free INTEGER NOT NULL,
-                has_web_alternative INTEGER,
-                folder_description TEXT
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_folder_subscriptions_upload_credentials_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS folder_subscriptions_upload_credentials (
-                path TEXT NOT NULL,
-                profile TEXT NOT NULL,
-                source TEXT NOT NULL,
-                access_key_id TEXT NOT NULL,
-                secret_access_key TEXT NOT NULL,
-                endpoint_uri TEXT NOT NULL,
-                bucket TEXT NOT NULL
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_my_subscriptions_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS my_subscriptions (
-                subscription_id TEXT NOT NULL UNIQUE,
-                subscription_id_data BLOB NOT NULL,
-                shared_folder TEXT NOT NULL,
-                streaming_node TEXT NOT NULL,
-                streaming_profile TEXT NOT NULL,
-                subscription_description TEXT,
-                subscriber_destination_path TEXT,
-                subscriber_node TEXT NOT NULL,
-                subscriber_profile TEXT NOT NULL,
-                payment TEXT,
-                state TEXT NOT NULL,
-                date_created TEXT NOT NULL,
-                last_modified TEXT NOT NULL,
-                last_sync TEXT,
-                http_preferred INTEGER
-            );",
-            [],
-        )?;
-
-        // Create indexes for the my_subscriptions table if needed
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_my_subscriptions_subscription_id ON my_subscriptions (subscription_id);",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_network_notifications_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS network_notifications (
-                full_name TEXT NOT NULL,
-                message TEXT NOT NULL,
-                timestamp TEXT NOT NULL
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
     fn initialize_registration_code_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS registration_code (
@@ -491,30 +427,6 @@ impl SqliteManager {
                 sheet_data BLOB NOT NULL,
 
                 PRIMARY KEY (profile_hash, sheet_uuid)
-            );",
-            [],
-        )?;
-        Ok(())
-    }
-
-    fn initialize_subscriptions_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS shinkai_subscriptions (
-                subscription_id TEXT NOT NULL UNIQUE,
-                subscription_id_data BLOB NOT NULL,
-                shared_folder TEXT NOT NULL,
-                streaming_node TEXT NOT NULL,
-                streaming_profile TEXT NOT NULL,
-                subscription_description TEXT,
-                subscriber_destination_path TEXT,
-                subscriber_node TEXT NOT NULL,
-                subscriber_profile TEXT NOT NULL,
-                payment TEXT,
-                state TEXT NOT NULL,
-                date_created TEXT NOT NULL,
-                last_modified TEXT NOT NULL,
-                last_sync TEXT,
-                http_preferred INTEGER
             );",
             [],
         )?;

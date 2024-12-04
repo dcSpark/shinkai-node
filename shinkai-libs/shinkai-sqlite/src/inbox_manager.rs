@@ -236,15 +236,9 @@ impl SqliteManager {
             };
             current_key = None;
 
-            let message = messages
-                .iter()
-                .find(|(message_key, _, _)| {
-                    message_key == &key
-                })
-                .ok_or(SqliteManagerError::SomeError(format!(
-                    "Message with key not found: {}",
-                    key
-                )))?;
+            let message = messages.iter().find(|(message_key, _, _)| message_key == &key).ok_or(
+                SqliteManagerError::SomeError(format!("Message with key not found: {}", key)),
+            )?;
 
             let added_message_hash = &message.0;
             path.push(message.2.clone());
@@ -713,6 +707,36 @@ mod tests {
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
+
+    fn generate_message_with_text_and_inbox(
+        content: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        recipient_subidentity_name: String,
+        origin_destination_identity_name: String,
+        timestamp: String,
+        inbox_name_value: String,
+    ) -> ShinkaiMessage {
+        ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .message_raw_content(content.to_string())
+            .body_encryption(EncryptionMethod::None)
+            .message_schema_type(MessageSchemaType::TextContent)
+            .internal_metadata_with_inbox(
+                "".to_string(),
+                recipient_subidentity_name.clone().to_string(),
+                inbox_name_value, // Use the passed inbox name
+                EncryptionMethod::None,
+                None,
+            )
+            .external_metadata_with_schedule(
+                origin_destination_identity_name.clone().to_string(),
+                origin_destination_identity_name.clone().to_string(),
+                timestamp,
+            )
+            .build()
+            .unwrap()
     }
 
     fn generate_message_with_text(
@@ -1442,5 +1466,61 @@ mod tests {
                 assert_eq!(smart_inbox.custom_name, new_name);
             }
         }
+    }
+
+    // For benchmarking purposes
+    // #[tokio::test]
+    async fn benchmark_get_all_smart_inboxes_for_profile() {
+        let db = setup_test_db();
+
+        let node_identity_name = "@@node.shinkai";
+        let subidentity_name = "main";
+        let (node_identity_sk, node_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let (_, node_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+        let (_, node_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+
+        // Create a profile identity
+        let profile_identity = StandardIdentity::new(
+            ShinkaiName::from_node_and_profile_names(node_identity_name.to_string(), subidentity_name.to_string())
+                .unwrap(),
+            None,
+            node_encryption_pk.clone(),
+            node_identity_pk.clone(),
+            Some(node_subencryption_pk),
+            Some(node_subidentity_pk),
+            StandardIdentityType::Profile,
+            IdentityPermissions::Standard,
+        );
+        let _ = db.insert_profile(profile_identity.clone());
+
+        // Create 100 inboxes with 100 messages each
+        for inbox_index in 0..100 {
+            let inbox_name = format!("job_inbox::{}::false", inbox_index);
+            for message_index in 0..100 {
+                let message_content = format!("Message {} for inbox {}", message_index, inbox_index);
+                let message = generate_message_with_text_and_inbox(
+                    message_content,
+                    node_encryption_sk.clone(),
+                    clone_signature_secret_key(&node_identity_sk),
+                    node_subencryption_pk,
+                    subidentity_name.to_string(),
+                    node_identity_name.to_string(),
+                    format!("2023-07-02T20:53:34.8{}Z", message_index),
+                    inbox_name.clone(),
+                );
+
+                db.unsafe_insert_inbox_message(&message, None, None).await.unwrap();
+            }
+        }
+
+        // Measure the time taken by get_all_smart_inboxes_for_profile
+        let start_time = std::time::Instant::now();
+        let smart_inboxes = db.get_all_smart_inboxes_for_profile(profile_identity).unwrap();
+        let duration = start_time.elapsed();
+
+        println!("Time taken to get all smart inboxes: {:?}", duration);
+        println!("Number of smart inboxes retrieved: {}", smart_inboxes.len());
     }
 }
