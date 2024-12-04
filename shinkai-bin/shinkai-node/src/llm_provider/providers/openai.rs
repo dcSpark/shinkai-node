@@ -288,7 +288,7 @@ async fn handle_streaming_response(
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Error while receiving chunk: {:?}", _e).as_str(),
+                            format!("Error while receiving chunk: {:?} with chunk: {:?}", _e, trimmed_chunk_str).as_str(),
                         );
                     }
                 }

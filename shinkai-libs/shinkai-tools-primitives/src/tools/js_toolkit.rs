@@ -76,7 +76,7 @@ impl JSToolkit {
     }
 
     fn generate_tool_name(name: &str) -> String {
-        let name_pattern = Regex::new(r"[^a-zA-Z0-9_-]").unwrap();
+        let name_pattern = Regex::new(r"[^a-zA-Z0-9_]").unwrap();
         name_pattern.replace_all(name, "_").to_lowercase()
     }
 
