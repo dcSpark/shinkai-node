@@ -1,10 +1,6 @@
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use super::network_manager::external_subscriber_manager::ExternalSubscriberManager;
-use super::network_manager::my_subscription_manager::MySubscriptionsManager;
-use super::network_manager::network_job_manager::{
-    NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
-};
+use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue, NetworkVRKai};
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -117,10 +113,6 @@ pub struct Node {
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
-    /// External Subscription Manager (when others are subscribing to this node's data)
-    pub ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-    /// My Subscription Manager
-    pub my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     // Network Job Manager
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
@@ -304,34 +296,6 @@ impl Node {
             manager_trait
         });
 
-        let ext_subscriber_manager = Arc::new(Mutex::new(
-            ExternalSubscriberManager::new(
-                Arc::downgrade(&db_arc),
-                Arc::downgrade(&vector_fs_arc),
-                Arc::downgrade(&identity_manager),
-                node_name.clone(),
-                clone_signature_secret_key(&identity_secret_key),
-                clone_static_secret_key(&encryption_secret_key),
-                proxy_connection_info_weak.clone(),
-                ws_manager_trait.clone(),
-            )
-            .await,
-        ));
-
-        let my_subscription_manager = Arc::new(Mutex::new(
-            MySubscriptionsManager::new(
-                Arc::downgrade(&db_arc),
-                Arc::downgrade(&vector_fs_arc),
-                Arc::downgrade(&identity_manager),
-                node_name.clone(),
-                clone_signature_secret_key(&identity_secret_key),
-                clone_static_secret_key(&encryption_secret_key),
-                proxy_connection_info_weak.clone(),
-                ws_manager_trait.clone(),
-            )
-            .await,
-        ));
-
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(db_arc.clone());
 
@@ -404,8 +368,6 @@ impl Node {
             clone_static_secret_key(&encryption_secret_key),
             clone_signature_secret_key(&identity_secret_key),
             identity_manager.clone(),
-            my_subscription_manager.clone(),
-            ext_subscriber_manager.clone(),
             Arc::downgrade(&my_agent_payments_manager),
             Arc::downgrade(&ext_agent_payments_manager),
             proxy_connection_info_weak.clone(),
@@ -473,8 +435,6 @@ impl Node {
             vector_fs: vector_fs_arc.clone(),
             embedding_generator,
             conn_limiter,
-            ext_subscription_manager: ext_subscriber_manager,
-            my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
             ws_manager,
@@ -1072,7 +1032,6 @@ impl Node {
             reader.read_exact(&mut header_byte).await?;
             let message_type = match header_byte[0] {
                 0x01 => NetworkMessageType::ShinkaiMessage,
-                0x02 => NetworkMessageType::VRKaiPathPair,
                 0x03 => NetworkMessageType::ProxyMessage,
                 _ => {
                     shinkai_log(
@@ -1154,6 +1113,7 @@ impl Node {
                     retry_message.message.external_metadata
                 ),
             );
+            
 
             // Retry the message
             Node::send(
@@ -1318,79 +1278,6 @@ impl Node {
         }
     }
 
-    pub async fn send_encrypted_vrpack(
-        vr_pack_plus_changes: VRPackPlusChanges,
-        subscription_id: SubscriptionId,
-        encryption_key_hex: String,
-        peer: SocketAddr,
-        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        _maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-        recipient: ShinkaiName,
-    ) {
-        tokio::spawn(async move {
-            // Serialize only the VRKaiPath pairs
-            let serialized_data = bincode::serialize(&vr_pack_plus_changes).unwrap();
-            let encryption_key = hex::decode(encryption_key_hex.clone()).unwrap();
-            let key = GenericArray::from_slice(&encryption_key);
-            let cipher = Aes256Gcm::new(key);
-
-            // Generate a random nonce
-            let mut nonce = [0u8; 12];
-            rand::thread_rng().fill(&mut nonce);
-            let nonce_generic = GenericArray::from_slice(&nonce);
-
-            // Encrypt the data
-            let encrypted_data = cipher
-                .encrypt(nonce_generic, serialized_data.as_ref())
-                .expect("encryption failure!");
-
-            // Calculate the hash of the symmetric key
-            let mut hasher = blake3::Hasher::new();
-            hasher.update(encryption_key_hex.as_bytes());
-            let result = hasher.finalize();
-            let symmetric_key_hash = hex::encode(result.as_bytes());
-
-            // Create the NetworkVRKai struct with the encrypted pairs, subscription ID, nonce, and symmetric key hash
-            let vr_kai = NetworkVRKai {
-                enc_pairs: encrypted_data,
-                subscription_id,
-                nonce: hex::encode(nonce),
-                symmetric_key_hash,
-            };
-            let vr_kai_serialized = bincode::serialize(&vr_kai).unwrap();
-
-            let identity = recipient.get_node_name_string();
-            let identity_bytes = identity.as_bytes();
-            let identity_length = (identity_bytes.len() as u32).to_be_bytes();
-
-            // Prepare the message with a length prefix, identity length, and identity
-            let total_length = (vr_kai_serialized.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
-
-            let mut data_to_send = Vec::new();
-            let header_data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
-            data_to_send.extend_from_slice(&total_length);
-            data_to_send.extend_from_slice(&identity_length);
-            data_to_send.extend(identity_bytes);
-            data_to_send.extend(header_data_to_send);
-            data_to_send.extend_from_slice(&vr_kai_serialized);
-
-            // Get the stream using the get_stream function
-            let writer = Node::get_writer(peer, proxy_connection_info).await;
-
-            if let Some(writer) = writer {
-                let mut writer = writer.lock().await;
-                let _ = writer.write_all(&data_to_send).await;
-                let _ = writer.flush().await;
-            } else {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to connect to {}", peer),
-                );
-            }
-        });
-    }
-
     pub async fn save_to_db(
         am_i_sender: bool,
         message: &ShinkaiMessage,
@@ -1512,7 +1399,6 @@ impl Node {
         let mut data_to_send = Vec::new();
         let header_data_to_send = vec![match msg.message_type {
             NetworkMessageType::ShinkaiMessage => 0x01,
-            NetworkMessageType::VRKaiPathPair => 0x02,
             NetworkMessageType::ProxyMessage => 0x03,
         }];
         data_to_send.extend_from_slice(&total_length);

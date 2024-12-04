@@ -665,65 +665,6 @@ pub enum NodeCommand {
         payload: APIVecFsRetrieveSourceFile,
         res: Sender<Result<String, APIError>>,
     },
-    V2ApiAvailableSharedItems {
-        bearer: String,
-        payload: APIAvailableSharedItems,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiAvailableSharedItemsOpen {
-        bearer: String,
-        payload: APIAvailableSharedItems,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiCreateShareableFolder {
-        bearer: String,
-        payload: APICreateShareableFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiUpdateShareableFolder {
-        bearer: String,
-        payload: APIUpdateShareableFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiUnshareFolder {
-        bearer: String,
-        payload: APIUnshareFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiSubscribeToSharedFolder {
-        bearer: String,
-        payload: APISubscribeToSharedFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiUnsubscribe {
-        bearer: String,
-        payload: APIUnsubscribeToSharedFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiMySubscriptions {
-        bearer: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetMySubscribers {
-        bearer: String,
-        payload: APIGetMySubscribers,
-        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
-    },
-    V2ApiGetHttpFreeSubscriptionLinks {
-        bearer: String,
-        subscription_profile_path: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetLastNotifications {
-        bearer: String,
-        payload: APIGetLastNotifications,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetNotificationsBeforeTimestamp {
-        bearer: String,
-        payload: APIGetNotificationsBeforeTimestamp,
-        res: Sender<Result<Value, APIError>>,
-    },
     V2ApiSearchWorkflows {
         bearer: String,
         query: String,

@@ -16,14 +16,13 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_subscription_manager::subscription_manager::shared_folder_info::SharedFolderInfo;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, source::SourceFile, vector_resource::VRPath};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     managers::IdentityManager,
-    network::{network_manager::external_subscriber_manager::ExternalSubscriberManager, node_error::NodeError, Node},
+    network::{node_error::NodeError, Node},
 };
 
 impl Node {
@@ -32,7 +31,6 @@ impl Node {
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrievePathSimplifiedJson,
-        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -85,51 +83,9 @@ impl Node {
 
         let result = vector_fs.retrieve_fs_path_simplified_json_value(&reader).await;
 
-        fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
-            if let Some(path) = obj.get("path") {
-                if let Some(path_str) = path.as_str() {
-                    if let Some(shared_folder) = shared_folders.iter().find(|sf| sf.path == path_str) {
-                        let mut shared_folder_info = serde_json::to_value(shared_folder).unwrap();
-                        if let Some(obj) = shared_folder_info.as_object_mut() {
-                            obj.remove("tree");
-                        }
-                        obj.as_object_mut().unwrap().insert(
-                            "shared_folder_info".to_string(),
-                            serde_json::to_value(shared_folder).unwrap(),
-                        );
-                    }
-                }
-            }
-
-            if let Some(child_folders) = obj.get_mut("child_folders") {
-                if let Some(child_folders_array) = child_folders.as_array_mut() {
-                    for child_folder in child_folders_array {
-                        add_shared_folder_info(child_folder, shared_folders);
-                    }
-                }
-            }
-        }
-
         match result {
-            Ok(mut result_value) => {
-                let mut subscription_manager = ext_subscription_manager.lock().await;
-                let shared_folders_result = subscription_manager
-                    .available_shared_folders(
-                        requester_name.extract_node(),
-                        requester_name.get_profile_name_string().unwrap_or_default(),
-                        requester_name.extract_node(),
-                        requester_name.get_profile_name_string().unwrap_or_default(),
-                        input_payload.path,
-                    )
-                    .await;
-                drop(subscription_manager);
-
-                if let Ok(shared_folders) = shared_folders_result {
-                    add_shared_folder_info(&mut result_value, &shared_folders);
-                }
-
-                let _ = res.send(Ok(result_value)).await.map_err(|_| ());
-                Ok(())
+            Ok(result) => {
+                let _ = res.send(Ok(result)).await.map_err(|_| ());
             }
             Err(e) => {
                 let api_error = APIError {
@@ -138,9 +94,9 @@ impl Node {
                     message: format!("Failed to retrieve fs path json: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
-                Ok(())
             }
         }
+        Ok(())
     }
 
     pub async fn v2_convert_files_and_save_to_folder(
@@ -149,7 +105,6 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -171,16 +126,7 @@ impl Node {
             }
         };
 
-        Self::process_and_save_files(
-            db,
-            vector_fs,
-            input_payload,
-            requester_name,
-            embedding_generator,
-            external_subscriber_manager,
-            res,
-        )
-        .await
+        Self::process_and_save_files(db, vector_fs, input_payload, requester_name, embedding_generator, res).await
     }
 
     pub async fn v2_create_folder(
@@ -907,7 +853,6 @@ impl Node {
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
-        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         filename: String,
         file: Vec<u8>,
@@ -976,7 +921,6 @@ impl Node {
             identity_manager,
             input_payload,
             embedding_generator,
-            external_subscriber_manager,
             bearer,
             convert_res_sender,
         )

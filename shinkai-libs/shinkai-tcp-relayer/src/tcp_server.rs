@@ -237,16 +237,6 @@ impl TCPProxy {
                     );
                 });
             }
-            NetworkMessageType::VRKaiPathPair => {
-                eprintln!("[{}] VRKaiPathPair message not supported yet", session_id);
-                drop(permit);
-                println!(
-                    "[{}] Semaphore permit dropped. Available permits: {} out of {}",
-                    session_id,
-                    self.connection_semaphore.available_permits(),
-                    max_connections
-                );
-            }
         };
     }
 
@@ -278,7 +268,7 @@ impl TCPProxy {
                     node_name,
                     identity_secret_key,
                     encryption_secret_key,
-                    session_id
+                    session_id,
                 )
                 .await;
                 match response {
@@ -440,10 +430,6 @@ impl TCPProxy {
                         session_id,
                     )
                     .await;
-                    Ok(())
-                }
-                NetworkMessageType::VRKaiPathPair => {
-                    eprintln!("[{}] VRKaiPathPair not supported yet", session_id);
                     Ok(())
                 }
             },
@@ -612,12 +598,18 @@ impl TCPProxy {
         // This could proce a loop in the relayer so we discard the message
         let relayer_addresses = if !recipient_matches {
             // Fetch the public keys from the registry
-            let registry_identity = registry.get_identity_record(tcp_node_name_string.clone()).await.unwrap();
+            let registry_identity = registry
+                .get_identity_record(tcp_node_name_string.clone())
+                .await
+                .unwrap();
             registry_identity.address_or_proxy_nodes
         } else {
             vec![]
         };
-        if relayer_addresses.iter().any(|addr| recipient_addresses.iter().any(|recipient_addr| addr == recipient_addr)) {
+        if relayer_addresses
+            .iter()
+            .any(|addr| recipient_addresses.iter().any(|recipient_addr| addr == recipient_addr))
+        {
             println!("[{}] Case D", session_id);
             return Err(NetworkMessageError::RecipientLoopError(recipient_addresses.join(",")));
         }
