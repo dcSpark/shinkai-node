@@ -874,7 +874,6 @@ impl Node {
 
         match Self::v2_add_file_to_inbox(
             db.clone(),
-            vector_fs.clone(),
             file_inbox_name.clone(),
             filename.clone(),
             file.clone(),

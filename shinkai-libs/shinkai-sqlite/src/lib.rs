@@ -13,6 +13,7 @@ pub mod agent_manager;
 pub mod cron_task_manager;
 pub mod embedding_function;
 pub mod errors;
+pub mod file_inbox_manager;
 pub mod files;
 pub mod identity_manager;
 pub mod identity_registration;
@@ -131,6 +132,7 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
+        Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
         Self::initialize_inbox_profile_permissions_table(conn)?;
@@ -155,7 +157,6 @@ impl SqliteManager {
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
-        Self::initialize_uploaded_file_links_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
         Ok(())
@@ -579,19 +580,6 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_uploaded_file_links_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS uploaded_file_links (
-                path TEXT NOT NULL UNIQUE,
-                metadata BLOB NOT NULL,
-                file_links BLOB NOT NULL
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
     fn initialize_wallets_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_wallet (
@@ -718,6 +706,26 @@ impl SqliteManager {
             );",
             [],
         )?;
+        Ok(())
+    }
+
+    fn initialize_file_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS file_inboxes (
+                encrypted_inbox_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+
+                PRIMARY KEY (encrypted_inbox_id, file_name)
+            );",
+            [],
+        )?;
+
+        // Create an index for the encrypted_inbox_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_encrypted_inbox_id ON file_inboxes (encrypted_inbox_id);",
+            [],
+        )?;
+
         Ok(())
     }
 

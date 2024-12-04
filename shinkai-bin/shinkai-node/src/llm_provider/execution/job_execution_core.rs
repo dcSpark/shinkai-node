@@ -246,7 +246,7 @@ impl JobManager {
 
         // Retrieve image files from the message
         // Note: this could be other type of files later on e.g. video, audio, etc.
-        let image_files = JobManager::get_image_files_from_message(vector_fs.clone(), &job_message).await?;
+        let image_files = JobManager::get_image_files_from_message(db.clone(), &job_message).await?;
         eprintln!("# of images: {:?}", image_files.len());
 
         if image_files.len() > 0 {
@@ -681,10 +681,13 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
+                let files_result = db
+                    .read()
+                    .await
+                    .get_all_files_from_inbox(job_message.files_inbox.clone());
                 match files_result {
                     Ok(files) => files,
-                    Err(e) => return Err(LLMProviderError::VectorFS(e)),
+                    Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
                 }
             };
 
@@ -733,10 +736,10 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let files_result = vector_fs.db.get_all_files_from_inbox(files_inbox.clone());
+                let files_result = db.read().await.get_all_files_from_inbox(files_inbox.clone());
                 match files_result {
                     Ok(files) => files,
-                    Err(e) => return Err(LLMProviderError::VectorFS(e)),
+                    Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
                 }
             };
 
@@ -766,7 +769,7 @@ impl JobManager {
 
     /// Retrieves image files associated with a job message and converts them to base64
     pub async fn get_image_files_from_message(
-        vector_fs: Arc<VectorFS>,
+        db: Arc<RwLock<SqliteManager>>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
         if job_message.files_inbox.is_empty() {
@@ -779,10 +782,10 @@ impl JobManager {
             format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
         );
 
-        let files_vec = vector_fs
-            .db
-            .get_all_files_from_inbox(job_message.files_inbox.clone())
-            .map_err(LLMProviderError::VectorFS)?;
+        let files_vec = db
+            .read()
+            .await
+            .get_all_files_from_inbox(job_message.files_inbox.clone())?;
 
         let image_files: HashMap<String, String> = files_vec
             .into_iter()

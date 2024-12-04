@@ -580,7 +580,6 @@ impl Node {
 
     pub async fn v2_add_file_to_inbox(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         file_inbox_name: String,
         filename: String,
         file: Vec<u8>,
@@ -592,8 +591,9 @@ impl Node {
             return Ok(());
         }
 
-        match vector_fs
-            .db
+        match db
+            .write()
+            .await
             .add_file_to_files_message_inbox(file_inbox_name, filename, file)
         {
             Ok(_) => {
@@ -1329,7 +1329,6 @@ impl Node {
 
     pub async fn v2_remove_job(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         bearer: String,
         job_id: String,
         res: Sender<Result<SendResponseBody, APIError>>,
@@ -1400,7 +1399,7 @@ impl Node {
 
         // Remove the file inboxes
         for file_inbox in file_inboxes {
-            match vector_fs.db.remove_inbox(&file_inbox) {
+            match db.write().await.remove_inbox(&file_inbox) {
                 Ok(_) => {}
                 Err(err) => {
                     let api_error = APIError {
@@ -1426,7 +1425,6 @@ impl Node {
 
     pub async fn v2_export_messages_from_inbox(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         bearer: String,
         inbox_name: String,
         format: ExportInboxMessagesFormat,
@@ -1478,7 +1476,7 @@ impl Node {
         let mut inbox_filenames = HashMap::new();
 
         for inbox in file_inboxes {
-            let files = match vector_fs.db.get_all_filenames_from_inbox(inbox.clone()) {
+            let files = match db.read().await.get_all_filenames_from_inbox(inbox.clone()) {
                 Ok(files) => files,
                 Err(err) => {
                     let api_error = APIError {
