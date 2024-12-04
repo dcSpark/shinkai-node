@@ -5,28 +5,29 @@ use aes_gcm::KeyInit;
 use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::MessageQueue;
-use shinkai_db::schemas::ws_types::MessageType;
-use shinkai_db::schemas::ws_types::WSMessagePayload;
-use shinkai_db::schemas::ws_types::WSMessageType;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
-use shinkai_db::schemas::ws_types::WebSocketManagerError;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::MessageQueue;
+use shinkai_message_primitives::schemas::ws_types::MessageType;
+use shinkai_message_primitives::schemas::ws_types::WSMessagePayload;
+use shinkai_message_primitives::schemas::ws_types::WSMessageType;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::schemas::ws_types::WebSocketManagerError;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Weak;
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 use warp::ws::Message;
 use warp::ws::WebSocket;
@@ -41,7 +42,7 @@ pub struct WebSocketManager {
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
     subscriptions: HashMap<String, HashMap<String, bool>>,
     shared_keys: HashMap<String, String>,
-    shinkai_db: Weak<ShinkaiDB>,
+    shinkai_db: Weak<RwLock<SqliteManager>>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
     encryption_secret_key: EncryptionStaticKey,
@@ -77,7 +78,7 @@ impl fmt::Debug for WebSocketManager {
 
 impl WebSocketManager {
     pub async fn new(
-        shinkai_db: Weak<ShinkaiDB>,
+        shinkai_db: Weak<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         encryption_secret_key: EncryptionStaticKey,

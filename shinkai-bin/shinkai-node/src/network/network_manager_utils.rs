@@ -1,17 +1,18 @@
 use std::sync::{Arc, Weak};
 
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::{
     schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
-use tokio::sync::Mutex;
+use shinkai_sqlite::SqliteManager;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::managers::identity_manager::IdentityManagerTrait;
 
 use super::{
-    agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo, Node,
+    agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo,
+    Node,
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -41,7 +42,7 @@ pub async fn get_proxy_builder_info_static(
 
 pub async fn send_message_to_peer(
     message: ShinkaiMessage,
-    db: Weak<ShinkaiDB>,
+    db: Weak<RwLock<SqliteManager>>,
     receiver_identity: StandardIdentity,
     my_encryption_secret_key: EncryptionStaticKey,
     maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,

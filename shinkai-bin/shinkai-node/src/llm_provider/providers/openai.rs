@@ -13,13 +13,13 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_db::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
-};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
@@ -180,6 +180,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut function_call: Option<FunctionCall> = None;
+    let mut error_message: Option<String> = None;
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -288,8 +289,9 @@ async fn handle_streaming_response(
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Error while receiving chunk: {:?}", _e).as_str(),
+                            format!("Error while receiving chunk: {:?} with chunk: {:?}", _e, trimmed_chunk_str).as_str(),
                         );
+                        error_message = Some(format!("Error while receiving chunk: {:?} with chunk: {:?}", _e, trimmed_chunk_str));
                     }
                 }
             }
@@ -301,6 +303,12 @@ async fn handle_streaming_response(
                 );
                 return Err(LLMProviderError::NetworkError(e.to_string()));
             }
+        }
+    }
+
+    if let Some(ref error_message) = error_message {
+        if response_text.is_empty() {
+            return Err(LLMProviderError::LLMServiceUnexpectedError(error_message.to_string()));
         }
     }
 

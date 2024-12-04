@@ -4,27 +4,21 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::network::node::ProxyConnectionInfo;
 
-use aes_gcm::aead::generic_array::GenericArray;
-use aes_gcm::aead::Aead;
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
-use shinkai_db::db::{ShinkaiDB, Topic};
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
+
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_subscription_manager::subscription_manager::fs_entry_tree::FSEntryTree;
-use shinkai_subscription_manager::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -33,11 +27,10 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use std::{env, mem};
+use tokio::sync::RwLock;
 use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::external_subscriber_manager::ExternalSubscriberManager;
-use super::my_subscription_manager::MySubscriptionsManager;
 use super::network_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,
 };
@@ -49,12 +42,6 @@ pub struct NetworkVRKai {
     pub subscription_id: SubscriptionId,
     pub nonce: String,
     pub symmetric_key_hash: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct VRPackPlusChanges {
-    pub vr_pack: VRPack,
-    pub diff: FSEntryTree,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -93,14 +80,12 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     // TODO: change to Weak<Mutex<...>>
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
         external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
@@ -110,7 +95,7 @@ impl NetworkJobManager {
         {
             let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
 
-            let all_jobs = shinkai_db.get_all_jobs().unwrap();
+            let all_jobs = shinkai_db.read().await.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
@@ -118,13 +103,9 @@ impl NetworkJobManager {
         }
 
         let db_prefix = "network_queue_abcprefix_";
-        let network_job_queue = JobQueueManager::<NetworkJobQueue>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let network_job_queue = JobQueueManager::<NetworkJobQueue>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
         let network_job_queue_manager = Arc::new(Mutex::new(network_job_queue));
 
         let thread_number = env::var("NETWORK_JOB_MANAGER_THREADS")
@@ -141,8 +122,6 @@ impl NetworkJobManager {
             clone_signature_secret_key(&my_signature_secret_key),
             thread_number,
             identity_manager.clone(),
-            my_subscription_manager,
-            external_subscription_manager,
             my_agent_offering_manager,
             external_agent_offering_manager,
             network_job_queue_manager.clone(),
@@ -155,8 +134,6 @@ impl NetworkJobManager {
              my_encryption_secret_key,
              my_signature_secret_key,
              identity_manager,
-             my_subscription_manager,
-             external_subscription_manager,
              my_agent_offering_manager,
              external_agent_offering_manager,
              proxy_connection_info,
@@ -169,8 +146,6 @@ impl NetworkJobManager {
                     my_encryption_secret_key,
                     my_signature_secret_key,
                     identity_manager,
-                    my_subscription_manager,
-                    external_subscription_manager,
                     my_agent_offering_manager,
                     external_agent_offering_manager,
                     proxy_connection_info,
@@ -188,15 +163,13 @@ impl NetworkJobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         max_parallel_jobs: usize,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
         external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
@@ -204,14 +177,12 @@ impl NetworkJobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                                // job to process
-                Weak<ShinkaiDB>,                                // db
+                Weak<RwLock<SqliteManager>>,                    // db
                 Weak<VectorFS>,                                 // vector_fs
                 ShinkaiName,                                    // my_profile_name
                 EncryptionStaticKey,                            // my_encryption_secret_key
                 SigningKey,                                     // my_signature_secret_key
                 Arc<Mutex<IdentityManager>>,                    // identity_manager
-                Arc<Mutex<MySubscriptionsManager>>,             // my_subscription_manager
-                Arc<Mutex<ExternalSubscriberManager>>,          // external_subscription_manager
                 Weak<Mutex<MyAgentOfferingsManager>>,           // my_agent_offering_manager
                 Weak<Mutex<ExtAgentOfferingsManager>>,          // external_agent_offering_manager
                 Weak<Mutex<Option<ProxyConnectionInfo>>>,       // proxy_connection_info
@@ -229,8 +200,6 @@ impl NetworkJobManager {
         let my_encryption_sk_clone = clone_static_secret_key(&my_encryption_secret_key);
         let my_signature_sk_clone = clone_signature_secret_key(&my_signature_secret_key);
         let identity_manager_clone = identity_manager.clone();
-        let my_subscription_manager_clone = my_subscription_manager.clone();
-        let external_subscription_manager_clone = external_subscription_manager.clone();
         let my_agent_offering_manager_clone = my_agent_offering_manager.clone();
         let external_agent_offering_manager_clone = external_agent_offering_manager.clone();
 
@@ -292,8 +261,6 @@ impl NetworkJobManager {
                     let my_encryption_sk_clone_2 = clone_static_secret_key(&my_encryption_sk_clone);
                     let my_signature_sk_clone_2 = clone_signature_secret_key(&my_signature_sk_clone);
                     let identity_manager_clone_2 = identity_manager_clone.clone();
-                    let my_subscription_manager_clone_2 = my_subscription_manager_clone.clone();
-                    let external_subscription_manager_clone_2 = external_subscription_manager_clone.clone();
                     let my_agent_offering_manager_clone_2 = my_agent_offering_manager_clone.clone();
                     let external_agent_offering_manager_clone_2 = external_agent_offering_manager_clone.clone();
                     let proxy_connection_info = proxy_connection_info.clone();
@@ -335,8 +302,6 @@ impl NetworkJobManager {
                                         my_encryption_sk_clone_2,
                                         my_signature_sk_clone_2,
                                         identity_manager_clone_2,
-                                        my_subscription_manager_clone_2,
-                                        external_subscription_manager_clone_2,
                                         my_agent_offering_manager_clone_2,
                                         external_agent_offering_manager_clone_2,
                                         proxy_connection_info,
@@ -424,14 +389,12 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
         external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
@@ -466,44 +429,10 @@ impl NetworkJobManager {
                     my_signature_secret_key,
                     db.clone(),
                     identity_manager.clone(),
-                    my_subscription_manager.clone(),
-                    external_subscription_manager.clone(),
                     my_agent_offering_manager.clone(),
                     external_agent_offering_manager.clone(),
                     proxy_connection_info,
                     ws_manager,
-                )
-                .await;
-            }
-            NetworkMessageType::VRKaiPathPair => {
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Debug,
-                    "Processing VRKaiPathPair message type",
-                );
-
-                // Deserialize job.content into NetworkVRKai using bincode
-                let network_vr_kai: Result<NetworkVRKai, _> = bincode::deserialize(&job.content);
-                let network_vr_kai = network_vr_kai.map_err(|_| NetworkJobQueueError::ContentParseFailed)?;
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Info,
-                    &format!(
-                        "Processing VRKaiPathPair message type {:?}",
-                        network_vr_kai.subscription_id
-                    ),
-                );
-
-                let _ = Self::handle_receiving_vr_pack_from_subscription(
-                    network_vr_kai,
-                    db.clone(),
-                    vector_fs.clone(),
-                    my_node_profile_name.clone(),
-                    my_encryption_secret_key,
-                    my_signature_secret_key,
-                    identity_manager.clone(),
-                    my_subscription_manager.clone(),
-                    external_subscription_manager.clone(),
                 )
                 .await;
             }
@@ -525,267 +454,6 @@ impl NetworkJobManager {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn handle_receiving_vr_pack_from_subscription(
-        network_vr_pack: NetworkVRKai,
-        db: Weak<ShinkaiDB>,
-        vector_fs: Weak<VectorFS>,
-        my_node_profile_name: ShinkaiName,
-        _: EncryptionStaticKey,
-        _: SigningKey,
-        _: Arc<Mutex<IdentityManager>>,
-        _: Arc<Mutex<MySubscriptionsManager>>,
-        _: Arc<Mutex<ExternalSubscriberManager>>,
-    ) -> Result<(), NetworkJobQueueError> {
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Debug,
-            &format!("Handling VRPack from {:?}", my_node_profile_name),
-        );
-        // check that the subscription exists
-        let subscription = {
-            let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
-
-            match maybe_db.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
-                Ok(sub) => sub,
-                Err(_) => return Err(NetworkJobQueueError::Other("Subscription not found".to_string())),
-            }
-        };
-
-        // get the symmetric key from the database
-        let symmetric_sk_bytes = {
-            let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
-
-            // Retrieve the symmetric key using the symmetric_key_hash from the database
-            match maybe_db.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
-                Ok(key) => key,
-                Err(_) => {
-                    return Err(NetworkJobQueueError::SymmetricKeyNotFound(
-                        network_vr_pack.symmetric_key_hash.clone(),
-                    ))
-                }
-            }
-        };
-
-        let key = GenericArray::from_slice(&symmetric_sk_bytes);
-        let cipher = Aes256Gcm::new(key);
-
-        // Decode the nonce from hex string to bytes
-        let nonce_bytes = hex::decode(&network_vr_pack.nonce).map_err(|_| NetworkJobQueueError::NonceParseFailed)?;
-        let nonce = GenericArray::from_slice(&nonce_bytes);
-
-        // Decrypt the enc_pairs
-        let decrypted_data = cipher
-            .decrypt(nonce, network_vr_pack.enc_pairs.as_ref())
-            .map_err(|_| NetworkJobQueueError::DecryptionFailed)?;
-
-        // Deserialize the decrypted data back into Vec<(VRKai, VRPath)>
-        let vr_pack_plus_changes: VRPackPlusChanges = bincode::deserialize(&decrypted_data)
-            .map_err(|_| NetworkJobQueueError::DeserializationFailed("Failed to deserialize VRPack".to_string()))?;
-
-        // Find destination path from my_subscripton
-        let destination_path = {
-            let path = if subscription.subscriber_destination_path.is_none() {
-                subscription.shared_folder.clone()
-            } else {
-                subscription.subscriber_destination_path.clone().unwrap()
-            };
-
-            // Prepend "/My Subscriptions" path to the file path if it doesn't already contain it
-            if !path.contains("/My Subscriptions") {
-                format!("/My Subscriptions{}", path)
-            } else {
-                path
-            }
-        };
-
-        let destination_vr_path =
-            VRPath::from_string(&destination_path).map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
-        let parent_vr_path = destination_vr_path.parent_path();
-
-        let local_subscriber = ShinkaiName::from_node_and_profile_names(
-            subscription.subscriber_node.node_name,
-            subscription.subscriber_profile,
-        )?;
-
-        {
-            let vector_fs_lock = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
-            let mut vr_pack = vr_pack_plus_changes.vr_pack;
-
-            // If we're syncing into a different folder name, then update vr_pack name to match
-            if let Ok(path_id) = destination_vr_path.last_path_id() {
-                if path_id != vr_pack.name {
-                    vr_pack.name = path_id;
-                }
-            }
-
-            // Check if the folder already exists. If it does, we will manually extract the VRPack
-            let path_already_exists = vector_fs_lock
-                .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
-                .await
-                .is_ok();
-
-            let destination_writer = vector_fs_lock
-                .new_writer(
-                    local_subscriber.clone(),
-                    destination_vr_path.clone(),
-                    local_subscriber.clone(),
-                )
-                .await
-                .unwrap();
-
-            if path_already_exists {
-                let unpacked_vrkais = vr_pack
-                    .unpack_all_vrkais()
-                    .map_err(|e| NetworkJobQueueError::Other(format!("VR error: {}", e)))?;
-                for (vr_kai, vr_path) in unpacked_vrkais {
-                    // Ensure vr_path starts with "/My Subscriptions"
-                    let vr_path_str = if !vr_path.to_string().starts_with("/My Subscriptions") {
-                        format!("/My Subscriptions{}", vr_path)
-                    } else {
-                        vr_path.to_string()
-                    };
-
-                    let vr_kai_path = VRPath::from_string(&vr_path_str.to_string())
-                        .map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
-
-                    let _res = vector_fs_lock
-                        .create_new_folder_auto(&destination_writer, vr_kai_path.parent_path())
-                        .await
-                        .unwrap();
-
-                    let vrkai_destination_writer = vector_fs_lock
-                        .new_writer(
-                            local_subscriber.clone(),
-                            vr_kai_path.parent_path(),
-                            local_subscriber.clone(),
-                        )
-                        .await
-                        .unwrap();
-
-                    let _resp = vector_fs_lock
-                        .save_vrkai_in_folder(&vrkai_destination_writer, vr_kai)
-                        .await;
-                }
-
-                // Proceed with deletions now
-                // Identify all deletions within the diff
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Debug,
-                    &format!(
-                        "handle_receiving_vr_pack_from_subscription diff: {:?}",
-                        vr_pack_plus_changes.diff
-                    ),
-                );
-                let mut deletions = FSEntryTreeGenerator::find_deletions(&vr_pack_plus_changes.diff);
-                // Ensure all deletions start with "/My Subscriptions"
-                deletions = deletions
-                    .into_iter()
-                    .map(|path| {
-                        if !path.starts_with("/My Subscriptions") {
-                            format!("/My Subscriptions{}", path)
-                        } else {
-                            path
-                        }
-                    })
-                    .collect();
-
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Debug,
-                    &format!("handle_receiving_vr_pack_from_subscription deletions: {:?}", deletions),
-                );
-
-                // Sort them
-                deletions.sort();
-
-                for i in 0..deletions.len() {
-                    let deletion_path = &deletions[i];
-                    let deletion_vr_path = VRPath::from_string(deletion_path)
-                        .map_err(|_| NetworkJobQueueError::InvalidVRPath(deletion_path.clone()))?;
-
-                    let deletion_writer = vector_fs_lock
-                        .new_writer(
-                            local_subscriber.clone(),
-                            deletion_vr_path.clone(),
-                            local_subscriber.clone(),
-                        )
-                        .await
-                        .unwrap();
-
-                    // Delete the item
-                    let _res = vector_fs_lock.delete_item(&deletion_writer).await;
-
-                    // Determine if the next path (if exists) has a different parent
-                    let next_different_parent = if i + 1 < deletions.len() {
-                        let next_path = VRPath::from_string(&deletions[i + 1])
-                            .map_err(|_| NetworkJobQueueError::InvalidVRPath(deletions[i + 1].clone()))?;
-                        next_path.parent_path() != deletion_vr_path.parent_path()
-                    } else {
-                        // If there's no next path, we treat it as if the next path has a different parent
-                        true
-                    };
-
-                    // If the next path has a different parent, check if the current folder is empty
-                    if next_different_parent {
-                        // Now check each parent directory up to the root
-                        let mut current_path = deletion_vr_path.clone();
-                        // We check folder by folder if they are empty to delete them
-                        // it could happen that we have /folder1/folder2/folder3/item
-                        // and we delete item, then folder3, folder2 and folder1 are empty
-                        while current_path.parent_path() != VRPath::root() {
-                            let parent_path = current_path.parent_path();
-                            // Check if the parent directory is empty
-                            let reader = vector_fs_lock
-                                .new_reader(local_subscriber.clone(), parent_path.clone(), local_subscriber.clone())
-                                .await
-                                .unwrap();
-
-                            if vector_fs_lock.is_folder_empty(&reader).await? {
-                                // If empty, delete the folder
-                                let parent_writer = vector_fs_lock
-                                    .new_writer(local_subscriber.clone(), parent_path.clone(), local_subscriber.clone())
-                                    .await
-                                    .unwrap();
-                                let _resp = vector_fs_lock.delete_folder(&parent_writer).await;
-                            } else {
-                                // If the folder is not empty, stop checking further parent folders
-                                break;
-                            }
-                            current_path = parent_path;
-                        }
-                    }
-                }
-            } else {
-                let parent_writer = vector_fs_lock
-                    .new_writer(
-                        local_subscriber.clone(),
-                        parent_vr_path.clone(),
-                        local_subscriber.clone(),
-                    )
-                    .await
-                    .unwrap();
-
-                vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack).await?;
-            }
-            // {
-            //     // debug. print current files
-            //     eprintln!("debug current files");
-            //     // let root_path = VRPath::root();
-            //     let root_path = VRPath::from_string("/").unwrap();
-            //     let reader = vector_fs_lock
-            //         .new_reader(local_subscriber.clone(), root_path.clone(), local_subscriber.clone())
-            //         .await;
-            //     let reader = reader.unwrap();
-            //     let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader).await;
-            //     eprintln!("Current files: {:?}", result);
-            // }
-        }
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
     pub async fn handle_message_internode(
         receiver_address: SocketAddr,
         unsafe_sender_address: SocketAddr,
@@ -793,10 +461,8 @@ impl NetworkJobManager {
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
-        shinkai_db: Weak<ShinkaiDB>,
+        shinkai_db: Weak<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
         external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
@@ -886,8 +552,6 @@ impl NetworkJobManager {
             identity_manager,
             receiver_address,
             unsafe_sender_address,
-            my_subscription_manager,
-            external_subscription_manager,
             my_agent_offering_manager,
             external_agent_offering_manager,
             proxy_connection_info,

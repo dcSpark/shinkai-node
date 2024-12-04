@@ -1,4 +1,5 @@
 use embedding_function::EmbeddingFunction;
+use errors::SqliteManagerError;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
@@ -7,37 +8,29 @@ use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use thiserror::Error;
 
-pub mod embedding_function;
-pub mod files;
-pub mod prompt_manager;
-pub mod shinkai_tool_manager;
+pub mod agent_manager;
 pub mod cron_task_manager;
+pub mod embedding_function;
+pub mod errors;
+pub mod files;
+pub mod identity_manager;
+pub mod identity_registration;
+pub mod inbox_manager;
+pub mod invoice_manager;
+pub mod invoice_request_manager;
+pub mod job_manager;
+pub mod job_queue_manager;
+pub mod keys_manager;
+pub mod llm_provider_manager;
+pub mod prompt_manager;
+pub mod retry_manager;
+pub mod settings_manager;
+pub mod sheet_manager;
+pub mod shinkai_tool_manager;
+pub mod tool_payment_req_manager;
 pub mod tool_playground;
-
-#[derive(Error, Debug)]
-pub enum SqliteManagerError {
-    #[error("Tool already exists with key: {0}")]
-    ToolAlreadyExists(String),
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] rusqlite::Error),
-    #[error("Embedding generation error: {0}")]
-    EmbeddingGenerationError(String),
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-    #[error("Tool not found with key: {0}")]
-    ToolNotFound(String),
-    #[error("ToolPlayground already exists with job_id: {0}")]
-    ToolPlaygroundAlreadyExists(String),
-    #[error("ToolPlayground not found with job_id: {0}")]
-    ToolPlaygroundNotFound(String),
-    #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
-    #[error("Lock error")]
-    LockError,
-    // Add other error variants as needed
-}
+pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
 pub struct SqliteManager {
@@ -71,6 +64,12 @@ impl SqliteManager {
         let mut db_path = db_path.as_ref().to_path_buf();
         if db_path.extension().and_then(|ext| ext.to_str()) != Some("db") {
             db_path.set_extension("db");
+        }
+
+        // Create all subfolders if they don't exist
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
         }
 
         let manager = SqliteConnectionManager::file(db_path);
@@ -127,15 +126,315 @@ impl SqliteManager {
 
     // Initializes the required tables in the SQLite database
     fn initialize_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::initialize_agents_table(conn)?;
+        Self::initialize_cron_tasks_table(conn)?;
+        Self::initialize_cron_task_executions_table(conn)?;
+        Self::initialize_device_identities_table(conn)?;
+        Self::initialize_standard_identities_table(conn)?;
+        Self::initialize_inboxes_table(conn)?;
+        Self::initialize_inbox_messages_table(conn)?;
+        Self::initialize_inbox_profile_permissions_table(conn)?;
+        Self::initialize_invoice_network_errors_table(conn)?;
+        Self::initialize_invoice_requests_table(conn)?;
+        Self::initialize_invoice_table(conn)?;
+        Self::initialize_jobs_table(conn)?;
+        Self::initialize_forked_jobs_table(conn)?;
+        Self::initialize_job_queue_table(conn)?;
+        Self::initialize_llm_providers_table(conn)?;
+        Self::initialize_local_node_keys_table(conn)?;
+        Self::initialize_message_box_symmetric_keys_table(conn)?;
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
+        Self::initialize_registration_code_table(conn)?;
+        Self::initialize_retry_messages_table(conn)?;
+        Self::initialize_settings_table(conn)?;
+        Self::initialize_sheets_table(conn)?;
+        Self::initialize_step_history_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
+        Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_version_table(conn)?;
-        Self::initialize_cron_tasks_table(conn)?;
-        Self::initialize_cron_task_executions_table(conn)?;
+        Self::initialize_wallets_table(conn)?;
+        Ok(())
+    }
+
+    fn initialize_agents_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_agents (
+                agent_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                full_identity_name TEXT NOT NULL,
+                llm_provider_id TEXT NOT NULL,
+                ui_description TEXT NOT NULL,
+                knowledge TEXT NOT NULL,
+                storage_path TEXT NOT NULL,
+                tools TEXT NOT NULL,
+                debug_mode INTEGER NOT NULL,
+                config TEXT -- Store as a JSON string
+            );",
+            [],
+        )?;
+
+        // Create an index for the agent_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shinkai_agents_agent_id ON shinkai_agents (agent_id);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_device_identities_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS device_identities (
+                device_name TEXT NOT NULL UNIQUE,
+                profile_encryption_public_key BLOB NOT NULL,
+                profile_signature_public_key BLOB NOT NULL,
+                device_encryption_public_key BLOB NOT NULL,
+                device_signature_public_key BLOB NOT NULL,
+                permission_type TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_standard_identities_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS standard_identities (
+                profile_name TEXT NOT NULL UNIQUE,
+                addr BLOB,
+                profile_encryption_public_key BLOB,
+                profile_signature_public_key BLOB,
+                identity_type TEXT NOT NULL,
+                permission_type TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS inboxes (
+                inbox_name TEXT NOT NULL UNIQUE,
+                smart_inbox_name TEXT NOT NULL,
+                read_up_to_message_hash TEXT
+            );",
+            [],
+        )?;
+
+        // Create an index for the inbox_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_inbox_name ON inboxes (inbox_name);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_inbox_messages_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS inbox_messages (
+                message_hash TEXT NOT NULL UNIQUE,
+                inbox_name TEXT NOT NULL,
+                shinkai_message BLOB NOT NULL,
+                parent_message_hash TEXT,
+                time_key TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        // Create an index for the inbox_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_inbox_name ON inbox_messages (inbox_name);",
+            [],
+        )?;
+
+        // Create an index for the message_hash column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_message_hash ON inbox_messages (message_hash);",
+            [],
+        )?;
+
+        // Create an index for the time_key column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_time_key ON inbox_messages (time_key);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_inbox_profile_permissions_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS inbox_profile_permissions (
+                inbox_name TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                permission TEXT NOT NULL,
+
+                PRIMARY KEY (inbox_name, profile_name),
+                FOREIGN KEY (inbox_name) REFERENCES inboxes(inbox_name),
+                FOREIGN KEY (profile_name) REFERENCES standard_identities(profile_name)
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_jobs_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS jobs (
+                job_id TEXT NOT NULL UNIQUE,
+                is_hidden INTEGER NOT NULL,
+                datetime_created TEXT NOT NULL,
+                is_finished INTEGER NOT NULL,
+                parent_agent_or_llm_provider_id TEXT NOT NULL,
+                scope BLOB NOT NULL,
+                scope_with_files BLOB,
+                conversation_inbox_name TEXT NOT NULL,
+                execution_context BLOB,
+                associated_ui BLOB,
+                config BLOB
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_step_history_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS step_history (
+                message_key TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                job_step_result BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_forked_jobs_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forked_jobs (
+                parent_job_id TEXT NOT NULL,
+                forked_job_id TEXT NOT NULL,
+                message_id TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_job_queue_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS job_queues (
+                job_id TEXT NOT NULL,
+                queue_data BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_llm_providers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS llm_providers (
+                db_llm_provider_id TEXT NOT NULL UNIQUE,
+                id TEXT NOT NULL,
+                full_identity_name TEXT NOT NULL,
+                external_url TEXT,
+                api_key TEXT,
+                model TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_local_node_keys_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS local_node_keys (
+                node_name TEXT NOT NULL UNIQUE,
+                node_encryption_public_key BLOB NOT NULL,
+                node_signature_public_key BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_message_box_symmetric_keys_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS message_box_symmetric_keys (
+                hex_blake3_hash TEXT NOT NULL UNIQUE,
+                symmetric_key BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_registration_code_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS registration_code (
+                code TEXT NOT NULL UNIQUE,
+                code_data BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_retry_messages_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS retry_messages (
+                hash_key TEXT NOT NULL,
+                time_key TEXT NOT NULL,
+                message BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_settings_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_settings (
+                key TEXT NOT NULL UNIQUE,
+                value TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_sheets_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_sheets (
+                profile_hash TEXT NOT NULL,
+                sheet_uuid TEXT NOT NULL,
+                sheet_data BLOB NOT NULL,
+
+                PRIMARY KEY (profile_hash, sheet_uuid)
+            );",
+            [],
+        )?;
         Ok(())
     }
 
@@ -285,6 +584,91 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_wallets_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_wallet (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wallet_data BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_tool_micropayments_requirements_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tool_micropayments_requirements (
+                tool_key TEXT NOT NULL UNIQUE,
+                usage_type TEXT NOT NULL,
+                meta_description TEXT
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_invoice_requests_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS invoice_requests (
+                unique_id TEXT NOT NULL UNIQUE,
+                provider_name TEXT NOT NULL,
+                requester_name TEXT NOT NULL,
+                tool_key_name TEXT NOT NULL,
+                usage_type_inquiry TEXT NOT NULL,
+                date_time TEXT NOT NULL,
+                secret_prehash TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_invoice_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS invoices (
+                invoice_id TEXT NOT NULL UNIQUE,
+                provider_name TEXT NOT NULL,
+                requester_name TEXT NOT NULL,
+                usage_type_inquiry TEXT NOT NULL,
+                shinkai_offering_key TEXT NOT NULL,
+                request_date_time TEXT NOT NULL,
+                invoice_date_time TEXT NOT NULL,
+                expiration_time TEXT NOT NULL,
+                status TEXT NOT NULL,
+                payment TEXT, -- Store as a JSON string
+                address TEXT NOT NULL, -- Store as a JSON string
+                tool_data BLOB,
+                response_date_time TEXT,
+                result_str TEXT,
+
+                FOREIGN KEY(shinkai_offering_key) REFERENCES tool_micropayments_requirements(tool_key)
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_invoice_network_errors_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS invoice_network_errors (
+                invoice_id TEXT NOT NULL UNIQUE,
+                provider_name TEXT NOT NULL,
+                requester_name TEXT NOT NULL,
+                request_date_time TEXT NOT NULL,
+                response_date_time TEXT NOT NULL,
+                user_error_message TEXT,
+                error_message TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     // New method to initialize the version table
     fn initialize_version_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
@@ -365,10 +749,18 @@ impl SqliteManager {
         vec![value; 384]
     }
 
+    pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
+        Ok(self.model_type.clone())
+    }
+
+    pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
+        self.model_type = model;
+        Ok(())
+    }
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = vec!["0.9.0"];
+        let breaking_versions = ["0.9.0"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions
@@ -380,7 +772,7 @@ impl SqliteManager {
         conn.execute("DELETE FROM app_version;", [])?;
         conn.execute(
             "INSERT INTO app_version (version, needs_global_reset) VALUES (?, ?);",
-            &[&version as &dyn ToSql, &(needs_global_reset as i32) as &dyn ToSql],
+            [&version as &dyn ToSql, &(needs_global_reset as i32) as &dyn ToSql],
         )?;
 
         Ok(())

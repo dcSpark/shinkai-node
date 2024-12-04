@@ -5,7 +5,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -27,9 +27,8 @@ pub async fn execute_custom_tool(
     app_id: String,
     _extra_config: Option<String>,
     bearer: String,
-    db: Arc<ShinkaiDB>,
+    db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
     llm_provider: String,
     node_name: ShinkaiName,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -57,7 +56,6 @@ pub async fn execute_custom_tool(
                 app_id,
                 db,
                 vector_fs,
-                sqlite_manager,
                 node_name,
                 identity_manager,
                 job_manager,
@@ -76,7 +74,6 @@ pub async fn execute_custom_tool(
                 app_id,
                 db,
                 vector_fs,
-                sqlite_manager,
                 node_name,
                 identity_manager,
                 job_manager,
@@ -95,7 +92,6 @@ pub async fn execute_custom_tool(
                 app_id,
                 db,
                 vector_fs,
-                sqlite_manager,
                 node_name,
                 identity_manager,
                 job_manager,

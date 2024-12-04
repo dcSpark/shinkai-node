@@ -6,7 +6,7 @@ authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { workspace = true }
-shinkai_db = { workspace = true }
+shinkai_sqlite = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 chrono = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }
@@ -14,3 +14,7 @@ serde_json = { workspace = true }
 [dependencies.serde]
 workspace = true
 features = ["derive"]
+
+[dev-dependencies]
+shinkai_vector_resources = { workspace = true }
+tempfile = "3.2"

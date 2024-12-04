@@ -3,9 +3,11 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageTypeInquiry};
+use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::{Mutex, RwLock};
@@ -16,8 +18,7 @@ use crate::network::{
 
 impl Node {
     pub async fn v2_api_request_invoice(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         tool_key_name: String,
@@ -31,7 +32,7 @@ impl Node {
 
         // Fetch the tool from lance_db
         let network_tool = {
-            match sqlite_manager.read().await.get_tool_by_key(&tool_key_name) {
+            match db.read().await.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => match tool {
                     ShinkaiTool::Network(network_tool, _) => network_tool,
                     _ => {
@@ -99,8 +100,7 @@ impl Node {
     }
 
     pub async fn v2_api_pay_invoice(
-        db: Arc<ShinkaiDB>,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         invoice_id: String,
@@ -114,7 +114,7 @@ impl Node {
         }
 
         // Step 1: Get the invoice from the database
-        let invoice = match db.get_invoice(&invoice_id) {
+        let invoice = match db.read().await.get_invoice(&invoice_id) {
             Ok(invoice) => invoice,
             Err(e) => {
                 let api_error = APIError {
@@ -165,7 +165,7 @@ impl Node {
         // Step 4: Check that the data_for_tool is valid
         let tool_key_name = invoice.shinkai_offering.tool_key.clone();
         let tool = {
-            match sqlite_manager.read().await.get_tool_by_key(&tool_key_name) {
+            match db.read().await.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => tool,
                 Err(err) => {
                     let api_error = APIError {
@@ -257,7 +257,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_invoices(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -267,7 +267,7 @@ impl Node {
         }
 
         // Fetch the list of invoices from the database
-        match db.get_all_invoices() {
+        match db.read().await.get_all_invoices() {
             Ok(invoices) => {
                 let invoices_value = match serde_json::to_value(invoices) {
                     Ok(value) => value,

@@ -1,12 +1,14 @@
 use ed25519_dalek::SigningKey;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -19,7 +21,7 @@ pub async fn v2_create_and_send_job_message(
     job_creation_info: JobCreationInfo,
     llm_provider: String,
     content: String,
-    db_clone: Arc<ShinkaiDB>,
+    db_clone: Arc<RwLock<SqliteManager>>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
     job_manager_clone: Arc<Mutex<JobManager>>,
@@ -72,7 +74,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     bearer: String,
     job_id: String,
     content: String,
-    db_clone: Arc<ShinkaiDB>,
+    db_clone: Arc<RwLock<SqliteManager>>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
     job_manager_clone: Arc<Mutex<JobManager>>,

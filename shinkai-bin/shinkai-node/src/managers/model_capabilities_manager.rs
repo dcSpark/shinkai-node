@@ -2,7 +2,6 @@ use crate::llm_provider::{
     error::LLMProviderError,
     providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
-use shinkai_db::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::{
     llm_message::LlmMessage,
     llm_providers::{
@@ -12,10 +11,12 @@ use shinkai_message_primitives::schemas::{
     prompts::Prompt,
     shinkai_name::ShinkaiName,
 };
+use shinkai_sqlite::SqliteManager;
 use std::{
     fmt,
     sync::{Arc, Weak},
 };
+use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub enum ModelCapabilitiesManagerError {
@@ -93,14 +94,14 @@ pub enum ModelPrivacy {
 
 // Struct for ModelCapabilitiesManager
 pub struct ModelCapabilitiesManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub profile: ShinkaiName,
     pub llm_providers: Vec<SerializedLLMProvider>,
 }
 
 impl ModelCapabilitiesManager {
     // Constructor
-    pub async fn new(db: Weak<ShinkaiDB>, profile: ShinkaiName) -> Self {
+    pub async fn new(db: Weak<RwLock<SqliteManager>>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
         let llm_providers = Self::get_llm_providers(&db_arc, profile.clone()).await;
         Self {
@@ -111,8 +112,8 @@ impl ModelCapabilitiesManager {
     }
 
     // Function to get all llm providers from the database for a profile
-    async fn get_llm_providers(db: &Arc<ShinkaiDB>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
-        db.get_llm_providers_for_profile(profile).unwrap()
+    async fn get_llm_providers(db: &Arc<RwLock<SqliteManager>>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
+        db.read().await.get_llm_providers_for_profile(profile).unwrap()
     }
 
     // Static method to get capability of an agent
@@ -459,9 +460,9 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
-    pub fn get_max_input_tokens_for_provider_or_agent(
+    pub async fn get_max_input_tokens_for_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
     ) -> Option<usize> {
         match provider_or_agent {
             ProviderOrAgent::LLMProvider(serialized_llm_provider) => Some(
@@ -470,7 +471,7 @@ impl ModelCapabilitiesManager {
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
                 let profile = agent.full_identity_name.extract_profile().ok()?;
-                if let Some(llm_provider) = db.get_llm_provider(llm_id, &profile).ok() {
+                if let Some(llm_provider) = db.read().await.get_llm_provider(llm_id, &profile).ok() {
                     if let Some(model) = llm_provider {
                         Some(ModelCapabilitiesManager::get_max_input_tokens(&model.model))
                     } else {
@@ -659,9 +660,9 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns whether the given model supports tool/function calling capabilities
-    pub fn has_tool_capabilities_for_provider_or_agent(
+    pub async fn has_tool_capabilities_for_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         stream: Option<bool>,
     ) -> bool {
         match provider_or_agent {
@@ -670,7 +671,7 @@ impl ModelCapabilitiesManager {
             }
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
-                if let Some(llm_provider) = db.get_llm_provider(llm_id, &agent.full_identity_name).ok() {
+                if let Some(llm_provider) = db.read().await.get_llm_provider(llm_id, &agent.full_identity_name).ok() {
                     if let Some(model) = llm_provider {
                         ModelCapabilitiesManager::has_tool_capabilities(&model.model, stream)
                     } else {

@@ -1,10 +1,10 @@
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManagerError;
 use anyhow::Error as AnyhowError;
-use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, prompts::PromptError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::{error::ToolError, rust_tools::RustToolError};
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -26,7 +26,7 @@ pub enum LLMProviderError {
     JobMessageDeserializationFailed,
     MessageTypeParseFailed,
     IO(String),
-    ShinkaiDB(ShinkaiDBError),
+    ShinkaiDB(SqliteManagerError),
     VectorFS(VectorFSError),
     ShinkaiNameError(ShinkaiNameError),
     LLMProviderNotFound,
@@ -295,8 +295,8 @@ impl From<reqwest::Error> for LLMProviderError {
     }
 }
 
-impl From<ShinkaiDBError> for LLMProviderError {
-    fn from(err: ShinkaiDBError) -> LLMProviderError {
+impl From<SqliteManagerError> for LLMProviderError {
+    fn from(err: SqliteManagerError) -> LLMProviderError {
         LLMProviderError::ShinkaiDB(err)
     }
 }
