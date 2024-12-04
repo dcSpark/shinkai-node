@@ -118,7 +118,7 @@ pub async fn generate_code_prompt(
                 .iter()
                 .map(|(name, content)| {
                     format!(
-                        "Import these functions with the format: `from ./{name} import xx`                  
+                        "Import these functions with the format: `from {name} import xx`                  
 # <{name}>
 ```{language}
 {content}
@@ -129,9 +129,8 @@ pub async fn generate_code_prompt(
                 .collect::<Vec<String>>()
                 .join("\n");
 
-            let files = if !py_support_files_section.is_empty() {
-                format!(
-                    r#"
+            return Ok(format!(
+                r#"
 <agent_libraries>
   * You may use any of the following functions if they are relevant and a good match for the task.
   * Import them with the format: `from shinkai_local_tools import xx`
@@ -143,28 +142,10 @@ pub async fn generate_code_prompt(
 * Prefer libraries in the following order:
   1. A function provided by './shinkai_local_tools.py' that resolves correctly the requierement.
   2. If network fetch is required, use the "requests" library and import it with using `import requests`.
-  3. The code will be ran with Python Runtime, so prefer Python default and standard libraries. Import all used libraries as `from <library> import <function>` for exmaple for Lists use `from typing import List`.
+  3. The code will be ran with Python Runtime, so prefer Python default and standard libraries. Import all used libraries as `from <library> import <function>` for example for Lists use `from typing import List`.
   4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
   5. If an external system has a well known and defined API, call the API endpoints.
 </agent_python_libraries>
-"#
-                )
-                .to_string()
-            } else {
-                r#"
-<agent_python_libraries>
-* Prefer libraries in the following order:
-  1. If network fetch is required, use the "requests" library and import it with using `import requests`.
-  2. The code will be ran with Python Runtime, so prefer Python default and standard libraries.
-  3. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
-  4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
-</agent_python_libraries>
-"#
-                .to_string()
-            };
-            return Ok(format!(
-                r#"
-{files}
 
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
@@ -184,7 +165,20 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
     output = Output()
     return output
   ```
-  * CONFIG, INPUTS and OUTPUT must be objects, not arrays neither basic types.
+  * Update CONFIG, INPUTS and OUTPUT as follows but with the correct members to correcly implement the input_command tag.
+```{language}
+class CONFIG:
+    arg1: str
+    arg2: int
+    arg3: List[str]
+
+class INPUTS:
+    sample: List[str]
+
+class OUTPUT:
+    another_sample: str
+```
+
 </agent_code_format>
 
 <agent_code_rules>
