@@ -899,7 +899,6 @@ impl Node {
 
     pub async fn v2_api_download_file_from_inbox(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         bearer: String,
         inbox_name: String,
         filename: String,
@@ -918,7 +917,7 @@ impl Node {
         };
 
         // Retrieve the file from the inbox
-        match vector_fs.db.get_file_from_inbox(inbox_name, encoded_filename) {
+        match db.read().await.get_file_from_inbox(inbox_name, encoded_filename) {
             Ok(file_data) => {
                 let _ = res.send(Ok(file_data)).await;
             }
@@ -937,7 +936,6 @@ impl Node {
 
     pub async fn v2_api_list_files_in_inbox(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         bearer: String,
         inbox_name: String,
         res: Sender<Result<Vec<String>, APIError>>,
@@ -948,7 +946,7 @@ impl Node {
         }
 
         // List the files in the inbox
-        match vector_fs.db.get_all_filenames_from_inbox(inbox_name) {
+        match db.read().await.get_all_filenames_from_inbox(inbox_name) {
             Ok(file_list) => {
                 let _ = res.send(Ok(file_list)).await;
             }

@@ -557,7 +557,6 @@ impl Node {
             // NodeCommand::APIGetFilenamesInInbox { msg, res } => self.api_get_filenames_in_inbox(msg, res).await,
             NodeCommand::APIGetFilenamesInInbox { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let node_name_clone = self.node_name.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
@@ -565,7 +564,6 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::api_get_filenames_in_inbox(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -585,11 +583,9 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_add_file_to_inbox_with_symmetric_key(
                         db_clone,
-                        vector_fs_clone,
                         filename,
                         file,
                         public_key,
@@ -1561,9 +1557,8 @@ impl Node {
             }
             NodeCommand::V2ApiRemoveJob { bearer, job_id, res } => {
                 let db_clone = self.db.clone();
-                let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_remove_job(db_clone, vector_fs_clone, bearer, job_id, res).await;
+                    let _ = Node::v2_remove_job(db_clone, bearer, job_id, res).await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
@@ -1725,18 +1720,8 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_add_file_to_inbox(
-                        db_clone,
-                        vector_fs_clone,
-                        file_inbox_name,
-                        filename,
-                        file,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_add_file_to_inbox(db_clone, file_inbox_name, filename, file, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiUploadFileToFolder {
@@ -1989,17 +1974,8 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_download_file_from_inbox(
-                        db_clone,
-                        vector_fs_clone,
-                        bearer,
-                        inbox_name,
-                        filename,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_api_download_file_from_inbox(db_clone, bearer, inbox_name, filename, res).await;
                 });
             }
             NodeCommand::V2ApiListFilesInInbox {
@@ -2008,9 +1984,8 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_files_in_inbox(db_clone, vector_fs_clone, bearer, inbox_name, res).await;
+                    let _ = Node::v2_api_list_files_in_inbox(db_clone, bearer, inbox_name, res).await;
                 });
             }
             NodeCommand::V2ApiGetToolOffering {
@@ -2626,11 +2601,8 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_export_messages_from_inbox(db_clone, vector_fs_clone, bearer, inbox_name, format, res)
-                            .await;
+                    let _ = Node::v2_export_messages_from_inbox(db_clone, bearer, inbox_name, format, res).await;
                 });
             }
             NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {

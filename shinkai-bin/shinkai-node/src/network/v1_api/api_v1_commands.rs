@@ -2587,8 +2587,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_get_filenames_in_inbox(
-        _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2619,7 +2618,7 @@ impl Node {
         // Extract the content of the message
         let hex_blake3_hash = decrypted_msg.get_message_content()?;
 
-        match vector_fs.db.get_all_filenames_from_inbox(hex_blake3_hash) {
+        match db.read().await.get_all_filenames_from_inbox(hex_blake3_hash) {
             Ok(filenames) => {
                 let _ = res.send(Ok(filenames)).await;
                 Ok(())
@@ -2639,7 +2638,6 @@ impl Node {
 
     pub async fn api_add_file_to_inbox_with_symmetric_key(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         filename: String,
         file_data: Vec<u8>,
         hex_blake3_hash: String,
@@ -2698,8 +2696,9 @@ impl Node {
             .as_str(),
         );
 
-        match vector_fs
-            .db
+        match db
+            .write()
+            .await
             .add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file)
         {
             Ok(_) => {

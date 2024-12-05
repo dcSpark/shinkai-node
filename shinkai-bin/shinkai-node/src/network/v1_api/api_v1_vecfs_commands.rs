@@ -1081,7 +1081,11 @@ impl Node {
         };
 
         let files = {
-            match vector_fs.db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
+            match db
+                .read()
+                .await
+                .get_all_files_from_inbox(input_payload.file_inbox.clone())
+            {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
