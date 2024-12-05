@@ -81,11 +81,9 @@ impl ToolConfig {
     pub fn from_value(value: &Value) -> Option<ToolConfig> {
         if let Some(obj) = value.as_object() {
             // Check for BasicConfig structure
-            if let (Some(key_name), Some(description), Some(required)) = (
-                obj.get("key_name").and_then(|v| v.as_str()),
-                obj.get("description").and_then(|v| v.as_str()),
-                obj.get("required").and_then(|v| v.as_bool()),
-            ) {
+            if let Some(key_name) = obj.get("key_name").and_then(|v| v.as_str()) {
+                let description = obj.get("description").and_then(|v| v.as_str()).unwrap_or_default();
+                let required = obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
                 let key_value = obj.get("key_value").and_then(|v| v.as_str()).map(String::from);
 
                 let basic_config = BasicConfig {
@@ -145,7 +143,7 @@ mod tests {
             "key_name": "apiKey",
             "description": "API Key for weather service",
             "required": true,
-            "key_value": "63d35ff6068c3103ccd1227526935111"
+            "key_value": "63d35ff6068c3103ccd1227546935111"
         }"#;
 
         let value: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
@@ -156,6 +154,30 @@ mod tests {
                     assert_eq!(config.key_name, "apiKey");
                     assert_eq!(config.description, "API Key for weather service");
                     assert!(config.required);
+                    assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
+                }
+                _ => panic!("Parsed ToolConfig is not a BasicConfig"),
+            }
+        } else {
+            panic!("Failed to parse ToolConfig from value");
+        }
+    }
+
+    #[test]
+    fn test_from_value_parsing_with_missing_fields() {
+        let json_str = r#"{
+            "key_name": "apiKey",
+            "key_value": "63d35ff6068c3103ccd1227546935111"
+        }"#;
+
+        let value: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+
+        if let Some(tool_config) = ToolConfig::from_value(&value) {
+            match tool_config {
+                ToolConfig::BasicConfig(config) => {
+                    assert_eq!(config.key_name, "apiKey");
+                    assert_eq!(config.description, "");
+                    assert!(!config.required);
                     assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
