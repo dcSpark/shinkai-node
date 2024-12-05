@@ -1453,22 +1453,23 @@ impl Node {
         };
 
         // Save the tool to the database
-        // match db.write().await.add_tool(tool).await {
-        // Ok(tool) => {
-        return Ok(json!({
-            "status": "success",
-            "message": "Tool imported successfully",
-            "tool": tool
-        }));
-        // }
-        //     Err(err) => {
-        //         return Err(APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Database Error".to_string(),
-        //             message: format!("Failed to save tool to database: {}", err),
-        //         });
-        //     }
-        // }
+        let mut db_write = db.write().await;
+        match db_write.add_tool(tool).await {
+            Ok(tool) => {
+                Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool": tool
+                }))
+            }
+            Err(err) => {
+                Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Database Error".to_string(),
+                    message: format!("Failed to save tool to database: {}", err),
+                })
+            }
+        }
     }
 
     pub async fn v2_api_resolve_shinkai_file_protocol(
