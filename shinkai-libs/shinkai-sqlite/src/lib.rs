@@ -157,6 +157,10 @@ impl SqliteManager {
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
+        Self::initialize_vector_fs_internals_table(conn)?;
+        Self::initialize_vector_resources_table(conn)?;
+        Self::initialize_vr_embeddings_table(conn)?;
+        Self::initialize_vr_nodes_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
         Ok(())
@@ -723,6 +727,83 @@ impl SqliteManager {
         // Create an index for the file_inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_vector_fs_internals_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS vector_fs_internals (
+                profile_name TEXT NOT NULL UNIQUE,
+                core_resource_id INTEGER NOT NULL,
+                permissions_index BLOB NOT NULL,
+                subscription_index BLOB NOT NULL,
+                supported_embedding_models BLOB NOT NULL,
+                last_read_index BLOB NOT NULL
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_vector_resources_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resources USING vec0 (
+                vector_resource_id integer primary key,
+                resource_embedding float[384],
+                +base_type text,
+                +name text,
+                +description text,
+                +source text,
+                +resource_id text,
+                +resource_base_type text,
+                +embedding_model_used_string text,
+                +node_count integer,
+                +created_datetime text,
+                +last_written_datetime text,
+                +merkle_root text,
+                +data_tag_index text,
+                +metadata_index text,
+                +keywords text,
+                +distribution_info text,
+                +data_tag_names text,
+                +metadata_index_keys text
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_vr_embeddings_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vr_embeddings USING vec0 (
+                vector_resource_id integer partition key,
+                id text,
+                embedding float[384]
+            );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_vr_nodes_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vr_nodes USING vec0 (
+                vector_resource_id integer partition key,
+                order integer,
+                id text,
+                content_type text,
+                content_value text,
+                +last_written_datetime text,
+                +merkle_hash text,
+                +metadata text,
+                +data_tag_names text
+            );",
             [],
         )?;
 
