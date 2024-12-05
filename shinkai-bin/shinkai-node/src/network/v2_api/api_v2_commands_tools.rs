@@ -1419,26 +1419,28 @@ impl Node {
         };
 
         // Extract and parse tool.json
-        let mut tool_file = match archive.by_name("tool.json") {
-            Ok(file) => file,
-            Err(_) => {
+        let mut buffer = Vec::new();
+        {
+            let mut tool_file = match archive.by_name("tool.json") {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Tool Archive".to_string(),
+                        message: "Archive does not contain tool.json".to_string(),
+                    });
+                }
+            };
+
+            // Read the tool file contents into a buffer
+            if let Err(err) = tool_file.read_to_end(&mut buffer) {
                 return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Invalid Tool Archive".to_string(),
-                    message: "Archive does not contain tool.json".to_string(),
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Read Error".to_string(),
+                    message: format!("Failed to read tool.json contents: {}", err),
                 });
             }
-        };
-
-        // Read the tool file contents
-        let mut buffer = Vec::new();
-        if let Err(err) = tool_file.read_to_end(&mut buffer) {
-            return Err(APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Read Error".to_string(),
-                message: format!("Failed to read tool.json contents: {}", err),
-            });
-        }
+        } // `tool_file` goes out of scope here
 
         // Parse the JSON into a ShinkaiTool
         let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
