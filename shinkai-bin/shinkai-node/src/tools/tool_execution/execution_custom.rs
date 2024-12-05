@@ -8,6 +8,7 @@ use ed25519_dalek::SigningKey;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 
@@ -25,7 +26,7 @@ pub async fn execute_custom_tool(
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
-    _extra_config: Option<String>,
+    _extra_config: Vec<ToolConfig>,
     bearer: String,
     db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,
