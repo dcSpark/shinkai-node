@@ -1334,6 +1334,7 @@ impl Node {
 
                 let mut zip = ZipWriter::new(file);
 
+                // TODO Add Assets to the zip file
                 zip.start_file::<_, ()>("tool.json", FileOptions::default())
                     .map_err(|e| NodeError::from(e.to_string()))?;
                 zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
@@ -1341,6 +1342,10 @@ impl Node {
 
                 println!("Zip file created successfully!");
                 let file_bytes = fs::read(&path).await?;
+                // Delete the zip file after reading it
+                fs::remove_file(&path)
+                    .await
+                    .map_err(|e| NodeError::from(e.to_string()))?;
                 let _ = res.send(Ok(file_bytes)).await;
             }
             Err(err) => {
@@ -1457,20 +1462,17 @@ impl Node {
         // Save the tool to the database
         let mut db_write = db.write().await;
         match db_write.add_tool(tool).await {
-            Ok(tool) => {
-                Ok(json!({
-                    "status": "success",
-                    "message": "Tool imported successfully",
-                    "tool": tool
-                }))
-            }
-            Err(err) => {
-                Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Database Error".to_string(),
-                    message: format!("Failed to save tool to database: {}", err),
-                })
-            }
+            Ok(tool) => Ok(json!({
+                "status": "success",
+                "message": "Tool imported successfully",
+                "tool_key": tool.tool_router_key(),
+                "tool": tool
+            })),
+            Err(err) => Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", err),
+            }),
         }
     }
 
