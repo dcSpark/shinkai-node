@@ -5,10 +5,9 @@ use reqwest::StatusCode;
 use serde_json::Value;
 
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry;
-use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageTypeInquiry};
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
-use shinkai_sqlite::{SqliteManager, SqliteManagerError};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::{Mutex, RwLock};
 
