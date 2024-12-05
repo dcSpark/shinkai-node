@@ -1060,64 +1060,59 @@ impl Node {
         // TODO: validate knowledge
 
         // Check if the llm_provider_id exists
-        match db
-            .read()
-            .await
-            .get_llm_provider(&agent.llm_provider_id, &requester_name)
-        {
-            Ok(Some(_)) => {
-                // Check if the agent_id already exists
-                match db.read().await.get_agent(&agent.agent_id) {
-                    Ok(Some(_)) => {
-                        let api_error = APIError {
-                            code: StatusCode::CONFLICT.as_u16(),
-                            error: "Conflict".to_string(),
-                            message: "agent_id already exists".to_string(),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                    }
-                    Ok(None) => {
-                        // Add the agent to the database
-                        match db.write().await.add_agent(agent, &requester_name) {
-                            Ok(_) => {
-                                let _ = res.send(Ok("Agent added successfully".to_string())).await;
-                            }
-                            Err(err) => {
-                                let api_error = APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to add agent: {}", err),
-                                };
-                                let _ = res.send(Err(api_error)).await;
-                            }
-                        }
+        let llm_provider_exists = {
+            let db_read = db.read().await;
+            let exists = match db_read.get_llm_provider(&agent.llm_provider_id, &requester_name) {
+                Ok(Some(_)) => true,
+                _ => false,
+            };
+            drop(db_read); // Drop the read lock
+            exists
+        };
+
+        if llm_provider_exists {
+            // Check if the agent_id already exists
+            let agent_exists = {
+                let db_read = db.read().await;
+                let exists = match db_read.get_agent(&agent.agent_id) {
+                    Ok(Some(_)) => true,
+                    _ => false,
+                };
+                drop(db_read); // Drop the read lock
+                exists
+            };
+
+            if agent_exists {
+                let api_error = APIError {
+                    code: StatusCode::CONFLICT.as_u16(),
+                    error: "Conflict".to_string(),
+                    message: "agent_id already exists".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+            } else {
+                // Add the agent to the database
+                let mut db_write = db.write().await;
+                match db_write.add_agent(agent, &requester_name) {
+                    Ok(_) => {
+                        let _ = res.send(Ok("Agent added successfully".to_string())).await;
                     }
                     Err(err) => {
                         let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                             error: "Internal Server Error".to_string(),
-                            message: format!("Failed to check agent_id: {}", err),
+                            message: format!("Failed to add agent: {}", err),
                         };
                         let _ = res.send(Err(api_error)).await;
                     }
                 }
             }
-            Ok(None) => {
-                let api_error = APIError {
-                    code: StatusCode::NOT_FOUND.as_u16(),
-                    error: "Not Found".to_string(),
-                    message: "llm_provider_id does not exist".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to check llm_provider_id: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::NOT_FOUND.as_u16(),
+                error: "Not Found".to_string(),
+                message: "llm_provider_id does not exist".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
         }
 
         Ok(())
