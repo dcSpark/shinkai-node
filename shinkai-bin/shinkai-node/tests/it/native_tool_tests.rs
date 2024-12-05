@@ -262,7 +262,7 @@ fn native_tool_test_knowledge() {
                         "your_tool_id".to_string(),
                         "your_app_id".to_string(),
                         node1_agent.to_string(),
-                        None,
+                        vec![],
                     )
                     .await;
 
