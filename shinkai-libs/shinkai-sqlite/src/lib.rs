@@ -712,17 +712,17 @@ impl SqliteManager {
     fn initialize_file_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS file_inboxes (
-                encrypted_inbox_id TEXT NOT NULL,
+                file_inbox_name TEXT NOT NULL,
                 file_name TEXT NOT NULL,
 
-                PRIMARY KEY (encrypted_inbox_id, file_name)
+                PRIMARY KEY (file_inbox_name, file_name)
             );",
             [],
         )?;
 
-        // Create an index for the encrypted_inbox_id column
+        // Create an index for the file_inbox_name column
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_encrypted_inbox_id ON file_inboxes (encrypted_inbox_id);",
+            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
             [],
         )?;
 

@@ -3,21 +3,14 @@ use rusqlite::params;
 use crate::{errors::SqliteManagerError, SqliteManager};
 
 impl SqliteManager {
-    /// Returns the first half of the blake3 hash of the hex blake3 inbox id
-    pub fn hex_blake3_to_half_hash(hex_blake3_hash: &str) -> String {
-        let full_hash = blake3::hash(hex_blake3_hash.as_bytes()).to_hex().to_string();
-        full_hash[..full_hash.len() / 2].to_string()
-    }
-
     pub fn add_file_to_files_message_inbox(
         &self,
-        hex_blake3_hash: String,
+        file_inbox_name: String,
         file_name: String,
         file_content: Vec<u8>,
     ) -> Result<(), SqliteManagerError> {
         let file_inboxes_path = self.get_file_inboxes_path();
-        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
-        let inbox_dir_name = Self::sanitize_directory_name(&encrypted_inbox_id);
+        let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let file_path = file_inboxes_path.join(&inbox_dir_name).join(&file_name);
 
         // Store the file content in the inboxes directory
@@ -27,8 +20,8 @@ impl SqliteManager {
         // Store inboxes metadata in the database
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT OR REPLACE INTO file_inboxes (encrypted_inbox_id, file_name) VALUES (?1, ?2)",
-            params![encrypted_inbox_id, file_name],
+            "INSERT OR REPLACE INTO file_inboxes (file_inbox_name, file_name) VALUES (?1, ?2)",
+            params![file_inbox_name, file_name],
         )?;
 
         Ok(())
@@ -36,16 +29,15 @@ impl SqliteManager {
 
     pub fn get_all_files_from_inbox(
         &self,
-        hex_blake3_hash: String,
+        file_inbox_name: String,
     ) -> Result<Vec<(String, Vec<u8>)>, SqliteManagerError> {
         let file_inboxes_path = self.get_file_inboxes_path();
-        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
-        let inbox_dir_name = Self::sanitize_directory_name(&encrypted_inbox_id);
+        let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let inbox_path = file_inboxes_path.join(&inbox_dir_name);
 
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT file_name FROM file_inboxes WHERE encrypted_inbox_id = ?1")?;
-        let file_names = stmt.query_map(params![encrypted_inbox_id], |row| row.get::<_, String>(0))?;
+        let mut stmt = conn.prepare("SELECT file_name FROM file_inboxes WHERE file_inbox_name = ?1")?;
+        let file_names = stmt.query_map(params![file_inbox_name], |row| row.get::<_, String>(0))?;
 
         let mut files = Vec::new();
         for file_name in file_names {
@@ -58,12 +50,10 @@ impl SqliteManager {
         Ok(files)
     }
 
-    pub fn get_all_filenames_from_inbox(&self, hex_blake3_hash: String) -> Result<Vec<String>, SqliteManagerError> {
-        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
-
+    pub fn get_all_filenames_from_inbox(&self, file_inbox_name: String) -> Result<Vec<String>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT file_name FROM file_inboxes WHERE encrypted_inbox_id = ?1")?;
-        let file_names = stmt.query_map(params![encrypted_inbox_id], |row| row.get::<_, String>(0))?;
+        let mut stmt = conn.prepare("SELECT file_name FROM file_inboxes WHERE file_inbox_name = ?1")?;
+        let file_names = stmt.query_map(params![file_inbox_name], |row| row.get::<_, String>(0))?;
 
         let mut files = Vec::new();
         for file_name in file_names {
@@ -73,18 +63,17 @@ impl SqliteManager {
         Ok(files)
     }
 
-    pub fn remove_inbox(&self, hex_blake3_hash: &str) -> Result<(), SqliteManagerError> {
+    pub fn remove_inbox(&self, file_inbox_name: &str) -> Result<(), SqliteManagerError> {
         let file_inboxes_path = self.get_file_inboxes_path();
-        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(hex_blake3_hash);
-        let inbox_dir_name = Self::sanitize_directory_name(&encrypted_inbox_id);
+        let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let inbox_path = file_inboxes_path.join(&inbox_dir_name);
 
         std::fs::remove_dir_all(inbox_path).map_err(|_| SqliteManagerError::FailedFetchingValue)?;
 
         let conn = self.get_connection()?;
         conn.execute(
-            "DELETE FROM file_inboxes WHERE encrypted_inbox_id = ?1",
-            params![encrypted_inbox_id],
+            "DELETE FROM file_inboxes WHERE file_inbox_name = ?1",
+            params![file_inbox_name],
         )?;
 
         Ok(())
@@ -92,12 +81,11 @@ impl SqliteManager {
 
     pub fn get_file_from_inbox(
         &self,
-        hex_blake3_hash: String,
+        file_inbox_name: String,
         file_name: String,
     ) -> Result<Vec<u8>, SqliteManagerError> {
         let file_inboxes_path = self.get_file_inboxes_path();
-        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
-        let inbox_dir_name = Self::sanitize_directory_name(&encrypted_inbox_id);
+        let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let file_path = file_inboxes_path.join(&inbox_dir_name).join(&file_name);
 
         std::fs::read(file_path).map_err(|_| SqliteManagerError::FailedFetchingValue)
@@ -105,13 +93,14 @@ impl SqliteManager {
 
     fn get_file_inboxes_path(&self) -> std::path::PathBuf {
         match std::env::var("NODE_STORAGE_PATH").ok() {
-            Some(path) => std::path::PathBuf::from(path).join("file_inboxes"),
-            None => std::path::PathBuf::from("file_inboxes"),
+            Some(path) => std::path::PathBuf::from(path).join("files"),
+            None => std::path::PathBuf::from("files"),
         }
     }
 
-    fn sanitize_directory_name(name: &str) -> String {
-        name.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+    fn get_inbox_directory_name(name: &str) -> String {
+        let sanitized_dir = name.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+        format!("inbox_{}", sanitized_dir)
     }
 }
 

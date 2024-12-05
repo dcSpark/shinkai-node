@@ -370,11 +370,12 @@ impl SqliteManager {
     pub fn update_job_scope(&self, job_id: String, scope: JobScope) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
 
-        let scope_bytes = serde_json::to_vec(&scope)?;
+        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
+        let scope_with_files_bytes = scope.to_bytes()?;
 
-        let mut stmt = conn.prepare("UPDATE jobs SET scope = ?1 WHERE job_id = ?2")?;
+        let mut stmt = conn.prepare("UPDATE jobs SET scope = ?1, scope_with_files = ?2 WHERE job_id = ?3")?;
 
-        stmt.execute(params![scope_bytes, job_id])?;
+        stmt.execute(params![scope_bytes, scope_with_files_bytes, job_id])?;
 
         Ok(())
     }
@@ -502,9 +503,8 @@ impl SqliteManager {
             Some(key) => key,
             None => {
                 // Fetch the most recent message from the job's inbox
-                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).map_err(|e| {
-                    SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e))
-                })?;
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())
+                    .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
                 if let Some(message) = last_messages.first() {
                     if let Some(message) = message.first() {
@@ -531,9 +531,8 @@ impl SqliteManager {
         let mut job_step_result = JobStepResult::new();
         job_step_result.add_new_step_revision(prompt);
 
-        let step_result_bytes = serde_json::to_vec(&job_step_result).map_err(|e| {
-            SqliteManagerError::SerializationError(format!("Error serializing JobStepResult: {}", e))
-        })?;
+        let step_result_bytes = serde_json::to_vec(&job_step_result)
+            .map_err(|e| SqliteManagerError::SerializationError(format!("Error serializing JobStepResult: {}", e)))?;
 
         let conn = self.get_connection()?;
         let mut stmt =
