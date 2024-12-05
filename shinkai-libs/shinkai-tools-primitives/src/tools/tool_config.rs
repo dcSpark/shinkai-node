@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ToolConfig {
@@ -54,6 +55,53 @@ impl ToolConfig {
             }),
         }
     }
+
+    /// Creates a vector of ToolConfig::BasicConfig instances from a serde_json::Value
+    pub fn basic_config_from_value(value: &Value) -> Vec<ToolConfig> {
+        let mut configs = Vec::new();
+
+        if let Some(obj) = value.as_object() {
+            for (key, val) in obj {
+                let key_value = val.as_str().map(String::from);
+
+                let basic_config = BasicConfig {
+                    key_name: key.clone(),
+                    description: format!("Description for {}", key),
+                    required: false, // Set default or determine from context
+                    key_value,
+                };
+                configs.push(ToolConfig::BasicConfig(basic_config));
+            }
+        }
+
+        configs
+    }
+
+    /// Attempts to deserialize a serde_json::Value into a ToolConfig
+    pub fn from_value(value: &Value) -> Option<ToolConfig> {
+        if let Some(obj) = value.as_object() {
+            // Check for BasicConfig structure
+            if let (Some(key_name), Some(description), Some(required)) = (
+                obj.get("key_name").and_then(|v| v.as_str()),
+                obj.get("description").and_then(|v| v.as_str()),
+                obj.get("required").and_then(|v| v.as_bool()),
+            ) {
+                let key_value = obj.get("key_value").and_then(|v| v.as_str()).map(String::from);
+
+                let basic_config = BasicConfig {
+                    key_name: key_name.to_string(),
+                    description: description.to_string(),
+                    required,
+                    key_value,
+                };
+                return Some(ToolConfig::BasicConfig(basic_config));
+            }
+
+            // Add similar checks for other ToolConfig variants like OAuth or GenericHeader if needed
+        }
+
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -85,4 +133,35 @@ pub struct BasicConfig {
     pub description: String,
     pub required: bool,
     pub key_value: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_value_parsing() {
+        let json_str = r#"{
+            "key_name": "apiKey",
+            "description": "API Key for weather service",
+            "required": true,
+            "key_value": "63d35ff6068c3103ccd1227526935111"
+        }"#;
+
+        let value: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+
+        if let Some(tool_config) = ToolConfig::from_value(&value) {
+            match tool_config {
+                ToolConfig::BasicConfig(config) => {
+                    assert_eq!(config.key_name, "apiKey");
+                    assert_eq!(config.description, "API Key for weather service");
+                    assert!(config.required);
+                    assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
+                }
+                _ => panic!("Parsed ToolConfig is not a BasicConfig"),
+            }
+        } else {
+            panic!("Failed to parse ToolConfig from value");
+        }
+    }
 }
