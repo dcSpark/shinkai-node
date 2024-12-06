@@ -61,6 +61,8 @@ pub enum SqliteManagerError {
     VRError(VRError),
     #[error("Invalid data")]
     InvalidData,
+    #[error("Failed fetching value")]
+    FailedFetchingValue,
     // Add other error variants as needed
 }
 

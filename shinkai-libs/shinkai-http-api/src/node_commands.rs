@@ -934,7 +934,7 @@ pub enum NodeCommand {
         tool_id: String,
         app_id: String,
         llm_provider: String,
-        extra_config: Option<String>,
+        extra_config: Vec<Value>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -943,6 +943,7 @@ pub enum NodeCommand {
         tools: Vec<String>,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
+        extra_config: Vec<Value>,
         tool_id: String,
         app_id: String,
         llm_provider: String,

@@ -65,7 +65,7 @@ impl DenoTool {
         api_port: u16,
         support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
-        extra_config: Option<String>,
+        extra_config: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -94,7 +94,7 @@ impl DenoTool {
         api_port: u16,
         support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
-        extra_config: Option<String>,
+        extra_config: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -103,7 +103,7 @@ impl DenoTool {
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
-            self.name, parameters, extra_config
+            self.name, parameters, self.config
         );
 
         let code = self.js_code.clone();
@@ -119,16 +119,19 @@ impl DenoTool {
                         .clone()
                         .map(|value| (basic_config.key_name.clone(), value))
                 } else {
+                    // TODO: add oauth
                     None
                 }
             })
             .collect();
 
         // Merge extra_config into the config hashmap
-        if let Some(extra_config_str) = extra_config {
-            let extra_config_map: HashMap<String, String> =
-                serde_json::from_str(&extra_config_str).map_err(|e| ToolError::SerializationError(e.to_string()))?;
-            config.extend(extra_config_map);
+        for c in extra_config {
+            if let ToolConfig::BasicConfig(basic_config) = c {
+                if let Some(value) = basic_config.key_value {
+                    config.insert(basic_config.key_name.clone(), value);
+                }
+            }
         }
 
         // Convert the config hashmap to a JSON value
@@ -190,7 +193,7 @@ impl DenoTool {
 
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config, parameters);
+                    println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config_json, parameters);
                     println!(
                         "[Running DenoTool] Code: {} ... {}",
                         &code[..120.min(code.len())],

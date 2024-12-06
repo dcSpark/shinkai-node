@@ -30,6 +30,7 @@ use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use tokio::sync::RwLock;
@@ -417,6 +418,8 @@ impl ToolRouter {
             }
             ShinkaiTool::Deno(deno_tool, _) => {
                 let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
@@ -442,7 +445,7 @@ impl ToolRouter {
                         node_env.api_listen_address.port(),
                         support_files,
                         function_args,
-                        function_config,
+                        function_config_vec,
                         node_storage_path,
                         app_id,
                         tool_id,
@@ -754,6 +757,7 @@ impl ToolRouter {
 
         let shinkai_tool = shinkai_tool.unwrap();
         let function_config = shinkai_tool.get_config_from_env();
+        let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
 
         let js_tool = match shinkai_tool.clone() {
             ShinkaiTool::Deno(js_tool, _) => js_tool,
@@ -786,7 +790,7 @@ impl ToolRouter {
                 node_env.api_listen_address.port(),
                 support_files,
                 function_args,
-                function_config,
+                function_config_vec,
                 node_storage_path,
                 app_id,
                 tool_id,

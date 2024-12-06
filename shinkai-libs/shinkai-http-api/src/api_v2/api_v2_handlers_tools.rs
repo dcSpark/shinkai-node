@@ -236,7 +236,7 @@ pub struct ToolExecutionRequest {
     pub llm_provider: String,
     pub parameters: Value,
     #[serde(default)]
-    pub extra_config: Option<String>,
+    pub extra_config: Vec<Value>,
 }
 
 #[utoipa::path(
@@ -878,7 +878,7 @@ pub struct CodeExecutionRequest {
     pub code: String,
     pub parameters: Value,
     #[serde(default)]
-    pub extra_config: Option<String>,
+    pub extra_config: Vec<Value>,
     pub llm_provider: String,
     pub tools: Vec<String>,
 }
@@ -920,6 +920,7 @@ pub async fn code_execution_handler(
             code: payload.code,
             tools: payload.tools,
             parameters,
+            extra_config: payload.extra_config,
             tool_id: tool_id,
             app_id: app_id,
             llm_provider: payload.llm_provider,

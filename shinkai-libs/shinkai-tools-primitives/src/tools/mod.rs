@@ -2,7 +2,6 @@ pub mod argument;
 pub mod deno_tools;
 pub mod error;
 pub mod js_toolkit;
-pub mod js_tools;
 pub mod network_tool;
 pub mod tool_playground;
 pub mod python_tools;

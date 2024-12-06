@@ -2,7 +2,7 @@ use std::env;
 
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
-use serde_json::{self};
+use serde_json::{self, Value};
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
@@ -268,12 +268,20 @@ impl ShinkaiTool {
         }
     }
 
-    // TODO: refactor
-    /// Returns an Option<String> for a config based on an environment variable
-    pub fn get_config_from_env(&self) -> Option<String> {
+    /// Returns an Option<ToolConfig> based on an environment variable
+    pub fn get_config_from_env(&self) -> Option<ToolConfig> {
         let tool_key = self.tool_router_key().replace(":::", "___");
         let env_var_key = format!("TOOLKIT_{}", tool_key);
-        env::var(env_var_key).ok()
+
+        if let Ok(env_value) = env::var(env_var_key) {
+            // Attempt to parse the environment variable as JSON
+            if let Ok(value) = serde_json::from_str::<Value>(&env_value) {
+                // Attempt to deserialize the JSON value into a ToolConfig
+                return ToolConfig::from_value(&value);
+            }
+        }
+
+        None
     }
 
     /// Returns the author of the tool

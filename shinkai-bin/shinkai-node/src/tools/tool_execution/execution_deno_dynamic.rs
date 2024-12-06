@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
-use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
+use shinkai_tools_primitives::tools::deno_tools::{DenoTool, DenoToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
+use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 
 use crate::utils::environment::fetch_node_environment;
 
@@ -13,10 +13,10 @@ pub fn execute_deno_tool(
     bearer: String,
     node_name: ShinkaiName,
     parameters: Map<String, Value>,
+    extra_config: Vec<ToolConfig>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
-    extra_config: Option<String>,
     support_files: HashMap<String, String>,
     code: String,
 ) -> Result<Value, ToolError> {

@@ -1,6 +1,7 @@
 use ed25519_dalek::SigningKey;
 
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
@@ -48,6 +49,44 @@ pub async fn v2_create_and_send_job_message(
     .await;
 
     let job_id = res_receiver
+        .recv()
+        .await
+        .map_err(|e| Node::generic_api_error(&e.to_string()))??;
+
+    // Get the current job config
+    let (config_res_sender, config_res_receiver) = async_channel::bounded(1);
+
+    let _ = Node::v2_api_get_job_config(
+        db_clone.clone(),
+        bearer.clone(),
+        job_id.clone(),
+        config_res_sender,
+    )
+    .await;
+
+    let current_config = config_res_receiver
+        .recv()
+        .await
+        .map_err(|e| Node::generic_api_error(&e.to_string()))??;
+
+    // Merge the current config with the new config setting use_tools to false
+    let new_config = JobConfig {
+        use_tools: Some(false),
+        ..current_config
+    };
+
+    let (update_res_sender, update_res_receiver) = async_channel::bounded(1);
+
+    let _ = Node::v2_api_update_job_config(
+        db_clone.clone(),
+        bearer.clone(),
+        job_id.clone(),
+        new_config,
+        update_res_sender,
+    )
+    .await;
+
+    update_res_receiver
         .recv()
         .await
         .map_err(|e| Node::generic_api_error(&e.to_string()))??;

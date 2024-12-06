@@ -13,6 +13,7 @@ pub mod agent_manager;
 pub mod cron_task_manager;
 pub mod embedding_function;
 pub mod errors;
+pub mod file_inbox_manager;
 pub mod files;
 pub mod identity_manager;
 pub mod identity_registration;
@@ -131,6 +132,7 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
+        Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
         Self::initialize_inbox_profile_permissions_table(conn)?;
@@ -713,6 +715,26 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_file_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS file_inboxes (
+                file_inbox_name TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+
+                PRIMARY KEY (file_inbox_name, file_name)
+            );",
+            [],
+        )?;
+
+        // Create an index for the file_inbox_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     // Returns a connection from the pool
     pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
         self.pool.get().map_err(|e| {
@@ -760,7 +782,7 @@ impl SqliteManager {
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0"];
+        let breaking_versions = ["0.9.0", "0.9.1"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions
