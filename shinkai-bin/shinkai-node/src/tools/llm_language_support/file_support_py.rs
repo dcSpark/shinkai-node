@@ -4,21 +4,21 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "get_mount_paths",
             "Gets an array of mounted files.",
             "List[str]",
-            "mount_paths = os.environ.get('MOUNT')\n    if not mount_paths:\n        return []\n    return [path.strip() for path in mount_paths.split(',')]",
+            "mount_paths = os.environ.get('SHINKAI_MOUNT')\n    if not mount_paths:\n        return []\n    return [path.strip() for path in mount_paths.split(',')]",
             "Array of files"
         ),
         (
             "get_asset_paths",
             "Gets an array of asset files. These files are read only.",
             "List[str]",
-            "asset_paths = os.environ.get('ASSETS')\n    if not asset_paths:\n        return []\n    return [path.strip() for path in asset_paths.split(',')]",
+            "asset_paths = os.environ.get('SHINKAI_ASSETS')\n    if not asset_paths:\n        return []\n    return [path.strip() for path in asset_paths.split(',')]",
             "Array of files"
         ),
         (
             "get_home_path",
             "Gets the home directory path. All created files must be written to this directory.",
             "str",
-            "return os.environ.get('HOME', '')",
+            "return os.environ.get('SHINKAI_HOME', '')",
             "Home directory path"
         ),
         (
