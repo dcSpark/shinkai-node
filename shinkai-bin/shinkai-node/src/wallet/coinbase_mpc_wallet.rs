@@ -335,6 +335,7 @@ impl CoinbaseMPCWallet {
                     support_files,
                     params,
                     tool_configs,
+                    vec![],
                     node_storage_path,
                     app_id,
                     tool_id,

@@ -822,6 +822,8 @@ mod tests {
     use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
+    use std::sync::{Arc, RwLock};
+    use std::thread;
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
@@ -865,10 +867,10 @@ mod tests {
     // #[tokio::test]
     async fn test_update_from_breaking_version_no_reset() {
         let manager = setup_test_db().await;
-        manager.set_version("0.9.0").unwrap();
         manager.set_version("0.9.1").unwrap();
+        manager.set_version("0.9.5").unwrap();
         let (version, needs_reset) = manager.get_version().unwrap();
-        assert_eq!(version, "0.9.1");
+        assert_eq!(version, "0.9.5");
         assert!(!needs_reset);
     }
 
@@ -880,5 +882,34 @@ mod tests {
         let (version, needs_reset) = manager.get_version().unwrap();
         assert_eq!(version, "0.9.0");
         assert!(needs_reset);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_get_version_reads() {
+        let manager = setup_test_db().await;
+        manager.set_version("1.0.0").unwrap();
+
+        // Wrap the manager in an Arc<RwLock>
+        let manager = Arc::new(RwLock::new(manager));
+
+        // Create a vector to hold the thread handles
+        let mut handles = vec![];
+
+        // Spawn multiple threads to read the version concurrently
+        for _ in 0..10 {
+            let manager_clone = Arc::clone(&manager);
+            let handle = thread::spawn(move || {
+                let manager_read = manager_clone.read().unwrap();
+                let (version, needs_reset) = manager_read.get_version().unwrap();
+                assert_eq!(version, "1.0.0");
+                assert!(!needs_reset);
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 }
