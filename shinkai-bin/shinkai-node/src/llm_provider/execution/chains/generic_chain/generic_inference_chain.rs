@@ -388,7 +388,7 @@ impl GenericInferenceChain {
 
                 // 6) Call workflow or tooling
                 // Find the ShinkaiTool that has a tool with the function name
-                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
+                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default());
                 if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
