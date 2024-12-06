@@ -386,6 +386,7 @@ impl ToolRouter {
         function_call: FunctionCall,
         context: &dyn InferenceChainContextTrait,
         shinkai_tool: &ShinkaiTool,
+        node_name: ShinkaiName,
     ) -> Result<ToolCallFunctionResponse, LLMProviderError> {
         let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
@@ -427,7 +428,7 @@ impl ToolRouter {
                 let app_id = context.full_job().job_id().to_string();
                 let tool_id = shinkai_tool.tool_router_key().clone();
                 let tools = deno_tool.tools.clone().unwrap_or_default();
-                let header_code =
+                let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
@@ -442,12 +443,13 @@ impl ToolRouter {
                         envs,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
-                        header_code,
+                        support_files,
                         function_args,
                         function_config_vec,
                         node_storage_path,
                         app_id,
                         tool_id,
+                        node_name,
                         false,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -480,7 +482,7 @@ impl ToolRouter {
                     };
 
                     // Get wallet balances
-                    let balances = match my_agent_payments_manager.get_balances().await {
+                    let balances = match my_agent_payments_manager.get_balances(node_name.clone()).await {
                         Ok(balances) => balances,
                         Err(e) => {
                             eprintln!("Failed to get balances: {}", e);
@@ -744,6 +746,7 @@ impl ToolRouter {
     pub async fn call_js_function(
         &self,
         function_args: serde_json::Map<String, Value>,
+        requester_node_name: ShinkaiName,
         js_tool_name: &str,
     ) -> Result<String, LLMProviderError> {
         let shinkai_tool = self.get_tool_by_name(js_tool_name).await?;
@@ -769,7 +772,7 @@ impl ToolRouter {
         let tools = js_tool.clone().tools.unwrap_or_default();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
         let tool_id = shinkai_tool.tool_router_key().clone();
-        let header_code =
+        let support_files =
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
@@ -785,12 +788,14 @@ impl ToolRouter {
                 HashMap::new(),
                 node_env.api_listen_address.ip().to_string(),
                 node_env.api_listen_address.port(),
-                header_code,
+                support_files,
                 function_args,
                 function_config_vec,
                 node_storage_path,
                 app_id,
                 tool_id,
+                // TODO Is this correct?
+                requester_node_name,
                 true,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;

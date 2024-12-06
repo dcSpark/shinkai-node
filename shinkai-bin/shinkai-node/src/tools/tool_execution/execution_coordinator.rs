@@ -86,7 +86,7 @@ pub async fn execute_tool(
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let header_code = generate_tool_definitions(
+                let support_files = generate_tool_definitions(
                     deno_tool.tools.clone().unwrap_or_default(),
                     CodeLanguage::Typescript,
                     db,
@@ -100,12 +100,13 @@ pub async fn execute_tool(
                         envs,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
-                        header_code,
+                        support_files,
                         parameters,
                         extra_config,
                         node_storage_path,
                         app_id.clone(),
                         tool_id.clone(),
+                        node_name,
                         true,
                     )
                     .map(|result| json!(result.data))
@@ -127,23 +128,25 @@ pub async fn execute_code(
     app_id: String,
     llm_provider: String,
     bearer: String,
+    node_name: ShinkaiName,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
 
     // Route based on the prefix
     match tool_type {
         DynamicToolType::DenoDynamic => {
-            let header_code = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(
                 bearer.clone(),
+                node_name,
                 parameters,
                 extra_config,
                 tool_id,
                 app_id,
                 llm_provider,
-                header_code,
+                support_files,
                 code,
             )
         }

@@ -1,12 +1,13 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use super::{
-    wallet_error::WalletError, wallet_manager::WalletEnum,
-};
+use super::{wallet_error::WalletError, wallet_manager::WalletEnum};
 
 use downcast_rs::{impl_downcast, Downcast};
-use shinkai_message_primitives::schemas::wallet_mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction};
+use shinkai_message_primitives::schemas::{
+    shinkai_name::ShinkaiName,
+    wallet_mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction},
+};
 
 pub trait IsWallet {}
 
@@ -30,6 +31,7 @@ pub trait SendActions {
         token: Option<Asset>,
         send_amount: String,
         invoice_id: String,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send>>;
 
     fn sign_transaction(&self, tx: Transaction) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send>>;
@@ -39,14 +41,18 @@ pub trait SendActions {
 pub trait CommonActions {
     fn get_payment_address(&self) -> PublicAddress;
     fn get_address(&self) -> Address;
-    fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send>>;
+    fn get_balance(&self, node_name: ShinkaiName) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send>>;
 
-    fn check_balances(&self) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send>>;
+    fn check_balances(
+        &self,
+        node_name: ShinkaiName,
+    ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send>>;
 
     fn check_asset_balance(
         &self,
         public_address: PublicAddress,
         asset: Asset,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send>>;
 
     // fn get_main_balance(&self) -> Result<Balance, WalletError>;
