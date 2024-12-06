@@ -31,6 +31,8 @@ pub mod sheet_manager;
 pub mod shinkai_tool_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
+pub mod vector_fs_manager;
+pub mod vector_resource_manager;
 pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -159,8 +161,9 @@ impl SqliteManager {
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_vector_fs_internals_table(conn)?;
         Self::initialize_vector_resources_table(conn)?;
-        Self::initialize_vr_embeddings_table(conn)?;
-        Self::initialize_vr_nodes_table(conn)?;
+        Self::initialize_vector_resource_embeddings_table(conn)?;
+        Self::initialize_vector_resource_nodes_table(conn)?;
+        Self::initialize_vector_resource_headers_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
         Ok(())
@@ -743,7 +746,7 @@ impl SqliteManager {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS vector_fs_internals (
                 profile_name TEXT NOT NULL UNIQUE,
-                core_resource_id INTEGER NOT NULL,
+                core_resource_id TEXT NOT NULL,
                 permissions_index BLOB NOT NULL,
                 subscription_index BLOB NOT NULL,
                 supported_embedding_models BLOB NOT NULL,
@@ -757,37 +760,48 @@ impl SqliteManager {
 
     fn initialize_vector_resources_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resources USING vec0 (
-                vector_resource_id integer primary key,
-                resource_embedding float[384],
-                +base_type text,
-                +name text,
-                +description text,
-                +source text,
-                +resource_id text,
-                +resource_base_type text,
-                +embedding_model_used_string text,
-                +node_count integer,
-                +created_datetime text,
-                +last_written_datetime text,
-                +merkle_root text,
-                +data_tag_index text,
-                +metadata_index text,
-                +keywords text,
-                +distribution_info text,
-                +data_tag_names text,
-                +metadata_index_keys text
+            "CREATE TABLE IF NOT EXISTS vector_resources (
+                profile_name TEXT NOT NULL,
+                vector_resource_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                description TEXT,
+                source TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                resource_base_type TEXT NOT NULL,
+                embedding_model_used_string TEXT NOT NULL,
+                node_count integer,
+                data_tag_index BLOB NOT NULL,
+                created_datetime TEXT NOT NULL,
+                last_written_datetime TEXT NOT NULL,
+                metadata_index BLOB NOT NULL,
+                merkle_root TEXT,
+                keywords BLOB NOT NULL,
+                distribution_info BLOB NOT NULL
             );",
+            [],
+        )?;
+
+        // Create an index for the profile_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vector_resources_profile_name ON vector_resources (profile_name);",
+            [],
+        )?;
+
+        // Create an index for the vector_resource_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vector_resources_vector_resource_id ON vector_resources (vector_resource_id);",
             [],
         )?;
 
         Ok(())
     }
 
-    fn initialize_vr_embeddings_table(conn: &rusqlite::Connection) -> Result<()> {
+    fn initialize_vector_resource_embeddings_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vr_embeddings USING vec0 (
-                vector_resource_id integer partition key,
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resource_embeddings USING vec0 (
+                profile_name text,
+                vector_resource_id text partition key,
+                is_resource_embedding integer,
                 id text,
                 embedding float[384]
             );",
@@ -797,19 +811,67 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_vr_nodes_table(conn: &rusqlite::Connection) -> Result<()> {
+    fn initialize_vector_resource_nodes_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vr_nodes USING vec0 (
-                vector_resource_id integer partition key,
-                order integer,
-                id text,
-                content_type text,
-                content_value text,
-                +last_written_datetime text,
-                +merkle_hash text,
-                +metadata text,
-                +data_tag_names text
+            "CREATE TABLE IF NOT EXISTS vector_resource_nodes (
+                profile_name TEXT NOT NULL,
+                vector_resource_id TEXT NOT NULL,
+                id TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                content_value TEXT NOT NULL,
+                metadata TEXT,
+                data_tag_names TEXT NOT NULL,
+                last_written_datetime TEXT NOT NULL,
+                merkle_hash TEXT
             );",
+            [],
+        )?;
+
+        // Create an index for the profile_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vector_resource_nodes_profile_name ON vector_resource_nodes (profile_name);",
+            [],
+        )?;
+
+        // Create an index for the vector_resource_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vector_resource_nodes_vector_resource_id ON vector_resource_nodes (vector_resource_id);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_vector_resource_headers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS vector_resource_headers (
+                profile_name TEXT NOT NULL,
+                vector_resource_id TEXT NOT NULL UNIQUE,
+                resource_name TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                resource_base_type TEXT NOT NULL,
+                resource_source TEXT NOT NULL,
+                resource_created_datetime TEXT NOT NULL,
+                resource_last_written_datetime TEXT NOT NULL,
+                resource_embedding_model_used TEXT NOT NULL,
+                resource_merkle_root TEXT,
+                resource_keywords BLOB NOT NULL,
+                resource_distribution_info BLOB NOT NULL,
+                data_tag_names TEXT NOT NULL,
+                metadata_index_keys TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        // Create an index for the profile_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vector_resource_headers_profile_name ON vector_resource_headers (profile_name);",
+            [],
+        )?;
+
+        // Create an index for the vector_resource_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vector_resource_headers_vector_resource_id ON vector_resource_headers (vector_resource_id);",
             [],
         )?;
 

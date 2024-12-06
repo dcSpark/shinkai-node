@@ -19,26 +19,26 @@ use utoipa::ToSchema;
 /// epubs, web content, written works, and more.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct DocumentVectorResource {
-    name: String,
-    description: Option<String>,
-    source: VRSourceReference,
-    resource_id: String,
-    resource_embedding: Embedding,
+    pub name: String,
+    pub description: Option<String>,
+    pub source: VRSourceReference,
+    pub resource_id: String,
+    pub resource_embedding: Embedding,
     #[schema(value_type = String)]
-    embedding_model_used_string: EmbeddingModelTypeString,
-    resource_base_type: VRBaseType,
-    embeddings: Vec<Embedding>,
-    node_count: u64,
-    nodes: Vec<Node>,
-    data_tag_index: DataTagIndex,
+    pub embedding_model_used_string: EmbeddingModelTypeString,
+    pub resource_base_type: VRBaseType,
+    pub embeddings: Vec<Embedding>,
+    pub node_count: u64,
+    pub nodes: Vec<Node>,
+    pub data_tag_index: DataTagIndex,
     #[schema(value_type = String, format = Date)]
-    created_datetime: DateTime<Utc>,
+    pub created_datetime: DateTime<Utc>,
     #[schema(value_type = String, format = Date)]
-    last_written_datetime: DateTime<Utc>,
-    metadata_index: MetadataIndex,
-    merkle_root: Option<String>,
-    keywords: VRKeywords,
-    distribution_info: DistributionInfo,
+    pub last_written_datetime: DateTime<Utc>,
+    pub metadata_index: MetadataIndex,
+    pub merkle_root: Option<String>,
+    pub keywords: VRKeywords,
+    pub distribution_info: DistributionInfo,
 }
 impl VectorResource for DocumentVectorResource {}
 impl VectorResourceSearch for DocumentVectorResource {}

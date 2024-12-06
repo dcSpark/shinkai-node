@@ -1,6 +1,4 @@
 use super::super::vector_fs_error::VectorFSError;
-use rand::Rng;
-use rand::{distributions::Alphanumeric, thread_rng};
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCompressionType, IteratorMode, Options, SingleThreaded,
 };
