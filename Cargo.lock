@@ -7866,7 +7866,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -7881,7 +7881,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_baml"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "baml-runtime",
@@ -7895,7 +7895,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "dashmap",
@@ -7910,30 +7910,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "shinkai_db"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "bincode",
- "blake3",
- "chrono",
- "ed25519-dalek",
- "hex",
- "rand 0.8.5",
- "rocksdb",
- "rust_decimal",
- "serde",
- "serde_json",
- "shinkai_message_primitives",
- "shinkai_sheet",
- "shinkai_vector_resources",
- "tokio",
- "x25519-dalek",
-]
-
-[[package]]
 name = "shinkai_http_api"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -7958,7 +7936,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "serde",
@@ -7972,7 +7950,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -7998,14 +7976,14 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "shinkai_node"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -8075,7 +8053,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -8090,7 +8068,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "async-channel 1.9.0",
  "chrono",
@@ -8104,7 +8082,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bincode",
  "blake3",
@@ -8134,7 +8112,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -8153,7 +8131,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "regex",
@@ -8200,7 +8178,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_vector_fs"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bincode",
  "blake3",
@@ -8217,7 +8195,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_vector_resources"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

@@ -7,6 +7,7 @@ use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletC
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use shinkai_tools_runner::tools::tool::Tool;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -284,7 +285,7 @@ impl CoinbaseMPCWallet {
 
     pub async fn call_function(
         config: CoinbaseMPCWalletConfig,
-        sqlite_manager: Weak<RwLock<SqliteManager>>, // Changed to Weak
+        sqlite_manager: Weak<RwLock<SqliteManager>>,
         function_name: ShinkaiToolCoinbase,
         params: serde_json::Map<String, Value>,
     ) -> Result<Value, WalletError> {
@@ -297,15 +298,8 @@ impl CoinbaseMPCWallet {
             .await
             .get_tool_by_key(tool_id)
             .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
-        let function_config = shinkai_tool.get_config_from_env();
 
-        // Convert function_config from String to Value
-        let mut function_config_value: Value = match function_config {
-            Some(config_str) => {
-                serde_json::from_str(&config_str).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?
-            }
-            None => Value::Object(serde_json::Map::new()),
-        };
+        let mut function_config_value = serde_json::json!({});
 
         // Overwrite function_config_value with values from config
         function_config_value["name"] = Value::String(config.name);
@@ -317,9 +311,7 @@ impl CoinbaseMPCWallet {
             function_config_value["walletId"] = Value::String(wallet_id);
         }
 
-        // Convert function_config_value back to String
-        let function_config_str = serde_json::to_string(&function_config_value)
-            .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+        let tool_configs = ToolConfig::basic_config_from_value(&function_config_value);
 
         if let ShinkaiTool::Deno(js_tool, _) = shinkai_tool {
             let node_env = fetch_node_environment();
@@ -330,6 +322,7 @@ impl CoinbaseMPCWallet {
             let app_id = format!("coinbase_{}", uuid::Uuid::new_v4());
             let tool_id = js_tool.name.clone();
             let header_code = "";
+
             let result = js_tool
                 .run(
                     HashMap::new(), // Note: we don't need envs for this function - as it doesn't call other tools
@@ -337,7 +330,7 @@ impl CoinbaseMPCWallet {
                     node_env.api_listen_address.port(),
                     header_code.to_string(),
                     params,
-                    Some(function_config_str),
+                    tool_configs,
                     node_storage_path,
                     app_id,
                     tool_id,

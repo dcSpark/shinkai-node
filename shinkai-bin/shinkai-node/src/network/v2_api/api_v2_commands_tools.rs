@@ -32,7 +32,8 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_playground::ToolPlayground,
+    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{sync::Arc, time::Instant};
@@ -605,7 +606,7 @@ impl Node {
         tool_id: String,
         app_id: String,
         llm_provider: String,
-        extra_config: Option<String>,
+        extra_config: Vec<Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -616,6 +617,25 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
+
+        // Convert extra_config to Vec<ToolConfig>
+        let tool_configs: Vec<ToolConfig> = match extra_config
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value(value).map_err(|e| APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert extra config to ToolConfig: {}", e),
+                })
+            })
+            .collect::<Result<_, _>>()
+        {
+            Ok(configs) => configs,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         // Execute the tool directly
         let result = execute_tool(
@@ -628,7 +648,7 @@ impl Node {
             tool_id,
             app_id,
             llm_provider,
-            extra_config,
+            tool_configs,
             identity_manager,
             job_manager,
             encryption_secret_key,
@@ -664,6 +684,7 @@ impl Node {
         code: String,
         tools: Vec<String>,
         parameters: Map<String, Value>,
+        extra_config: Vec<Value>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -673,13 +694,32 @@ impl Node {
             return Ok(());
         }
 
+        // Convert extra_config to Vec<ToolConfig>
+        let tool_configs: Vec<ToolConfig> = match extra_config
+            .into_iter()
+            .map(|value| {
+                serde_json::from_value(value).map_err(|e| APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert extra config to ToolConfig: {}", e),
+                })
+            })
+            .collect::<Result<_, _>>()
+        {
+            Ok(configs) => configs,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Execute the tool directly
         let result = execute_code(
             tool_type.clone(),
             code,
             tools,
             parameters,
-            None,
+            tool_configs,
             db,
             tool_id,
             app_id,

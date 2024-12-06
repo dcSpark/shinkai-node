@@ -2,7 +2,7 @@ use std::env;
 
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
-use serde_json::{self};
+use serde_json::{self, Value};
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
@@ -219,12 +219,23 @@ impl ShinkaiTool {
             }
         }
 
+        // Store the tool_router_key in a variable to extend its lifetime
+        let tool_router_key = self.tool_router_key().clone();
+        let key_parts: Vec<&str> = tool_router_key.split(":::").collect();
+        let tool_name = if key_parts.len() == 3 {
+            key_parts[2].to_string()
+        } else {
+            return Err(ToolError::InvalidToolRouterKey(
+                "Tool router key is not in the expected format".to_string(),
+            ));
+        };
+
         let summary = serde_json::json!({
             "type": "function",
             "function": {
-                "name": self.name(),
+                "name": tool_name,
                 "description": self.description(),
-                "tool_router_key": self.tool_router_key(),
+                "tool_router_key": tool_router_key,
                 "parameters": {
                     "type": "object",
                     "properties": properties,
@@ -257,12 +268,20 @@ impl ShinkaiTool {
         }
     }
 
-    // TODO: refactor
-    /// Returns an Option<String> for a config based on an environment variable
-    pub fn get_config_from_env(&self) -> Option<String> {
+    /// Returns an Option<ToolConfig> based on an environment variable
+    pub fn get_config_from_env(&self) -> Option<ToolConfig> {
         let tool_key = self.tool_router_key().replace(":::", "___");
         let env_var_key = format!("TOOLKIT_{}", tool_key);
-        env::var(env_var_key).ok()
+
+        if let Ok(env_value) = env::var(env_var_key) {
+            // Attempt to parse the environment variable as JSON
+            if let Ok(value) = serde_json::from_str::<Value>(&env_value) {
+                // Attempt to deserialize the JSON value into a ToolConfig
+                return ToolConfig::from_value(&value);
+            }
+        }
+
+        None
     }
 
     /// Returns the author of the tool

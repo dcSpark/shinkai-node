@@ -1,4 +1,5 @@
 use async_channel::Sender;
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use shinkai_http_api::node_api_router::APIError;
@@ -686,7 +687,7 @@ pub async fn api_execute_tool(
     tool_id: String,
     app_id: String,
     llm_provider: String,
-    extra_config: Option<String>,
+    extra_config: Vec<Value>,
 ) -> Result<Value, APIError> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
 

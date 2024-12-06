@@ -267,6 +267,12 @@ impl SqliteManager {
             [],
         )?;
 
+        // Create an index for the time_key column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inbox_messages_time_key ON inbox_messages (time_key);",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -857,7 +863,7 @@ impl SqliteManager {
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0"];
+        let breaking_versions = ["0.9.0", "0.9.1"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions
