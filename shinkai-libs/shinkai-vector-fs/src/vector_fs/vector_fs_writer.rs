@@ -230,15 +230,6 @@ impl VectorFS {
         Ok(())
     }
 
-    /// Deletes the folder at writer's path, including all items and subfolders within, using a write batch.
-    pub async fn wb_delete_folder(
-        &self,
-        writer: &VFSWriter,
-        write_batch: ProfileBoundWriteBatch,
-    ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
-        self.internal_wb_delete_folder(writer, write_batch, false).await
-    }
-
     /// Internal method that deletes the folder at writer's path, including all items and subfolders within, using a write batch.
     fn internal_wb_delete_folder<'a>(
         &'a self,
