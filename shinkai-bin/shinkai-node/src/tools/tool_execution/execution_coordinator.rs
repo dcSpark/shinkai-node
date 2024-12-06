@@ -2,6 +2,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::execute_deno_tool;
+use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -156,7 +157,20 @@ pub async fn execute_code(
             )
         }
         DynamicToolType::PythonDynamic => {
-            return Err(ToolError::ExecutionError("NYI Python".to_string()));
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, sqlite_manager, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            execute_python_tool(
+                bearer.clone(),
+                node_name,
+                parameters,
+                extra_config,
+                tool_id,
+                app_id,
+                llm_provider,
+                support_files,
+                code,
+            )
         }
     }
 }
