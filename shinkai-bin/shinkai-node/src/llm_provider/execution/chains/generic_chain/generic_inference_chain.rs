@@ -401,7 +401,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call.clone(), &context, &shinkai_tool)
+                    .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
                     .await
                 {
                     Ok(response) => response,

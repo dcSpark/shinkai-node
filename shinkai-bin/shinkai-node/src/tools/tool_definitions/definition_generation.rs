@@ -4,10 +4,12 @@ use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::tools::llm_language_support::file_support_py::generate_file_support_py;
+use crate::tools::llm_language_support::file_support_ts::generate_file_support_ts;
 use crate::tools::llm_language_support::generate_python::{generate_python_definition, python_common_code};
 use crate::tools::llm_language_support::generate_typescript::{generate_typescript_definition, typescript_common_code};
 use crate::tools::tool_implementation;
@@ -53,10 +55,25 @@ pub async fn generate_tool_definitions(
     language: CodeLanguage,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     only_headers: bool,
-) -> Result<String, APIError> {
-    let mut all_tools = get_all_deno_tools(sqlite_manager.clone()).await;
-
-    all_tools = all_tools
+) -> Result<HashMap<String, String>, APIError> {
+    let mut support_files = HashMap::new();
+    match language {
+        CodeLanguage::Typescript => {
+            support_files.insert(
+                "shinkai-local-support".to_string(),
+                generate_file_support_ts(only_headers),
+            );
+        }
+        CodeLanguage::Python => {
+            support_files.insert(
+                "shinkai_local_support".to_string(),
+                generate_file_support_py(only_headers),
+            );
+        }
+    };
+    // Filter tools
+    let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
+        .await
         .into_iter()
         .filter(|tool| tools.contains(&tool.tool_router_key))
         //
@@ -70,22 +87,20 @@ pub async fn generate_tool_definitions(
         .collect();
 
     if all_tools.is_empty() {
-        return Ok("".to_string());
+        return Ok(support_files);
     }
     let mut output = String::new();
     let mut generated_names = HashSet::new();
 
-    match language {
-        CodeLanguage::Typescript => {
-            if !only_headers {
+    if !only_headers {
+        match language {
+            CodeLanguage::Typescript => {
                 output.push_str(&typescript_common_code());
             }
-        }
-        CodeLanguage::Python => {
-            if !only_headers {
+            CodeLanguage::Python => {
                 output.push_str(&python_common_code());
             }
-        }
+        };
     }
 
     for tool in all_tools {
@@ -128,5 +143,14 @@ pub async fn generate_tool_definitions(
         }
     }
 
-    Ok(output)
+    match language {
+        CodeLanguage::Typescript => {
+            support_files.insert("shinkai-local-tools".to_string(), output);
+        }
+        CodeLanguage::Python => {
+            support_files.insert("shinkai_local_tools".to_string(), output);
+        }
+    };
+
+    Ok(support_files)
 }

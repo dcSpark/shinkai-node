@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use shinkai_http_api::node_commands::NodeCommand;
 
-use crate::network::Node;
+use crate::{network::Node, utils::environment::fetch_node_environment};
 
 impl Node {
     pub async fn handle_command(&self, command: NodeCommand) {
@@ -2076,6 +2076,7 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let wallet_manager_clone = self.wallet_manager.clone();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_restore_coinbase_mpc_wallet(
                         db_clone,
@@ -2085,6 +2086,7 @@ impl Node {
                         config,
                         wallet_id,
                         role,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2099,6 +2101,7 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let wallet_manager_clone = self.wallet_manager.clone();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_create_coinbase_mpc_wallet(
                         db_clone,
@@ -2107,6 +2110,7 @@ impl Node {
                         network,
                         config,
                         role,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2147,6 +2151,7 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let my_agent_payments_manager_clone = self.my_agent_payments_manager.clone();
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_pay_invoice(
                         db_clone,
@@ -2154,6 +2159,7 @@ impl Node {
                         bearer,
                         invoice_id,
                         data_for_tool,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2400,7 +2406,7 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::run_execute_code(
                         bearer,
@@ -2414,6 +2420,7 @@ impl Node {
                         tool_id,
                         app_id,
                         llm_provider,
+                        node_name,
                         res,
                     )
                     .await;
@@ -2513,6 +2520,42 @@ impl Node {
                         node_encryption_sk_clone,
                         node_encryption_pk_clone,
                         node_signing_sk_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiExportTool {
+                bearer,
+                tool_key_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_export_tool(db_clone, bearer, tool_key_path, res).await;
+                });
+            }
+            NodeCommand::V2ApiImportTool { bearer, url, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, url, res).await;
+                });
+            }
+            NodeCommand::V2ApiResolveShinkaiFileProtocol {
+                bearer,
+                shinkai_file_protocol,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                // Get the node storage path
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env.node_storage_path.unwrap_or_default();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_resolve_shinkai_file_protocol(
+                        bearer,
+                        db_clone,
+                        shinkai_file_protocol,
+                        node_storage_path,
                         res,
                     )
                     .await;

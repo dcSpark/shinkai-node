@@ -8,6 +8,7 @@ use ethers::utils::{format_units, hex, to_checksum};
 use ethers::{core::k256::SecretKey, prelude::*};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::wallet_complementary::WalletSource;
 use shinkai_message_primitives::schemas::wallet_mixed::{
     Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
@@ -315,6 +316,7 @@ impl SendActions for LocalEthersWallet {
         token: Option<Asset>,
         send_amount: String,
         invoice_id: String,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send + 'static>> {
         let send_amount_u256 = U256::from_dec_str(&send_amount);
         let send_amount_u256 = match send_amount_u256 {
@@ -358,7 +360,10 @@ impl CommonActions for LocalEthersWallet {
         self.address.clone()
     }
 
-    fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
+    fn get_balance(
+        &self,
+        node_name: ShinkaiName,
+    ) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
         let self_clone = self.clone();
         Box::pin(async move {
             let balance_wei = self_clone
@@ -379,6 +384,7 @@ impl CommonActions for LocalEthersWallet {
 
     fn check_balances(
         &self,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
         let self_clone = self.clone();
         Box::pin(async move {
@@ -469,6 +475,7 @@ impl CommonActions for LocalEthersWallet {
         &self,
         public_address: PublicAddress,
         asset: Asset,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send + 'static>> {
         println!("Checking asset balance for {:?}", asset);
         println!("Public address: {:?}", public_address);
@@ -712,7 +719,10 @@ mod tests {
         eprintln!("Transaction hash: {:x}", tx_hash);
 
         // Check the balance of the recovered wallet
-        let balance = wallet.get_balance().await.unwrap();
+        let balance = wallet
+            .get_balance(ShinkaiName::new("@@test.shinkai".to_owned()).unwrap())
+            .await
+            .unwrap();
         println!("Wallet balance: {} ETH", balance);
 
         // Retrieve the transaction and check the data field

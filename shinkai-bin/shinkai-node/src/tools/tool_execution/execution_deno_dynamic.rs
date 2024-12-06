@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde_json::{Map, Value};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::{DenoTool, DenoToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
@@ -10,13 +11,14 @@ use crate::utils::environment::fetch_node_environment;
 
 pub fn execute_deno_tool(
     bearer: String,
+    node_name: ShinkaiName,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
     oauth: Vec<ToolConfig>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
-    header_code: String,
+    support_files: HashMap<String, String>,
     code: String,
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
@@ -56,13 +58,14 @@ pub fn execute_deno_tool(
         envs,
         node_env.api_listen_address.ip().to_string(),
         node_env.api_listen_address.port(),
-        header_code,
+        support_files,
         parameters,
         extra_config,
         oauth,
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),
+        node_name,
         false,
     ) {
         Ok(run_result) => Ok(run_result.data),
