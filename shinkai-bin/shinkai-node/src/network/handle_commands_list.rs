@@ -2351,6 +2351,7 @@ impl Node {
                 app_id,
                 llm_provider,
                 extra_config,
+                oauth,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2374,6 +2375,7 @@ impl Node {
                         app_id,
                         llm_provider,
                         extra_config,
+                        oauth,
                         identity_manager,
                         job_manager,
                         encryption_secret_key,
@@ -2391,6 +2393,7 @@ impl Node {
                 tool_type,
                 parameters,
                 extra_config,
+                oauth,
                 tool_id,
                 app_id,
                 llm_provider,
@@ -2407,6 +2410,7 @@ impl Node {
                         tools,
                         parameters,
                         extra_config,
+                        oauth,
                         tool_id,
                         app_id,
                         llm_provider,

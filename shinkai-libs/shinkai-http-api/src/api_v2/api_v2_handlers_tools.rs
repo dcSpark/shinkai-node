@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobMessage};
 use shinkai_tools_primitives::tools::{tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
 use utoipa::{OpenApi, ToSchema};
@@ -222,13 +222,15 @@ pub async fn tool_definitions_handler(
 }
 
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct ToolExecutionRequest {
     pub tool_router_key: String,
     pub llm_provider: String,
     pub parameters: Value,
-    #[serde(default)]
-    pub extra_config: Vec<Value>,
+    #[serde(default = "default_map")]
+    pub extra_config: Value,
+    #[serde(default = "default_map")]
+    pub oauth: Value,
 }
 
 #[utoipa::path(
@@ -260,6 +262,24 @@ pub async fn tool_execution_handler(
         })),
     };
 
+    let oauth = match payload.oauth {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid OAuth".to_string(),
+            message: "OAuth must be an object".to_string(),
+        })),
+    };
+
+    let extra_config = match payload.extra_config {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Extra Config".to_string(),
+            message: "Extra Config must be an object".to_string(),
+        })),
+    };
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiExecuteTool {
@@ -269,7 +289,8 @@ pub async fn tool_execution_handler(
             tool_id,
             app_id,
             llm_provider: payload.llm_provider.clone(),
-            extra_config: payload.extra_config,
+            extra_config,
+            oauth,
             res: res_sender,
         })
         .await
@@ -864,15 +885,22 @@ pub async fn get_tool_implementation_prompt_handler(
     }
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct CodeExecutionRequest {
     pub tool_type: DynamicToolType,
     pub code: String,
     pub parameters: Value,
-    #[serde(default)]
-    pub extra_config: Vec<Value>,
+    #[serde(default = "default_map")]
+    pub extra_config: Value,
+    #[serde(default = "default_map")]
+    pub oauth: Value,
     pub llm_provider: String,
     pub tools: Vec<String>,
+}
+
+// Define a custom default function for oauth
+fn default_map() -> Value {
+    Value::Object(Map::new())
 }
 
 #[utoipa::path(
@@ -894,6 +922,8 @@ pub async fn code_execution_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
+    eprintln!("payload: {:?}", payload);
+
     // Convert parameters to a Map if it isn't already
     let parameters = match payload.parameters {
         Value::Object(map) => map,
@@ -901,6 +931,24 @@ pub async fn code_execution_handler(
             code: 400,
             error: "Invalid Parameters".to_string(),
             message: "Parameters must be an object".to_string(),
+        })),
+    };
+
+    let oauth = match payload.oauth {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid OAuth".to_string(),
+            message: "OAuth must be an object".to_string(),
+        })),
+    };
+
+    let extra_config = match payload.extra_config {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Extra Config".to_string(),
+            message: "Extra Config must be an object".to_string(),
         })),
     };
 
@@ -912,7 +960,8 @@ pub async fn code_execution_handler(
             code: payload.code,
             tools: payload.tools,
             parameters,
-            extra_config: payload.extra_config,
+            extra_config,
+            oauth,
             tool_id: tool_id,
             app_id: app_id,
             llm_provider: payload.llm_provider,

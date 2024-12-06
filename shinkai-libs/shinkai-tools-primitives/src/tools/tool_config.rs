@@ -100,29 +100,58 @@ impl ToolConfig {
 
         None
     }
+
+    /// Creates a vector of ToolConfig::OAuth instances from a serde_json::Value
+    pub fn oauth_from_value(value: &Value) -> Vec<ToolConfig> {
+        let mut configs = Vec::new();
+
+        if let Some(obj) = value.as_object() {
+            for (key, val) in obj {
+                if let Some(oauth_obj) = val.as_object() {
+                    let oauth = OAuth {
+                        name: key.clone(),
+                        description: oauth_obj.get("description").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        display_name: oauth_obj.get("display_name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        auth_url: oauth_obj.get("auth_url").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        token_url: oauth_obj.get("token_url").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        required: oauth_obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false),
+                        pkce: oauth_obj.get("pkce").and_then(|v| v.as_bool()).unwrap_or(false),
+                        scope: oauth_obj.get("scope").and_then(|v| v.as_array()).map_or(Vec::new(), |arr| {
+                            arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                        }),
+                        cloud_oauth_name: oauth_obj.get("cloud_oauth_name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        header: oauth_obj.get("header").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                    };
+                    configs.push(ToolConfig::OAuth(oauth));
+                }
+            }
+        }
+
+        configs
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericHeader {
-    name: String,
-    description: String,
-    header_datatype: String,
-    required: bool,
-    header: String,
+    pub name: String,
+    pub description: String,
+    pub header_datatype: String,
+    pub required: bool,
+    pub header: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OAuth {
-    name: String,
-    description: String,
-    display_name: String,
-    auth_url: String,
-    token_url: String,
-    required: bool,
-    pkce: bool,
-    scope: Vec<String>,
-    cloud_oauth_name: String, // Ie. Google OAuth App name
-    header: String,
+    pub name: String,
+    pub description: String,
+    pub display_name: String,
+    pub auth_url: String,
+    pub token_url: String,
+    pub required: bool,
+    pub pkce: bool,
+    pub scope: Vec<String>,
+    pub cloud_oauth_name: String, // Ie. Google OAuth App name
+    pub header: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
