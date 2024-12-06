@@ -1013,6 +1013,16 @@ pub enum NodeCommand {
         code: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiExportTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiImportTool {
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiResolveShinkaiFileProtocol {
         bearer: String,
         shinkai_file_protocol: String,

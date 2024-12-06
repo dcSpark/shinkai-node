@@ -2521,6 +2521,22 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiExportTool {
+                bearer,
+                tool_key_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_export_tool(db_clone, bearer, tool_key_path, res).await;
+                });
+            }
+            NodeCommand::V2ApiImportTool { bearer, url, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, url, res).await;
+                });
+            }
             NodeCommand::V2ApiResolveShinkaiFileProtocol {
                 bearer,
                 shinkai_file_protocol,
