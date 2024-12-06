@@ -32,7 +32,10 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    argument::ToolOutputArg,
+    deno_tools::DenoTool,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{BasicConfig, OAuth, ToolConfig},
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -613,7 +616,8 @@ impl Node {
         tool_id: String,
         app_id: String,
         llm_provider: String,
-        extra_config: Vec<Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -625,24 +629,11 @@ impl Node {
             return Ok(());
         }
 
-        // Convert extra_config to Vec<ToolConfig>
-        let tool_configs: Vec<ToolConfig> = match extra_config
-            .into_iter()
-            .map(|value| {
-                serde_json::from_value(value).map_err(|e| APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert extra config to ToolConfig: {}", e),
-                })
-            })
-            .collect::<Result<_, _>>()
-        {
-            Ok(configs) => configs,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
+        let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
+
+        // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
+        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
 
         // Execute the tool directly
         let result = execute_tool(
@@ -656,6 +647,7 @@ impl Node {
             app_id,
             llm_provider,
             tool_configs,
+            oauth_configs,
             identity_manager,
             job_manager,
             encryption_secret_key,
@@ -691,7 +683,8 @@ impl Node {
         code: String,
         tools: Vec<String>,
         parameters: Map<String, Value>,
-        extra_config: Vec<Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -702,24 +695,11 @@ impl Node {
             return Ok(());
         }
 
-        // Convert extra_config to Vec<ToolConfig>
-        let tool_configs: Vec<ToolConfig> = match extra_config
-            .into_iter()
-            .map(|value| {
-                serde_json::from_value(value).map_err(|e| APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert extra config to ToolConfig: {}", e),
-                })
-            })
-            .collect::<Result<_, _>>()
-        {
-            Ok(configs) => configs,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
+        let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
+
+        // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
+        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
 
         // Execute the tool directly
         let result = execute_code(
@@ -728,6 +708,7 @@ impl Node {
             tools,
             parameters,
             tool_configs,
+            oauth_configs,
             db,
             tool_id,
             app_id,

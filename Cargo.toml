@@ -8,7 +8,7 @@ members = [
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-libs/shinkai-vector-fs",
   "shinkai-libs/shinkai-job-queue-manager",
-  "shinkai-libs/shinkai-baml",
+  # "shinkai-libs/shinkai-baml",
   "shinkai-libs/shinkai-http-api",
   "shinkai-libs/shinkai-tools-primitives",
   "shinkai-libs/shinkai-mini-libs",
