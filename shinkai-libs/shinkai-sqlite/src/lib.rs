@@ -866,10 +866,10 @@ mod tests {
     #[tokio::test]
     async fn test_update_from_breaking_version_no_reset() {
         let manager = setup_test_db().await;
-        manager.set_version("0.9.0").unwrap();
         manager.set_version("0.9.1").unwrap();
+        manager.set_version("0.9.5").unwrap();
         let (version, needs_reset) = manager.get_version().unwrap();
-        assert_eq!(version, "0.9.1");
+        assert_eq!(version, "0.9.5");
         assert!(!needs_reset);
     }
 
