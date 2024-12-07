@@ -8,6 +8,7 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use crate::network::Node;
 use crate::tools::tool_execution::execution_coordinator::check_code;
 use ed25519_dalek::SigningKey;
 
@@ -17,6 +18,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata};
+use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -50,7 +52,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
-        _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -157,6 +159,7 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
+            job_callback_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
             // sqlite_logger.clone(),
@@ -229,6 +232,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
@@ -356,20 +360,15 @@ impl JobManager {
         // Check for callbacks and add them to the JobManagerQueue if required
         if let Some(callback) = &job_message.callback {
             if let CallbackAction::ImplementationCheck(tool_type, available_tools) = callback.as_ref() {
-                let result = check_code(
+                job_callback_manager.lock().await.handle_implementation_check_callback(
+                    db.clone(),
                     tool_type.clone(),
                     inference_response_content.to_string(),
-                    "".to_string(),
-                    "".to_string(),
                     available_tools.clone(),
-                    db.clone(),
-                )
-                .await?;
-
-                eprintln!("result: {:?}", result);
-                eprintln!("result.is_err(): {:?}", result);
-
-                // TODO: if there are errors, we need to send back the error for an update
+                    &identity_secret_key,
+                    &user_profile,
+                    &job_id,
+                ).await?;
             }
         }
 
@@ -686,9 +685,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
-        eprintln!("full_job: {:?}", full_job);
-        eprintln!("job_message: {:?}", job_message);
-
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -740,10 +736,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
-        eprintln!("full_job: {:?}", full_job);
-        eprintln!("files_inbox: {:?}", files_inbox);
-        eprintln!("file_names: {:?}", file_names);
-
         if !file_names.is_empty() {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
