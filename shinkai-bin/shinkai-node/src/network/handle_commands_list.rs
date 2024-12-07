@@ -2455,6 +2455,7 @@ impl Node {
                 message,
                 language,
                 tools,
+                post_check,
                 raw,
                 res,
             } => {
@@ -2479,6 +2480,7 @@ impl Node {
                         encryption_secret_key_clone,
                         encryption_public_key_clone,
                         signing_secret_key_clone,
+                        post_check,
                         raw,
                         res,
                     )

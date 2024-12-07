@@ -8,6 +8,7 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use crate::tools::tool_execution::execution_coordinator::check_code;
 use ed25519_dalek::SigningKey;
 
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
@@ -118,9 +119,7 @@ impl JobManager {
             return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
         }
 
-        // 2.- workflow flow removed for now
-
-        // 3.- *If* a sheet job is found, processing job message is taken over by this alternate logic
+        // 2.- *If* a sheet job is found, processing job message is taken over by this alternate logic
         let sheet_job_found = JobManager::process_sheet_job(
             db.clone(),
             vector_fs.clone(),
@@ -353,6 +352,24 @@ impl JobManager {
         db.write()
             .await
             .set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+
+        // Check for callbacks and add them to the JobManagerQueue if required
+        if let Some(callback) = &job_message.callback {
+            // TODO: remove job_id from callback
+            if let CallbackAction::ImplementationCheck(_job_id, tool_type) = callback.as_ref() {
+                let result = check_code(
+                    tool_type.clone(),
+                    inference_response_content.to_string(),
+                    "".to_string(),
+                    "".to_string(),
+                )
+                .await?;
+
+                eprintln!("result: {:?}", result);
+                
+                // TODO: if there are errors, we need to send back the error for an update
+            }
+        }
 
         Ok(())
     }

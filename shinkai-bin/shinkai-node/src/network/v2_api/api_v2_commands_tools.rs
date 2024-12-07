@@ -3,7 +3,6 @@ use crate::{
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
     tools::{
-        llm_language_support::file_support_ts::generate_file_support_ts,
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
@@ -20,7 +19,7 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike, shinkai_name::ShinkaiSubidentityType},
-    shinkai_message::shinkai_message_schemas::{JobCreationInfo, MessageSchemaType},
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
         job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
     },
@@ -34,10 +33,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg,
-    deno_tools::DenoTool,
-    shinkai_tool::ShinkaiTool,
-    tool_config::{BasicConfig, OAuth, ToolConfig},
+    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
@@ -846,6 +842,7 @@ impl Node {
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
+        post_check: bool,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
@@ -896,7 +893,12 @@ impl Node {
         let mut job_message_clone = job_message.clone();
         job_message_clone.content = generate_code_prompt;
 
-        // Send the job message
+        if post_check {
+            // TODO: define the tool type based on the CodeLanguage
+            let callback_action = CallbackAction::ImplementationCheck(job_message_clone.job_id.clone(), DynamicToolType::DenoDynamic);
+            job_message_clone.callback = Some(Box::new(callback_action));
+        }
+        
         Node::v2_job_message(
             db,
             node_name_clone,
@@ -1246,8 +1248,6 @@ impl Node {
             content: format!("<input_command>Update the code to: {}</input_command>", code),
             files_inbox: "".to_string(),
             parent: None,
-            workflow_code: None,
-            workflow_name: None,
             sheet_job_data: None,
             callback: None,
             metadata: None,

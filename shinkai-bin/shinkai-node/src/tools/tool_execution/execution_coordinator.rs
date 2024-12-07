@@ -1,7 +1,7 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
-use crate::tools::tool_execution::execution_deno_dynamic::execute_deno_tool;
+use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::utils::environment::fetch_node_environment;
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -158,5 +158,47 @@ pub async fn execute_code(
         DynamicToolType::PythonDynamic => {
             return Err(ToolError::ExecutionError("NYI Python".to_string()));
         }
+    }
+}
+
+pub async fn check_code(
+    tool_type: DynamicToolType,
+    unfiltered_code: String,
+    tool_id: String,
+    app_id: String,
+) -> Result<Vec<String>, ToolError> {
+    eprintln!("[check_code] tool_type: {}", tool_type);
+
+    // Extract fenced code blocks (``` ... ```) if present
+    let code_extracted = {
+        let mut code_blocks = Vec::new();
+        let mut remaining = unfiltered_code.as_str();
+        let fence = "```";
+        while let Some(start) = remaining.find(fence) {
+            let after_start = &remaining[(start + fence.len())..];
+            if let Some(end) = after_start.find(fence) {
+                let code_block = &after_start[..end];
+                code_blocks.push(code_block.trim().to_string());
+                remaining = &after_start[(end + fence.len())..];
+            } else {
+                break;
+            }
+        }
+
+        if !code_blocks.is_empty() {
+            code_blocks.join("\n\n")
+        } else {
+            unfiltered_code
+        }
+    };
+
+    match tool_type {
+        DynamicToolType::DenoDynamic => {
+            // Since `check_deno_tool` is synchronous, run it in a blocking task
+            tokio::task::spawn_blocking(move || check_deno_tool(tool_id, app_id, code_extracted))
+                .await
+                .map_err(|e| ToolError::ExecutionError(format!("Task Join Error: {}", e)))?
+        }
+        DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
     }
 }

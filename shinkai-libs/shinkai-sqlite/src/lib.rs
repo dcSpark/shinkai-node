@@ -89,6 +89,8 @@ impl SqliteManager {
             "PRAGMA journal_mode=WAL;
                  PRAGMA synchronous=FULL;
                  PRAGMA temp_store=MEMORY;
+                 PRAGMA optimize;
+                 PRAGMA busy_timeout = 5000;
                  PRAGMA mmap_size=262144000; -- 250 MB in bytes (250 * 1024 * 1024)
                  PRAGMA foreign_keys = ON;", // Enable foreign key support
         )?;
@@ -821,9 +823,9 @@ mod tests {
     use super::*;
     use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
-    use tempfile::NamedTempFile;
     use std::sync::{Arc, RwLock};
     use std::thread;
+    use tempfile::NamedTempFile;
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();

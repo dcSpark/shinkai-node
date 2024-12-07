@@ -131,8 +131,6 @@ impl ShinkaiMessageBuilder {
         content: String,
         files_inbox: String,
         parent_hash: String,
-        workflow_code: Option<String>,
-        workflow_name: Option<String>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -147,8 +145,6 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: Some(parent_hash),
-            workflow_code,
-            workflow_name,
             sheet_job_data: None,
             callback: None,
             metadata: None,
@@ -191,8 +187,6 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: None,
-            workflow_code: None, // the agent wont be sending you a workflow
-            workflow_name: None, // the agent wont be sending you a workflow
             sheet_job_data: None,
             callback: None,
             metadata,

@@ -968,6 +968,7 @@ pub enum NodeCommand {
         message: JobMessage,
         language: CodeLanguage,
         tools: Vec<String>,
+        post_check: bool,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
