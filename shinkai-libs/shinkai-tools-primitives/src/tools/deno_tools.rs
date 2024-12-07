@@ -276,7 +276,6 @@ impl DenoTool {
                     );
 
                     // Run the tool with DENO
-                    // TODO: modify this so we also do check
                     let result = tool
                         .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
                         .await
@@ -341,6 +340,7 @@ impl DenoTool {
         &self,
         api_ip: String,
         api_port: u16,
+        support_files: HashMap<String, String>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -358,6 +358,9 @@ impl DenoTool {
                     // Create map with file name and source code
                     let mut code_files = HashMap::new();
                     code_files.insert("index.ts".to_string(), code);
+                    support_files.iter().for_each(|(file_name, file_code)| {
+                        code_files.insert(format!("{}.ts", file_name), file_code.clone());
+                    });
 
                     // Setup the engine with the code files and config
                     let tool = Tool::new(

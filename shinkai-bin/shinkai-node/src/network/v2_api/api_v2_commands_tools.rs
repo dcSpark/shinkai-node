@@ -906,8 +906,7 @@ impl Node {
 
         if post_check {
             // TODO: define the tool type based on the CodeLanguage
-            let callback_action =
-                CallbackAction::ImplementationCheck(job_message_clone.job_id.clone(), DynamicToolType::DenoDynamic);
+            let callback_action = CallbackAction::ImplementationCheck(DynamicToolType::DenoDynamic, tools.clone());
             job_message_clone.callback = Some(Box::new(callback_action));
         }
 

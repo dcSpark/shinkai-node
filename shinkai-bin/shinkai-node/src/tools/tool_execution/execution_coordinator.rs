@@ -19,11 +19,11 @@ use tokio::sync::{Mutex, RwLock};
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
 
+use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use regex::Regex;
 
 pub async fn execute_tool(
     bearer: String,
@@ -167,6 +167,8 @@ pub async fn check_code(
     unfiltered_code: String,
     tool_id: String,
     app_id: String,
+    tools: Vec<String>,
+    sqlite_manager: Arc<RwLock<SqliteManager>>,
 ) -> Result<Vec<String>, ToolError> {
     eprintln!("[check_code] tool_type: {}", tool_type);
 
@@ -182,8 +184,11 @@ pub async fn check_code(
 
     match tool_type {
         DynamicToolType::DenoDynamic => {
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             // Since `check_deno_tool` is synchronous, run it in a blocking task
-            tokio::task::spawn_blocking(move || check_deno_tool(tool_id, app_id, code_extracted))
+            tokio::task::spawn_blocking(move || check_deno_tool(tool_id, app_id, support_files, code_extracted))
                 .await
                 .map_err(|e| ToolError::ExecutionError(format!("Task Join Error: {}", e)))?
         }
@@ -194,12 +199,11 @@ pub async fn check_code(
 fn extract_fenced_code_blocks(unfiltered_code: &str) -> Vec<String> {
     // Updated pattern to handle both formats in the regex
     let re = Regex::new(r"```(?:\w+(?:\\n|\n))?([\s\S]*?)```").unwrap();
-    let matches: Vec<String> = re.captures_iter(unfiltered_code)
-        .map(|cap| {
-            cap[1].to_string()
-        })
+    let matches: Vec<String> = re
+        .captures_iter(unfiltered_code)
+        .map(|cap| cap[1].to_string())
         .collect();
-    
+
     matches
 }
 
@@ -257,8 +261,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
 
 ```"#;
 
-        let expected = vec![
-            r#"import { getHomePath } from './shinkai-local-support.ts';
+        let expected = vec![r#"import { getHomePath } from './shinkai-local-support.ts';
 
 type CONFIG = {};
 type INPUTS = {};
@@ -282,8 +285,8 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
   return {};
 }
 
-"#.to_string()
-        ];
+"#
+        .to_string()];
 
         let result = extract_fenced_code_blocks(input);
         assert_eq!(result, expected);

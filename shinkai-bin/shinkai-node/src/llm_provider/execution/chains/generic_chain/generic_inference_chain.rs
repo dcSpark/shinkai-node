@@ -206,7 +206,7 @@ impl GenericInferenceChain {
             let stream = job_config.as_ref().and_then(|config| config.stream);
 
             // 2b. Check if tools are allowed by job config (defaults to true if not specified)
-            let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(true);
+            let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
             // 2c. Check if the LLM provider/agent has tool capabilities
             let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(

@@ -355,18 +355,20 @@ impl JobManager {
 
         // Check for callbacks and add them to the JobManagerQueue if required
         if let Some(callback) = &job_message.callback {
-            // TODO: remove job_id from callback
-            if let CallbackAction::ImplementationCheck(_job_id, tool_type) = callback.as_ref() {
+            if let CallbackAction::ImplementationCheck(tool_type, available_tools) = callback.as_ref() {
                 let result = check_code(
                     tool_type.clone(),
                     inference_response_content.to_string(),
                     "".to_string(),
                     "".to_string(),
+                    available_tools.clone(),
+                    db.clone(),
                 )
                 .await?;
 
                 eprintln!("result: {:?}", result);
-                
+                eprintln!("result.is_err(): {:?}", result);
+
                 // TODO: if there are errors, we need to send back the error for an update
             }
         }

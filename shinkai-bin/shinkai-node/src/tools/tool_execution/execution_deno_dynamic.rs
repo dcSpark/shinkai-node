@@ -76,6 +76,7 @@ pub fn execute_deno_tool(
 pub fn check_deno_tool(
     tool_id: String,
     app_id: String,
+    support_files: HashMap<String, String>,
     code: String,
 ) -> Result<Vec<String>, ToolError> {
     // Create a minimal DenoTool instance
@@ -107,6 +108,7 @@ pub fn check_deno_tool(
     tool.check(
         node_env.api_listen_address.ip().to_string(),
         node_env.api_listen_address.port(),
+        support_files,
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),

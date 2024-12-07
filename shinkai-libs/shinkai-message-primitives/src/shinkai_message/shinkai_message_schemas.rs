@@ -309,8 +309,8 @@ pub enum CallbackAction {
     Job(JobMessage),
     Sheet(SheetManagerAction),
     ToolPlayground(ToolPlaygroundAction),
-    ImplementationCheck(String, DynamicToolType),
-    // Cron(CronManagerAction),
+    // ImplementationCheck: (DynamicToolType, available_tools)
+    ImplementationCheck(DynamicToolType, Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
