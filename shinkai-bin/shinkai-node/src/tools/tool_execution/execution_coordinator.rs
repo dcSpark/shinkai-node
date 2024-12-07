@@ -192,19 +192,14 @@ pub async fn check_code(
 }
 
 fn extract_fenced_code_blocks(unfiltered_code: &str) -> Vec<String> {
-    eprintln!("Input text length: {}", unfiltered_code.len());
-    
-    // Updated pattern to exclude the language identifier and handle newlines properly
-    let re = Regex::new(r"```(?:\w+)?\s*([\s\S]*?)\s*```").unwrap();
+    // Updated pattern to handle both formats in the regex
+    let re = Regex::new(r"```(?:\w+(?:\\n|\n))?([\s\S]*?)```").unwrap();
     let matches: Vec<String> = re.captures_iter(unfiltered_code)
         .map(|cap| {
-            eprintln!("Found match: {}", &cap[1]);
-            // Just trim whitespace, don't modify any \n in the code
             cap[1].to_string()
         })
         .collect();
     
-    eprintln!("Found {} matches", matches.len());
     matches
 }
 
@@ -220,22 +215,13 @@ mod tests {
 
         let result = extract_fenced_code_blocks(input);
         let expected = vec![
-            "\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  // ...\\n}\\n".to_string(),
-            "\\nimport { fetch } from 'deno';\\n\\nconst response = await fetch(url);\\nconst html = await response.text();\\n".to_string(),
-            "\\nimport { marked } from 'npm:marked';\\n\\nconst markdown = marked(html);\\n".to_string(),
-            "\\nreturn {\\n  markdown,\\n};\\n}\\n".to_string(),
-            "\\nimport { fetch } from 'deno';\\nimport { marked } from 'npm:marked';\\n\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  const response = await fetch(url);\\nconst html = await response.text();\\nconst markdown = marked(html);\\n\\n  return {\\n    markdown,\\n  };\\n}\\n".to_string(),
-            "\\nimport { fetch } from 'deno';\\nimport { marked } from 'npm:marked';\\n\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  const response = await fetch(url);\\nconst html = await response.text();\\nconst markdown = marked(html);\\n\\n  return {\\n    markdown,\\n  };\\n}\\n".to_string(),
+            "type CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  // ...\\n}\\n".to_string(),
+            "import { fetch } from 'deno';\\n\\nconst response = await fetch(url);\\nconst html = await response.text();\\n".to_string(),
+            "import { marked } from 'npm:marked';\\n\\nconst markdown = marked(html);\\n".to_string(),
+            "return {\\n  markdown,\\n};\\n}\\n".to_string(),
+            "import { fetch } from 'deno';\\nimport { marked } from 'npm:marked';\\n\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  const response = await fetch(url);\\n  const html = await response.text();\\n  const markdown = marked(html);\\n\\n  return {\\n    markdown,\\n  };\\n}\\n".to_string(),
+            "import { fetch } from 'deno';\\nimport { marked } from 'npm:marked';\\n\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  const response = await fetch(url);\\n  const html = await response.text();\\n  const markdown = marked(html);\\n\\n  return {\\n    markdown,\\n  };\\n}\\n".to_string(),
         ];
-
-        // Print each string's length and a sample of characters
-        for (i, (res, exp)) in result.iter().zip(expected.iter()).enumerate() {
-            if res != exp {
-                eprintln!("Mismatch in item {}:", i);
-                eprintln!("Result   len={}: {:?}", res.len(), &res[..406]);
-                eprintln!("Expected len={}: {:?}", exp.len(), &exp[..406]);
-            }
-        }
 
         assert_eq!(result, expected);
     }
@@ -294,7 +280,9 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
     return { error: 'Failed to download and convert webpage' };
   }
   return {};
-}"#.to_string()
+}
+
+"#.to_string()
         ];
 
         let result = extract_fenced_code_blocks(input);
