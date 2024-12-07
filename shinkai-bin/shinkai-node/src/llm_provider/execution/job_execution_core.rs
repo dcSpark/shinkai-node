@@ -432,8 +432,6 @@ impl JobManager {
                 .await?;
             }
 
-            eprintln!("full_job: {:?}", mutable_job);
-
             for (local_file_path, local_file_name) in &input_string.local_files {
                 let vector_fs_entry = VectorFSItemScopeEntry {
                     name: local_file_name.clone(),

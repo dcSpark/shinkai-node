@@ -18,7 +18,7 @@ use serde_json::{json, Map, Value};
 
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, job::JobLike, shinkai_name::ShinkaiSubidentityType},
+    schemas::{inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType},
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
         job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
@@ -889,16 +889,28 @@ impl Node {
             },
         };
 
+        // Disable tools for this job
+        if let Err(err) = Self::disable_tools_for_job(db.clone(), bearer.clone(), job_message.job_id.clone()).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: err,
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
         // We copy the job message and update the content with the custom prompt
         let mut job_message_clone = job_message.clone();
         job_message_clone.content = generate_code_prompt;
 
         if post_check {
             // TODO: define the tool type based on the CodeLanguage
-            let callback_action = CallbackAction::ImplementationCheck(job_message_clone.job_id.clone(), DynamicToolType::DenoDynamic);
+            let callback_action =
+                CallbackAction::ImplementationCheck(job_message_clone.job_id.clone(), DynamicToolType::DenoDynamic);
             job_message_clone.callback = Some(Box::new(callback_action));
         }
-        
+
         Node::v2_job_message(
             db,
             node_name_clone,
@@ -919,7 +931,7 @@ impl Node {
         job_id: String,
         language: CodeLanguage,
         tools: Vec<String>,
-        db_clone: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -928,15 +940,12 @@ impl Node {
         signing_secret_key_clone: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
-        if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
-            .await
-            .is_err()
-        {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
         // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
-        let job = match db_clone.read().await.get_job_with_options(&job_id, true, true) {
+        let job = match db.read().await.get_job_with_options(&job_id, true, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -949,9 +958,20 @@ impl Node {
             }
         };
 
+        // Disable tools for this job
+        if let Err(err) = Self::disable_tools_for_job(db.clone(), bearer.clone(), job_id.clone()).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: err,
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
         let last_message = {
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
-            let messages = match db_clone
+            let messages = match db
                 .read()
                 .await
                 .get_last_messages_from_inbox(inbox_name.to_string(), 2, None)
@@ -1026,7 +1046,7 @@ impl Node {
             job_creation_info,
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
-            db_clone,
+            db,
             node_name_clone,
             identity_manager_clone,
             job_manager_clone,
@@ -1549,6 +1569,56 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn disable_tools_for_job(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        job_id: String,
+    ) -> Result<(), String> {
+        // Get the current job config
+        let (config_res_sender, config_res_receiver) = async_channel::bounded(1);
+
+        let _ = Node::v2_api_get_job_config(db.clone(), bearer.clone(), job_id.clone(), config_res_sender).await;
+
+        let current_config = match config_res_receiver.recv().await {
+            Ok(Ok(config)) => config,
+            Ok(Err(api_error)) => {
+                return Err(format!("API error while getting job config: {}", api_error.message));
+            }
+            Err(err) => {
+                return Err(format!("Failed to receive job config: {}", err));
+            }
+        };
+
+        // Update the config to disable tools
+        let new_config = JobConfig {
+            use_tools: Some(false),
+            ..current_config
+        };
+
+        // if new_config.use_tools is already false, don't update the config
+        if !new_config.use_tools.unwrap_or(true) {
+            return Ok(());
+        }
+
+        // Update the job config
+        let (update_res_sender, update_res_receiver) = async_channel::bounded(1);
+
+        let _ = Node::v2_api_update_job_config(
+            db.clone(),
+            bearer.clone(),
+            job_id.clone(),
+            new_config,
+            update_res_sender,
+        )
+        .await;
+
+        match update_res_receiver.recv().await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(api_error)) => Err(format!("API error while updating job config: {}", api_error.message)),
+            Err(err) => Err(format!("Failed to update job config: {}", err)),
+        }
     }
 }
 
