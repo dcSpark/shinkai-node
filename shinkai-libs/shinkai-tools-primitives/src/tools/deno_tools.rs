@@ -14,10 +14,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
-use shinkai_tools_runner::tools::deno_runner_options::{DenoRunnerOptions, ShinkaiNodeLocation};
+use shinkai_tools_runner::tools::deno_runner::DenoRunner;
+use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
-use shinkai_tools_runner::tools::tool::Tool;
+use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
@@ -247,7 +248,7 @@ impl DenoTool {
                     });
 
                     // Setup the engine with the code files and config
-                    let tool = Tool::new(
+                    let tool = DenoRunner::new(
                         CodeFiles {
                             files: code_files.clone(),
                             entrypoint: "index.ts".to_string(),
