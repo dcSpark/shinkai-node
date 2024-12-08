@@ -172,6 +172,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut function_call: Option<FunctionCall> = None;
+    let mut is_done_sent = false; // Track if any WS message with is_done: true has been sent
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -255,8 +256,13 @@ async fn handle_streaming_response(
                                     eval_count: data.get("eval_count").and_then(|c| c.as_u64()),
                                 };
 
-                                let ws_message_type = WSMessageType::Metadata(metadata);
+                                // Check if the message sent has is_done: true
+                                // The WS API is not reliable, so we need to check if the message sent has is_done: true
+                                if metadata.is_done {
+                                    is_done_sent = true;
+                                }
 
+                                let ws_message_type = WSMessageType::Metadata(metadata);
                                 let _ = m
                                     .queue_message(
                                         WSTopic::Inbox,
@@ -286,6 +292,36 @@ async fn handle_streaming_response(
                     format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
                 );
                 return Err(LLMProviderError::NetworkError(e.to_string()));
+            }
+        }
+    }
+
+    // If no WS message with is_done: true was sent, send a final message
+    if !is_done_sent {
+        if let Some(ref manager) = ws_manager_trait {
+            if let Some(ref inbox_name) = inbox_name {
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+
+                let metadata = WSMetadata {
+                    id: Some(session_id.clone()),
+                    is_done: true,
+                    done_reason: None,
+                    total_duration: None,
+                    eval_count: None,
+                };
+
+                let ws_message_type = WSMessageType::Metadata(metadata);
+
+                let _ = m
+                    .queue_message(
+                        WSTopic::Inbox,
+                        inbox_name_string,
+                        "".to_string(), // Empty content
+                        ws_message_type,
+                        true,
+                    )
+                    .await;
             }
         }
     }
