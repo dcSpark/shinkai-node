@@ -6848,6 +6848,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "hex",
+ "keyphrases",
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",
