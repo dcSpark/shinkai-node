@@ -364,7 +364,7 @@ impl DenoTool {
                     });
 
                     // Setup the engine with the code files and config
-                    let tool = Tool::new(
+                    let mut tool = DenoRunner::new(
                         CodeFiles {
                             files: code_files.clone(),
                             entrypoint: "index.ts".to_string(),
