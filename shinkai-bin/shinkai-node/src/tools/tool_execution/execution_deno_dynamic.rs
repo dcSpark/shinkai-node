@@ -5,7 +5,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::{DenoTool, DenoToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 
 use crate::utils::environment::fetch_node_environment;
 
@@ -14,7 +14,7 @@ pub fn execute_deno_tool(
     node_name: ShinkaiName,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<ToolConfig>,
+    oauth: Vec<OAuth>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -29,6 +29,7 @@ pub fn execute_deno_tool(
         js_code: code,
         tools: None,
         config: vec![],
+        oauth: None,
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
         input_args: vec![],
@@ -87,6 +88,7 @@ pub fn check_deno_tool(
         js_code: code,
         tools: None,
         config: vec![],
+        oauth: None,
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
         input_args: vec![],

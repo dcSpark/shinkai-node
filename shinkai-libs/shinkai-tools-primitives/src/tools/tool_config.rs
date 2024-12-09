@@ -3,8 +3,6 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ToolConfig {
-    OAuth(OAuth),
-    GenericHeader(GenericHeader),
     BasicConfig(BasicConfig),
 }
 
@@ -13,8 +11,6 @@ impl ToolConfig {
     /// when user is required to input header values
     pub fn name(&self) -> String {
         match self {
-            ToolConfig::OAuth(oauth) => oauth.name.clone(),
-            ToolConfig::GenericHeader(header) => header.name.clone(),
             ToolConfig::BasicConfig(config) => config.key_name.clone(),
         }
     }
@@ -22,8 +18,6 @@ impl ToolConfig {
     /// Description of the header, to be used in frontend
     pub fn description(&self) -> String {
         match self {
-            ToolConfig::OAuth(oauth) => oauth.description.clone(),
-            ToolConfig::GenericHeader(header) => header.description.clone(),
             ToolConfig::BasicConfig(config) => config.description.clone(),
         }
     }
@@ -31,8 +25,6 @@ impl ToolConfig {
     /// The header key to be used when making the request
     pub fn header(&self) -> String {
         match self {
-            ToolConfig::OAuth(oauth) => oauth.header.clone(),
-            ToolConfig::GenericHeader(header) => header.header.clone(),
             ToolConfig::BasicConfig(config) => config.key_value.clone().unwrap_or_default(),
         }
     }
@@ -45,8 +37,6 @@ impl ToolConfig {
     /// Returns a sanitized copy of the ToolConfig by removing key-values from BasicConfig
     pub fn sanitize(&self) -> ToolConfig {
         match self {
-            ToolConfig::OAuth(oauth) => ToolConfig::OAuth(oauth.clone()),
-            ToolConfig::GenericHeader(header) => ToolConfig::GenericHeader(header.clone()),
             ToolConfig::BasicConfig(config) => ToolConfig::BasicConfig(BasicConfig {
                 key_name: config.key_name.clone(),
                 description: config.description.clone(),
@@ -102,32 +92,65 @@ impl ToolConfig {
     }
 
     /// Creates a vector of ToolConfig::OAuth instances from a serde_json::Value
-    pub fn oauth_from_value(value: &Value) -> Vec<ToolConfig> {
-        let mut configs = Vec::new();
+    pub fn oauth_from_value(value: &Value) -> Vec<OAuth> {
+        let mut oauths = Vec::new();
 
         if let Some(obj) = value.as_object() {
             for (key, val) in obj {
                 if let Some(oauth_obj) = val.as_object() {
                     let oauth = OAuth {
                         name: key.clone(),
-                        description: oauth_obj.get("description").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                        display_name: oauth_obj.get("display_name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                        auth_url: oauth_obj.get("auth_url").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                        token_url: oauth_obj.get("token_url").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                        required: oauth_obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false),
-                        pkce: oauth_obj.get("pkce").and_then(|v| v.as_bool()).unwrap_or(false),
-                        scope: oauth_obj.get("scope").and_then(|v| v.as_array()).map_or(Vec::new(), |arr| {
-                            arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                        }),
-                        cloud_oauth_name: oauth_obj.get("cloud_oauth_name").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                        header: oauth_obj.get("header").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                        redirect_uri: oauth_obj
+                            .get("redirect_uri")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        version: oauth_obj
+                            .get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        response_type: oauth_obj
+                            .get("response_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        authorization_url: oauth_obj
+                            .get("authorization_url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        client_id: oauth_obj
+                            .get("client_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        client_secret: oauth_obj
+                            .get("client_secret")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        scopes: oauth_obj
+                            .get("scopes")
+                            .and_then(|v| v.as_array())
+                            .map_or(Vec::new(), |arr| {
+                                arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                            }),
+                        grant_type: oauth_obj.get("grant_type").and_then(|v| v.as_str()).map(String::from),
+                        required: oauth_obj.get("required").and_then(|v| v.as_bool()),
+                        pkce: oauth_obj.get("pkce").and_then(|v| v.as_bool()),
+                        refresh_token: oauth_obj
+                            .get("refresh_token")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                        access_token: oauth_obj.get("access_token").and_then(|v| v.as_str()).map(String::from),
                     };
-                    configs.push(ToolConfig::OAuth(oauth));
+                    oauths.push(oauth);
                 }
             }
         }
 
-        configs
+        oauths
     }
 }
 
@@ -143,15 +166,18 @@ pub struct GenericHeader {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OAuth {
     pub name: String,
-    pub description: String,
-    pub display_name: String,
-    pub auth_url: String,
-    pub token_url: String,
-    pub required: bool,
-    pub pkce: bool,
-    pub scope: Vec<String>,
-    pub cloud_oauth_name: String, // Ie. Google OAuth App name
-    pub header: String,
+    pub redirect_uri: String,          // default: https://secrets.shinkai.com/redirect
+    pub version: String,               // 1.0 or 2.0
+    pub response_type: String,         // default = token
+    pub authorization_url: String,     // defined by provider
+    pub client_id: String,             // defined by provider
+    pub client_secret: String,         // defined by provider
+    pub scopes: Vec<String>,           // defined by provider
+    pub grant_type: Option<String>,    // defined by provider
+    pub required: Option<bool>,        // default: true
+    pub pkce: Option<bool>,            // default: false
+    pub refresh_token: Option<String>, // filled by autentication flow (OAuth 2.0)
+    pub access_token: Option<String>,  // filled by autentication flow
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

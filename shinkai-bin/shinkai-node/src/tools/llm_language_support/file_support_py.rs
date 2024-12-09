@@ -40,7 +40,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             r#"import json
     import requests
     
-    oauth_config_str = os.environ.get('OAUTH', '{}')
+    oauth_config_str = os.environ.get('SHINKAI_OAUTH', '{}')
     try:
         oauth_config = json.loads(oauth_config_str)
         provider_config = oauth_config.get(provider_name)

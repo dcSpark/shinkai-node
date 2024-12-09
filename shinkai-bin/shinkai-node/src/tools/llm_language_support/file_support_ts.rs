@@ -37,7 +37,7 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
                 "Gets a valid OAuth AccessToken for the given provider.",
                 "Promise<string>",
                 vec!["providerName: string"],
-                r#"const oauthConfig = JSON.parse(Deno.env.get('OAUTH') || '{}');
+                r#"const oauthConfig = JSON.parse(Deno.env.get('SHINKAI_OAUTH') || '{}');
     
     type ProviderConfig = {
         name: string,
