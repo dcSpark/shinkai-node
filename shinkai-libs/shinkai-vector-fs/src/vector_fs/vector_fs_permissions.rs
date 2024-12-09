@@ -781,7 +781,8 @@ impl VectorFS {
                     .permissions_index
                     .insert_path_permission(writer.path.clone(), read_permission, write_permission)
                     .await?;
-                self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
+                self.save_profile_fs_internals(fs_internals.clone(), &writer.profile)
+                    .await?;
             } else {
                 return Err(VectorFSError::InvalidWritePermission(
                     writer.requester_name.clone(),
@@ -811,7 +812,8 @@ impl VectorFS {
                     .insert_to_whitelist(writer.path.clone(), name_to_whitelist, whitelist_perm)
                     .await?;
                 // Assuming save_profile_fs_internals is an async operation, ensure it's awaited
-                self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
+                self.save_profile_fs_internals(fs_internals.clone(), &writer.profile)
+                    .await?;
             } else {
                 return Err(VectorFSError::InvalidWritePermission(
                     writer.requester_name.clone(),
@@ -840,7 +842,8 @@ impl VectorFS {
                     .remove_from_whitelist(writer.path.clone(), name_to_remove)
                     .await?;
                 // Assuming save_profile_fs_internals is an async operation, ensure it's awaited
-                self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
+                self.save_profile_fs_internals(fs_internals.clone(), &writer.profile)
+                    .await?;
             } else {
                 return Err(VectorFSError::InvalidWritePermission(
                     writer.requester_name.clone(),

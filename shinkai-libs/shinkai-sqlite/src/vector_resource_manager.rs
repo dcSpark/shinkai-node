@@ -18,6 +18,178 @@ use shinkai_vector_resources::{
 use crate::{errors::SqliteManagerError, SqliteManager};
 
 impl SqliteManager {
+    pub fn save_resource(&self, resource: &BaseVectorResource, profile_name: &str) -> Result<(), SqliteManagerError> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        let vector_resource_id = &resource.as_trait_object().reference_string();
+        let resource = resource.as_trait_object();
+
+        // Insert into the vector_resources table
+        tx.execute(
+            "INSERT INTO vector_resources (
+                profile_name,
+                vector_resource_id,
+                name,
+                description,
+                source,
+                resource_id,
+                resource_base_type,
+                embedding_model_used_string,
+                node_count,
+                data_tag_index,
+                created_datetime,
+                last_written_datetime,
+                metadata_index,
+                merkle_root,
+                keywords,
+                distribution_info
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            params![
+                profile_name,
+                vector_resource_id,
+                resource.name(),
+                resource.description(),
+                serde_json::to_string(&resource.source())
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                resource.resource_id(),
+                serde_json::to_string(&resource.resource_base_type())
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                resource.embedding_model_used_string(),
+                resource.node_count(),
+                serde_json::to_vec(&resource.data_tag_index())
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                resource.created_datetime().to_rfc3339(),
+                resource.last_written_datetime().to_rfc3339(),
+                serde_json::to_vec(&resource.metadata_index())
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                resource.get_merkle_root()?,
+                serde_json::to_vec(&resource.keywords())
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                serde_json::to_vec(&resource.distribution_info())
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+            ],
+        )?;
+
+        // Insert resource_embedding into the vector_resource_embeddings table
+        let resource_embedding = resource.resource_embedding();
+        tx.execute(
+            "INSERT INTO vector_resource_embeddings (
+                profile_name,
+                vector_resource_id,
+                id,
+                embedding,
+                is_resource_embedding
+                ) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                profile_name,
+                vector_resource_id,
+                resource_embedding.id,
+                cast_slice(&resource_embedding.vector),
+                true,
+            ],
+        )?;
+
+        // Insert embeddings into the vector_resource_embeddings table
+        for embedding in resource.get_root_embeddings() {
+            tx.execute(
+                "INSERT INTO vector_resource_embeddings (
+                    profile_name,
+                    vector_resource_id,
+                    id,
+                    embedding,
+                    is_resource_embedding
+                    ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    profile_name,
+                    vector_resource_id,
+                    embedding.id,
+                    cast_slice(&embedding.vector),
+                    false,
+                ],
+            )?;
+        }
+
+        // Insert nodes into the vector_resource_nodes table
+        for node in resource.get_root_nodes() {
+            let content_type = match node.content {
+                NodeContent::ExternalContent(_) => "external",
+                NodeContent::Resource(_) => "resource",
+                NodeContent::VRHeader(_) => "header",
+                NodeContent::Text(_) => "text",
+            };
+
+            let content_value = match &node.content {
+                NodeContent::ExternalContent(external_content) => serde_json::to_string(&external_content)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                NodeContent::Resource(resource) => resource.as_trait_object().reference_string(),
+                NodeContent::VRHeader(header) => header.reference_string(),
+                NodeContent::Text(text) => text.to_string(),
+            };
+
+            // Save resource or VRHeader
+            if let NodeContent::Resource(resource) = &node.content {
+                self.save_resource(resource, profile_name)?;
+            } else if let NodeContent::VRHeader(header) = &node.content {
+                self.save_vr_header(header, profile_name)?;
+            }
+
+            tx.execute(
+                "INSERT INTO vector_resource_nodes (
+                    profile_name,
+                    vector_resource_id,
+                    id,
+                    content_type,
+                    content_value,
+                    metadata,
+                    data_tag_names,
+                    last_written_datetime,
+                    merkle_hash
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    profile_name,
+                    vector_resource_id,
+                    node.id,
+                    content_type,
+                    content_value,
+                    serde_json::to_string(&node.metadata)
+                        .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                    serde_json::to_string(&node.data_tag_names)
+                        .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                    node.last_written_datetime.to_rfc3339(),
+                    node.merkle_hash,
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn delete_resource(&self, reference_string: &str) -> Result<(), SqliteManagerError> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "DELETE FROM vector_resources WHERE vector_resource_id = ?",
+            params![reference_string],
+        )?;
+        tx.execute(
+            "DELETE FROM vector_resource_embeddings WHERE vector_resource_id = ?",
+            params![reference_string],
+        )?;
+        tx.execute(
+            "DELETE FROM vector_resource_nodes WHERE vector_resource_id = ?",
+            params![reference_string],
+        )?;
+        tx.execute(
+            "DELETE FROM vector_resource_headers WHERE vector_resource_id = ?",
+            params![reference_string],
+        )?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn get_resource(
         &self,
         vector_resource_id: &str,
@@ -355,5 +527,75 @@ impl SqliteManager {
         }?;
 
         Ok(vr_header)
+    }
+
+    fn save_vr_header(&self, vr_header: &VRHeader, profile_name: &str) -> Result<(), SqliteManagerError> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "INSERT INTO vector_resource_headers (
+                profile_name,
+                vector_resource_id,
+                resource_name,
+                resource_id,
+                resource_base_type,
+                resource_source,
+                resource_created_datetime,
+                resource_last_written_datetime,
+                resource_embedding_model_used,
+                resource_merkle_root,
+                resource_keywords,
+                resource_distribution_info,
+                data_tag_names,
+                metadata_index_keys
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                profile_name,
+                vr_header.resource_id,
+                vr_header.resource_name,
+                vr_header.resource_id,
+                serde_json::to_string(&vr_header.resource_base_type)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                serde_json::to_string(&vr_header.resource_source)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                vr_header.resource_created_datetime.to_rfc3339(),
+                vr_header.resource_last_written_datetime.to_rfc3339(),
+                serde_json::to_string(&vr_header.resource_embedding_model_used)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                vr_header.resource_merkle_root,
+                serde_json::to_vec(&vr_header.resource_keywords)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                serde_json::to_vec(&vr_header.resource_distribution_info)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                serde_json::to_string(&vr_header.data_tag_names)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+                serde_json::to_string(&vr_header.metadata_index_keys)
+                    .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
+            ],
+        )?;
+
+        // Insert resource_embedding into the vector_resource_embeddings table
+        if let Some(resource_embedding) = &vr_header.resource_embedding {
+            tx.execute(
+                "INSERT INTO vector_resource_embeddings (
+                    profile_name,
+                    vector_resource_id,
+                    id,
+                    embedding,
+                    is_resource_embedding
+                    ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    profile_name,
+                    vr_header.reference_string(),
+                    resource_embedding.id,
+                    cast_slice(&resource_embedding.vector),
+                    true,
+                ],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
     }
 }

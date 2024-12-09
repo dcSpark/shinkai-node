@@ -770,7 +770,7 @@ impl SqliteManager {
                 resource_id TEXT NOT NULL,
                 resource_base_type TEXT NOT NULL,
                 embedding_model_used_string TEXT NOT NULL,
-                node_count integer,
+                node_count INTEGER NOT NULL,
                 data_tag_index BLOB NOT NULL,
                 created_datetime TEXT NOT NULL,
                 last_written_datetime TEXT NOT NULL,
@@ -964,9 +964,9 @@ mod tests {
     use super::*;
     use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
-    use tempfile::NamedTempFile;
     use std::sync::{Arc, RwLock};
     use std::thread;
+    use tempfile::NamedTempFile;
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();

@@ -56,14 +56,6 @@ impl VFSWriter {
                 VectorFSError::InvalidWriterPermission(requester_name.clone(), profile.clone(), path.clone())
             })?;
 
-        // Once permission verified, saves the datatime into the FSDB as stored logs.
-        let current_datetime = ShinkaiTime::generate_time_now();
-        let mut write_batch = ProfileBoundWriteBatch::new_vfs_batch(&profile)?;
-        vector_fs
-            .db
-            .wb_add_write_access_log(requester_name, &path, current_datetime, profile, &mut write_batch)?;
-        vector_fs.db.write_pb(write_batch)?;
-
         Ok(writer)
     }
 
@@ -206,7 +198,7 @@ impl VectorFS {
             // Only commit updating the fs internals once at the top level, efficiency improvement
             if !is_recursive_call {
                 let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-                self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
+                self.save_profile_fs_internals(internals, &writer.profile).await?;
             }
 
             // Fetch the new FSFolder after everything has been copied over in fs internals
@@ -226,7 +218,6 @@ impl VectorFS {
     pub async fn delete_folder(&self, writer: &VFSWriter) -> Result<(), VectorFSError> {
         let mut write_batch = writer.new_write_batch()?;
         write_batch = self.internal_wb_delete_folder(writer, write_batch, false).await?;
-        self.db.write_pb(write_batch)?;
         Ok(())
     }
 
@@ -284,7 +275,7 @@ impl VectorFS {
             // TODO: Efficiency, have each recursive call return the list of folder/item paths to delete in the permissions index, and do it all just once here
             if !is_recursive_call {
                 let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-                self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
+                self.save_profile_fs_internals(internals, &writer.profile).await?;
             }
 
             Ok(write_batch)
@@ -294,8 +285,7 @@ impl VectorFS {
     /// Deletes the FSItem at the writer's path.
     pub async fn delete_item(&self, writer: &VFSWriter) -> Result<(), VectorFSError> {
         let mut write_batch = writer.new_write_batch()?;
-        write_batch = self.wb_delete_item(writer, write_batch).await?;
-        self.db.write_pb(write_batch)?;
+        let _ = self.wb_delete_item(writer, write_batch).await?;
         Ok(())
     }
 
@@ -303,7 +293,7 @@ impl VectorFS {
     pub async fn wb_delete_item(
         &self,
         writer: &VFSWriter,
-        mut write_batch: ProfileBoundWriteBatch,
+        write_batch: ProfileBoundWriteBatch,
     ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
         self.validate_path_points_to_item(writer.path.clone(), &writer.profile)
             .await?;
@@ -317,8 +307,8 @@ impl VectorFS {
             .await;
         self._update_fs_internals(writer.profile.clone(), internals.clone())
             .await?;
-        self.db.wb_delete_resource(&ref_string, &mut write_batch)?;
-        self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
+        self.db.write().await.delete_resource(&ref_string)?;
+        self.save_profile_fs_internals(internals, &writer.profile).await?;
         Ok(write_batch)
     }
 
@@ -326,8 +316,7 @@ impl VectorFS {
     /// Does not support copying into VecFS root.
     pub async fn copy_item(&self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError> {
         let write_batch = writer.new_write_batch()?;
-        let (write_batch, new_item) = self.wb_copy_item(writer, destination_path, write_batch).await?;
-        self.db.write_pb(write_batch)?;
+        let (_write_batch, new_item) = self.wb_copy_item(writer, destination_path, write_batch).await?;
         Ok(new_item)
     }
 
@@ -415,9 +404,12 @@ impl VectorFS {
             self.db
                 .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
         }
-        self.db.wb_save_resource(&vector_resource, &mut write_batch)?;
+        self.db
+            .write()
+            .await
+            .save_resource(&vector_resource, &write_batch.profile_name)?;
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-        self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
+        self.save_profile_fs_internals(internals, &writer.profile).await?;
 
         Ok((write_batch, new_item))
     }
@@ -448,9 +440,7 @@ impl VectorFS {
             .await;
         if let Ok(new_item) = move_result {
             let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-            let mut write_batch = writer.new_write_batch()?;
-            self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-            self.db.write_pb(write_batch)?;
+            self.save_profile_fs_internals(internals, &writer.profile).await?;
             Ok(new_item)
         }
         // Else if it was not successful in memory, reload fs internals from db to revert changes and return error
@@ -547,9 +537,7 @@ impl VectorFS {
             .await;
         if let Ok(new_folder) = move_result {
             let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-            let mut write_batch = writer.new_write_batch()?;
-            self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-            self.db.write_pb(write_batch)?;
+            self.save_profile_fs_internals(internals, &writer.profile).await?;
             Ok(new_folder)
         }
         // Else if it was not successful in memory, reload fs internals from db to revert changes and return error
@@ -740,9 +728,7 @@ impl VectorFS {
 
         // Save the FSInternals into the FSDB
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-        let mut write_batch = writer.new_write_batch()?;
-        self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-        self.db.write_pb(write_batch)?;
+        self.save_profile_fs_internals(internals, &writer.profile).await?;
 
         Ok(new_folder)
     }
@@ -808,9 +794,7 @@ impl VectorFS {
 
             // Save the FSInternals into the FSDB
             let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-            let mut write_batch = writer.new_write_batch()?;
-            self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-            self.db.write_pb(write_batch)?;
+            self.save_profile_fs_internals(internals, &writer.profile).await?;
 
             Ok(())
         })
@@ -909,9 +893,7 @@ impl VectorFS {
 
         // Finally saving the profile fs internals
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-        let mut write_batch = writer.new_write_batch()?;
-        self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-        self.db.write_pb(write_batch)?;
+        self.save_profile_fs_internals(internals, &writer.profile).await?;
         Ok(())
     }
 
@@ -1001,6 +983,8 @@ impl VectorFS {
             if existing_vr_ref != Some(resource.as_trait_object().reference_string()) {
                 if let Ok(_r) = self
                     .db
+                    .read()
+                    .await
                     .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
                 {
                     resource.as_trait_object_mut().generate_and_update_resource_id();
@@ -1079,10 +1063,12 @@ impl VectorFS {
                 self.db
                     .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
             }
-            self.db.wb_save_resource(&resource, &mut write_batch)?;
+            self.db
+                .write()
+                .await
+                .save_resource(&resource, &write_batch.profile_name)?;
             let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-            self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-            self.db.write_pb(write_batch)?;
+            self.save_profile_fs_internals(internals, &writer.profile).await?;
 
             Ok(item)
         } else {
@@ -1162,8 +1148,7 @@ impl VectorFS {
         self.db
             .wb_save_source_file_map(&source_file_map, &source_db_key, &mut write_batch)?;
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-        self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-        self.db.write_pb(write_batch)?;
+        self.save_profile_fs_internals(internals, &writer.profile).await?;
 
         if let Some(item) = new_item {
             Ok(item)

@@ -184,6 +184,10 @@ impl VectorResourceCore for MapVectorResource {
         self.resource_embedding = embedding;
     }
 
+    fn node_count(&self) -> u64 {
+        self.node_count
+    }
+
     fn set_resource_id(&mut self, id: String) {
         self.update_last_written_to_now();
         self.resource_id = id;

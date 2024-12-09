@@ -283,6 +283,10 @@ impl VectorResourceCore for DocumentVectorResource {
         self.resource_embedding = embedding;
     }
 
+    fn node_count(&self) -> u64 {
+        self.node_count
+    }
+
     fn set_resource_id(&mut self, id: String) {
         self.update_last_written_to_now();
         self.resource_id = id;
@@ -590,10 +594,6 @@ impl DocumentVectorResource {
             is_merkelized,
             DistributionInfo::new_empty(),
         )
-    }
-
-    pub fn node_count(&self) -> u64 {
-        self.node_count
     }
 
     /// Appends a new node (with a BaseVectorResource) to the document at the root depth.
