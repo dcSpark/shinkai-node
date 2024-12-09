@@ -50,6 +50,26 @@ use std::path::PathBuf;
 use tokio::fs;
 
 impl Node {
+    /// Searches for Shinkai tools using both vector and full-text search (FTS) methods.
+    ///
+    /// The function returns a total of 10 results based on the following logic:
+    /// 1. All FTS results are added first.
+    /// 2. If there is a vector search result with a score under 0.2, it is added as the second result.
+    /// 3. Remaining FTS results are added.
+    /// 4. If there are remaining slots after adding FTS results, they are filled with additional vector search results.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - A reference-counted, read-write lock on the SqliteManager.
+    /// * `bearer` - A string representing the bearer token for authentication.
+    /// * `query` - A string containing the search query.
+    /// * `res` - A channel sender for sending the search results or errors.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure of the search operation.
+    
+    // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
@@ -61,17 +81,69 @@ impl Node {
             return Ok(());
         }
 
-        // Start the timer
+        // Sanitize the query to handle special characters
+        let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+
+        // Start the timer for logging purposes
         let start_time = Instant::now();
 
-        // Perform the internal search using SqliteManager
-        // TODO: implement something like BTS for tools
-        match db.read().await.tool_vector_search(&query, 5, false, true).await {
-            Ok(tools) => {
-                let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
+        // Start the timer for vector search
+        let vector_start_time = Instant::now();
+        let vector_search_result = db
+            .read()
+            .await
+            .tool_vector_search(&sanitized_query, 5, false, true)
+            .await;
+        let vector_elapsed_time = vector_start_time.elapsed();
+        println!("Time taken for vector search: {:?}", vector_elapsed_time);
+
+        // Start the timer for FTS search
+        let fts_start_time = Instant::now();
+        let fts_search_result = db.read().await.search_tools_fts(&sanitized_query);
+        let fts_elapsed_time = fts_start_time.elapsed();
+        println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        match (vector_search_result, fts_search_result) {
+            (Ok(vector_tools), Ok(fts_tools)) => {
+                let mut combined_tools = Vec::new();
+                let mut seen_ids = std::collections::HashSet::new();
+
+                // Always add the first FTS result
+                if let Some(first_fts_tool) = fts_tools.first() {
+                    if seen_ids.insert(first_fts_tool.tool_router_key.clone()) {
+                        combined_tools.push(first_fts_tool.clone());
+                    }
+                }
+
+                // Check if the top vector search result has a score under 0.2
+                if let Some((tool, score)) = vector_tools.first() {
+                    if *score < 0.2 {
+                        if seen_ids.insert(tool.tool_router_key.clone()) {
+                            combined_tools.push(tool.clone());
+                        }
+                    }
+                }
+
+                // Add remaining FTS results
+                for tool in fts_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Add remaining vector search results
+                for (tool, _) in vector_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Serialize the combined results to JSON
+                let tools_json = serde_json::to_value(combined_tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
                 })?;
-                // Log the elapsed time if LOG_ALL is set to 1
+
+                // Log the elapsed time and result count if LOG_ALL is set to 1
                 if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                     let elapsed_time = start_time.elapsed();
                     let result_count = tools_json.as_array().map_or(0, |arr| arr.len());
@@ -81,7 +153,7 @@ impl Node {
                 let _ = res.send(Ok(tools_json)).await;
                 Ok(())
             }
-            Err(err) => {
+            (Err(err), _) | (_, Err(err)) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),

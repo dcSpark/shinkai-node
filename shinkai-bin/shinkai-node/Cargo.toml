@@ -44,7 +44,7 @@ reqwest = { workspace = true, features = [
     "blocking",
     "stream",
 ] }
-keyphrases = "0.3.3"
+keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }
@@ -56,7 +56,7 @@ shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_sheet = { workspace = true }
 # shinkai_baml = { workspace = true }
-bincode = "1.3.3"
+bincode = { workspace = true }
 qrcode = "0.12"
 image = "0.23"
 urlencoding = "2.1.0"
