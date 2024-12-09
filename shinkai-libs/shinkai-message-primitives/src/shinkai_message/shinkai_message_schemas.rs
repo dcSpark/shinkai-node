@@ -1,5 +1,6 @@
 use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
@@ -308,7 +309,8 @@ pub enum CallbackAction {
     Job(JobMessage),
     Sheet(SheetManagerAction),
     ToolPlayground(ToolPlaygroundAction),
-    // Cron(CronManagerAction),
+    // ImplementationCheck: (DynamicToolType, available_tools)
+    ImplementationCheck(DynamicToolType, Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
@@ -317,12 +319,6 @@ pub struct JobMessage {
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
-    #[serde(default)]
-    // TODO(Nico): this is not used anymore, remove it
-    pub workflow_code: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_workflow_name")]
-    // TODO(Nico): this is not used anymore, remove it
-    pub workflow_name: Option<String>,
     pub sheet_job_data: Option<String>,
     // Whenever we need to chain actions, we can use this
     pub callback: Option<Box<CallbackAction>>,
@@ -345,19 +341,6 @@ pub struct FunctionCallMetadata {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
-}
-
-fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: Option<String> = Option::deserialize(deserializer).unwrap_or(None);
-    if let Some(ref s) = s {
-        if s == "undefined:::undefined" {
-            return Ok(None);
-        }
-    }
-    Ok(s)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]

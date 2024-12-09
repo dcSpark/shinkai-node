@@ -9,7 +9,7 @@ use shinkai_http_api::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
 };
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::{schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::CallbackAction};
 use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},

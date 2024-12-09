@@ -232,8 +232,6 @@ impl SheetManager {
                 content: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
                 files_inbox: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
                 parent: None,
-                workflow_code: None, // it could be in the sheet_job_data
-                workflow_name: None, // it could be in the sheet_job_data
                 sheet_job_data: Some(serde_json::to_string(&job_data).unwrap()),
                 callback: None,
                 metadata: None,

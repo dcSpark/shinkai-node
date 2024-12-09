@@ -353,6 +353,10 @@ pub struct ToolImplementationRequest {
     pub language: CodeLanguage,
     pub tools: Vec<String>,
     pub raw: Option<bool>,
+    #[serde(default)]
+    // Field to run a check after the tool implementation is generated
+    // Default is false
+    pub post_check: bool,
 }
 
 #[utoipa::path(
@@ -377,6 +381,7 @@ pub async fn tool_implementation_handler(
             message: payload.message,
             language: payload.language,
             tools: payload.tools,
+            post_check: payload.post_check,
             raw: payload.raw.unwrap_or(false),
             res: res_sender,
         })

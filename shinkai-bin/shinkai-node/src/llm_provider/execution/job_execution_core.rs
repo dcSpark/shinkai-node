@@ -49,7 +49,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
-        _callback_manager: Arc<Mutex<JobCallbackManager>>, // Note: we will use this later on
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -118,9 +118,7 @@ impl JobManager {
             return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
         }
 
-        // 2.- workflow flow removed for now
-
-        // 3.- *If* a sheet job is found, processing job message is taken over by this alternate logic
+        // 2.- *If* a sheet job is found, processing job message is taken over by this alternate logic
         let sheet_job_found = JobManager::process_sheet_job(
             db.clone(),
             vector_fs.clone(),
@@ -158,6 +156,7 @@ impl JobManager {
             ws_manager.clone(),
             tool_router.clone(),
             Some(sheet_manager.clone()),
+            job_callback_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
             // sqlite_logger.clone(),
@@ -230,6 +229,7 @@ impl JobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
@@ -354,6 +354,21 @@ impl JobManager {
             .await
             .set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
+        // Check for callbacks and add them to the JobManagerQueue if required
+        if let Some(callback) = &job_message.callback {
+            if let CallbackAction::ImplementationCheck(tool_type, available_tools) = callback.as_ref() {
+                job_callback_manager.lock().await.handle_implementation_check_callback(
+                    db.clone(),
+                    tool_type.clone(),
+                    inference_response_content.to_string(),
+                    available_tools.clone(),
+                    &identity_secret_key,
+                    &user_profile,
+                    &job_id,
+                ).await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -414,8 +429,6 @@ impl JobManager {
                 )
                 .await?;
             }
-
-            eprintln!("full_job: {:?}", mutable_job);
 
             for (local_file_path, local_file_name) in &input_string.local_files {
                 let vector_fs_entry = VectorFSItemScopeEntry {
@@ -669,9 +682,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
-        eprintln!("full_job: {:?}", full_job);
-        eprintln!("job_message: {:?}", job_message);
-
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -723,10 +733,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
-        eprintln!("full_job: {:?}", full_job);
-        eprintln!("files_inbox: {:?}", files_inbox);
-        eprintln!("file_names: {:?}", file_names);
-
         if !file_names.is_empty() {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,

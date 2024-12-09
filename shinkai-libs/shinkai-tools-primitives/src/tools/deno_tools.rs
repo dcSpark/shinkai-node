@@ -11,7 +11,7 @@ use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value as JsonValue;
+use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::deno_runner::DenoRunner;
@@ -329,6 +329,81 @@ impl DenoTool {
                             Ok(result)
                         }
                         Err(e) => Err(e),
+                    }
+                })
+            })
+            .unwrap()
+            .join()
+            .expect("Thread panicked")
+    }
+
+    pub fn check(
+        &self,
+        api_ip: String,
+        api_port: u16,
+        support_files: HashMap<String, String>,
+        node_storage_path: String,
+        app_id: String,
+        tool_id: String,
+    ) -> Result<Vec<String>, ToolError> {
+        println!("[Checking DenoTool] Named: {}, Input: {:?}", self.name, self.config);
+
+        let code = self.js_code.clone();
+
+        // Create a new thread with its own Tokio runtime
+        let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
+        js_tool_thread
+            .spawn(move || {
+                let rt = Runtime::new().expect("Failed to create Tokio runtime");
+                rt.block_on(async {
+                    // Create map with file name and source code
+                    let mut code_files = HashMap::new();
+                    code_files.insert("index.ts".to_string(), code);
+                    support_files.iter().for_each(|(file_name, file_code)| {
+                        code_files.insert(format!("{}.ts", file_name), file_code.clone());
+                    });
+
+                    // Setup the engine with the code files and config
+                    let mut tool = DenoRunner::new(
+                        CodeFiles {
+                            files: code_files.clone(),
+                            entrypoint: "index.ts".to_string(),
+                        },
+                        serde_json::Value::Object(Map::new()),
+                        Some(DenoRunnerOptions {
+                            context: ExecutionContext {
+                                context_id: app_id.clone(),
+                                execution_id: tool_id.clone(),
+                                code_id: "".to_string(),
+                                storage: PathBuf::from(node_storage_path.clone()),
+                                assets_files: vec![],
+                                mount_files: vec![],
+                            },
+                            deno_binary_path: PathBuf::from(
+                                env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
+                                    .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
+                            ),
+                            shinkai_node_location: ShinkaiNodeLocation {
+                                protocol: String::from("http"),
+                                host: api_ip,
+                                port: api_port,
+                            },
+                            ..Default::default()
+                        }),
+                    );
+
+                    // Run the check method
+                    let result = tool.check().await.map_err(|e| ToolError::ExecutionError(e.to_string()));
+
+                    match result {
+                        Ok(warnings) => {
+                            println!("[Checking DenoTool] Warnings: {:?}", warnings);
+                            Ok(warnings)
+                        }
+                        Err(e) => {
+                            println!("[Checking DenoTool] Error: {:?}", e);
+                            Err(e)
+                        }
                     }
                 })
             })

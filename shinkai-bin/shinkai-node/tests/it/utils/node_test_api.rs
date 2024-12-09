@@ -1,7 +1,7 @@
 use async_channel::Sender;
-use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use core::panic;
 use ed25519_dalek::SigningKey;
+use serde_json::{Map, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::identity::{Identity, IdentityType, StandardIdentity};
@@ -16,10 +16,10 @@ use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, MinimalJobS
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use std::collections::HashMap;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use std::collections::HashMap;
-use serde_json::{Map, Value};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn api_registration_device_node_profile_main(
@@ -415,7 +415,6 @@ pub async fn api_message_job(
     content: &str,
     files_inbox: &str,
     parent: &str,
-    workflow: Option<String>,
 ) {
     {
         let job_message = ShinkaiMessageBuilder::job_message(
@@ -423,8 +422,6 @@ pub async fn api_message_job(
             content.to_string(),
             files_inbox.to_string(),
             parent.to_string(),
-            workflow,
-            None,
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,

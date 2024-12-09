@@ -197,7 +197,6 @@ fn job_branchs_retries_tests() {
                     "hello are u there? (1)",
                     "",
                     "",
-                    None,
                 )
                 .await;
                 wait_for_response(node1_commands_sender.clone()).await;
@@ -227,7 +226,6 @@ fn job_branchs_retries_tests() {
                     "hello are u there? (3)",
                     "",
                     "",
-                    None,
                 )
                 .await;
                 wait_for_response(node1_commands_sender.clone()).await;
@@ -291,7 +289,6 @@ fn job_branchs_retries_tests() {
                     "hello are u there? (5)",
                     "",
                     message2_hash.unwrap().as_str(),
-                    None,
                 )
                 .await;
                 wait_for_response(node1_commands_sender.clone()).await;
