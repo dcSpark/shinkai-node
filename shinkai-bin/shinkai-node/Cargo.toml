@@ -44,7 +44,7 @@ reqwest = { workspace = true, features = [
     "blocking",
     "stream",
 ] }
-keyphrases = "0.3.3"
+keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }
@@ -56,7 +56,7 @@ shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_sheet = { workspace = true }
 # shinkai_baml = { workspace = true }
-bincode = "1.3.3"
+bincode = { workspace = true }
 qrcode = "0.12"
 image = "0.23"
 urlencoding = "2.1.0"
@@ -84,6 +84,7 @@ r2d2_sqlite = "0.25"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 async-std = { version = "1.5.0", features = ["unstable"] }
 env_logger = { workspace = true }
+zip = "2.2.1"
 
 [dev-dependencies]
 mockito = "1.0.2"

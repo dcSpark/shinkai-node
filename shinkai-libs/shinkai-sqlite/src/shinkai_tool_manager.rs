@@ -1,7 +1,9 @@
 use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
+use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use std::collections::HashSet;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -110,12 +112,7 @@ impl SqliteManager {
                 is_network, 
                 tool_key
             ) VALUES (?1, ?2, ?3, ?4)",
-            params![
-                cast_slice(&embedding),
-                is_enabled as i32,
-                is_network as i32,
-                tool_key
-            ],
+            params![cast_slice(&embedding), is_enabled as i32, is_network as i32, tool_key],
         )?;
 
         // Update the FTS table using the in-memory connection
@@ -134,12 +131,16 @@ impl SqliteManager {
         include_disabled: bool,
         include_network: bool,
     ) -> Result<Vec<(ShinkaiToolHeader, f64)>, SqliteManagerError> {
+        // TODO: implement an LRU cache for the vector search
+        // so we are not searching the database every time
+        // be careful with the memory! and if the tools change we need to invalidate the cache
+
         // Serialize the vector to a JSON array string
         let vector_json = serde_json::to_string(&vector).map_err(|e| {
             eprintln!("Vector serialization error: {}", e);
             SqliteManagerError::SerializationError(e.to_string())
         })?;
-        
+
         // Perform the vector search to get tool_keys and distances
         let conn = self.get_connection()?;
         let query = match (include_disabled, include_network) {
@@ -181,12 +182,8 @@ impl SqliteManager {
 
         // Retrieve tool_keys and distances
         let tool_keys_and_distances: Vec<(String, f64)> = stmt
-            .query_map(params![vector_json, num_results], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?
+            .query_map(params![vector_json, num_results], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
-
-        eprintln!("Tool keys and distances: {:?}", tool_keys_and_distances);
 
         // Retrieve the corresponding ShinkaiToolHeaders and pair with distances
         let mut tools_with_distances = Vec::new();
@@ -513,54 +510,68 @@ impl SqliteManager {
     }
 
     // Search the FTS table
-    pub fn search_tools_by_name(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
+    pub fn search_tools_fts(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
         // Get a connection from the in-memory pool for FTS operations
         let fts_conn = self.fts_pool.get().map_err(|e| {
             rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error::new(1), // Using a generic error code
+                rusqlite::ffi::Error::new(1),
                 Some(e.to_string()),
             )
         })?;
 
-        // Use the in-memory connection for FTS operations
-        let mut stmt = fts_conn.prepare("SELECT name FROM shinkai_tools_fts WHERE shinkai_tools_fts MATCH ?1")?;
+        // Extract keyphrases using the `keyphrases` crate (RAKE under the hood).
+        // Adjust top_n as needed (e.g. 5, 10) to extract more phrases.
+        let extractor = KeyPhraseExtractor::new(query, 5);
+        let keywords = extractor.get_keywords();
 
-        let name_iter = stmt.query_map(params![query], |row| {
-            let name: String = row.get(0)?;
-            Ok(name)
-        })?;
+        // If no key phrases were found, just use the original query
+        let phrases_to_search = if keywords.is_empty() {
+            vec![query.to_string()]
+        } else {
+            keywords.iter().map(|(_, kw)| kw.clone()).collect::<Vec<String>>()
+        };
 
         let mut tool_headers = Vec::new();
+        let mut seen = HashSet::new(); // avoid duplicates if multiple phrases match the same tool
+
         let conn = self.get_connection()?;
 
-        for name_result in name_iter {
-            let name = name_result.map_err(|e| {
-                eprintln!("FTS query error: {}", e);
-                SqliteManagerError::DatabaseError(e)
-            })?;
+        for phrase in phrases_to_search {
+            let mut stmt = fts_conn.prepare("SELECT name FROM shinkai_tools_fts WHERE shinkai_tools_fts MATCH ?1")?;
+            let name_iter = stmt.query_map(rusqlite::params![phrase], |row| row.get::<_, String>(0))?;
 
-            // Query the persistent database for the full tool data
-            let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1")?;
-            let tool_header_data: Vec<u8> = stmt.query_row(params![name], |row| row.get(0)).map_err(|e| {
-                eprintln!("Persistent DB query error: {}", e);
-                SqliteManagerError::DatabaseError(e)
-            })?;
+            for name_res in name_iter {
+                let name = name_res.map_err(|e| {
+                    eprintln!("FTS query error: {}", e);
+                    SqliteManagerError::DatabaseError(e)
+                })?;
 
-            let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
-                eprintln!("Deserialization error: {}", e);
-                SqliteManagerError::SerializationError(e.to_string())
-            })?;
+                // Only fetch tool header if we haven't seen this one already
+                if seen.insert(name.clone()) {
+                    let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1")?;
+                    let tool_header_data: Vec<u8> = stmt.query_row(rusqlite::params![name], |row| row.get(0)).map_err(|e| {
+                        eprintln!("Persistent DB query error: {}", e);
+                        SqliteManagerError::DatabaseError(e)
+                    })?;
 
-            tool_headers.push(tool_header);
+                    let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
+                        eprintln!("Deserialization error: {}", e);
+                        SqliteManagerError::SerializationError(e.to_string())
+                    })?;
+
+                    tool_headers.push(tool_header);
+                }
+            }
         }
 
         Ok(tool_headers)
     }
 
     // Synchronize the FTS table with the main database
-    pub fn sync_fts_table(&self) -> Result<(), SqliteManagerError> {
+    pub fn sync_tools_fts_table(&self) -> Result<(), SqliteManagerError> {
         // Use the pooled connection to access the shinkai_tools table
         let conn = self.get_connection()?;
+
         let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_tools")?;
         let mut rows = stmt.query([])?;
 
@@ -576,9 +587,16 @@ impl SqliteManager {
         while let Some(row) = rows.next()? {
             let rowid: i64 = row.get(0)?;
             let name: String = row.get(1)?;
+
+            // Delete the existing entry if it exists
             fts_conn.execute(
-                "INSERT INTO shinkai_tools_fts(rowid, name) VALUES (?1, ?2)
-                 ON CONFLICT(rowid) DO UPDATE SET name = excluded.name",
+                "DELETE FROM shinkai_tools_fts WHERE rowid = ?1",
+                params![rowid],
+            )?;
+
+            // Insert the new entry
+            fts_conn.execute(
+                "INSERT INTO shinkai_tools_fts(rowid, name) VALUES (?1, ?2)",
                 params![rowid, name],
             )?;
         }
@@ -744,9 +762,15 @@ mod tests {
         let shinkai_tool_3 = ShinkaiTool::Deno(deno_tool_3, true);
 
         // Add the tools to the database with different vectors
-        manager.add_tool_with_vector(shinkai_tool_1.clone(), SqliteManager::generate_vector_for_testing(0.1)).unwrap();
-        manager.add_tool_with_vector(shinkai_tool_2.clone(), SqliteManager::generate_vector_for_testing(0.5)).unwrap();
-        manager.add_tool_with_vector(shinkai_tool_3.clone(), SqliteManager::generate_vector_for_testing(0.9)).unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool_1.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool_2.clone(), SqliteManager::generate_vector_for_testing(0.5))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool_3.clone(), SqliteManager::generate_vector_for_testing(0.9))
+            .unwrap();
 
         // Generate an embedding vector for the query that is close to the first tool
         let embedding_query = SqliteManager::generate_vector_for_testing(0.09);
@@ -1000,7 +1024,7 @@ mod tests {
         }
 
         // Test exact match
-        match manager.search_tools_by_name("Text Analysis") {
+        match manager.search_tools_fts("Text Analysis") {
             Ok(results) => {
                 eprintln!("Search results: {:?}", results);
                 assert_eq!(results.len(), 1);
@@ -1010,17 +1034,17 @@ mod tests {
         }
 
         // Test partial match
-        let results = manager.search_tools_by_name("visualization").unwrap();
+        let results = manager.search_tools_fts("visualization").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Data Visualization Tool");
 
         // Test case insensitive match
-        let results = manager.search_tools_by_name("IMAGE").unwrap();
+        let results = manager.search_tools_fts("IMAGE").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "Image Processing Tool");
 
         // Test no match
-        let results = manager.search_tools_by_name("nonexistent").unwrap();
+        let results = manager.search_tools_fts("nonexistent").unwrap();
         assert_eq!(results.len(), 0);
     }
 
@@ -1188,13 +1212,22 @@ mod tests {
 
         // Add the tools to the database
         manager
-            .add_tool_with_vector(shinkai_enabled_non_network.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .add_tool_with_vector(
+                shinkai_enabled_non_network.clone(),
+                SqliteManager::generate_vector_for_testing(0.1),
+            )
             .unwrap();
         manager
-            .add_tool_with_vector(shinkai_disabled_non_network.clone(), SqliteManager::generate_vector_for_testing(0.2))
+            .add_tool_with_vector(
+                shinkai_disabled_non_network.clone(),
+                SqliteManager::generate_vector_for_testing(0.2),
+            )
             .unwrap();
         manager
-            .add_tool_with_vector(shinkai_enabled_network.clone(), SqliteManager::generate_vector_for_testing(0.3))
+            .add_tool_with_vector(
+                shinkai_enabled_network.clone(),
+                SqliteManager::generate_vector_for_testing(0.3),
+            )
             .unwrap();
 
         // Perform searches and verify results

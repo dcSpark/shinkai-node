@@ -127,8 +127,6 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         content,
         files_inbox: "".to_string(),
         parent: None,
-        workflow_code: None,
-        workflow_name: None,
         sheet_job_data: None,
         callback: None,
         metadata: None,

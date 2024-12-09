@@ -1,43 +1,43 @@
 pub fn generate_file_support_ts(declaration_only: bool) -> String {
     let function_definitions = vec![
-        (
-            "getMountPaths",
-            "Gets an array of mounted files.",
-            "Promise<string[]>",
-            vec![],
-            "const mountPaths = Deno.env.get('MOUNT');\n    if (!mountPaths) return [];\n    return mountPaths.split(',').map(path => path.trim());",
-            "Array of files"
-        ),
-        (
-            "getAssetPaths",
-            "Gets an array of asset files. These files are read only.",
-            "Promise<string[]>",
-            vec![],
-            "const assetPaths = Deno.env.get('ASSETS');\n    if (!assetPaths) return [];\n    return assetPaths.split(',').map(path => path.trim());",
-            "Array of files"
-        ),
-        (
-            "getHomePath",
-            "Gets the home directory path. All created files must be written to this directory.",
-            "Promise<string>",
-            vec![],
-            "return Deno.env.get('HOME') || \"\";",
-            "Home directory path"
-        ),
-        (
-            "getShinkaiNodeLocation",
-            "Gets the Shinkai Node location URL. This is the URL of the Shinkai Node server.",
-            "Promise<string>",
-            vec![],
-            "return Deno.env.get('SHINKAI_NODE_LOCATION') || \"\";",
-            "Shinkai Node URL"
-        ),
-        (
-            "getAccessToken",
-            "Gets a valid OAuth AccessToken for the given provider.",
-            "Promise<string>",
-            vec!["providerName: string"],
-            r#"const oauthConfig = JSON.parse(Deno.env.get('OAUTH') || '{}');
+            (
+                "getMountPaths",
+                "Gets an array of mounted files.",
+                "Promise<string[]>",
+                vec![],
+                "const mountPaths = Deno.env.get('SHINKAI_MOUNT');\n    if (!mountPaths) return [];\n    return mountPaths.split(',').map(path => path.trim());",
+                "Array of files"
+            ),
+            (
+                "getAssetPaths",
+                "Gets an array of asset files. These files are read only.",
+                "Promise<string[]>",
+                vec![],
+                "const assetPaths = Deno.env.get('SHINKAI_ASSETS');\n    if (!assetPaths) return [];\n    return assetPaths.split(',').map(path => path.trim());",
+                "Array of files"
+            ),
+            (
+                "getHomePath",
+                "Gets the home directory path. All created files must be written to this directory.",
+                "Promise<string>",
+                vec![],
+                "return Deno.env.get('SHINKAI_HOME') || \"\";",
+                "Home directory path"
+            ),
+            (
+                "getShinkaiNodeLocation",
+                "Gets the Shinkai Node location URL. This is the URL of the Shinkai Node server.",
+                "Promise<string>",
+                vec![],
+                "return Deno.env.get('SHINKAI_NODE_LOCATION') || \"\";",
+                "Shinkai Node URL"
+            ),
+            (
+                "getAccessToken",
+                "Gets a valid OAuth AccessToken for the given provider.",
+                "Promise<string>",
+                vec!["providerName: string"],
+                r#"const oauthConfig = JSON.parse(Deno.env.get('OAUTH') || '{}');
     
     type ProviderConfig = {
         name: string,
@@ -95,9 +95,9 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
         console.error('Error getting access token:', error);
         return '';
     }"#,
-            "OAuth access token"
-        ),
-    ];
+                "OAuth access token"
+            ),
+        ];
 
     let mut output = String::new();
 

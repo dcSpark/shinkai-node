@@ -220,8 +220,6 @@ async fn test_process_job_queue_concurrency() {
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
@@ -338,7 +336,6 @@ async fn test_sequential_process_for_same_job_id() {
         sheet_manager.clone(),
         callback_manager.clone(),
         None,
-        // None,
         None,
         llm_stopper.clone(),
         move |job,
@@ -354,7 +351,6 @@ async fn test_sequential_process_for_same_job_id() {
               _job_queue_manager,
               _my_agent_payments_manager,
               _ext_agent_payments_manager,
-              //   _sqlite_logger,
               _llm_stopper| {
             mock_processing_fn(
                 job,
@@ -378,8 +374,6 @@ async fn test_sequential_process_for_same_job_id() {
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,

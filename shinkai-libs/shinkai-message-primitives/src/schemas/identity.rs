@@ -112,6 +112,14 @@ impl Identity {
             Identity::Device(device) => device.permission_type == IdentityPermissions::Admin,
         }
     }
+
+    pub fn get_shinkai_name(&self) -> ShinkaiName {
+        match self {
+            Identity::Standard(std_identity) => std_identity.full_identity_name.clone(),
+            Identity::LLMProvider(agent) => agent.full_identity_name.clone(),
+            Identity::Device(device) => device.full_identity_name.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

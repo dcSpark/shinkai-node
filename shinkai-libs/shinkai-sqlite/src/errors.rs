@@ -63,6 +63,11 @@ pub enum SqliteManagerError {
     InvalidData,
     #[error("Failed fetching value")]
     FailedFetchingValue,
+    #[error("Query error: {query}, source: {source}")]
+    QueryError {
+        query: String,
+        source: rusqlite::Error,
+    },
     // Add other error variants as needed
 }
 

@@ -5,7 +5,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "Gets an array of mounted files.",
             "List[str]",
             vec![],
-            "mount_paths = os.environ.get('MOUNT')\n    if not mount_paths:\n        return []\n    return [path.strip() for path in mount_paths.split(',')]",
+            "mount_paths = os.environ.get('SHINKAI_MOUNT')\n    if not mount_paths:\n        return []\n    return [path.strip() for path in mount_paths.split(',')]",
             "Array of files"
         ),
         (
@@ -13,7 +13,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "Gets an array of asset files. These files are read only.",
             "List[str]",
             vec![],
-            "asset_paths = os.environ.get('ASSETS')\n    if not asset_paths:\n        return []\n    return [path.strip() for path in asset_paths.split(',')]",
+            "asset_paths = os.environ.get('SHINKAI_ASSETS')\n    if not asset_paths:\n        return []\n    return [path.strip() for path in asset_paths.split(',')]",
             "Array of files"
         ),
         (
@@ -21,7 +21,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "Gets the home directory path. All created files must be written to this directory.",
             "str",
             vec![],
-            "return os.environ.get('HOME', '')",
+            "return os.environ.get('SHINKAI_HOME', '')",
             "Home directory path"
         ),
         (

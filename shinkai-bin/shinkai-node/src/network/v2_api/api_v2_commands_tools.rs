@@ -3,13 +3,14 @@ use crate::{
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
     tools::{
-        llm_language_support::file_support_ts::generate_file_support_ts,
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool},
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
 };
+use std::io::Read;
+
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
@@ -17,8 +18,8 @@ use serde_json::{json, Map, Value};
 
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, job::JobLike, shinkai_name::ShinkaiSubidentityType},
-    shinkai_message::shinkai_message_schemas::{JobCreationInfo, MessageSchemaType},
+    schemas::{inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType},
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
         job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
     },
@@ -32,15 +33,13 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg,
-    deno_tools::DenoTool,
-    shinkai_tool::ShinkaiTool,
-    tool_config::{BasicConfig, OAuth, ToolConfig},
+    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::{sync::Arc, time::Instant};
+use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::{Mutex, RwLock};
+use zip::{write::FileOptions, ZipWriter};
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -51,6 +50,26 @@ use std::path::PathBuf;
 use tokio::fs;
 
 impl Node {
+    /// Searches for Shinkai tools using both vector and full-text search (FTS) methods.
+    ///
+    /// The function returns a total of 10 results based on the following logic:
+    /// 1. All FTS results are added first.
+    /// 2. If there is a vector search result with a score under 0.2, it is added as the second result.
+    /// 3. Remaining FTS results are added.
+    /// 4. If there are remaining slots after adding FTS results, they are filled with additional vector search results.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - A reference-counted, read-write lock on the SqliteManager.
+    /// * `bearer` - A string representing the bearer token for authentication.
+    /// * `query` - A string containing the search query.
+    /// * `res` - A channel sender for sending the search results or errors.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure of the search operation.
+    
+    // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
@@ -62,17 +81,69 @@ impl Node {
             return Ok(());
         }
 
-        // Start the timer
+        // Sanitize the query to handle special characters
+        let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+
+        // Start the timer for logging purposes
         let start_time = Instant::now();
 
-        // Perform the internal search using SqliteManager
-        // TODO: implement something like BTS for tools
-        match db.read().await.tool_vector_search(&query, 5, false, true).await {
-            Ok(tools) => {
-                let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
+        // Start the timer for vector search
+        let vector_start_time = Instant::now();
+        let vector_search_result = db
+            .read()
+            .await
+            .tool_vector_search(&sanitized_query, 5, false, true)
+            .await;
+        let vector_elapsed_time = vector_start_time.elapsed();
+        println!("Time taken for vector search: {:?}", vector_elapsed_time);
+
+        // Start the timer for FTS search
+        let fts_start_time = Instant::now();
+        let fts_search_result = db.read().await.search_tools_fts(&sanitized_query);
+        let fts_elapsed_time = fts_start_time.elapsed();
+        println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        match (vector_search_result, fts_search_result) {
+            (Ok(vector_tools), Ok(fts_tools)) => {
+                let mut combined_tools = Vec::new();
+                let mut seen_ids = std::collections::HashSet::new();
+
+                // Always add the first FTS result
+                if let Some(first_fts_tool) = fts_tools.first() {
+                    if seen_ids.insert(first_fts_tool.tool_router_key.clone()) {
+                        combined_tools.push(first_fts_tool.clone());
+                    }
+                }
+
+                // Check if the top vector search result has a score under 0.2
+                if let Some((tool, score)) = vector_tools.first() {
+                    if *score < 0.2 {
+                        if seen_ids.insert(tool.tool_router_key.clone()) {
+                            combined_tools.push(tool.clone());
+                        }
+                    }
+                }
+
+                // Add remaining FTS results
+                for tool in fts_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Add remaining vector search results
+                for (tool, _) in vector_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Serialize the combined results to JSON
+                let tools_json = serde_json::to_value(combined_tools).map_err(|err| NodeError {
                     message: format!("Failed to serialize tools: {}", err),
                 })?;
-                // Log the elapsed time if LOG_ALL is set to 1
+
+                // Log the elapsed time and result count if LOG_ALL is set to 1
                 if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
                     let elapsed_time = start_time.elapsed();
                     let result_count = tools_json.as_array().map_or(0, |arr| arr.len());
@@ -82,7 +153,7 @@ impl Node {
                 let _ = res.send(Ok(tools_json)).await;
                 Ok(())
             }
-            Err(err) => {
+            (Err(err), _) | (_, Err(err)) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
@@ -844,6 +915,7 @@ impl Node {
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
+        post_check: bool,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
@@ -876,7 +948,7 @@ impl Node {
         // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
-            false => match generate_code_prompt(language, is_memory_required, prompt, tool_definitions).await {
+            false => match generate_code_prompt(language.clone(), is_memory_required, prompt, tool_definitions).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {
@@ -890,11 +962,26 @@ impl Node {
             },
         };
 
+        // Disable tools for this job
+        if let Err(err) = Self::disable_tools_for_job(db.clone(), bearer.clone(), job_message.job_id.clone()).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: err,
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
         // We copy the job message and update the content with the custom prompt
         let mut job_message_clone = job_message.clone();
         job_message_clone.content = generate_code_prompt;
 
-        // Send the job message
+        if post_check {
+            let callback_action = CallbackAction::ImplementationCheck(language.to_dynamic_tool_type().unwrap(), tools.clone());
+            job_message_clone.callback = Some(Box::new(callback_action));
+        }
+
         Node::v2_job_message(
             db,
             node_name_clone,
@@ -915,7 +1002,7 @@ impl Node {
         job_id: String,
         language: CodeLanguage,
         tools: Vec<String>,
-        db_clone: Arc<RwLock<SqliteManager>>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -924,15 +1011,12 @@ impl Node {
         signing_secret_key_clone: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
-        if Self::validate_bearer_token(&bearer, db_clone.clone(), &res)
-            .await
-            .is_err()
-        {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
         // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
-        let job = match db_clone.read().await.get_job_with_options(&job_id, true, true) {
+        let job = match db.read().await.get_job_with_options(&job_id, true, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -945,9 +1029,20 @@ impl Node {
             }
         };
 
+        // Disable tools for this job
+        if let Err(err) = Self::disable_tools_for_job(db.clone(), bearer.clone(), job_id.clone()).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: err,
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
         let last_message = {
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
-            let messages = match db_clone
+            let messages = match db
                 .read()
                 .await
                 .get_last_messages_from_inbox(inbox_name.to_string(), 2, None)
@@ -1022,7 +1117,7 @@ impl Node {
             job_creation_info,
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
-            db_clone,
+            db,
             node_name_clone,
             identity_manager_clone,
             job_manager_clone,
@@ -1244,8 +1339,6 @@ impl Node {
             content: format!("<input_command>Update the code to: {}</input_command>", code),
             files_inbox: "".to_string(),
             parent: None,
-            workflow_code: None,
-            workflow_name: None,
             sheet_job_data: None,
             callback: None,
             metadata: None,
@@ -1331,6 +1424,170 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_export_tool(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let sqlite_manager_read = db.read().await;
+        match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
+            Ok(tool) => {
+                let tool_bytes = serde_json::to_vec(&tool).unwrap();
+
+                let name = format!("{}.zip", tool.tool_router_key().replace(':', "_"));
+                let path = Path::new(&name);
+                let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
+
+                let mut zip = ZipWriter::new(file);
+
+                // TODO Add Assets to the zip file
+                zip.start_file::<_, ()>("tool.json", FileOptions::default())
+                    .map_err(|e| NodeError::from(e.to_string()))?;
+                zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
+                zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
+
+                println!("Zip file created successfully!");
+                let file_bytes = fs::read(&path).await?;
+                // Delete the zip file after reading it
+                fs::remove_file(&path)
+                    .await
+                    .map_err(|e| NodeError::from(e.to_string()))?;
+                let _ = res.send(Ok(file_bytes)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to export tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_import_tool(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let result = Self::v2_api_import_tool_internal(db, url).await;
+        match result {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+            }
+        }
+        Ok(())
+    }
+
+    async fn v2_api_import_tool_internal(db: Arc<RwLock<SqliteManager>>, url: String) -> Result<Value, APIError> {
+        // Download the zip file
+        let response = match reqwest::get(&url).await {
+            Ok(response) => response,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Download Failed".to_string(),
+                    message: format!("Failed to download tool from URL: {}", err),
+                });
+            }
+        };
+
+        // Get the bytes from the response
+        let bytes = match response.bytes().await {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Download Failed".to_string(),
+                    message: format!("Failed to read response bytes: {}", err),
+                });
+            }
+        };
+
+        // Create a cursor from the bytes
+        let cursor = std::io::Cursor::new(bytes);
+
+        // Create a zip archive from the cursor
+        let mut archive = match zip::ZipArchive::new(cursor) {
+            Ok(archive) => archive,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Zip File".to_string(),
+                    message: format!("Failed to read zip archive: {}", err),
+                });
+            }
+        };
+
+        // Extract and parse tool.json
+        let mut buffer = Vec::new();
+        {
+            let mut tool_file = match archive.by_name("tool.json") {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Tool Archive".to_string(),
+                        message: "Archive does not contain tool.json".to_string(),
+                    });
+                }
+            };
+
+            // Read the tool file contents into a buffer
+            if let Err(err) = tool_file.read_to_end(&mut buffer) {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Read Error".to_string(),
+                    message: format!("Failed to read tool.json contents: {}", err),
+                });
+            }
+        } // `tool_file` goes out of scope here
+
+        // Parse the JSON into a ShinkaiTool
+        let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
+            Ok(tool) => tool,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to parse tool.json: {}", err),
+                });
+            }
+        };
+
+        // Save the tool to the database
+        let mut db_write = db.write().await;
+        match db_write.add_tool(tool).await {
+            Ok(tool) => Ok(json!({
+                "status": "success",
+                "message": "Tool imported successfully",
+                "tool_key": tool.tool_router_key(),
+                "tool": tool
+            })),
+            Err(err) => Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", err),
+            }),
+        }
+    }
+
     pub async fn v2_api_resolve_shinkai_file_protocol(
         bearer: String,
         db: Arc<RwLock<SqliteManager>>,
@@ -1356,6 +1613,7 @@ impl Node {
             return Ok(());
         }
 
+        // TODO This should be verified (?)
         let user_name = parts[2];
         let app_id = parts[3];
         let remaining_path = parts[4..].join("/");
@@ -1382,6 +1640,56 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn disable_tools_for_job(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        job_id: String,
+    ) -> Result<(), String> {
+        // Get the current job config
+        let (config_res_sender, config_res_receiver) = async_channel::bounded(1);
+
+        let _ = Node::v2_api_get_job_config(db.clone(), bearer.clone(), job_id.clone(), config_res_sender).await;
+
+        let current_config = match config_res_receiver.recv().await {
+            Ok(Ok(config)) => config,
+            Ok(Err(api_error)) => {
+                return Err(format!("API error while getting job config: {}", api_error.message));
+            }
+            Err(err) => {
+                return Err(format!("Failed to receive job config: {}", err));
+            }
+        };
+
+        // Update the config to disable tools
+        let new_config = JobConfig {
+            use_tools: Some(false),
+            ..current_config
+        };
+
+        // if new_config.use_tools is already false, don't update the config
+        if !new_config.use_tools.unwrap_or(true) {
+            return Ok(());
+        }
+
+        // Update the job config
+        let (update_res_sender, update_res_receiver) = async_channel::bounded(1);
+
+        let _ = Node::v2_api_update_job_config(
+            db.clone(),
+            bearer.clone(),
+            job_id.clone(),
+            new_config,
+            update_res_sender,
+        )
+        .await;
+
+        match update_res_receiver.recv().await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(api_error)) => Err(format!("API error while updating job config: {}", api_error.message)),
+            Err(err) => Err(format!("Failed to update job config: {}", err)),
+        }
     }
 }
 

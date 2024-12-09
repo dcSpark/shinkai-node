@@ -6806,6 +6806,7 @@ dependencies = [
  "uuid 1.11.0",
  "warp",
  "x25519-dalek",
+ "zip 2.2.1",
 ]
 
 [[package]]
@@ -6847,6 +6848,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "hex",
+ "keyphrases",
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",
@@ -6903,9 +6905,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.0"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dee5241f4e695c19900aaa5c7df43d6d6c0ca7308254227be0d23fb795bd3be4"
+checksum = "5cdd6a07398a55b4e527b3d6c31b44a07f5abf9cc2bea009ae163deb21ca9835"
 dependencies = [
  "anyhow",
  "base64-simd",
@@ -6930,7 +6932,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-util",
- "zip 2.2.0",
+ "zip 2.2.1",
 ]
 
 [[package]]
@@ -9041,9 +9043,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "2.2.0"
+version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc5e4288ea4057ae23afc69a4472434a87a2495cafce6632fd1c4ec9f5cf3494"
+checksum = "99d52293fc86ea7cf13971b3bb81eb21683636e7ae24c729cdaf1b7c4157a352"
 dependencies = [
  "aes",
  "arbitrary",
@@ -9061,7 +9063,7 @@ dependencies = [
  "pbkdf2 0.12.2",
  "rand 0.8.5",
  "sha1",
- "thiserror 1.0.69",
+ "thiserror 2.0.3",
  "time",
  "zeroize",
  "zopfli",

@@ -110,11 +110,12 @@ pub async fn execute_custom_tool(
         )),
     };
     let text_result = format!("{:?}", result);
-    if text_result.len() > 200 {
+    if text_result.chars().count() > 200 {
+        let start = text_result.chars().take(100).collect::<String>();
+        let end = text_result.chars().rev().take(100).collect::<String>().chars().rev().collect::<String>();
         println!(
             "[executing_rust_tool] result: {}...{}",
-            &text_result[..100],
-            &text_result[text_result.len() - 100..]
+            start, end
         );
     } else {
         println!("[executing_rust_tool] result: {}", text_result);

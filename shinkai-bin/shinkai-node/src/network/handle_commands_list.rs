@@ -1826,6 +1826,35 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiTestLlmProvider { bearer, provider, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone();
+                let identity_secret_key_clone = self.identity_secret_key.clone();
+                let ws_manager_trait = self.ws_manager_trait.clone();
+                let node_encryption_sk_clone = self.encryption_secret_key.clone();
+                let node_encryption_pk_clone = self.encryption_public_key.clone();
+                let node_signing_sk_clone = self.identity_secret_key.clone();
+                let node_name_clone = self.node_name.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_test_llm_provider(
+                        db_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        identity_secret_key_clone,
+                        bearer,
+                        provider,
+                        node_name_clone,
+                        node_encryption_sk_clone,
+                        node_encryption_pk_clone,
+                        node_signing_sk_clone,
+                        ws_manager_trait,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiChangeJobLlmProvider { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
@@ -2456,6 +2485,7 @@ impl Node {
                 message,
                 language,
                 tools,
+                post_check,
                 raw,
                 res,
             } => {
@@ -2480,6 +2510,7 @@ impl Node {
                         encryption_secret_key_clone,
                         encryption_public_key_clone,
                         signing_secret_key_clone,
+                        post_check,
                         raw,
                         res,
                     )
@@ -2524,6 +2555,22 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiExportTool {
+                bearer,
+                tool_key_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_export_tool(db_clone, bearer, tool_key_path, res).await;
+                });
+            }
+            NodeCommand::V2ApiImportTool { bearer, url, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, url, res).await;
                 });
             }
             NodeCommand::V2ApiResolveShinkaiFileProtocol {
