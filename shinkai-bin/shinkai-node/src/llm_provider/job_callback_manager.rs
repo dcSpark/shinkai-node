@@ -103,6 +103,11 @@ impl JobCallbackManager {
         )
         .await?;
 
+        // Return early if result is empty
+        if result.is_empty() {
+            return Ok(());
+        }
+
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
         let error_message = format!("Code implementation check failed: {:?}", result);
 
@@ -126,7 +131,7 @@ impl JobCallbackManager {
         };
 
         if let Some(job_manager) = job_manager {
-            let result = Node::internal_job_message(job_manager, shinkai_message.clone()).await;
+            let _result = Node::internal_job_message(job_manager, shinkai_message.clone()).await;
         } else {
             eprintln!("Job manager is not set in JobCallbackManager");
         }
