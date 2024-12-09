@@ -1056,4 +1056,9 @@ pub enum NodeCommand {
         cron_task_id: i64,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiTestLlmProvider {
+        bearer: String,
+        provider: SerializedLLMProvider,
+        res: Sender<Result<String, APIError>>,
+    },
 }

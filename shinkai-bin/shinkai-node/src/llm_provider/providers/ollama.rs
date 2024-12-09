@@ -8,7 +8,6 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Prom
 use super::super::error::LLMProviderError;
 use super::LLMService;
 use async_trait::async_trait;
-use chrono::Utc;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json;
@@ -25,8 +24,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopi
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
 use std::error::Error;
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -70,7 +67,6 @@ impl LLMService for Ollama {
 
             let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
             let messages_result = ollama_conversation_prepare_messages_with_tooling(&model, prompt)?;
-            eprintln!("messages_result: {:?}", messages_result);
 
             let messages_json = match messages_result.messages {
                 PromptResultEnum::Value(v) => v,
