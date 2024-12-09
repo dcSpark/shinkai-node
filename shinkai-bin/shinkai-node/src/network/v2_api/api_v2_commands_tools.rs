@@ -742,6 +742,7 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
         tools: Vec<String>,
+        code: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -780,7 +781,7 @@ impl Node {
             };
 
         let metadata_prompt =
-            match tool_metadata_implementation_prompt(language.clone(), "".to_string(), tools.clone()).await {
+            match tool_metadata_implementation_prompt(language.clone(), code.clone(), tools.clone()).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {

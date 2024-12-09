@@ -868,12 +868,18 @@ pub async fn get_tool_implementation_prompt_handler(
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
         .unwrap_or_default();
 
+    let code = query_params
+        .get("code")
+        .map_or("", |v| v)  
+        .to_string();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGenerateToolFetchQuery {
             bearer,
             language: language.unwrap(),
             tools,
+            code,
             res: res_sender,
         })
         .await

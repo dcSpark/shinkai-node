@@ -2442,12 +2442,13 @@ impl Node {
                 bearer,
                 language,
                 tools,
+                code,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
 
                 tokio::spawn(async move {
-                    let _ = Node::generate_tool_fetch_query(bearer, db_clone, language, tools, res).await;
+                    let _ = Node::generate_tool_fetch_query(bearer, db_clone, language, tools, code, res).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolImplementation {
