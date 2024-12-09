@@ -17,7 +17,6 @@ use shinkai_message_primitives::{
         shinkai_message::{NodeApiData, ShinkaiMessage},
         shinkai_message_schemas::WSTopic,
     },
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use tokio::sync::Mutex;

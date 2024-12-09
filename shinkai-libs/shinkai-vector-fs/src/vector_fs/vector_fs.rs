@@ -3,15 +3,17 @@ use super::vector_fs_internals::VectorFSInternals;
 use crate::welcome_files::shinkai_faq::SHINKAI_FAQ_VRKAI;
 use crate::welcome_files::shinkai_whitepaper::SHINKAI_WHITEPAPER_VRKAI;
 
+use super::vector_fs_error::VectorFSError;
 use super::vector_fs_reader::VFSReader;
 use super::vector_fs_writer::VFSWriter;
-use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
 use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Struct that wraps all functionality of the VectorFS.
@@ -21,7 +23,7 @@ use tokio::sync::RwLock;
 pub struct VectorFS {
     pub node_name: ShinkaiName,
     pub internals_map: RwLock<HashMap<ShinkaiName, VectorFSInternals>>,
-    pub db: VectorFSDB,
+    pub db: Arc<RwLock<SqliteManager>>,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
     /// to prevent locking for long periods of time. (If VR with unsupported model is tried to be added to FS, should error, and regeneration happens externally)
@@ -36,16 +38,24 @@ impl VectorFS {
         embedding_generator: RemoteEmbeddingGenerator,
         supported_embedding_models: Vec<EmbeddingModelType>,
         profile_list: Vec<ShinkaiName>,
-        db_path: &str,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
     ) -> Result<Self, VectorFSError> {
-        let fs_db = VectorFSDB::new(db_path)?;
-
         // Read each existing profile's fs internals from fsdb
         let mut internals_map = HashMap::new();
         for profile in &profile_list {
-            match fs_db.get_profile_fs_internals(profile) {
+            match db.read().await.get_profile_fs_internals(profile) {
                 Ok(internals) => {
+                    let internals = VectorFSInternals {
+                        fs_core_resource: internals.0,
+                        permissions_index: serde_json::from_slice(&internals.1)
+                            .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+                        subscription_index: serde_json::from_slice(&internals.2)
+                            .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+                        supported_embedding_models: internals.3,
+                        last_read_index: serde_json::from_slice(&internals.4)
+                            .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+                    };
                     internals_map.insert(profile.clone(), internals);
                 }
                 _ => continue,
@@ -58,7 +68,7 @@ impl VectorFS {
         let default_embedding_model = embedding_generator.model_type().clone();
         let vector_fs = Self {
             internals_map,
-            db: fs_db,
+            db,
             embedding_generator,
             node_name: node_name.clone(),
         };
@@ -75,18 +85,6 @@ impl VectorFS {
             .await?;
 
         Ok(vector_fs)
-    }
-
-    /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.
-    /// Simply creates a barebones struct to be used to satisfy required types.
-    pub fn new_empty() -> Result<Self, VectorFSError> {
-        let db = VectorFSDB::new_empty()?;
-        Ok(Self {
-            internals_map: RwLock::new(HashMap::new()),
-            db,
-            embedding_generator: RemoteEmbeddingGenerator::new_default(),
-            node_name: ShinkaiName::from_node_name("@@node1.shinkai".to_string()).unwrap(),
-        })
     }
 
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
@@ -120,10 +118,16 @@ impl VectorFS {
         supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
         self._validate_node_action_permission(requester_name, &format!("Failed initializing profile {}.", profile))?;
-        self.db
-            .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)
-            .await?;
-        let internals = self.db.get_profile_fs_internals(&profile)?;
+
+        if let Err(_) = self.get_profile_fs_internals(&profile).await {
+            // Extract just the node name from the profile name
+            let fs_internals =
+                VectorFSInternals::new(profile.clone(), default_embedding_model, supported_embedding_models).await;
+
+            self.save_profile_fs_internals(fs_internals, &profile).await?;
+        }
+
+        let internals = self.get_profile_fs_internals(&profile).await?;
 
         // Acquire a write lock to modify internals_map
         let mut internals_map = self.internals_map.write().await;
@@ -205,7 +209,7 @@ impl VectorFS {
         .await?;
 
         // Fetch the last saved state of the profile fs internals from the database
-        let internals = self.db.get_profile_fs_internals(profile)?;
+        let internals = self.get_profile_fs_internals(profile).await?;
 
         // Acquire a write lock asynchronously to modify internals_map
         let mut internals_map = self.internals_map.write().await;
@@ -231,34 +235,8 @@ impl VectorFS {
         if let Some(fs_internals) = internals_map.get_mut(profile) {
             fs_internals.supported_embedding_models = supported_models;
             // Assuming save_profile_fs_internals is async, you need to await it
-            self.db.save_profile_fs_internals(fs_internals, profile)?;
+            self.save_profile_fs_internals(fs_internals.clone(), profile).await?;
         }
-        Ok(())
-    }
-
-    /// Sets the supported embedding models for all profiles
-    pub async fn set_all_profiles_supported_models(
-        &self,
-        requester_name: &ShinkaiName,
-        supported_models: Vec<EmbeddingModelType>,
-    ) -> Result<(), VectorFSError> {
-        // Assuming _validate_node_action_permission is async, you need to await it
-        self._validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
-
-        // Acquire a read lock to safely access the keys
-        let internals_map = self.internals_map.read().await;
-
-        // Collect the keys to avoid holding the lock while awaiting in the loop
-        let profiles = internals_map.keys().cloned().collect::<Vec<ShinkaiName>>();
-        drop(internals_map); // Explicitly drop the lock
-
-        // Iterate over profiles and set supported models for each
-        for profile in profiles {
-            // Since set_profile_supported_models is async, you need to await it
-            self.set_profile_supported_models(requester_name, &profile, supported_models.clone())
-                .await?;
-        }
-
         Ok(())
     }
 
@@ -369,5 +347,43 @@ impl VectorFS {
             profile.clone()
         );
         internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
+    }
+
+    pub async fn save_profile_fs_internals(
+        &self,
+        fs_internals: VectorFSInternals,
+        profile: &ShinkaiName,
+    ) -> Result<(), VectorFSError> {
+        self.db
+            .write()
+            .await
+            .save_profile_fs_internals(
+                profile,
+                fs_internals.fs_core_resource,
+                serde_json::to_vec(&fs_internals.permissions_index)
+                    .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+                serde_json::to_vec(&fs_internals.subscription_index)
+                    .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+                fs_internals.supported_embedding_models,
+                serde_json::to_vec(&fs_internals.last_read_index)
+                    .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+            )
+            .map_err(|e| VectorFSError::SqliteManagerError(e))
+    }
+
+    pub async fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<VectorFSInternals, VectorFSError> {
+        let (core_resource, permissions_index, subscription_index, supported_embedding_models, last_read_index) =
+            self.db.read().await.get_profile_fs_internals(profile)?;
+
+        Ok(VectorFSInternals {
+            fs_core_resource: core_resource,
+            permissions_index: serde_json::from_slice(&permissions_index)
+                .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+            subscription_index: serde_json::from_slice(&subscription_index)
+                .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+            supported_embedding_models,
+            last_read_index: serde_json::from_slice(&last_read_index)
+                .map_err(|e| VectorFSError::DataConversionError(e.to_string()))?,
+        })
     }
 }

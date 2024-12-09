@@ -3,12 +3,14 @@ use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_vector_resources::{model_type::EmbeddingModelType, resource_errors::VRError, vector_resource::VRPath};
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]
 pub enum VectorFSError {
     ShinkaiNameError(ShinkaiNameError),
+    SqliteManagerError(SqliteManagerError),
     RocksDBError(rocksdb::Error),
     IOError(io::Error),
     InvalidIdentityType(String),
@@ -55,6 +57,7 @@ pub enum VectorFSError {
 impl fmt::Display for VectorFSError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            VectorFSError::SqliteManagerError(e) => write!(f, "SqliteManager error: {}", e),
             VectorFSError::RocksDBError(e) => write!(f, "RocksDB error: {}", e),
             VectorFSError::SomeError(e) => write!(f, "Some error: {}", e),
             VectorFSError::ShinkaiNameLacksProfile => write!(
@@ -161,6 +164,7 @@ impl fmt::Display for VectorFSError {
 impl std::error::Error for VectorFSError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            VectorFSError::SqliteManagerError(e) => Some(e),
             VectorFSError::RocksDBError(e) => Some(e),
             VectorFSError::JsonSerializationError(e) => Some(e),
             VectorFSError::IOError(e) => Some(e),
@@ -181,6 +185,9 @@ impl PartialEq for VectorFSError {
             (VectorFSError::ColumnFamilyNotFound(msg1), VectorFSError::ColumnFamilyNotFound(msg2)) => msg1 == msg2,
             (VectorFSError::DataConversionError(msg1), VectorFSError::DataConversionError(msg2)) => msg1 == msg2,
             (VectorFSError::IOError(e1), VectorFSError::IOError(e2)) => e1.to_string() == e2.to_string(),
+            (VectorFSError::SqliteManagerError(e1), VectorFSError::SqliteManagerError(e2)) => {
+                e1.to_string() == e2.to_string()
+            }
             (VectorFSError::RocksDBError(e1), VectorFSError::RocksDBError(e2)) => e1.to_string() == e2.to_string(),
             (VectorFSError::Utf8ConversionError, VectorFSError::Utf8ConversionError) => true,
             (VectorFSError::JsonSerializationError(e1), VectorFSError::JsonSerializationError(e2)) => {
@@ -199,6 +206,12 @@ impl PartialEq for VectorFSError {
 impl From<VRError> for VectorFSError {
     fn from(err: VRError) -> VectorFSError {
         VectorFSError::VRError(err)
+    }
+}
+
+impl From<SqliteManagerError> for VectorFSError {
+    fn from(error: SqliteManagerError) -> Self {
+        VectorFSError::SqliteManagerError(error)
     }
 }
 
