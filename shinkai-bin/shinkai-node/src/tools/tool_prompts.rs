@@ -300,7 +300,7 @@ pub async fn tool_metadata_implementation_prompt(
         "additionalProperties": {{
           "type": "boolean"
         }}
-        "oauth2": {{
+        "oauth": {{
           "type": "array",
           "description": "A list of OAuth integrations",
           "items": {{
@@ -591,7 +591,7 @@ pub async fn tool_metadata_implementation_prompt(
       }}
     ],
     "tools": [],
-    "oauth2": {oauth_example}
+    "oauth": {oauth_example}
   }};
   ```
 </agent_metadata_examples>
