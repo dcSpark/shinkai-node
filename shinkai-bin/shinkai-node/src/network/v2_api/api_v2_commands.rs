@@ -1366,7 +1366,7 @@ impl Node {
         node_encryption_pk: EncryptionPublicKey,
         _node_signing_sk: SigningKey,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -1457,7 +1457,11 @@ impl Node {
                         let timeout_duration = Duration::from_secs(60); // Set a timeout duration
                         match Self::check_job_response(db.clone(), job_id.clone(), "dogcat", timeout_duration).await {
                             Ok(_) => {
-                                let _ = res.send(Ok("LLM provider tested successfully".to_string())).await;
+                                let response = serde_json::json!({
+                                    "message": "LLM provider tested successfully",
+                                    "status": "success"
+                                });
+                                let _ = res.send(Ok(response)).await;
                                 Ok(())
                             }
                             Err(err) => {

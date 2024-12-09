@@ -1059,6 +1059,6 @@ pub enum NodeCommand {
     V2ApiTestLlmProvider {
         bearer: String,
         provider: SerializedLLMProvider,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     },
 }
