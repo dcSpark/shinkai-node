@@ -934,7 +934,8 @@ pub enum NodeCommand {
         tool_id: String,
         app_id: String,
         llm_provider: String,
-        extra_config: Vec<Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -943,7 +944,8 @@ pub enum NodeCommand {
         tools: Vec<String>,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
-        extra_config: Vec<Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -1012,6 +1014,21 @@ pub enum NodeCommand {
         job_id: String,
         code: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExportTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiImportTool {
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiResolveShinkaiFileProtocol {
+        bearer: String,
+        shinkai_file_protocol: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
     },
     V2ApiAddCronTask {
         bearer: String,

@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
     coinbase_mpc_config::CoinbaseMPCWalletConfig,
+    shinkai_name::ShinkaiName,
     wallet_complementary::{WalletRole, WalletSource},
     wallet_mixed::{Network, NetworkIdentifier},
 };
@@ -198,6 +199,7 @@ impl Node {
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
         role: WalletRole,
+        node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -220,7 +222,7 @@ impl Node {
         // Logic to restore Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let restored_wallet_manager =
-            WalletManager::recover_coinbase_mpc_wallet_manager(network, db.clone(), config, wallet_id).await;
+            WalletManager::recover_coinbase_mpc_wallet_manager(network, db.clone(), config, wallet_id, node_name).await;
 
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
@@ -295,6 +297,7 @@ impl Node {
         network_identifier: NetworkIdentifier,
         config: Option<CoinbaseMPCWalletConfig>,
         role: WalletRole,
+        node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -307,7 +310,7 @@ impl Node {
         // Logic to create Coinbase MPC wallet
         let network = Network::new(network_identifier);
         let created_wallet_manager =
-            WalletManager::create_coinbase_mpc_wallet_manager(network, db.clone(), config).await;
+            WalletManager::create_coinbase_mpc_wallet_manager(network, db.clone(), config, node_name).await;
 
         match created_wallet_manager {
             Ok(new_wallet_manager) => {

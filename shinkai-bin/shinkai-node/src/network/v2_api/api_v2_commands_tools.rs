@@ -10,6 +10,8 @@ use crate::{
         tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
 };
+use std::io::Read;
+
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
@@ -32,17 +34,24 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    argument::ToolOutputArg,
+    deno_tools::DenoTool,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{BasicConfig, OAuth, ToolConfig},
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::{sync::Arc, time::Instant};
+use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::{Mutex, RwLock};
+use zip::{write::FileOptions, ZipWriter};
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use chrono::Utc;
+
+use std::path::PathBuf;
+use tokio::fs;
 
 impl Node {
     pub async fn v2_api_search_shinkai_tool(
@@ -584,10 +593,14 @@ impl Node {
         }
 
         let definitions = generate_tool_definitions(tools, language, db, false).await;
-
         match definitions {
             Ok(definitions) => {
-                let _ = res.send(Ok(Value::String(definitions))).await;
+                let mut map: Map<String, Value> = Map::new();
+                definitions.into_iter().for_each(|(key, value)| {
+                    map.insert(key, Value::String(value));
+                });
+
+                let _ = res.send(Ok(Value::Object(map))).await;
             }
             Err(e) => {
                 let _ = res.send(Err(e)).await;
@@ -606,7 +619,8 @@ impl Node {
         tool_id: String,
         app_id: String,
         llm_provider: String,
-        extra_config: Vec<Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -618,24 +632,11 @@ impl Node {
             return Ok(());
         }
 
-        // Convert extra_config to Vec<ToolConfig>
-        let tool_configs: Vec<ToolConfig> = match extra_config
-            .into_iter()
-            .map(|value| {
-                serde_json::from_value(value).map_err(|e| APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert extra config to ToolConfig: {}", e),
-                })
-            })
-            .collect::<Result<_, _>>()
-        {
-            Ok(configs) => configs,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
+        let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
+
+        // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
+        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
 
         // Execute the tool directly
         let result = execute_tool(
@@ -649,6 +650,7 @@ impl Node {
             app_id,
             llm_provider,
             tool_configs,
+            oauth_configs,
             identity_manager,
             job_manager,
             encryption_secret_key,
@@ -684,34 +686,23 @@ impl Node {
         code: String,
         tools: Vec<String>,
         parameters: Map<String, Value>,
-        extra_config: Vec<Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
+        node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        // Convert extra_config to Vec<ToolConfig>
-        let tool_configs: Vec<ToolConfig> = match extra_config
-            .into_iter()
-            .map(|value| {
-                serde_json::from_value(value).map_err(|e| APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert extra config to ToolConfig: {}", e),
-                })
-            })
-            .collect::<Result<_, _>>()
-        {
-            Ok(configs) => configs,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
+        let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
+
+        // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
+        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
 
         // Execute the tool directly
         let result = execute_code(
@@ -720,11 +711,13 @@ impl Node {
             tools,
             parameters,
             tool_configs,
+            oauth_configs,
             db,
             tool_id,
             app_id,
             llm_provider,
             bearer,
+            node_name,
         )
         .await;
 
@@ -836,8 +829,6 @@ impl Node {
                 "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
                 "metadataPrompt": metadata_prompt.clone(),
-                "supportLibraryHeaders": generate_file_support_ts(true),
-                "supportLibrary": generate_file_support_ts(false),
             })))
             .await;
         Ok(())
@@ -1338,6 +1329,224 @@ impl Node {
         // Send success response
         let response = json!({ "status": "success", "message": "Code update operation successful" });
         let _ = res.send(Ok(response)).await;
+
+        Ok(())
+    }
+
+    pub async fn v2_api_export_tool(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let sqlite_manager_read = db.read().await;
+        match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
+            Ok(tool) => {
+                let tool_bytes = serde_json::to_vec(&tool).unwrap();
+
+                let name = format!("{}.zip", tool.tool_router_key().replace(':', "_"));
+                let path = Path::new(&name);
+                let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
+
+                let mut zip = ZipWriter::new(file);
+
+                // TODO Add Assets to the zip file
+                zip.start_file::<_, ()>("tool.json", FileOptions::default())
+                    .map_err(|e| NodeError::from(e.to_string()))?;
+                zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
+                zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
+
+                println!("Zip file created successfully!");
+                let file_bytes = fs::read(&path).await?;
+                // Delete the zip file after reading it
+                fs::remove_file(&path)
+                    .await
+                    .map_err(|e| NodeError::from(e.to_string()))?;
+                let _ = res.send(Ok(file_bytes)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to export tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_import_tool(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let result = Self::v2_api_import_tool_internal(db, url).await;
+        match result {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+            }
+        }
+        Ok(())
+    }
+
+    async fn v2_api_import_tool_internal(db: Arc<RwLock<SqliteManager>>, url: String) -> Result<Value, APIError> {
+        // Download the zip file
+        let response = match reqwest::get(&url).await {
+            Ok(response) => response,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Download Failed".to_string(),
+                    message: format!("Failed to download tool from URL: {}", err),
+                });
+            }
+        };
+
+        // Get the bytes from the response
+        let bytes = match response.bytes().await {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Download Failed".to_string(),
+                    message: format!("Failed to read response bytes: {}", err),
+                });
+            }
+        };
+
+        // Create a cursor from the bytes
+        let cursor = std::io::Cursor::new(bytes);
+
+        // Create a zip archive from the cursor
+        let mut archive = match zip::ZipArchive::new(cursor) {
+            Ok(archive) => archive,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Zip File".to_string(),
+                    message: format!("Failed to read zip archive: {}", err),
+                });
+            }
+        };
+
+        // Extract and parse tool.json
+        let mut buffer = Vec::new();
+        {
+            let mut tool_file = match archive.by_name("tool.json") {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Tool Archive".to_string(),
+                        message: "Archive does not contain tool.json".to_string(),
+                    });
+                }
+            };
+
+            // Read the tool file contents into a buffer
+            if let Err(err) = tool_file.read_to_end(&mut buffer) {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Read Error".to_string(),
+                    message: format!("Failed to read tool.json contents: {}", err),
+                });
+            }
+        } // `tool_file` goes out of scope here
+
+        // Parse the JSON into a ShinkaiTool
+        let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
+            Ok(tool) => tool,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to parse tool.json: {}", err),
+                });
+            }
+        };
+
+        // Save the tool to the database
+        let mut db_write = db.write().await;
+        match db_write.add_tool(tool).await {
+            Ok(tool) => Ok(json!({
+                "status": "success",
+                "message": "Tool imported successfully",
+                "tool_key": tool.tool_router_key(),
+                "tool": tool
+            })),
+            Err(err) => Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", err),
+            }),
+        }
+    }
+
+    pub async fn v2_api_resolve_shinkai_file_protocol(
+        bearer: String,
+        db: Arc<RwLock<SqliteManager>>,
+        shinkai_file_protocol: String,
+        node_storage_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Parse the shinkai file protocol
+        // Format: shinkai://{user_name}/{app-id}/{full-path}
+        let parts: Vec<&str> = shinkai_file_protocol.split('/').collect();
+        if parts.len() < 4 || !shinkai_file_protocol.starts_with("shinkai://") {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Invalid Protocol".to_string(),
+                message: "Invalid shinkai file protocol format".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // TODO This should be verified (?)
+        let user_name = parts[2];
+        let app_id = parts[3];
+        let remaining_path = parts[4..].join("/");
+
+        // Construct the full file path
+        let mut file_path = PathBuf::from(&node_storage_path);
+        file_path.push("tools_storage");
+        file_path.push(app_id);
+        file_path.push(&remaining_path);
+
+        // Read and return the file directly
+        match fs::read(&file_path).await {
+            Ok(contents) => {
+                let _ = res.send(Ok(contents)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "File Not Found".to_string(),
+                    message: format!("Failed to read file: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
         Ok(())
     }

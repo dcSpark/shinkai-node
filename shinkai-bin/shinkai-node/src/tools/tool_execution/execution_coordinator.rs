@@ -2,6 +2,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::execute_deno_tool;
+use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -35,6 +36,7 @@ pub async fn execute_tool(
     app_id: String,
     llm_provider: String,
     extra_config: Vec<ToolConfig>,
+    oauth: Vec<ToolConfig>,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
     encryption_secret_key: EncryptionStaticKey,
@@ -52,6 +54,7 @@ pub async fn execute_tool(
             tool_id,
             app_id,
             extra_config,
+            oauth,
             bearer,
             db,
             vector_fs,
@@ -86,7 +89,7 @@ pub async fn execute_tool(
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let header_code = generate_tool_definitions(
+                let support_files = generate_tool_definitions(
                     deno_tool.tools.clone().unwrap_or_default(),
                     CodeLanguage::Typescript,
                     db,
@@ -100,12 +103,14 @@ pub async fn execute_tool(
                         envs,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
-                        header_code,
+                        support_files,
                         parameters,
                         extra_config,
+                        oauth,
                         node_storage_path,
                         app_id.clone(),
                         tool_id.clone(),
+                        node_name,
                         true,
                     )
                     .map(|result| json!(result.data))
@@ -122,33 +127,50 @@ pub async fn execute_code(
     tools: Vec<String>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
+    oauth: Vec<ToolConfig>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
     bearer: String,
+    node_name: ShinkaiName,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
 
     // Route based on the prefix
     match tool_type {
         DynamicToolType::DenoDynamic => {
-            let header_code = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(
                 bearer.clone(),
+                node_name,
+                parameters,
+                extra_config,
+                oauth,
+                tool_id,
+                app_id,
+                llm_provider,
+                support_files,
+                code,
+            )
+        }
+        DynamicToolType::PythonDynamic => {
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, sqlite_manager, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            execute_python_tool(
+                bearer.clone(),
+                node_name,
                 parameters,
                 extra_config,
                 tool_id,
                 app_id,
                 llm_provider,
-                header_code,
+                support_files,
                 code,
             )
-        }
-        DynamicToolType::PythonDynamic => {
-            return Err(ToolError::ExecutionError("NYI Python".to_string()));
         }
     }
 }

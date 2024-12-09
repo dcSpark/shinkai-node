@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobMessage};
 use shinkai_tools_primitives::tools::{tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
 use utoipa::{OpenApi, ToSchema};
@@ -136,6 +136,27 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(tool_implementation_code_update_handler);
 
+    let resolve_shinkai_file_protocol_route = warp::path("resolve_shinkai_file_protocol")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(resolve_shinkai_file_protocol_handler);
+
+    let export_tool_route = warp::path("export_tool")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(export_tool_handler);
+
+    let import_tool_route = warp::path("import_tool")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(import_tool_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -153,6 +174,9 @@ pub fn tool_routes(
         .or(get_tool_implementation_prompt_route)
         .or(undo_to_route)
         .or(tool_implementation_code_update_route)
+        .or(resolve_shinkai_file_protocol_route)
+        .or(export_tool_route)
+        .or(import_tool_route)
 }
 
 #[utoipa::path(
@@ -222,13 +246,15 @@ pub async fn tool_definitions_handler(
 }
 
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct ToolExecutionRequest {
     pub tool_router_key: String,
     pub llm_provider: String,
     pub parameters: Value,
-    #[serde(default)]
-    pub extra_config: Vec<Value>,
+    #[serde(default = "default_map")]
+    pub extra_config: Value,
+    #[serde(default = "default_map")]
+    pub oauth: Value,
 }
 
 #[utoipa::path(
@@ -260,6 +286,24 @@ pub async fn tool_execution_handler(
         })),
     };
 
+    let oauth = match payload.oauth {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid OAuth".to_string(),
+            message: "OAuth must be an object".to_string(),
+        })),
+    };
+
+    let extra_config = match payload.extra_config {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Extra Config".to_string(),
+            message: "Extra Config must be an object".to_string(),
+        })),
+    };
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiExecuteTool {
@@ -269,7 +313,8 @@ pub async fn tool_execution_handler(
             tool_id,
             app_id,
             llm_provider: payload.llm_provider.clone(),
-            extra_config: payload.extra_config,
+            extra_config,
+            oauth,
             res: res_sender,
         })
         .await
@@ -864,15 +909,22 @@ pub async fn get_tool_implementation_prompt_handler(
     }
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct CodeExecutionRequest {
     pub tool_type: DynamicToolType,
     pub code: String,
     pub parameters: Value,
-    #[serde(default)]
-    pub extra_config: Vec<Value>,
+    #[serde(default = "default_map")]
+    pub extra_config: Value,
+    #[serde(default = "default_map")]
+    pub oauth: Value,
     pub llm_provider: String,
     pub tools: Vec<String>,
+}
+
+// Define a custom default function for oauth
+fn default_map() -> Value {
+    Value::Object(Map::new())
 }
 
 #[utoipa::path(
@@ -894,6 +946,8 @@ pub async fn code_execution_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
+    eprintln!("payload: {:?}", payload);
+
     // Convert parameters to a Map if it isn't already
     let parameters = match payload.parameters {
         Value::Object(map) => map,
@@ -901,6 +955,24 @@ pub async fn code_execution_handler(
             code: 400,
             error: "Invalid Parameters".to_string(),
             message: "Parameters must be an object".to_string(),
+        })),
+    };
+
+    let oauth = match payload.oauth {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid OAuth".to_string(),
+            message: "OAuth must be an object".to_string(),
+        })),
+    };
+
+    let extra_config = match payload.extra_config {
+        Value::Object(map) => map,
+        _ => return Err(warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Extra Config".to_string(),
+            message: "Extra Config must be an object".to_string(),
         })),
     };
 
@@ -912,7 +984,8 @@ pub async fn code_execution_handler(
             code: payload.code,
             tools: payload.tools,
             parameters,
-            extra_config: payload.extra_config,
+            extra_config,
+            oauth,
             tool_id: tool_id,
             app_id: app_id,
             llm_provider: payload.llm_provider,
@@ -1028,6 +1101,179 @@ pub async fn tool_implementation_code_update_handler(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/export_tool",
+    params(
+        ("tool_key_path" = String, Query, description = "Tool key path")
+    ),
+    responses(
+        (status = 200, description = "Exported tool", body = Vec<u8>),
+        (status = 400, description = "Invalid tool key path", body = APIError),
+    )
+)]
+pub async fn export_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let tool_key_path = query_params
+        .get("tool_key_path")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid tool key path".to_string(),
+                message: "Tool key path is required".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiExportTool {
+            bearer,
+            tool_key_path,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(file_bytes) => {
+            // Return the raw bytes with appropriate headers
+            Ok(warp::reply::with_header(
+                warp::reply::with_status(file_bytes, StatusCode::OK),
+                "Content-Type",
+                "application/octet-stream",
+            ))
+        }
+        Err(error) => Ok(warp::reply::with_header(
+            warp::reply::with_status(
+                error.message.as_bytes().to_vec(),
+                StatusCode::from_u16(error.code).unwrap()
+            ),
+            "Content-Type",
+            "text/plain",
+        ))
+    }
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ImportToolRequest {
+    pub url: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/import_tool",
+    request_body = ImportToolRequest,
+    responses(
+        (status = 200, description = "Imported tool", body = Value),
+        (status = 400, description = "Invalid URL", body = APIError),
+    )
+)]
+pub async fn import_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: ImportToolRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let url = payload.url;
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiImportTool {
+            bearer,
+            url,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+
+#[utoipa::path(
+    get,
+    path = "/v2/resolve_shinkai_file_protocol",
+    params(
+        ("file" = String, Query, description = "Shinkai file protocol")
+    ),
+    responses(
+        (status = 200, description = "Resolved shinkai file protocol", body = Vec<u8>),
+        (status = 400, description = "Invalid shinkai file protocol", body = APIError),
+    )
+)]
+pub async fn resolve_shinkai_file_protocol_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let shinkai_file_protocol = query_params
+        .get("file")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid shinkai file protocol".to_string(),
+                message: "Shinkai file protocol is required".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiResolveShinkaiFileProtocol {
+            bearer,
+            shinkai_file_protocol,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(file_bytes) => {
+            // Return the raw bytes with appropriate headers
+            Ok(warp::reply::with_header(
+                warp::reply::with_status(file_bytes, StatusCode::OK),
+                "Content-Type",
+                "application/octet-stream",
+            ))
+        }
+        Err(error) => Ok(warp::reply::with_header(
+            warp::reply::with_status(
+                error.message.as_bytes().to_vec(),
+                StatusCode::from_u16(error.code).unwrap()
+            ),
+            "Content-Type",
+            "text/plain",
+        ))
     }
 }
 

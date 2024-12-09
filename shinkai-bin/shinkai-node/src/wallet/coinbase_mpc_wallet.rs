@@ -4,10 +4,10 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
-use shinkai_tools_runner::tools::tool::Tool;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -93,6 +93,7 @@ impl CoinbaseMPCWallet {
         network: Network,
         sqlite_manager: Weak<RwLock<SqliteManager>>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
+        node_name: ShinkaiName,
     ) -> Result<Self, WalletError> {
         let sqlite_manager_strong = sqlite_manager.upgrade().ok_or(WalletError::ConfigNotFound)?;
         let mut config = match config {
@@ -151,6 +152,7 @@ impl CoinbaseMPCWallet {
             sqlite_manager.clone(),
             ShinkaiToolCoinbase::CreateWallet,
             params,
+            node_name,
         )
         .await?;
 
@@ -191,6 +193,7 @@ impl CoinbaseMPCWallet {
         sqlite_manager: Weak<RwLock<SqliteManager>>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
+        node_name: ShinkaiName,
     ) -> Result<Self, WalletError> {
         let sqlite_manager_strong = sqlite_manager
             .upgrade()
@@ -248,6 +251,7 @@ impl CoinbaseMPCWallet {
             sqlite_manager.clone(),
             ShinkaiToolCoinbase::GetMyAddress,
             params,
+            node_name,
         )
         .await
         {
@@ -288,6 +292,7 @@ impl CoinbaseMPCWallet {
         sqlite_manager: Weak<RwLock<SqliteManager>>,
         function_name: ShinkaiToolCoinbase,
         params: serde_json::Map<String, Value>,
+        node_name: ShinkaiName,
     ) -> Result<Value, WalletError> {
         let sqlite_manager_strong = sqlite_manager
             .upgrade()
@@ -321,19 +326,20 @@ impl CoinbaseMPCWallet {
                 .ok_or_else(|| WalletError::FunctionExecutionError("Node storage path is not set".to_string()))?;
             let app_id = format!("coinbase_{}", uuid::Uuid::new_v4());
             let tool_id = js_tool.name.clone();
-            let header_code = "";
-
+            let support_files = HashMap::new();
             let result = js_tool
                 .run(
                     HashMap::new(), // Note: we don't need envs for this function - as it doesn't call other tools
                     node_env.api_listen_address.ip().to_string(),
                     node_env.api_listen_address.port(),
-                    header_code.to_string(),
+                    support_files,
                     params,
                     tool_configs,
+                    vec![],
                     node_storage_path,
                     app_id,
                     tool_id,
+                    node_name,
                     false,
                 )
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
@@ -371,7 +377,10 @@ impl CommonActions for CoinbaseMPCWallet {
         self.address.clone()
     }
 
-    fn get_balance(&self) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
+    fn get_balance(
+        &self,
+        node_name: ShinkaiName,
+    ) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
@@ -390,9 +399,14 @@ impl CommonActions for CoinbaseMPCWallet {
             .unwrap()
             .to_owned();
 
-            let response =
-                CoinbaseMPCWallet::call_function(config, sqlite_manager, ShinkaiToolCoinbase::GetBalance, params)
-                    .await?;
+            let response = CoinbaseMPCWallet::call_function(
+                config,
+                sqlite_manager,
+                ShinkaiToolCoinbase::GetBalance,
+                params,
+                node_name,
+            )
+            .await?;
 
             let balance_str = response
                 .get("balance")
@@ -408,6 +422,7 @@ impl CommonActions for CoinbaseMPCWallet {
 
     fn check_balances(
         &self,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
         let network_id = self.network.id.clone();
@@ -434,6 +449,7 @@ impl CommonActions for CoinbaseMPCWallet {
                 sqlite_manager,
                 ShinkaiToolCoinbase::GetBalance,
                 params,
+                node_name,
             )
             .await?;
 
@@ -503,6 +519,7 @@ impl CommonActions for CoinbaseMPCWallet {
         &self,
         public_address: PublicAddress,
         asset: Asset,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
         let sqlite_manager = match self.sqlite_manager.clone() {
@@ -529,6 +546,7 @@ impl CommonActions for CoinbaseMPCWallet {
                 sqlite_manager.clone(),
                 ShinkaiToolCoinbase::GetBalance,
                 params,
+                node_name,
             )
             .await?;
 
@@ -581,6 +599,7 @@ impl SendActions for CoinbaseMPCWallet {
         token: Option<Asset>,
         send_amount: String,
         _invoice_id: String,
+        node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send + 'static>> {
         let send_amount_bd = BigDecimal::from_str(&send_amount);
         let send_amount_bd = match send_amount_bd {
@@ -617,8 +636,14 @@ impl SendActions for CoinbaseMPCWallet {
             .unwrap()
             .to_owned();
 
-            let response =
-                CoinbaseMPCWallet::call_function(config, sqlite_manager, ShinkaiToolCoinbase::SendTx, params).await?;
+            let response = CoinbaseMPCWallet::call_function(
+                config,
+                sqlite_manager,
+                ShinkaiToolCoinbase::SendTx,
+                params,
+                node_name,
+            )
+            .await?;
 
             let tx_hash = response
                 .get("data")

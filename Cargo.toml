@@ -8,7 +8,7 @@ members = [
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-libs/shinkai-vector-fs",
   "shinkai-libs/shinkai-job-queue-manager",
-  "shinkai-libs/shinkai-baml",
+  # "shinkai-libs/shinkai-baml",
   "shinkai-libs/shinkai-http-api",
   "shinkai-libs/shinkai-tools-primitives",
   "shinkai-libs/shinkai-mini-libs",
@@ -46,7 +46,7 @@ chrono = "0.4"
 serde_json = "1.0.117"
 anyhow = "1.0"
 blake3 = "1.2.0"
-shinkai_tools_runner = "0.9.0"
+shinkai_tools_runner = "0.9.2"
 serde = "1.0.188"
 base64 = "0.22.0"
 reqwest = "0.11.27"

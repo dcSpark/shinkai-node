@@ -687,7 +687,8 @@ pub async fn api_execute_tool(
     tool_id: String,
     app_id: String,
     llm_provider: String,
-    extra_config: Vec<Value>,
+    extra_config: Map<String, Value>,
+    oauth: Map<String, Value>,
 ) -> Result<Value, APIError> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
@@ -700,6 +701,7 @@ pub async fn api_execute_tool(
             app_id,
             llm_provider,
             extra_config,
+            oauth,
             res: res_sender,
         })
         .await

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::fs::DirEntry;
+use std::hash::RandomState;
 use std::path::{Path, PathBuf};
-use std::{env, thread};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, fs, io, thread};
 
 use super::argument::ToolOutputArg;
 use super::tool_config::ToolConfig;
@@ -9,11 +12,13 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
-use shinkai_tools_runner::tools::deno_runner_options::{DenoRunnerOptions, ShinkaiNodeLocation};
+use shinkai_tools_runner::tools::deno_runner::DenoRunner;
+use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
-use shinkai_tools_runner::tools::tool::Tool;
+use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
@@ -56,27 +61,31 @@ impl DenoTool {
 
     pub fn run(
         &self,
-        envs: HashMap<String, String>,
+        envs: HashMap<String, String, RandomState>,
         api_ip: String,
         api_port: u16,
-        header_code: String,
+        support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
+        oauth: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
+        node_name: ShinkaiName,
         is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
         self.run_on_demand(
             envs,
             api_ip,
             api_port,
-            header_code,
+            support_files,
             parameters,
             extra_config,
+            oauth,
             node_storage_path,
             app_id,
             tool_id,
+            node_name,
             is_temporary,
         )
     }
@@ -86,12 +95,14 @@ impl DenoTool {
         envs: HashMap<String, String>,
         api_ip: String,
         api_port: u16,
-        header_code: String,
+        support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
+        oauth: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
+        node_name: ShinkaiName,
         is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
         println!(
@@ -134,6 +145,49 @@ impl DenoTool {
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         js_tool_thread
             .spawn(move || {
+                fn get_files_in_directory(directories: Vec<PathBuf>) -> io::Result<Vec<DirEntry>> {
+                    let mut files = Vec::new();
+
+                    for directory in directories {
+                        let entries = fs::read_dir(directory)?;
+
+                        for entry in entries {
+                            let entry = entry?;
+                            let path = entry.path();
+
+                            if path.is_file() {
+                                files.push(entry);
+                            } else if path.is_dir() {
+                                // Recursively get files from subdirectories
+                                let sub_files = get_files_in_directory(vec![path])?;
+                                files.extend(sub_files);
+                            }
+                        }
+                    }
+
+                    Ok(files)
+                }
+
+                fn get_files_after(start_time: u64, files: Vec<DirEntry>) -> Vec<(String, u64)> {
+                    files
+                        .iter()
+                        .map(|file| {
+                            let name = file.path().to_str().unwrap_or_default().to_string();
+                            let modified = file
+                                .metadata()
+                                .ok()
+                                .map(|m| m.modified().ok())
+                                .unwrap_or_default()
+                                .unwrap_or(SystemTime::now())
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            (name, modified)
+                        })
+                        .filter(|(_, modified)| *modified > start_time)
+                        .collect()
+                }
+
                 fn print_result(result: &Result<RunResult, ToolError>) {
                     match result {
                         Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
@@ -143,22 +197,26 @@ impl DenoTool {
 
                 let rt = Runtime::new().expect("Failed to create Tokio runtime");
                 rt.block_on(async {
-                    println!("[Running DenoTool] Config: {:?}. Parameters: {:?}", config_json, parameters);
                     println!(
-                        "[Running DenoTool] Code: {} ... {}, Header Code: {} ... {}",
+                        "[Running DenoTool] Config: {:?}. Parameters: {:?}",
+                        config_json, parameters
+                    );
+                    println!(
+                        "[Running DenoTool] Code: {} ... {}",
                         &code[..120.min(code.len())],
-                        &code[code.len().saturating_sub(400)..],
-                        &header_code[..120.min(header_code.len())],
-                        &header_code[header_code.len().saturating_sub(400)..]
+                        &code[code.len().saturating_sub(400)..]
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
                         config_json, parameters
                     );
 
+                    // Create the directory structure for the tool
                     let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
+                    let home_path = full_path.clone().join(app_id.clone()).join("home");
+                    let logs_path = full_path.clone().join(app_id.clone()).join("logs");
 
-                    // Ensure directory exists
+                    // Ensure the root directory exists. Subdirectories will be handled by the engine
                     std::fs::create_dir_all(full_path.clone()).map_err(|e| {
                         ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
                     })?;
@@ -167,8 +225,8 @@ impl DenoTool {
                         full_path, app_id, tool_id
                     );
 
+                    // If the tool is temporary, create a .temporal file
                     if is_temporary {
-                        // Create .temporal file for temporary tools
                         // TODO: Garbage collector will delete the tool folder after some time
                         let temporal_path = full_path.join(".temporal");
                         std::fs::write(temporal_path, "").map_err(|e| {
@@ -176,12 +234,23 @@ impl DenoTool {
                         })?;
                     }
 
-                    let tool = Tool::new(
+                    // Get the start time, this is used to check if the files were modified after the tool was executed
+                    let start_time = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    // Create map with file name and source code
+                    let mut code_files = HashMap::new();
+                    code_files.insert("index.ts".to_string(), code);
+                    support_files.iter().for_each(|(file_name, file_code)| {
+                        code_files.insert(format!("{}.ts", file_name), file_code.clone());
+                    });
+
+                    // Setup the engine with the code files and config
+                    let tool = DenoRunner::new(
                         CodeFiles {
-                            files: HashMap::from([
-                                (String::from("index.ts"), code),
-                                (String::from("./shinkai-local-tools.ts"), header_code),
-                            ]),
+                            files: code_files.clone(),
                             entrypoint: "index.ts".to_string(),
                         },
                         config_json,
@@ -206,16 +275,61 @@ impl DenoTool {
                             ..Default::default()
                         }),
                     );
-                    // This is just a workaround to fix the parameters object.
-                    // App is sending Parameters: {"0": Object {"url": String("https://jhftss.github.io/")}}
-                    let binding = serde_json::Value::Object(parameters.clone());
-                    let fixed_parameters = parameters.get("0").unwrap_or(&binding);
+
+                    // Run the tool with DENO
                     let result = tool
-                        .run(Some(envs), fixed_parameters.clone(), None)
+                        .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
                         .await
                         .map_err(|e| ToolError::ExecutionError(e.to_string()));
                     print_result(&result);
-                    result
+
+                    pub fn convert_to_shinkai_file_protocol(
+                        node_name: &ShinkaiName,
+                        path: &str,
+                        app_id: &str,
+                    ) -> String {
+                        // Find the position after app_id in the path
+                        if let Some(pos) = path.find(&format!("tools_storage/{}/", app_id)) {
+                            // Get the relative path after app_id
+                            let relative_path = &path[pos + format!("tools_storage/{}", app_id).len()..];
+                            // Construct the shinkai URL preserving the path structure
+                            format!("shinkai://{}/{}{}", node_name, app_id, relative_path)
+                        } else {
+                            return "".to_string();
+                        }
+                    }
+
+                    // Add modified files to the result data
+                    match result {
+                        Ok(mut result) => {
+                            if let serde_json::Value::Object(ref mut data) = result.data {
+                                let modified_files = get_files_after(
+                                    start_time,
+                                    get_files_in_directory(vec![home_path, logs_path]).unwrap_or_default(),
+                                );
+                                data.insert(
+                                    "__created_files__".to_string(),
+                                    serde_json::Value::Array(
+                                        modified_files
+                                            .into_iter()
+                                            .map(|(name, _)| {
+                                                serde_json::Value::String(convert_to_shinkai_file_protocol(
+                                                    &node_name, &name, &app_id,
+                                                ))
+                                            })
+                                            .collect(),
+                                    ),
+                                );
+                            } else {
+                                println!("[Running DenoTool] Result is not an object, skipping modified files");
+                                return Err(ToolError::ExecutionError(
+                                    "Result is not an object, skipping modified files".to_string(),
+                                ));
+                            }
+                            Ok(result)
+                        }
+                        Err(e) => Err(e),
+                    }
                 })
             })
             .unwrap()
