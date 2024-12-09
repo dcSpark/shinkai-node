@@ -9,7 +9,11 @@ use shinkai_http_api::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
 };
-use shinkai_message_primitives::{schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::CallbackAction};
+use shinkai_message_primitives::{
+    schemas::ws_types::WSUpdateHandler,
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
+    shinkai_utils::job_scope::JobScope,
+};
 use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},
@@ -41,9 +45,12 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
     network::{node_error::NodeError, Node},
+    tools::tool_generation,
     utils::update_global_identity::update_global_identity_name,
 };
 
+use std::time::Instant;
+use tokio::time::{timeout, Duration};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 #[cfg(debug_assertions)]
@@ -1091,7 +1098,7 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             } else {
                 // Add the agent to the database
-                let mut db_write = db.write().await;
+                let db_write = db.write().await;
                 match db_write.add_agent(agent, &requester_name) {
                     Ok(_) => {
                         let _ = res.send(Ok("Agent added successfully".to_string())).await;
@@ -1342,6 +1349,245 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
             }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_test_llm_provider(
+        db: Arc<RwLock<SqliteManager>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+        identity_secret_key: SigningKey,
+        bearer: String,
+        provider: SerializedLLMProvider,
+        node_name: ShinkaiName,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        _node_signing_sk: SigningKey,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Create a new SerializedLLMProvider with id and full_identity_name set to "llm_test"
+        let name = node_name.extract_node().get_node_name_string();
+        let profile = ShinkaiName::new(format!("{}/main", name)).unwrap();
+        let llm_name = format!("{}/main/agent/test_llm_provider", name);
+
+        let provider = SerializedLLMProvider {
+            id: "llm_test".to_string(),
+            full_identity_name: ShinkaiName::new(llm_name).unwrap(),
+            external_url: provider.external_url.clone(),
+            api_key: provider.api_key.clone(),
+            model: provider.model.clone(),
+        };
+
+        Self::ensure_llm_provider(db.clone(), &profile, provider.clone()).await?;
+
+        // Ensure job_manager is available
+        let job_manager = match job_manager {
+            Some(manager) => manager,
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "JobManager is required".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Get the provider name as a ShinkaiName
+        let profile = {
+            let identity_manager_lock = identity_manager.lock().await;
+            match identity_manager_lock.get_main_identity() {
+                Some(identity) => identity.get_shinkai_name(),
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to retrieve main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Add the LLM provider
+        match Self::internal_add_llm_provider(
+            db.clone(),
+            identity_manager.clone(),
+            job_manager.clone(),
+            identity_secret_key.clone(),
+            provider.clone(),
+            &profile,
+            ws_manager.clone(),
+        )
+        .await
+        {
+            Ok(_) => {
+                // Create Job and Send Message
+                match tool_generation::v2_create_and_send_job_message(
+                    bearer.clone(),
+                    JobCreationInfo {
+                        scope: JobScope::new_default(),
+                        is_hidden: Some(true),
+                        associated_ui: None,
+                    },
+                    provider.id.clone(),
+                    "Repeat back the following message: dogcat. Just the word, no other words.".to_string(),
+                    db.clone(),
+                    profile.extract_node().clone(),
+                    identity_manager.clone(),
+                    job_manager.clone(),
+                    node_encryption_sk,
+                    node_encryption_pk,
+                    identity_secret_key.clone(),
+                )
+                .await
+                {
+                    Ok(job_id) => {
+                        // Wait for response
+                        let timeout_duration = Duration::from_secs(60); // Set a timeout duration
+                        match Self::check_job_response(db.clone(), job_id.clone(), "dogcat", timeout_duration).await {
+                            Ok(_) => {
+                                let response = serde_json::json!({
+                                    "message": "LLM provider tested successfully",
+                                    "status": "success"
+                                });
+                                let _ = res.send(Ok(response)).await;
+                                Ok(())
+                            }
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!(
+                                        "Error: {:?}",
+                                        err.message
+                                    ),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                Ok(())
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to create job and send message: {:?}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        Ok(())
+                    }
+                }
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add LLM provider: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    async fn check_job_response(
+        db: Arc<RwLock<SqliteManager>>,
+        job_id: String,
+        expected_response: &str,
+        timeout_duration: Duration,
+    ) -> Result<(), APIError> {
+        let start = Instant::now();
+        loop {
+            // Fetch the last messages from the job inbox
+            let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+            let inbox_name_value = match inbox_name {
+                InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+            };
+
+            let last_messages_inbox = db
+                .read()
+                .await
+                .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 10, None)
+                .unwrap_or_default();
+
+            // Ensure there are at least two messages
+            if last_messages_inbox.len() >= 2 {
+                // Check the content of the second message
+                if let Some(second_message_group) = last_messages_inbox.get(1) {
+                    for message in second_message_group {
+                        if let Ok(content) = message.get_message_content() {
+                            if !content.is_empty() && content.contains(expected_response) {
+                                return Ok(());
+                            } else if content.contains("error") {
+                                // Parse the JSON content to extract the error message directly
+                                if let Ok(parsed_content) = serde_json::from_str::<serde_json::Value>(&content) {
+                                    if let Some(error_message) = parsed_content.get("content").and_then(|e| e.as_str())
+                                    {
+                                        return Err(APIError {
+                                            code: StatusCode::BAD_REQUEST.as_u16(),
+                                            error: "Bad Request".to_string(),
+                                            message: error_message.to_string(),
+                                        });
+                                    }
+                                }
+                                // Fallback if parsing fails
+                                return Err(APIError {
+                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                    error: "Bad Request".to_string(),
+                                    message: "Error in message content".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+                // If the second message does not contain the expected response, return an error
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "The second message does not contain the expected response".to_string(),
+                });
+            }
+
+            // Check if the timeout has been reached
+            if start.elapsed() > timeout_duration {
+                return Err(APIError {
+                    code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                    error: "Request Timeout".to_string(),
+                    message: "Failed to receive the expected response in time".to_string(),
+                });
+            }
+
+            // Sleep for a short duration before checking again
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    pub async fn ensure_llm_provider(
+        db: Arc<RwLock<SqliteManager>>,
+        profile: &ShinkaiName,
+        input_provider: SerializedLLMProvider,
+    ) -> Result<(), NodeError> {
+        // Check if the provider already exists
+        let provider_exists = {
+            let db_read = db.read().await;
+            db_read.get_llm_provider(&input_provider.id, profile).is_ok()
+        };
+
+        // If it exists, remove it
+        if provider_exists {
+            let db_write = db.write().await;
+            db_write.remove_llm_provider(&input_provider.id, profile)?;
         }
 
         Ok(())
