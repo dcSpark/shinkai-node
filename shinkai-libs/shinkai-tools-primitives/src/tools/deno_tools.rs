@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, io, thread};
 
 use super::argument::ToolOutputArg;
-use super::tool_config::ToolConfig;
+use super::tool_config::{OAuth, ToolConfig};
 use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
@@ -40,6 +40,7 @@ pub struct DenoTool {
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 impl DenoTool {
@@ -67,7 +68,7 @@ impl DenoTool {
         support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
-        oauth: Vec<ToolConfig>,
+        oauth: Vec<OAuth>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -98,7 +99,7 @@ impl DenoTool {
         support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
-        oauth: Vec<ToolConfig>,
+        oauth: Vec<OAuth>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -117,24 +118,19 @@ impl DenoTool {
             .config
             .iter()
             .filter_map(|c| {
-                if let ToolConfig::BasicConfig(basic_config) = c {
-                    basic_config
-                        .key_value
-                        .clone()
-                        .map(|value| (basic_config.key_name.clone(), value))
-                } else {
-                    // TODO: add oauth
-                    None
-                }
+                let ToolConfig::BasicConfig(basic_config) = c;
+                basic_config
+                    .key_value
+                    .clone()
+                    .map(|value| (basic_config.key_name.clone(), value))
             })
             .collect();
 
         // Merge extra_config into the config hashmap
         for c in extra_config {
-            if let ToolConfig::BasicConfig(basic_config) = c {
-                if let Some(value) = basic_config.key_value {
-                    config.insert(basic_config.key_name.clone(), value);
-                }
+            let ToolConfig::BasicConfig(basic_config) = c;
+            if let Some(value) = basic_config.key_value {
+                config.insert(basic_config.key_name.clone(), value);
             }
         }
 

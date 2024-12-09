@@ -13,7 +13,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::{Mutex, RwLock};
 
@@ -37,7 +37,7 @@ pub async fn execute_tool(
     app_id: String,
     llm_provider: String,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<ToolConfig>,
+    oauth: Vec<OAuth>,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
     encryption_secret_key: EncryptionStaticKey,
@@ -128,7 +128,7 @@ pub async fn execute_code(
     tools: Vec<String>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<ToolConfig>,
+    oauth: Vec<OAuth>,
     sqlite_manager: Arc<RwLock<SqliteManager>>,
     tool_id: String,
     app_id: String,

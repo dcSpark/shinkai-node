@@ -961,6 +961,7 @@ pub enum NodeCommand {
         bearer: String,
         language: CodeLanguage,
         tools: Vec<String>,
+        code: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolImplementation {

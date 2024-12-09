@@ -68,7 +68,7 @@ impl Node {
     /// # Returns
     ///
     /// A `Result` indicating success or failure of the search operation.
-    
+
     // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
@@ -418,6 +418,7 @@ impl Node {
             js_code: payload.code.clone(),
             tools: payload.metadata.tools.clone(),
             config: payload.metadata.configurations.clone(),
+            oauth: None,
             description: payload.metadata.description.clone(),
             keywords: payload.metadata.keywords.clone(),
             input_args: payload.metadata.parameters.clone(),
@@ -813,6 +814,7 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
         tools: Vec<String>,
+        code: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -851,7 +853,7 @@ impl Node {
             };
 
         let metadata_prompt =
-            match tool_metadata_implementation_prompt(language.clone(), "".to_string(), tools.clone()).await {
+            match tool_metadata_implementation_prompt(language.clone(), code.clone(), tools.clone()).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {
@@ -977,7 +979,8 @@ impl Node {
         job_message_clone.content = generate_code_prompt;
 
         if post_check {
-            let callback_action = CallbackAction::ImplementationCheck(language.to_dynamic_tool_type().unwrap(), tools.clone());
+            let callback_action =
+                CallbackAction::ImplementationCheck(language.to_dynamic_tool_type().unwrap(), tools.clone());
             job_message_clone.callback = Some(Box::new(callback_action));
         }
 
