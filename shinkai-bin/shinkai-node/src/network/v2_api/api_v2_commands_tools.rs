@@ -875,7 +875,7 @@ impl Node {
         // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
-            false => match generate_code_prompt(language, is_memory_required, prompt, tool_definitions).await {
+            false => match generate_code_prompt(language.clone(), is_memory_required, prompt, tool_definitions).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {
@@ -905,8 +905,7 @@ impl Node {
         job_message_clone.content = generate_code_prompt;
 
         if post_check {
-            // TODO: define the tool type based on the CodeLanguage
-            let callback_action = CallbackAction::ImplementationCheck(DynamicToolType::DenoDynamic, tools.clone());
+            let callback_action = CallbackAction::ImplementationCheck(language.to_dynamic_tool_type().unwrap(), tools.clone());
             job_message_clone.callback = Some(Box::new(callback_action));
         }
 
