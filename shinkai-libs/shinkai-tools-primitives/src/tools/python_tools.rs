@@ -260,9 +260,9 @@ impl PythonTool {
                                 assets_files: vec![],
                                 mount_files: vec![],
                             },
-                            python_binary_path: PathBuf::from(
-                                env::var("SHINKAI_TOOLS_RUNNER_PYTHON_BINARY_PATH")
-                                    .unwrap_or_else(|_| "./shinkai-tools-runner-resources/python".to_string()),
+                            uv_binary_path: PathBuf::from(
+                                env::var("SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH")
+                                    .unwrap_or_else(|_| "./shinkai-tools-runner-resources/uv".to_string()),
                             ),
                             shinkai_node_location: ShinkaiNodeLocation {
                                 protocol: String::from("http"),
