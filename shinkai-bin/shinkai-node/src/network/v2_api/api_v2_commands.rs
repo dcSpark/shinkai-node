@@ -1032,11 +1032,6 @@ impl Node {
         // Stop the LLM
         stopper.stop(&inbox_name.get_value());
 
-        // search in    let job_queue_manager_lock = job_queue_manager.lock().await;
-        // for everything that has this job_id and stop it
-
-        // Make sure that the job is stopped and not left "hanging"
-
         let _ = res.send(Ok(())).await;
         Ok(())
     }
