@@ -226,7 +226,7 @@ impl Node {
             embedding_generator.clone(),
             vec![embedding_generator.model_type.clone()],
             profile_list,
-            db.clone(),
+            db_arc.clone(),
             node_name.clone(),
         )
         .await
