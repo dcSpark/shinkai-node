@@ -26,7 +26,7 @@ use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-pub async fn execute_tool(
+pub async fn execute_tool_cmd(
     bearer: String,
     node_name: ShinkaiName,
     db: Arc<RwLock<SqliteManager>>,
@@ -87,8 +87,18 @@ pub async fn execute_tool(
                         "SHINKAI_OAUTH".to_string(),
                         serde_json::to_string(oauth).unwrap_or_default(),
                     );
-                    for oauth in &deno_tool.oauth {
-                        println!("oauth: {:?}", oauth);
+                    for o in oauth {
+                        println!("oauth: {:?}", o);
+                        match &o.access_token {
+                            Some(access_token) => {
+                                if access_token.is_empty() {
+                                    return Err(ToolError::ExecutionError("Access token is empty".to_string()));
+                                }
+                            }
+                            None => {
+                                return Err(ToolError::ExecutionError("Access token is empty".to_string()));
+                            }
+                        };
                     }
                 }
 

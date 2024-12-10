@@ -4,7 +4,7 @@ use crate::{
     network::{node_error::NodeError, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool},
+        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
@@ -704,7 +704,7 @@ impl Node {
         let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
 
         // Execute the tool directly
-        let result = execute_tool(
+        let result = execute_tool_cmd(
             bearer,
             node_name,
             db,
