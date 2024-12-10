@@ -89,16 +89,20 @@ pub async fn execute_tool_cmd(
                     );
                     for o in oauth {
                         println!("oauth: {:?}", o);
-                        match &o.access_token {
-                            Some(access_token) => {
-                                if access_token.is_empty() {
-                                    return Err(ToolError::ExecutionError("Access token is empty".to_string()));
-                                }
-                            }
-                            None => {
-                                return Err(ToolError::ExecutionError("Access token is empty".to_string()));
-                            }
+                        let error = match &o.access_token {
+                            Some(access_token) => access_token.is_empty(),
+                            None => true,
                         };
+                        if error {
+                            let oauth_login_url = format!(
+                                "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
+                                o.authorization_url,
+                                o.client_id,
+                                urlencoding::encode(&o.redirect_url),
+                                o.scopes.join(" ")
+                            );
+                            return Err(ToolError::OAuthError(oauth_login_url.clone()));
+                        }
                     }
                 }
 
