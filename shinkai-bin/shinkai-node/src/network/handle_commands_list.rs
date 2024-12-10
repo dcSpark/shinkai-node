@@ -2222,8 +2222,10 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let stopper_clone = self.llm_stopper.clone();
+                let job_manager_clone = self.job_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_stop_llm(db_clone, stopper_clone, bearer, inbox_name, res).await;
+                    let _ = Node::v2_api_stop_llm(db_clone, stopper_clone, bearer, inbox_name, job_manager_clone, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiAddAgent { bearer, agent, res } => {

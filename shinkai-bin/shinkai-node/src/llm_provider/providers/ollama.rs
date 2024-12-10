@@ -1,15 +1,15 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
+use crate::llm_provider::providers::llm_cancellable_request::make_cancellable_request;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_conversation_prepare_messages_with_tooling, ollama_prepare_messages, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
 };
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::error::LLMProviderError;
 use super::LLMService;
 use async_trait::async_trait;
-use chrono::Utc;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde_json;
 use serde_json::json;
@@ -25,8 +25,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopi
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
 use std::error::Error;
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -184,9 +182,57 @@ async fn handle_streaming_response(
     session_id: String,
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
-    let res = client.post(url).json(&payload).send().await?;
+    // Create a cancellable request
+    let (cancellable_request, response_future) = make_cancellable_request(client, url.clone(), payload);
 
-    let mut stream = res.bytes_stream();
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+    tokio::pin!(response_future);
+
+    // Wait for response or cancellation
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                if let Some(ref inbox_name) = inbox_name {
+                    if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        // Cancel the in-flight request
+                        cancellable_request.cancel();
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Info,
+                            "LLM job stopped by user request before response arrived",
+                        );
+                        llm_stopper.reset(&inbox_name.to_string());
+
+                        // Return early since we never got a response
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
+                    }
+                }
+            },
+            result = &mut response_future => {
+                // If we got a result, break from the loop
+                let res = result?;
+                let stream = res.bytes_stream();
+                return process_stream(
+                    stream,
+                    inbox_name.clone(),
+                    ws_manager_trait.clone(),
+                    llm_stopper.clone(),
+                    session_id.clone(),
+                    tools.clone(),
+                ).await;
+            }
+        }
+    }
+}
+
+async fn process_stream(
+    mut stream: impl Stream<Item = Result<impl AsRef<[u8]>, impl Error>> + Unpin,
+    inbox_name: Option<InboxName>,
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    llm_stopper: Arc<LLMStopper>,
+    session_id: String,
+    tools: Option<Vec<JsonValue>>,
+) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut final_eval_count = None;
@@ -194,13 +240,12 @@ async fn handle_streaming_response(
     let mut final_function_call = None;
 
     while let Some(item) = stream.next().await {
-        // Check if we need to stop the LLM job
         if let Some(ref inbox_name) = inbox_name {
             if llm_stopper.should_stop(&inbox_name.to_string()) {
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Info,
-                    "LLM job stopped by user request",
+                    "LLM job stopped by user request during streaming",
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
@@ -230,6 +275,7 @@ async fn handle_streaming_response(
                         .await;
                 }
 
+                // Return early
                 return Ok(LLMInferenceResponse::new(
                     response_text,
                     json!({}),
@@ -241,7 +287,7 @@ async fn handle_streaming_response(
 
         match item {
             Ok(chunk) => {
-                let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                let mut chunk_str = String::from_utf8_lossy(chunk.as_ref()).to_string();
                 if !previous_json_chunk.is_empty() {
                     chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
                 }
@@ -251,10 +297,8 @@ async fn handle_streaming_response(
                         previous_json_chunk = "".to_string();
                         response_text.push_str(&data.message.content);
 
-                        // Check for tool calls in the message
                         if let Some(tool_calls) = data.message.tool_calls {
                             for tool_call in tool_calls {
-                                // Direct field access since function is a struct
                                 let name = tool_call.function.name.clone();
                                 let arguments = tool_call
                                     .function
@@ -262,12 +306,9 @@ async fn handle_streaming_response(
                                     .clone()
                                     .unwrap_or_else(|| serde_json::Map::new());
 
-                                // Search for the tool_router_key in the tools array
                                 let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                     tools_array.iter().find_map(|tool| {
-                                        // Get the function object first
                                         if let Some(function) = tool.get("function") {
-                                            // Then get the name from the function object
                                             if function.get("name")?.as_str()? == name {
                                                 function
                                                     .get("tool_router_key")
@@ -281,28 +322,23 @@ async fn handle_streaming_response(
                                     })
                                 });
 
-                                // Store the function call
                                 final_function_call = Some(FunctionCall {
                                     name: name.clone(),
                                     arguments: arguments.clone(),
                                     tool_router_key,
                                 });
 
-                                // Log the tool call
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
                                     ShinkaiLogLevel::Info,
                                     format!("Tool Call Detected: Name: {}, Arguments: {:?}", name, arguments).as_str(),
                                 );
 
-                                // Send WS message for tool call
                                 if let Some(ref manager) = ws_manager_trait {
                                     if let Some(ref inbox_name) = inbox_name {
                                         if let Some(ref function_call) = final_function_call {
                                             let m = manager.lock().await;
                                             let inbox_name_string = inbox_name.to_string();
-
-                                            // Serialize FunctionCall to JSON value
                                             let function_call_json = serde_json::to_value(function_call)
                                                 .unwrap_or_else(|_| serde_json::json!({}));
 
@@ -336,13 +372,11 @@ async fn handle_streaming_response(
                             }
                         }
 
-                        // Capture eval_count and eval_duration from the final response
                         if data.done {
                             final_eval_count = data.eval_count;
                             final_eval_duration = data.eval_duration;
                         }
 
-                        // Note: this is the code for enabling WS
                         if let Some(ref manager) = ws_manager_trait {
                             if let Some(ref inbox_name) = inbox_name {
                                 let m = manager.lock().await;
@@ -379,14 +413,12 @@ async fn handle_streaming_response(
                         }
                     }
                     Err(_e) => {
-                        eprintln!("Error while receiving chunk: {:?}", _e);
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
                             format!("Error while receiving chunk: {:?}", _e).as_str(),
                         );
                         previous_json_chunk += chunk_str.as_str();
-                        // Handle JSON parsing error here...
                     }
                 }
             }
@@ -401,7 +433,6 @@ async fn handle_streaming_response(
         }
     }
 
-    // Calculate tps
     let tps = if let (Some(eval_count), Some(eval_duration)) = (final_eval_count, final_eval_duration) {
         if eval_duration > 0 {
             Some(eval_count as f64 / eval_duration as f64 * 1e9)
@@ -429,28 +460,29 @@ async fn handle_non_streaming_response(
     llm_stopper: Arc<LLMStopper>,
     tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
+    let (cancellable_request, response_future) = make_cancellable_request(client, url, payload);
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
-    let response_fut = client.post(url).json(&payload).send();
-    let mut response_fut = Box::pin(response_fut);
+    tokio::pin!(response_future);
 
-    loop {
+    let res = loop {
         tokio::select! {
             _ = interval.tick() => {
                 if let Some(ref inbox_name) = inbox_name {
                     if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        // Cancel the in-flight request
+                        cancellable_request.cancel();
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Info,
-                            "LLM job stopped by user request",
+                            "LLM job stopped by user request before response arrived",
                         );
                         llm_stopper.reset(&inbox_name.to_string());
-
                         return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
                     }
                 }
             },
-            response = &mut response_fut => {
-                let res = response?;
+            result = &mut response_future => {
+                let res = result?;
                 let response_body = res.text().await?;
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
 
@@ -468,7 +500,6 @@ async fn handle_non_streaming_response(
                                                     .and_then(|args_value| args_value.as_object().cloned())
                                                     .unwrap_or_else(|| serde_json::Map::new());
 
-                                                // Search for the tool_router_key in the tools array
                                                 let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                                     tools_array.iter().find_map(|tool| {
                                                         if tool.get("name")?.as_str()? == name {
@@ -492,26 +523,18 @@ async fn handle_non_streaming_response(
                                 format!("Function Call: {:?}", function_call).as_str(),
                             );
 
-
-                            // Send WS message if a function call is detected
                             if let Some(ref manager) = ws_manager_trait {
                                 if let Some(ref inbox_name) = inbox_name {
                                     if let Some(ref function_call) = function_call {
                                         let m = manager.lock().await;
                                         let inbox_name_string = inbox_name.to_string();
-
-                                        // Serialize FunctionCall to JSON value
                                         let function_call_json = serde_json::to_value(function_call)
                                             .unwrap_or_else(|_| serde_json::json!({}));
 
-                                        // Prepare ToolMetadata
                                         let tool_metadata = ToolMetadata {
                                             tool_name: function_call.name.clone(),
                                             tool_router_key: None,
-                                            args: function_call_json
-                                                .as_object()
-                                                .cloned()
-                                                .unwrap_or_default(),
+                                            args: function_call_json.as_object().cloned().unwrap_or_default(),
                                             result: None,
                                             status: ToolStatus {
                                                 type_: ToolStatusType::Running,
@@ -535,10 +558,8 @@ async fn handle_non_streaming_response(
                                 }
                             }
 
-                            // Calculate tps
                             let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let eval_duration =
-                                response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1); // Avoid division by zero
+                            let eval_duration = response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1);
                             let tps = if eval_duration > 0 {
                                 Some(eval_count as f64 / eval_duration as f64 * 1e9)
                             } else {
@@ -568,7 +589,8 @@ async fn handle_non_streaming_response(
                 }
             }
         }
-    }
+    };
+    res
 }
 
 fn add_options_to_payload(
