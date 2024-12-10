@@ -10,8 +10,9 @@ use shinkai_http_api::{
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
-    shinkai_utils::job_scope::JobScope,
+    schemas::ws_types::WSUpdateHandler,
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
+    shinkai_utils::job_scope::{JobScope, MinimalJobScope},
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -1275,8 +1276,8 @@ impl Node {
             scope: partial_agent
                 .get("scope")
                 .and_then(|v| v.as_str())
-                .unwrap_or(&existing_agent.scope)
-                .to_string(),
+                .map(|s| serde_json::from_str::<MinimalJobScope>(s).unwrap_or(existing_agent.scope.clone()))
+                .unwrap_or(existing_agent.scope.clone()),
             storage_path: partial_agent
                 .get("storage_path")
                 .and_then(|v| v.as_str())
@@ -1495,10 +1496,7 @@ impl Node {
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
-                                    message: format!(
-                                        "Error: {:?}",
-                                        err.message
-                                    ),
+                                    message: format!("Error: {:?}", err.message),
                                 };
                                 let _ = res.send(Err(api_error)).await;
                                 Ok(())
