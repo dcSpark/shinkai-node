@@ -68,7 +68,6 @@ impl LLMService for Ollama {
 
             let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
             let messages_result = ollama_conversation_prepare_messages_with_tooling(&model, prompt)?;
-            eprintln!("messages_result: {:?}", messages_result);
 
             let messages_json = match messages_result.messages {
                 PromptResultEnum::Value(v) => v,

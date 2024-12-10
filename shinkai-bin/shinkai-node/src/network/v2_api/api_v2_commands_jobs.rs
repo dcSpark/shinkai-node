@@ -31,7 +31,6 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 

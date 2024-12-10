@@ -206,6 +206,16 @@ async fn handle_streaming_response(
                 match data_resp {
                     Ok(data) => {
                         previous_json_chunk = "".to_string();
+
+                        // Check for error in the data
+                        if let Some(error) = data.get("error") {
+                            let code = error.get("code").and_then(|c| c.as_str());
+                            let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                            let formatted_error = format!("{}: {}", code.unwrap_or("Unknown code"), message);
+
+                            return Err(LLMProviderError::LLMServiceUnexpectedError(formatted_error));
+                        }
+
                         if let Some(choices) = data.get("choices") {
                             for choice in choices.as_array().unwrap_or(&vec![]) {
                                 if let Some(message) = choice.get("message") {
