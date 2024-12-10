@@ -97,3 +97,7 @@ example.db-wal
 libpdfium.dylib
 ocrs
 .DS_Store
+
+.nx/installation
+.nx/cache
+.nx/workspace-data

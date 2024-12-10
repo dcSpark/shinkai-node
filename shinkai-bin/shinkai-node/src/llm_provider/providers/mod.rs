@@ -23,6 +23,7 @@ pub mod openrouter;
 pub mod shared;
 pub mod shinkai_backend;
 pub mod togetherai;
+pub mod llm_cancellable_request;
 
 #[async_trait]
 pub trait LLMService {
