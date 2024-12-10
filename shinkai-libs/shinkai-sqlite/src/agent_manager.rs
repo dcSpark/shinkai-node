@@ -31,10 +31,11 @@ impl SqliteManager {
         let knowledge = serde_json::to_string(&agent.knowledge).unwrap();
         let config = agent.config.map(|c| serde_json::to_string(&c).unwrap());
         let tools = serde_json::to_string(&agent.tools).unwrap();
-
+        let scope = serde_json::to_string(&agent.scope).unwrap();
+        
         tx.execute(
-            "INSERT INTO shinkai_agents (name, agent_id, full_identity_name, llm_provider_id, ui_description, knowledge, storage_path, tools, debug_mode, config)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO shinkai_agents (name, agent_id, full_identity_name, llm_provider_id, ui_description, knowledge, storage_path, tools, debug_mode, config, scope)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 agent.name,
                 agent.agent_id,
@@ -46,6 +47,7 @@ impl SqliteManager {
                 tools,
                 agent.debug_mode,
                 config,
+                scope,
             ],
         )?;
 
@@ -81,7 +83,7 @@ impl SqliteManager {
             let knowledge: String = row.get(5)?;
             let tools: String = row.get(7)?;
             let config: Option<String> = row.get(9)?;
-
+            let scope: String = row.get(10)?;
             Ok(Agent {
                 agent_id: row.get(0)?,
                 name: row.get(1)?,
@@ -112,6 +114,11 @@ impl SqliteManager {
                     })?),
                     None => None,
                 },
+                scope: serde_json::from_str(&scope).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                        e.to_string(),
+                    )))
+                })?,
             })
         })?;
 
@@ -131,6 +138,7 @@ impl SqliteManager {
             let knowledge: String = row.get(5)?;
             let tools: String = row.get(7)?;
             let config: Option<String> = row.get(9)?;
+            let scope: String = row.get(10)?;
 
             Ok(Agent {
                 agent_id: row.get(0)?,
@@ -162,6 +170,11 @@ impl SqliteManager {
                     })?),
                     None => None,
                 },
+                scope: serde_json::from_str(&scope).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
+                        e.to_string(),
+                    )))
+                })?,
             })
         });
 
@@ -189,11 +202,12 @@ impl SqliteManager {
         let knowledge = serde_json::to_string(&updated_agent.knowledge).unwrap();
         let config = updated_agent.config.map(|c| serde_json::to_string(&c).unwrap());
         let tools = serde_json::to_string(&updated_agent.tools).unwrap();
+        let scope = serde_json::to_string(&updated_agent.scope).unwrap(); // Serialize the scope
 
         tx.execute(
             "UPDATE shinkai_agents
-            SET name = ?1, full_identity_name = ?2, llm_provider_id = ?3, ui_description = ?4, knowledge = ?5, storage_path = ?6, tools = ?7, debug_mode = ?8, config = ?9
-            WHERE agent_id = ?10",
+            SET name = ?1, full_identity_name = ?2, llm_provider_id = ?3, ui_description = ?4, knowledge = ?5, storage_path = ?6, tools = ?7, debug_mode = ?8, config = ?9, scope = ?10
+            WHERE agent_id = ?11",
             params![
                 updated_agent.name,
                 updated_agent.full_identity_name.full_name,
@@ -204,6 +218,7 @@ impl SqliteManager {
                 tools,
                 updated_agent.debug_mode,
                 config,
+                scope,
                 updated_agent.agent_id,
             ],
         )?;
@@ -245,6 +260,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: false,
             config: None,
+            scope: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -269,6 +285,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: false,
             config: None,
+            scope: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -295,6 +312,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: false,
             config: None,
+            scope: Default::default(),
         };
         let agent2 = Agent {
             agent_id: "test_agent2".to_string(),
@@ -307,6 +325,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: false,
             config: None,
+            scope: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -333,6 +352,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: false,
             config: None,
+            scope: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -359,6 +379,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: false,
             config: None,
+            scope: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -375,6 +396,7 @@ mod tests {
             tools: Default::default(),
             debug_mode: true,
             config: None,
+            scope: Default::default(),
         };
 
         let result = db.update_agent(updated_agent.clone());

@@ -25,6 +25,17 @@ impl MinimalJobScope {
     }
 }
 
+impl Default for MinimalJobScope {
+    fn default() -> Self {
+        Self {
+            local_vrkai: Vec::new(),
+            local_vrpack: Vec::new(),
+            vector_fs_items: Vec::new(),
+            vector_fs_folders: Vec::new(),
+        }
+    }
+}
+
 impl From<&JobScope> for MinimalJobScope {
     fn from(job_scope: &JobScope) -> Self {
         let local_vrkai_ids: Vec<String> = job_scope

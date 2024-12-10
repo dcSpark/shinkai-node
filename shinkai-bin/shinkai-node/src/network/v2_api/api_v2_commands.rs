@@ -1272,6 +1272,11 @@ impl Node {
                 .map_or(existing_agent.knowledge.clone(), |v| {
                     v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
                 }),
+            scope: partial_agent
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&existing_agent.scope)
+                .to_string(),
             storage_path: partial_agent
                 .get("storage_path")
                 .and_then(|v| v.as_str())

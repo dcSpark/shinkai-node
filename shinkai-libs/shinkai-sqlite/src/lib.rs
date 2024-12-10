@@ -185,7 +185,8 @@ impl SqliteManager {
                 storage_path TEXT NOT NULL,
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
-                config TEXT -- Store as a JSON string
+                config TEXT, -- Store as a JSON string
+                scope TEXT NOT NULL -- Change this line to use TEXT instead of BLOB
             );",
             [],
         )?;

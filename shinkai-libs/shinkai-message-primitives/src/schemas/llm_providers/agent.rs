@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::schemas::{job_config::JobConfig, shinkai_name::ShinkaiName};
+use crate::{schemas::{job_config::JobConfig, shinkai_name::ShinkaiName}, shinkai_utils::job_scope::MinimalJobScope};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Agent {
@@ -16,4 +16,6 @@ pub struct Agent {
     pub tools: Vec<String>, // Connected
     pub debug_mode: bool, // TODO
     pub config: Option<JobConfig>, // Connected
+    #[serde(default)]
+    pub scope: MinimalJobScope,
 }
