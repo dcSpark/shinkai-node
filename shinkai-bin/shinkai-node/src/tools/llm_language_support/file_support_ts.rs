@@ -37,8 +37,7 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
                 "Gets a valid OAuth AccessToken for the given provider.",
                 "Promise<string>",
                 vec!["providerName: string"],
-                r#"const oauthConfig = JSON.parse(Deno.env.get('SHINKAI_OAUTH') || '{}');
-    
+                r#"
     type ProviderConfig = {
         name: string,
         version: string,
@@ -51,9 +50,12 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
         grantType: string,
         refreshToken?: string,
         accessToken?: string,
+    }            
+    const oauthConfig: ProviderConfig[] | undefined = JSON.parse(Deno.env.get('SHINKAI_OAUTH') || '{}');
+    if (!oauthConfig) {
+        throw new Error(`OAuth configuration not defined. Fix tool configuration.`);
     }
-    const providerConfig: ProviderConfig = oauthConfig[providerName];
-    
+    const providerConfig: ProviderConfig = oauthConfig.find(config => config.name === providerName);
     if (!providerConfig) {
         throw new Error(`OAuth configuration not found for provider: ${providerName}`);
     }

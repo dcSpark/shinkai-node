@@ -37,32 +37,47 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "Gets a valid OAuth AccessToken for the given provider.",
             "str",
             vec!["provider_name: str"],
-            r#"import json
-    import requests
+            r#"from typing import TypedDict, List, Optional
+
+class ProviderConfig(TypedDict):
+    name: str
+    version: str
+    authorizationUrl: str
+    redirectUrl: str
+    tokenUrl: str
+    clientId: str
+    clientSecret: str
+    scopes: List[str]
+    grantType: str
+    refreshToken: Optional[str]
+    accessToken: Optional[str]
+
+oauth_config_str = os.environ.get('SHINKAI_OAUTH', '{}')
+try:
+    oauth_config: List[ProviderConfig] = json.loads(oauth_config_str)
+    if not oauth_config:
+        raise ValueError('OAuth configuration not defined. Fix tool configuration.')
+        
+    provider_config = next((config for config in oauth_config if config['name'] == provider_name), None)
     
-    oauth_config_str = os.environ.get('SHINKAI_OAUTH', '{}')
-    try:
-        oauth_config = json.loads(oauth_config_str)
-        provider_config = oauth_config.get(provider_name)
+    if not provider_config:
+        raise ValueError(f'OAuth configuration not found for provider: {provider_name}')
+    
+    # Handle OAuth 1.0
+    if provider_config.get('version') == '1.0' or provider_config.get('grantType') == 'authorization_code':
+        return provider_config.get('accessToken', '')
         
-        if not provider_config:
-            raise ValueError(f'OAuth configuration not found for provider: {provider_name}')
+    # Handle OAuth 2.0
+    if provider_config.get('version') == '2.0':
+        # Check for refresh token
+        refresh_token = provider_config.get('refreshToken')
+        if not refresh_token:
+            raise ValueError(f'No refresh token found for provider: {provider_name}')
         
-        # Handle OAuth 1.0
-        if provider_config.get('version') == '1.0' or provider_config.get('grantType') == 'authorization_code':
-            return provider_config.get('accessToken', '')
-            
-        # Handle OAuth 2.0
-        if provider_config.get('version') == '2.0':
-            # Check for refresh token
-            refresh_token = provider_config.get('refreshToken')
-            if not refresh_token:
-                raise ValueError(f'No refresh token found for provider: {provider_name}')
-            
-            # Make request to refresh token endpoint
-            refresh_url = provider_config.get('tokenUrl')
-            response = requests.post(
-                refresh_url,
+        # Make request to refresh token endpoint
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                provider_config['tokenUrl'],
                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
                 data={
                     'grant_type': 'refresh_token',
@@ -70,18 +85,17 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
                     'client_id': provider_config['clientId'],
                     'client_secret': provider_config['clientSecret']
                 }
-            )
-            
-            if response.status_code != 200:
-                raise ValueError(f'Failed to refresh token: {response.text}')
-                
-            data = response.json()
-            return data['access_token']
-            
-        raise ValueError(f'Unsupported OAuth version for provider: {provider_name}')
-    except Exception as e:
-        print(f'Error getting access token: {str(e)}')
-        return ''"#,
+            ) as response:
+                if response.status != 200:
+                    raise ValueError(f'Failed to refresh token: {await response.text()}')
+                    
+                data = await response.json()
+                return data['access_token']
+        
+    raise ValueError(f'Unsupported OAuth version for provider: {provider_name}')
+except Exception as e:
+    print(f'Error getting access token: {str(e)}')
+    return ''"#,
             "OAuth access token"
         ),
     ];
@@ -89,7 +103,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
     let mut output = String::new();
 
     if !declaration_only {
-        output.push_str("import os\nfrom typing import List\n\n");
+        output.push_str("import os\nimport json\nimport aiohttp\nfrom typing import List, TypedDict, Optional\n\n");
     }
 
     for (name, doc, return_type, args, implementation, return_desc) in function_definitions {
@@ -101,7 +115,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
 
         output.push_str(&format!(
             r#"
-def {name}({param_str}) -> {return_type}:
+async def {name}({param_str}) -> {return_type}:
     """{doc}
     
     Returns:
