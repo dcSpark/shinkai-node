@@ -31,3 +31,12 @@ impl std::fmt::Display for CodeLanguage {
         }
     }
 }
+
+impl CodeLanguage {
+    pub fn to_dynamic_tool_type(&self) -> Option<DynamicToolType> {
+        match self {
+            CodeLanguage::Typescript => Some(DynamicToolType::DenoDynamic),
+            CodeLanguage::Python => Some(DynamicToolType::PythonDynamic),
+        }
+    }
+}

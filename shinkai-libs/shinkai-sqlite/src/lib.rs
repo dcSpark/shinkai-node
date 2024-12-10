@@ -92,6 +92,8 @@ impl SqliteManager {
             "PRAGMA journal_mode=WAL;
                  PRAGMA synchronous=FULL;
                  PRAGMA temp_store=MEMORY;
+                 PRAGMA optimize;
+                 PRAGMA busy_timeout = 5000;
                  PRAGMA mmap_size=262144000; -- 250 MB in bytes (250 * 1024 * 1024)
                  PRAGMA foreign_keys = ON;", // Enable foreign key support
         )?;
@@ -124,7 +126,15 @@ impl SqliteManager {
             api_url,
             model_type,
         };
-        let _ = manager.sync_fts_table();
+        let fts_sync_result = manager.sync_tools_fts_table();
+        if let Err(e) = fts_sync_result {
+            eprintln!("Error synchronizing Tools FTS table: {}", e);
+        }
+
+        let fts_sync_result = manager.sync_prompts_fts_table();
+        if let Err(e) = fts_sync_result {
+            eprintln!("Error synchronizing Prompts FTS table: {}", e);
+        }
 
         Ok(manager)
     }
@@ -538,6 +548,7 @@ impl SqliteManager {
     fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_tools_fts_table(conn)?;
         Self::initialize_prompts_fts_table(conn)?;
+
         Ok(())
     }
 

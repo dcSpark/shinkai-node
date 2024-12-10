@@ -968,6 +968,7 @@ pub enum NodeCommand {
         message: JobMessage,
         language: CodeLanguage,
         tools: Vec<String>,
+        post_check: bool,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
@@ -1054,5 +1055,10 @@ pub enum NodeCommand {
         bearer: String,
         cron_task_id: i64,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiTestLlmProvider {
+        bearer: String,
+        provider: SerializedLLMProvider,
+        res: Sender<Result<serde_json::Value, APIError>>,
     },
 }

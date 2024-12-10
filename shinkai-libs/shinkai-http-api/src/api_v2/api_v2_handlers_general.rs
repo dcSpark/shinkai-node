@@ -178,6 +178,13 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_all_agents_handler);
 
+    let test_llm_provider_route = warp::path("test_llm_provider")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(test_llm_provider_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -200,6 +207,7 @@ pub fn general_routes(
         .or(update_agent_route)
         .or(get_agent_route)
         .or(get_all_agents_route)
+        .or(test_llm_provider_route)
 }
 
 #[derive(Deserialize)]
@@ -926,6 +934,39 @@ pub async fn get_all_agents_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/test_llm_provider",
+    request_body = SerializedLLMProvider,
+    responses(
+        (status = 200, description = "Successfully tested LLM provider", body = String),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn test_llm_provider_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    provider: SerializedLLMProvider,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiTestLlmProvider {
+            bearer,
+            provider,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -951,6 +992,7 @@ pub async fn get_all_agents_handler(
         update_agent_handler,
         get_agent_handler,
         get_all_agents_handler,
+        test_llm_provider_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,

@@ -1,7 +1,7 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
-use crate::tools::tool_execution::execution_deno_dynamic::execute_deno_tool;
+use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::json;
@@ -20,6 +20,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
 
+use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -172,5 +173,136 @@ pub async fn execute_code(
                 code,
             )
         }
+    }
+}
+
+pub async fn check_code(
+    tool_type: DynamicToolType,
+    unfiltered_code: String,
+    tool_id: String,
+    app_id: String,
+    tools: Vec<String>,
+    sqlite_manager: Arc<RwLock<SqliteManager>>,
+) -> Result<Vec<String>, ToolError> {
+    eprintln!("[check_code] tool_type: {}", tool_type);
+
+    // Use the new function to extract fenced code blocks
+    let code_blocks = extract_fenced_code_blocks(&unfiltered_code);
+    let code_extracted = if !code_blocks.is_empty() {
+        code_blocks.join("\n\n")
+    } else {
+        unfiltered_code
+    };
+
+    eprintln!("[check_code] code_extracted: {}", code_extracted);
+
+    match tool_type {
+        DynamicToolType::DenoDynamic => {
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            // Since `check_deno_tool` is synchronous, run it in a blocking task
+            tokio::task::spawn_blocking(move || check_deno_tool(tool_id, app_id, support_files, code_extracted))
+                .await
+                .map_err(|e| ToolError::ExecutionError(format!("Task Join Error: {}", e)))?
+        }
+        DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
+    }
+}
+
+fn extract_fenced_code_blocks(unfiltered_code: &str) -> Vec<String> {
+    // Updated pattern to handle both formats in the regex
+    let re = Regex::new(r"```(?:\w+(?:\\n|\n))?([\s\S]*?)```").unwrap();
+    let matches: Vec<String> = re
+        .captures_iter(unfiltered_code)
+        .map(|cap| cap[1].to_string())
+        .collect();
+
+    matches
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_fenced_code_blocks() {
+        let input = r#"
+          Based on the provided documentation and code, I will implement a tool that downloads a website into markdown. This involves using the `deno` library to make an HTTP request to the website and then parsing the HTML response to extract relevant information.\n\nFirst, let's import the necessary libraries and define our function signature:\n```typescript\ntype CONFIG = {};\ntype INPUTS = {\n  url: string;\n};\ntype OUTPUT = {};\n\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\n  const { url } = inputs;\n\n  // ...\n}\n```\nNext, we can use the `deno` library to make an HTTP request to the website:\n```typescript\nimport { fetch } from 'deno';\n\nconst response = await fetch(url);\nconst html = await response.text();\n```\nThen, we can parse the HTML response using a markdown parser. For this example, let's use the `marked` library, which is available on npm:\n```typescript\nimport { marked } from 'npm:marked';\n\nconst markdown = marked(html);\n```\nFinally, we can return the markdown as our output:\n```typescript\nreturn {\n  markdown,\n};\n}\n```\nPutting it all together, our `run` function would look like this:\n```typescript\nimport { fetch } from 'deno';\nimport { marked } from 'npm:marked';\n\ntype CONFIG = {};\ntype INPUTS = {\n  url: string;\n};\ntype OUTPUT = {};\n\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\n  const { url } = inputs;\n\n  const response = await fetch(url);\n  const html = await response.text();\n  const markdown = marked(html);\n\n  return {\n    markdown,\n  };\n}\n```\nThis tool can be used to download a website into markdown by calling the `run` function with the URL of the website as an argument.\n\nHere is the complete code:\n\n```typescript\nimport { fetch } from 'deno';\nimport { marked } from 'npm:marked';\n\ntype CONFIG = {};\ntype INPUTS = {\n  url: string;\n};\ntype OUTPUT = {};\n\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\n  const { url } = inputs;\n\n  const response = await fetch(url);\n  const html = await response.text();\n  const markdown = marked(html);\n\n  return {\n    markdown,\n  };\n}\n```\n\nPlease note that this code is a simple example and might not cover all edge cases. Depending on the complexity of the website, you might need to adjust the parsing logic accordingly.
+        "#;
+
+        let result = extract_fenced_code_blocks(input);
+        let expected = vec![
+            "type CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  // ...\\n}\\n".to_string(),
+            "import { fetch } from 'deno';\\n\\nconst response = await fetch(url);\\nconst html = await response.text();\\n".to_string(),
+            "import { marked } from 'npm:marked';\\n\\nconst markdown = marked(html);\\n".to_string(),
+            "return {\\n  markdown,\\n};\\n}\\n".to_string(),
+            "import { fetch } from 'deno';\\nimport { marked } from 'npm:marked';\\n\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  const response = await fetch(url);\\n  const html = await response.text();\\n  const markdown = marked(html);\\n\\n  return {\\n    markdown,\\n  };\\n}\\n".to_string(),
+            "import { fetch } from 'deno';\\nimport { marked } from 'npm:marked';\\n\\ntype CONFIG = {};\\ntype INPUTS = {\\n  url: string;\\n};\\ntype OUTPUT = {};\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n  const { url } = inputs;\\n\\n  const response = await fetch(url);\\n  const html = await response.text();\\n  const markdown = marked(html);\\n\\n  return {\\n    markdown,\\n  };\\n}\\n".to_string(),
+        ];
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_extract_fenced_code_blocks_with_typescript() {
+        let input = r#"Based on the provided documentation, we will implement a tool that downloads the webpage at `https://jhftss.github.io/` and converts it to plain text.
+
+```typescript
+import { getHomePath } from './shinkai-local-support.ts';
+
+type CONFIG = {};
+type INPUTS = {};
+type OUTPUT = {};
+
+export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
+  const url = 'https://jhftss.github.io/';
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const text = await response.text();
+    const fileContent = text.replace(/<[^>]*>|[\n\r]/g, '');
+    const filePath = `${getHomePath()}/downloaded_text.txt`;
+    Deno.writeTextFileSync(filePath, fileContent);
+  } catch (error) {
+    console.error(error.message);
+    return { error: 'Failed to download and convert webpage' };
+  }
+  return {};
+}
+
+```"#;
+
+        let expected = vec![r#"import { getHomePath } from './shinkai-local-support.ts';
+
+type CONFIG = {};
+type INPUTS = {};
+type OUTPUT = {};
+
+export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
+  const url = 'https://jhftss.github.io/';
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const text = await response.text();
+    const fileContent = text.replace(/<[^>]*>|[\n\r]/g, '');
+    const filePath = `${getHomePath()}/downloaded_text.txt`;
+    Deno.writeTextFileSync(filePath, fileContent);
+  } catch (error) {
+    console.error(error.message);
+    return { error: 'Failed to download and convert webpage' };
+  }
+  return {};
+}
+
+"#
+        .to_string()];
+
+        let result = extract_fenced_code_blocks(input);
+        assert_eq!(result, expected);
     }
 }

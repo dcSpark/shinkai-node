@@ -406,7 +406,7 @@ impl SqliteManager {
     }
 
     // Synchronize the FTS table with the main database
-    pub async fn sync_prompts_fts_table(&self) -> Result<(), SqliteManagerError> {
+    pub fn sync_prompts_fts_table(&self) -> Result<(), SqliteManagerError> {
         // Use the pooled connection to access the shinkai_prompts table
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT rowid, name FROM shinkai_prompts")?;
@@ -424,9 +424,16 @@ impl SqliteManager {
         while let Some(row) = rows.next()? {
             let rowid: i64 = row.get(0)?;
             let name: String = row.get(1)?;
+
+            // Delete the existing entry if it exists
             fts_conn.execute(
-                "INSERT INTO shinkai_prompts_fts(rowid, name) VALUES (?1, ?2)
-                 ON CONFLICT(rowid) DO UPDATE SET name = excluded.name",
+                "DELETE FROM shinkai_prompts_fts WHERE rowid = ?1",
+                params![rowid],
+            )?;
+
+            // Insert the new entry
+            fts_conn.execute(
+                "INSERT INTO shinkai_prompts_fts(rowid, name) VALUES (?1, ?2)",
                 params![rowid, name],
             )?;
         }

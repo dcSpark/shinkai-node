@@ -19,8 +19,6 @@ mod it {
     mod node_integration_tests;
     mod node_retrying_tests;
     mod node_simple_ux_tests;
-    mod workflow_integration_tests;
-    // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
     mod utils;
