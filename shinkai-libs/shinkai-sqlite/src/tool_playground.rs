@@ -309,7 +309,7 @@ mod tests {
 
     fn create_test_tool_playground(tool_router_key: String) -> ToolPlayground {
         ToolPlayground {
-            language: CodeLanguage::TypeScript,
+            language: CodeLanguage::Typescript,
             metadata: ToolPlaygroundMetadata {
                 name: "Test Tool".to_string(),
                 description: "A tool for testing".to_string(),

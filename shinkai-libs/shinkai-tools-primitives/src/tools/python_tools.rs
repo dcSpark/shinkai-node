@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 
 use super::argument::ToolOutputArg;
 use super::deno_tools::ToolResult;
-use super::tool_config::ToolConfig;
+use super::tool_config::{OAuth, ToolConfig};
 use super::tool_playground::{SqlQuery, SqlTable};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -39,6 +39,7 @@ pub struct PythonTool {
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 impl PythonTool {

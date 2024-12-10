@@ -1077,6 +1077,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let disabled_tool = DenoTool {
@@ -1096,6 +1097,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         // Add both tools to the database
@@ -1161,6 +1163,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let disabled_non_network_tool = DenoTool {
@@ -1180,6 +1183,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {

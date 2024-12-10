@@ -462,6 +462,7 @@ impl Node {
                     py_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
                     config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
                     description: payload.metadata.description.clone(),
                     keywords: payload.metadata.keywords.clone(),
                     input_args: payload.metadata.parameters.clone(),

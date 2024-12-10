@@ -294,16 +294,16 @@ mod tests {
         let oauth = OAuth::from_value(&value).expect("Failed to parse OAuth from value");
 
         assert_eq!(oauth.name, "github");
-        assert_eq!(oauth.redirect_uri, "https://custom.redirect.com");
+        assert_eq!(oauth.redirect_url, "https://custom.redirect.com");
         assert_eq!(oauth.version, "2.0");
-        assert_eq!(oauth.response_type, "code");
+        assert_eq!(oauth.response_type, Some("code".to_string()));
         assert_eq!(oauth.authorization_url, "https://github.com/login/oauth/authorize");
         assert_eq!(oauth.client_id, "test_client_id");
         assert_eq!(oauth.client_secret, "test_client_secret");
         assert_eq!(oauth.scopes, vec!["repo", "user"]);
-        assert_eq!(oauth.grant_type, "authorization_code");
-        assert!(oauth.required);
-        assert!(oauth.pkce);
+        assert_eq!(oauth.grant_type, Some("authorization_code".to_string()));
+        assert_eq!(oauth.required, Some(true));
+        assert_eq!(oauth.pkce, Some(true));
         assert_eq!(oauth.refresh_token, None);
         assert_eq!(oauth.access_token, None);
     }
@@ -320,16 +320,16 @@ mod tests {
         let oauth = OAuth::from_value(&value).expect("Failed to parse OAuth from value");
 
         assert_eq!(oauth.name, "minimal");
-        assert_eq!(oauth.redirect_uri, "https://secrets.shinkai.com/redirect");
+        assert_eq!(oauth.redirect_url, "https://secrets.shinkai.com/redirect");
         assert_eq!(oauth.version, "");
-        assert_eq!(oauth.response_type, "token");
+        assert_eq!(oauth.response_type, Some("token".to_string()));
         assert_eq!(oauth.authorization_url, "https://example.com/auth");
         assert_eq!(oauth.client_id, "");
         assert_eq!(oauth.client_secret, "");
         assert!(oauth.scopes.is_empty());
-        assert_eq!(oauth.grant_type, "authorization_code");
-        assert!(oauth.required);
-        assert!(!oauth.pkce);
+        assert_eq!(oauth.grant_type, Some("authorization_code".to_string()));
+        assert_eq!(oauth.required, Some(true));
+        assert_eq!(oauth.pkce, Some(false));
         assert_eq!(oauth.refresh_token, None);
         assert_eq!(oauth.access_token, None);
     }

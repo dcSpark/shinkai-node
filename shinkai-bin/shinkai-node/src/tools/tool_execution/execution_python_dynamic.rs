@@ -38,6 +38,7 @@ pub fn execute_python_tool(
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
+        oauth: None,
     };
 
     let mut envs = HashMap::new();

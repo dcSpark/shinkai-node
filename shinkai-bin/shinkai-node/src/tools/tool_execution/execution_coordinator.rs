@@ -83,29 +83,28 @@ pub async fn execute_tool_cmd(
 
         match tool {
             ShinkaiTool::Python(python_tool, _) => {
-                // if let Some(oauth) = &python_tool.oauth {
-                //     envs.insert(
-                //         "SHINKAI_OAUTH".to_string(),
-                //         serde_json::to_string(oauth).unwrap_or_default(),
-                //     );
-                //     for o in oauth {
-                //         println!("oauth: {:?}", o);
-                //         let error = match &o.access_token {
-                //             Some(access_token) => access_token.is_empty(),
-                //             None => true,
-                //         };
-                //         if error {
-                //             let oauth_login_url = format!(
-                //                 "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
-                //                 o.authorization_url,
-                //                 o.client_id,
-                //                 urlencoding::encode(&o.redirect_url),
-                //                 o.scopes.join(" ")
-                //             );
-                //             return Err(ToolError::OAuthError(oauth_login_url.clone()));
-                //         }
-                //     }
-                // }
+                if let Some(oauth) = &python_tool.oauth {
+                    envs.insert(
+                        "SHINKAI_OAUTH".to_string(),
+                        serde_json::to_string(oauth).unwrap_or_default(),
+                    );
+                    for o in oauth {
+                        let error = match &o.access_token {
+                            Some(access_token) => access_token.is_empty(),
+                            None => true,
+                        };
+                        if error {
+                            let oauth_login_url = format!(
+                                "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
+                                o.authorization_url,
+                                o.client_id,
+                                urlencoding::encode(&o.redirect_url),
+                                o.scopes.join(" ")
+                            );
+                            return Err(ToolError::OAuthError(oauth_login_url.clone()));
+                        }
+                    }
+                }
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -143,7 +142,6 @@ pub async fn execute_tool_cmd(
                         serde_json::to_string(oauth).unwrap_or_default(),
                     );
                     for o in oauth {
-                        println!("oauth: {:?}", o);
                         let error = match &o.access_token {
                             Some(access_token) => access_token.is_empty(),
                             None => true,
