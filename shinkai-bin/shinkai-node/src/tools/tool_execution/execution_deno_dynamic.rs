@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::argument::ToolOutputArg;
-use shinkai_tools_primitives::tools::deno_tools::{DenoTool, DenoToolResult};
+use shinkai_tools_primitives::tools::deno_tools::{DenoTool, ToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 
@@ -36,7 +36,7 @@ pub fn execute_deno_tool(
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        result: DenoToolResult::new("object".to_string(), Value::Null, vec![]),
+        result: ToolResult::new("object".to_string(), Value::Null, vec![]),
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
@@ -94,7 +94,7 @@ pub fn check_deno_tool(
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        result: DenoToolResult::new("object".to_string(), Value::Null, vec![]),
+        result: ToolResult::new("object".to_string(), Value::Null, vec![]),
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,

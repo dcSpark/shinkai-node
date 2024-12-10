@@ -36,7 +36,7 @@ pub struct DenoTool {
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
-    pub result: DenoToolResult,
+    pub result: ToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
@@ -419,13 +419,13 @@ impl DenoTool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DenoToolResult {
+pub struct ToolResult {
     pub r#type: String,
     pub properties: serde_json::Value,
     pub required: Vec<String>,
 }
 
-impl Serialize for DenoToolResult {
+impl Serialize for ToolResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -440,14 +440,14 @@ impl Serialize for DenoToolResult {
     }
 }
 
-impl<'de> Deserialize<'de> for DenoToolResult {
+impl<'de> Deserialize<'de> for ToolResult {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let helper = Helper::deserialize(deserializer)?;
 
-        Ok(DenoToolResult {
+        Ok(ToolResult {
             r#type: helper.result_type,
             properties: helper.properties,
             required: helper.required,
@@ -463,9 +463,9 @@ struct Helper {
     required: Vec<String>,
 }
 
-impl DenoToolResult {
+impl ToolResult {
     pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
-        DenoToolResult {
+        ToolResult {
             r#type: result_type,
             properties,
             required,
@@ -491,7 +491,7 @@ mod tests {
     }
     "#;
 
-        let deserialized: DenoToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
+        let deserialized: ToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
 
         assert_eq!(deserialized.r#type, "object");
         assert!(deserialized.properties.is_object());

@@ -259,7 +259,7 @@ mod tests {
     use super::*;
     use shinkai_tools_primitives::tools::{
         argument::ToolOutputArg,
-        deno_tools::{DenoTool, DenoToolResult},
+        deno_tools::{DenoTool, ToolResult},
         shinkai_tool::ShinkaiTool,
     };
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -290,7 +290,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
@@ -317,7 +317,7 @@ mod tests {
                 keywords: vec!["test".to_string(), "tool".to_string()],
                 configurations: vec![],
                 parameters: vec![],
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 sql_tables: vec![],
                 sql_queries: vec![],
                 tools: None,
@@ -413,7 +413,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
@@ -484,7 +484,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,

@@ -411,7 +411,7 @@ impl From<NetworkTool> for ShinkaiTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::deno_tools::{DenoTool, DenoToolResult};
+    use crate::tools::deno_tools::{DenoTool, ToolResult};
     use serde_json::json;
 
     #[test]
@@ -430,7 +430,7 @@ mod tests {
             keywords: vec![],
             activated: false,
             embedding: None,
-            result: DenoToolResult::new(
+            result: ToolResult::new(
                 "object".to_string(),
                 json!({
                     "markdowns": { "type": "array", "items": { "type": "string" } }

@@ -1,6 +1,6 @@
 use super::{
     argument::ToolArgument,
-    deno_tools::DenoToolResult,
+    deno_tools::ToolResult,
     tool_config::{BasicConfig, OAuth, ToolConfig},
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -40,7 +40,7 @@ pub struct ToolPlaygroundMetadata {
     pub configurations: Vec<ToolConfig>,
     #[serde(deserialize_with = "deserialize_parameters")]
     pub parameters: Vec<ToolArgument>,
-    pub result: DenoToolResult,
+    pub result: ToolResult,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_tables")]
