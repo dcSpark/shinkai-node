@@ -577,6 +577,7 @@ impl SqliteManager {
                 job_id TEXT, -- Allow NULL values
                 job_id_history TEXT, -- Store as a comma-separated list
                 code TEXT NOT NULL,
+                language TEXT NOT NULL,
                 FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
             );",
             [],

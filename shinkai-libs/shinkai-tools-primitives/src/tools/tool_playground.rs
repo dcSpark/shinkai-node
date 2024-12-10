@@ -1,10 +1,11 @@
 use super::{
     argument::ToolArgument,
-    deno_tools::DenoToolResult,
+    deno_tools::ToolResult,
     tool_config::{BasicConfig, OAuth, ToolConfig},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SqlTable {
@@ -26,6 +27,7 @@ pub struct ToolPlayground {
     #[serde(default)]
     pub job_id_history: Vec<String>,
     pub code: String,
+    pub language: CodeLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,7 +40,7 @@ pub struct ToolPlaygroundMetadata {
     pub configurations: Vec<ToolConfig>,
     #[serde(deserialize_with = "deserialize_parameters")]
     pub parameters: Vec<ToolArgument>,
-    pub result: DenoToolResult,
+    pub result: ToolResult,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_tables")]

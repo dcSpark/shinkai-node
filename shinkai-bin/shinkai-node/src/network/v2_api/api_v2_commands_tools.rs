@@ -33,8 +33,8 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
-    tool_playground::ToolPlayground,
+    argument::ToolOutputArg, deno_tools::DenoTool, python_tools::PythonTool, shinkai_tool::ShinkaiTool,
+    tool_config::ToolConfig, tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -389,49 +389,95 @@ impl Node {
         // TODO: check that job_id exists
         let mut updated_payload = payload.clone();
 
-        // Create DenoTool
-        let tool = DenoTool {
-            toolkit_name: {
-                let name = format!(
-                    "{}_{}",
-                    payload
-                        .metadata
-                        .name
-                        .to_lowercase()
-                        .replace(" ", "_")
-                        .replace("-", "_")
-                        .replace(":", "_"),
-                    payload
-                        .metadata
-                        .author
-                        .to_lowercase()
-                        .replace(" ", "_")
-                        .replace("-", "_")
-                        .replace(":", "_")
-                );
-                // Use a regex to filter out unwanted characters
-                let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
-                re.replace_all(&name, "").to_string()
-            },
-            name: payload.metadata.name.clone(),
-            author: payload.metadata.author.clone(),
-            js_code: payload.code.clone(),
-            tools: payload.metadata.tools.clone(),
-            config: payload.metadata.configurations.clone(),
-            oauth: payload.metadata.oauth.clone(),
-            description: payload.metadata.description.clone(),
-            keywords: payload.metadata.keywords.clone(),
-            input_args: payload.metadata.parameters.clone(),
-            output_arg: ToolOutputArg { json: "".to_string() },
-            activated: false, // TODO: maybe we want to add this as an option in the UI?
-            embedding: None,
-            result: payload.metadata.result,
-            sql_tables: Some(payload.metadata.sql_tables),
-            sql_queries: Some(payload.metadata.sql_queries),
-            file_inbox: None,
+        let shinkai_tool = match payload.language {
+            CodeLanguage::Typescript => {
+                let tool = DenoTool {
+                    toolkit_name: {
+                        let name = format!(
+                            "{}_{}",
+                            payload
+                                .metadata
+                                .name
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_"),
+                            payload
+                                .metadata
+                                .author
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_")
+                        );
+                        // Use a regex to filter out unwanted characters
+                        let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
+                        re.replace_all(&name, "").to_string()
+                    },
+                    name: payload.metadata.name.clone(),
+                    author: payload.metadata.author.clone(),
+                    js_code: payload.code.clone(),
+                    tools: payload.metadata.tools.clone(),
+                    config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
+                    description: payload.metadata.description.clone(),
+                    keywords: payload.metadata.keywords.clone(),
+                    input_args: payload.metadata.parameters.clone(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    embedding: None,
+                    result: payload.metadata.result,
+                    sql_tables: Some(payload.metadata.sql_tables),
+                    sql_queries: Some(payload.metadata.sql_queries),
+                    file_inbox: None,
+                };
+                ShinkaiTool::Deno(tool, false)
+            }
+            CodeLanguage::Python => {
+                let tool = PythonTool {
+                    toolkit_name: {
+                        let name = format!(
+                            "{}_{}",
+                            payload
+                                .metadata
+                                .name
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_"),
+                            payload
+                                .metadata
+                                .author
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_")
+                        );
+                        // Use a regex to filter out unwanted characters
+                        let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
+                        re.replace_all(&name, "").to_string()
+                    },
+                    name: payload.metadata.name.clone(),
+                    author: payload.metadata.author.clone(),
+                    py_code: payload.code.clone(),
+                    tools: payload.metadata.tools.clone(),
+                    config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
+                    description: payload.metadata.description.clone(),
+                    keywords: payload.metadata.keywords.clone(),
+                    input_args: payload.metadata.parameters.clone(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    embedding: None,
+                    result: payload.metadata.result,
+                    sql_tables: Some(payload.metadata.sql_tables),
+                    sql_queries: Some(payload.metadata.sql_queries),
+                    file_inbox: None,
+                };
+                ShinkaiTool::Python(tool, false)
+            }
         };
 
-        let shinkai_tool = ShinkaiTool::Deno(tool, false); // Same as above
         updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
 
         // Function to handle saving metadata and sending response

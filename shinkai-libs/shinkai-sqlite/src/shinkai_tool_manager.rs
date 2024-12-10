@@ -612,7 +612,7 @@ mod tests {
     use shinkai_tools_primitives::tools::argument::ToolArgument;
     use shinkai_tools_primitives::tools::argument::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-    use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
+    use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -648,7 +648,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
@@ -710,7 +710,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -730,7 +730,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -750,7 +750,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -807,7 +807,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -827,7 +827,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -847,7 +847,7 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -930,7 +930,7 @@ mod tests {
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
@@ -973,7 +973,7 @@ mod tests {
                 input_args: vec![],
                 activated: true,
                 embedding: None,
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
@@ -992,7 +992,7 @@ mod tests {
                 input_args: vec![],
                 activated: true,
                 embedding: None,
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
@@ -1011,7 +1011,7 @@ mod tests {
                 input_args: vec![],
                 activated: true,
                 embedding: None,
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
@@ -1072,11 +1072,12 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let disabled_tool = DenoTool {
@@ -1091,11 +1092,12 @@ mod tests {
             input_args: vec![],
             activated: false, // This tool is disabled
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         // Add both tools to the database
@@ -1156,11 +1158,12 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let disabled_non_network_tool = DenoTool {
@@ -1175,11 +1178,12 @@ mod tests {
             input_args: vec![],
             activated: false, // This tool is disabled
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
