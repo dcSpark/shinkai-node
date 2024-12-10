@@ -29,6 +29,7 @@ pub mod retry_manager;
 pub mod settings_manager;
 pub mod sheet_manager;
 pub mod shinkai_tool_manager;
+pub mod source_file_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
 pub mod vector_fs_manager;
@@ -154,6 +155,7 @@ impl SqliteManager {
         Self::initialize_retry_messages_table(conn)?;
         Self::initialize_settings_table(conn)?;
         Self::initialize_sheets_table(conn)?;
+        Self::initialize_source_file_maps_table(conn)?;
         Self::initialize_step_history_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tools_vector_table(conn)?;
@@ -737,6 +739,35 @@ impl SqliteManager {
         // Create an index for the file_inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_source_file_maps_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS source_file_maps (
+                profile_name TEXT NOT NULL,
+                vector_resource_id TEXT NOT NULL,
+                vr_path TEXT NOT NULL,
+                source_file_type TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                distribution_info BLOB
+            );",
+            [],
+        )?;
+
+        // Create an index for the profile_name column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_source_file_maps_profile_name ON source_file_maps (profile_name);",
+            [],
+        )?;
+
+        // Create an index for the vector_resource_id column
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_source_file_maps_vector_resource_id ON source_file_maps (vector_resource_id);",
             [],
         )?;
 

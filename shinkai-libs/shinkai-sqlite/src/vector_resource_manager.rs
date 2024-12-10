@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use bytemuck::cast_slice;
-use rusqlite::params;
+use rusqlite::{params, Transaction};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     data_tags::DataTagIndex,
@@ -22,6 +22,18 @@ impl SqliteManager {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
+        self.save_resource_tx(&tx, resource, profile_name)?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn save_resource_tx(
+        &self,
+        tx: &Transaction,
+        resource: &BaseVectorResource,
+        profile_name: &str,
+    ) -> Result<(), SqliteManagerError> {
         let vector_resource_id = &resource.as_trait_object().reference_string();
         let resource = resource.as_trait_object();
 
@@ -63,7 +75,7 @@ impl SqliteManager {
                 resource.last_written_datetime().to_rfc3339(),
                 serde_json::to_vec(&resource.metadata_index())
                     .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
-                resource.get_merkle_root()?,
+                resource.get_merkle_root().ok(),
                 serde_json::to_vec(&resource.keywords())
                     .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
                 serde_json::to_vec(&resource.distribution_info())
@@ -129,9 +141,9 @@ impl SqliteManager {
 
             // Save resource or VRHeader
             if let NodeContent::Resource(resource) = &node.content {
-                self.save_resource(resource, profile_name)?;
+                self.save_resource_tx(tx, resource, profile_name)?;
             } else if let NodeContent::VRHeader(header) = &node.content {
-                self.save_vr_header(header, profile_name)?;
+                self.save_vr_header_tx(tx, header, profile_name)?;
             }
 
             tx.execute(
@@ -202,7 +214,7 @@ impl SqliteManager {
         // Fetch the vector resource
         let conn = self.get_connection()?;
         let mut stmt =
-            conn.prepare("SELECT * FROM vector_resources WHERE vector_resource_id = ? AND profile_name = ?")?;
+            conn.prepare("SELECT * FROM vector_resources WHERE vector_resource_id = ?1 AND profile_name = ?2")?;
         let resource = stmt.query_row(params![vector_resource_id, profile_name], |row| {
             let name: String = row.get(2)?;
             let description: Option<String> = row.get(3)?;
@@ -529,10 +541,12 @@ impl SqliteManager {
         Ok(vr_header)
     }
 
-    fn save_vr_header(&self, vr_header: &VRHeader, profile_name: &str) -> Result<(), SqliteManagerError> {
-        let mut conn = self.get_connection()?;
-        let tx = conn.transaction()?;
-
+    fn save_vr_header_tx(
+        &self,
+        tx: &Transaction,
+        vr_header: &VRHeader,
+        profile_name: &str,
+    ) -> Result<(), SqliteManagerError> {
         tx.execute(
             "INSERT INTO vector_resource_headers (
                 profile_name,
@@ -595,7 +609,143 @@ impl SqliteManager {
             )?;
         }
 
-        tx.commit()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shinkai_vector_resources::{
+        embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+        model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
+        vector_resource::VectorResourceCore,
+    };
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
+
+    fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_document_vector_resources() {
+        let manager = setup_test_db();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let mut doc = DocumentVectorResource::new_empty(
+            "Test VR",
+            Some("Test VR Description"),
+            VRSourceReference::new_uri_ref("https://example.com"),
+            true,
+        );
+
+        doc.set_embedding_model_used(generator.model_type());
+        doc.update_resource_embedding(&generator, Some(vec!["test".to_string(), "document".to_string()]))
+            .await
+            .unwrap();
+
+        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+
+        let vr = BaseVectorResource::Document(doc.clone());
+
+        manager
+            .save_resource(&vr, &profile.get_profile_name_string().unwrap())
+            .unwrap();
+
+        let vr2 = manager.get_resource(&doc.reference_string(), &profile).unwrap();
+
+        assert_eq!(vr, vr2);
+    }
+
+    #[tokio::test]
+    async fn test_nested_vr_with_nodes() {
+        let manager = setup_test_db();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let mut map_resource = MapVectorResource::new_empty(
+            "Tech Facts",
+            Some("A collection of facts about technology"),
+            VRSourceReference::new_uri_ref("veryrealtechfacts.com"),
+            true,
+        );
+
+        map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+        map_resource
+            .update_resource_embedding(&generator, Some(vec!["technology".to_string(), "phones".to_string()]))
+            .await
+            .unwrap();
+
+        let mut doc_resource = DocumentVectorResource::new_empty(
+            "Test VR",
+            Some("Test VR Description"),
+            VRSourceReference::new_uri_ref("https://example.com"),
+            true,
+        );
+
+        doc_resource.set_embedding_model_used(generator.model_type());
+        doc_resource
+            .update_resource_embedding(&generator, Some(vec!["test".to_string(), "document".to_string()]))
+            .await
+            .unwrap();
+
+        let doc_name = doc_resource.name.clone();
+        let node = Node::new_vector_resource(doc_name.clone(), &BaseVectorResource::Document(doc_resource), None);
+        let embedding = generator.generate_embedding_default("test node").await.unwrap();
+        map_resource
+            .insert_node_dt_specified(doc_name, node, embedding.clone(), None, true)
+            .unwrap();
+
+        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+
+        let vr = BaseVectorResource::Map(map_resource.clone());
+
+        manager
+            .save_resource(&vr, &profile.get_profile_name_string().unwrap())
+            .unwrap();
+
+        let vr2 = manager
+            .get_resource(&map_resource.reference_string(), &profile)
+            .unwrap();
+
+        assert_eq!(vr, vr2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_resource() {
+        let manager = setup_test_db();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+        let mut doc = DocumentVectorResource::new_empty(
+            "Test VR",
+            Some("Test VR Description"),
+            VRSourceReference::new_uri_ref("https://example.com"),
+            true,
+        );
+
+        doc.set_embedding_model_used(generator.model_type());
+        doc.update_resource_embedding(&generator, Some(vec!["test".to_string(), "document".to_string()]))
+            .await
+            .unwrap();
+
+        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+
+        let vr = BaseVectorResource::Document(doc.clone());
+
+        manager
+            .save_resource(&vr, &profile.get_profile_name_string().unwrap())
+            .unwrap();
+
+        manager.delete_resource(&doc.reference_string()).unwrap();
+
+        let vr2 = manager.get_resource(&doc.reference_string(), &profile);
+
+        assert!(vr2.is_err());
     }
 }

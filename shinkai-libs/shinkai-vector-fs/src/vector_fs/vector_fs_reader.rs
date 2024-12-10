@@ -167,7 +167,11 @@ impl VectorFS {
     /// a source_file is not saved at this path, then an error is returned.
     pub async fn retrieve_source_file_map(&self, reader: &VFSReader) -> Result<SourceFileMap, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
-        self.db.get_source_file_map_by_fs_item(&fs_item, &reader.profile)
+        self.db
+            .read()
+            .await
+            .get_source_file_map(&fs_item.source_file_map_db_key()?, &reader.profile)
+            .map_err(VectorFSError::from)
     }
 
     /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).

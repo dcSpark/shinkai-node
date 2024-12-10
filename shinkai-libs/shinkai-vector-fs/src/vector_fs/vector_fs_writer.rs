@@ -81,10 +81,9 @@ impl VectorFS {
     /// Copies the FSFolder from the writer's path into being held underneath the destination_path.
     pub async fn copy_folder(&self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSFolder, VectorFSError> {
         let write_batch = writer.new_write_batch()?;
-        let (write_batch, new_folder) = self
+        let (_write_batch, new_folder) = self
             .internal_wb_copy_folder(writer, destination_path, write_batch, false)
             .await?;
-        self.db.write_pb(write_batch)?;
         Ok(new_folder)
     }
 
@@ -402,7 +401,9 @@ impl VectorFS {
         // Save fs internals, new VR, and new SFM to the DB
         if let Some(sfm) = source_file_map {
             self.db
-                .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
+                .write()
+                .await
+                .save_source_file_map(&sfm, &source_db_key, &writer.profile)?;
         }
         self.db
             .write()
@@ -1058,10 +1059,12 @@ impl VectorFS {
             }
 
             // Finally saving the resource, the source file (if it was provided), and the FSInternals into the FSDB
-            let mut write_batch = writer.new_write_batch()?;
+            let write_batch = writer.new_write_batch()?;
             if let Some(sfm) = source_file_map {
                 self.db
-                    .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
+                    .write()
+                    .await
+                    .save_source_file_map(&sfm, &source_db_key, &writer.profile)?;
             }
             self.db
                 .write()
@@ -1144,9 +1147,11 @@ impl VectorFS {
         }
 
         // Finally saving the the source file map and the FSInternals into the FSDB
-        let mut write_batch = writer.new_write_batch()?;
+        let write_batch = writer.new_write_batch()?;
         self.db
-            .wb_save_source_file_map(&source_file_map, &source_db_key, &mut write_batch)?;
+            .write()
+            .await
+            .save_source_file_map(&source_file_map, &source_db_key, &writer.profile)?;
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
         self.save_profile_fs_internals(internals, &writer.profile).await?;
 
