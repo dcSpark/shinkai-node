@@ -93,7 +93,6 @@ pub async fn execute_tool(
                 }
 
                 let node_env = fetch_node_environment();
-                let node_env = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
                     .clone()
