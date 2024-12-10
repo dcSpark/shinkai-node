@@ -10,8 +10,7 @@ use shinkai_http_api::{
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler,
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
+    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
     shinkai_utils::job_scope::JobScope,
 };
 use shinkai_message_primitives::{
@@ -975,6 +974,7 @@ impl Node {
         stopper: Arc<LLMStopper>,
         bearer: String,
         inbox_name: String,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1013,8 +1013,25 @@ impl Node {
             }
         };
 
+        // Search in job manager and fill the job as well
+        if let Some(job_manager) = job_manager {
+            if let Some(job_id) = inbox_name.get_job_id() {
+                // Get the job queue manager in a separate scope
+                let job_queue_manager = job_manager.lock().await.job_queue_manager.clone();
+
+                // Now use the job queue manager
+                let dequeue_result = job_queue_manager.lock().await.dequeue(&job_id).await;
+                if let Ok(Some(_)) = dequeue_result {
+                    // Job was successfully dequeued
+                } else {
+                    eprintln!("Job {} not found in job manager", job_id);
+                }
+            }
+        }
+
         // Stop the LLM
         stopper.stop(&inbox_name.get_value());
+
         let _ = res.send(Ok(())).await;
         Ok(())
     }
