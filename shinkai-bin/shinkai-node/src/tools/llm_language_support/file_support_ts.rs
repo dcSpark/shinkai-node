@@ -43,13 +43,13 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
         name: string,
         version: string,
         authorizationUrl: string,
-        redirectUri: string,
+        redirectUrl: string,
         tokenUrl: string,
         clientId: string,
         clientSecret: string,
         scopes: string[],
         grantType: string,
-        refreshTokenUrl?: string,
+        refreshToken?: string,
         accessToken?: string,
     }
     const providerConfig: ProviderConfig = oauthConfig[providerName];
@@ -59,18 +59,18 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
     }
 
     try {
-        if (providerConfig.version === '1.0') {
+        if (providerConfig.version === '1.0' || providerConfig.grantType === 'authorization_code') {
             return providerConfig.accessToken || '';
         }
         if (providerConfig.version === '2.0') {
             // Check if we have a refresh token
-            const refreshToken = Deno.env.get(`${providerName.toUpperCase()}_REFRESH_TOKEN`);
+            const refreshToken = providerConfig.refreshToken
             if (!refreshToken) {
                 throw new Error(`No refresh token found for provider: ${providerName}`);
             }
 
             // Make request to refresh token endpoint
-            const response = await fetch(providerConfig.refreshTokenUrl || providerConfig.tokenUrl, {
+            const response = await fetch(providerConfig.tokenUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',

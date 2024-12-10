@@ -144,6 +144,7 @@ impl SqliteManager {
                         sql_tables: vec![],
                         sql_queries: vec![],
                         tools: None,
+                        oauth: None,
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
@@ -199,6 +200,7 @@ impl SqliteManager {
                     sql_tables: vec![],
                     sql_queries: vec![],
                     tools: None,
+                    oauth: None,
                 },
                 tool_router_key: row.get(7)?,
                 job_id: row.get(8)?,
@@ -275,6 +277,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -300,6 +303,7 @@ mod tests {
                 sql_tables: vec![],
                 sql_queries: vec![],
                 tools: None,
+                oauth: None,
             },
             tool_router_key: Some(tool_router_key),
             job_id: "job_123".to_string(),
@@ -395,6 +399,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -465,6 +470,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

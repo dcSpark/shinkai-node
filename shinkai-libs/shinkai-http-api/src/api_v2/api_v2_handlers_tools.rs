@@ -252,9 +252,7 @@ pub struct ToolExecutionRequest {
     pub llm_provider: String,
     pub parameters: Value,
     #[serde(default = "default_map")]
-    pub extra_config: Value,
-    #[serde(default = "default_map")]
-    pub oauth: Value,
+    pub extra_config: Value
 }
 
 #[utoipa::path(
@@ -286,15 +284,6 @@ pub async fn tool_execution_handler(
         })),
     };
 
-    let oauth = match payload.oauth {
-        Value::Object(map) => map,
-        _ => return Err(warp::reject::custom(APIError {
-            code: 400,
-            error: "Invalid OAuth".to_string(),
-            message: "OAuth must be an object".to_string(),
-        })),
-    };
-
     let extra_config = match payload.extra_config {
         Value::Object(map) => map,
         _ => return Err(warp::reject::custom(APIError {
@@ -314,7 +303,6 @@ pub async fn tool_execution_handler(
             app_id,
             llm_provider: payload.llm_provider.clone(),
             extra_config,
-            oauth,
             res: res_sender,
         })
         .await

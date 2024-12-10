@@ -37,7 +37,6 @@ pub async fn execute_tool(
     app_id: String,
     llm_provider: String,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<OAuth>,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
     encryption_secret_key: EncryptionStaticKey,
@@ -55,7 +54,6 @@ pub async fn execute_tool(
             tool_id,
             app_id,
             extra_config,
-            oauth,
             bearer,
             db,
             vector_fs,
@@ -84,7 +82,17 @@ pub async fn execute_tool(
                 envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
                 envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
                 envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
+                if let Some(oauth) = &deno_tool.oauth {
+                    envs.insert(
+                        "SHINKAI_OAUTH".to_string(),
+                        serde_json::to_string(oauth).unwrap_or_default(),
+                    );
+                    for oauth in &deno_tool.oauth {
+                        println!("oauth: {:?}", oauth);
+                    }
+                }
 
+                let node_env = fetch_node_environment();
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
@@ -107,7 +115,6 @@ pub async fn execute_tool(
                         support_files,
                         parameters,
                         extra_config,
-                        oauth,
                         node_storage_path,
                         app_id.clone(),
                         tool_id.clone(),

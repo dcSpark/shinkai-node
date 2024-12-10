@@ -28,7 +28,6 @@ pub async fn execute_custom_tool(
     tool_id: String,
     app_id: String,
     _extra_config: Vec<ToolConfig>,
-    _oauth: Vec<OAuth>,
     bearer: String,
     db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,

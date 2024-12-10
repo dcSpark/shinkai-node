@@ -935,7 +935,6 @@ pub enum NodeCommand {
         app_id: String,
         llm_provider: String,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {

@@ -98,54 +98,11 @@ impl ToolConfig {
         if let Some(obj) = value.as_object() {
             for (key, val) in obj {
                 if let Some(oauth_obj) = val.as_object() {
-                    let oauth = OAuth {
-                        name: key.clone(),
-                        redirect_uri: oauth_obj
-                            .get("redirect_uri")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        version: oauth_obj
-                            .get("version")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        response_type: oauth_obj
-                            .get("response_type")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        authorization_url: oauth_obj
-                            .get("authorization_url")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        client_id: oauth_obj
-                            .get("client_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        client_secret: oauth_obj
-                            .get("client_secret")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        scopes: oauth_obj
-                            .get("scopes")
-                            .and_then(|v| v.as_array())
-                            .map_or(Vec::new(), |arr| {
-                                arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                            }),
-                        grant_type: oauth_obj.get("grant_type").and_then(|v| v.as_str()).map(String::from),
-                        required: oauth_obj.get("required").and_then(|v| v.as_bool()),
-                        pkce: oauth_obj.get("pkce").and_then(|v| v.as_bool()),
-                        refresh_token: oauth_obj
-                            .get("refresh_token")
-                            .and_then(|v| v.as_str())
-                            .map(String::from),
-                        access_token: oauth_obj.get("access_token").and_then(|v| v.as_str()).map(String::from),
-                    };
-                    oauths.push(oauth);
+                    let mut oauth_value = serde_json::Map::new();
+                    oauth_value.insert(key.clone(), serde_json::Value::Object(oauth_obj.clone()));
+                    if let Some(oauth) = OAuth::from_value(&serde_json::Value::Object(oauth_value)) {
+                        oauths.push(oauth);
+                    }
                 }
             }
         }
@@ -166,18 +123,92 @@ pub struct GenericHeader {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OAuth {
     pub name: String,
-    pub redirect_uri: String,          // default: https://secrets.shinkai.com/redirect
-    pub version: String,               // 1.0 or 2.0
-    pub response_type: String,         // default = token
-    pub authorization_url: String,     // defined by provider
-    pub client_id: String,             // defined by provider
-    pub client_secret: String,         // defined by provider
-    pub scopes: Vec<String>,           // defined by provider
-    pub grant_type: Option<String>,    // defined by provider
-    pub required: Option<bool>,        // default: true
-    pub pkce: Option<bool>,            // default: false
+    #[serde(rename = "redirectUrl")]
+    pub redirect_url: String, // default: https://secrets.shinkai.com/redirect
+    pub version: String, // 1.0 or 2.0
+    #[serde(rename = "responseType")]
+    pub response_type: Option<String>, // default = token
+    #[serde(rename = "authorizationUrl")]
+    pub authorization_url: String, // defined by provider
+    #[serde(rename = "clientId")]
+    pub client_id: String, // defined by provider
+    #[serde(rename = "clientSecret")]
+    pub client_secret: String, // defined by provider
+    pub scopes: Vec<String>, // defined by provider
+    #[serde(rename = "grantType")]
+    pub grant_type: Option<String>, // defined by provider
+    pub required: Option<bool>, // default: true
+    pub pkce: Option<bool>, // default: false
+    #[serde(rename = "refreshToken")]
     pub refresh_token: Option<String>, // filled by autentication flow (OAuth 2.0)
-    pub access_token: Option<String>,  // filled by autentication flow
+    #[serde(rename = "accessToken")]
+    pub access_token: Option<String>, // filled by autentication flow
+}
+
+impl OAuth {
+    /// Attempts to deserialize a serde_json::Value into an OAuth instance
+    pub fn from_value(value: &Value) -> Option<OAuth> {
+        if let Some(obj) = value.as_object() {
+            // We need a name and at least one other field to create a valid OAuth object
+            let name = obj.keys().next()?.to_string();
+            let oauth_obj = obj.get(&name)?.as_object()?;
+
+            Some(OAuth {
+                name,
+                redirect_url: oauth_obj
+                    .get("redirectUrl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("https://secrets.shinkai.com/redirect")
+                    .to_string(),
+                version: oauth_obj
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                response_type: Some(
+                    oauth_obj
+                        .get("responseType")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("token")
+                        .to_string(),
+                ),
+                authorization_url: oauth_obj
+                    .get("authorizationUrl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                client_id: oauth_obj
+                    .get("clientId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                client_secret: oauth_obj
+                    .get("clientSecret")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                scopes: oauth_obj
+                    .get("scopes")
+                    .and_then(|v| v.as_array())
+                    .map_or(Vec::new(), |arr| {
+                        arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                    }),
+                grant_type: Some(
+                    oauth_obj
+                        .get("grantType")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("authorization_code")
+                        .to_string(),
+                ),
+                required: Some(oauth_obj.get("required").and_then(|v| v.as_bool()).unwrap_or(true)),
+                pkce: Some(oauth_obj.get("pkce").and_then(|v| v.as_bool()).unwrap_or(false)),
+                refresh_token: oauth_obj.get("refreshToken").and_then(|v| v.as_str()).map(String::from),
+                access_token: oauth_obj.get("accessToken").and_then(|v| v.as_str()).map(String::from),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -240,5 +271,66 @@ mod tests {
         } else {
             panic!("Failed to parse ToolConfig from value");
         }
+    }
+
+    #[test]
+    fn test_oauth_from_value() {
+        let json_str = r#"{
+            "github": {
+                "redirectUrl": "https://custom.redirect.com",
+                "version": "2.0",
+                "responseType": "code",
+                "authorizationUrl": "https://github.com/login/oauth/authorize",
+                "clientId": "test_client_id",
+                "clientSecret": "test_client_secret",
+                "scopes": ["repo", "user"],
+                "grantType": "authorization_code",
+                "required": true,
+                "pkce": true
+            }
+        }"#;
+
+        let value: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+        let oauth = OAuth::from_value(&value).expect("Failed to parse OAuth from value");
+
+        assert_eq!(oauth.name, "github");
+        assert_eq!(oauth.redirect_uri, "https://custom.redirect.com");
+        assert_eq!(oauth.version, "2.0");
+        assert_eq!(oauth.response_type, "code");
+        assert_eq!(oauth.authorization_url, "https://github.com/login/oauth/authorize");
+        assert_eq!(oauth.client_id, "test_client_id");
+        assert_eq!(oauth.client_secret, "test_client_secret");
+        assert_eq!(oauth.scopes, vec!["repo", "user"]);
+        assert_eq!(oauth.grant_type, "authorization_code");
+        assert!(oauth.required);
+        assert!(oauth.pkce);
+        assert_eq!(oauth.refresh_token, None);
+        assert_eq!(oauth.access_token, None);
+    }
+
+    #[test]
+    fn test_oauth_from_value_with_defaults() {
+        let json_str = r#"{
+            "minimal": {
+                "authorizationUrl": "https://example.com/auth"
+            }
+        }"#;
+
+        let value: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+        let oauth = OAuth::from_value(&value).expect("Failed to parse OAuth from value");
+
+        assert_eq!(oauth.name, "minimal");
+        assert_eq!(oauth.redirect_uri, "https://secrets.shinkai.com/redirect");
+        assert_eq!(oauth.version, "");
+        assert_eq!(oauth.response_type, "token");
+        assert_eq!(oauth.authorization_url, "https://example.com/auth");
+        assert_eq!(oauth.client_id, "");
+        assert_eq!(oauth.client_secret, "");
+        assert!(oauth.scopes.is_empty());
+        assert_eq!(oauth.grant_type, "authorization_code");
+        assert!(oauth.required);
+        assert!(!oauth.pkce);
+        assert_eq!(oauth.refresh_token, None);
+        assert_eq!(oauth.access_token, None);
     }
 }

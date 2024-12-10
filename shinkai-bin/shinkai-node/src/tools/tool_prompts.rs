@@ -218,10 +218,10 @@ pub async fn tool_metadata_implementation_prompt(
     let oauth_example = if has_oauth {
         r#"[
       {{
-        "name": "google_oauth2",
+        "name": "google",
         "version": "2.0",
         "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
-        "redirectUri": "https://secrets.shinkai.com/redirect",
+        "redirectUrl": "https://secrets.shinkai.com/redirect",
         "tokenUrl": "https://oauth2.googleapis.com/token",
         "clientId": "YOUR_PROVIDER_CLIENT_ID",
         "clientSecret": "YOUR_PROVIDER_CLIENT_SECRET",
@@ -238,11 +238,12 @@ pub async fn tool_metadata_implementation_prompt(
         r#"[]"#
     };
     let oauth_explain = if has_oauth {
-        r#"
-        * OAuth is required. For each get_access_token or getAccessToken function you must provide an OAuth configuration.
-        * OAuth version 1.0 or 2.0 is supported, if possible prefer 1.0 over 2.0.
-        * Leave refreshToken and accessToken empty, they will be filled later on.
-        "#
+        r#"\
+    * OAuth is required. For each get_access_token or getAccessToken function you must provide an OAuth configuration.
+    * getAccessToken(name) must match the metadata oauth name field.
+    * OAuth version 1.0 or 2.0 is supported, if possible prefer 1.0 over 2.0.
+    * Leave refreshToken and accessToken empty, they will be filled later on.\
+"#
     } else {
         r#""#
     };
@@ -319,11 +320,16 @@ pub async fn tool_metadata_implementation_prompt(
                 "format": "uri",
                 "description": "The endpoint to obtain authorization from the resource owner."
               }},
-              "redirectUri": {{
+              "redirectUrl": {{
                 "type": "string",
                 "format": "uri",
                 "description": "The redirect URI for the OAuth integration.",
                 "default": "https://secrets.shinkai.com/redirect"
+              }},
+              "responseType": {{
+                "type": "string",
+                "description": "The OAuth 2.0 response type (e.g., 'token').",
+                "default": "token"
               }},
               "tokenUrl": {{
                 "type": "string",
@@ -347,7 +353,8 @@ pub async fn tool_metadata_implementation_prompt(
               }},
               "grantType": {{
                 "type": "string",
-                "description": "The OAuth 2.0 grant type (e.g., 'authorization_code', 'client_credentials')."
+                "description": "The OAuth 2.0 grant type",
+                "default": "authorization_code"
               }}
             }},
             "required": [
@@ -487,7 +494,6 @@ pub async fn tool_metadata_implementation_prompt(
   ## Example 1:
   Output: ```json
   {{
-    "id": "coinbase-create-wallet",
     "name": "Coinbase Wallet Creator",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
@@ -545,7 +551,6 @@ pub async fn tool_metadata_implementation_prompt(
   ## Example 2:
   Output:```json
   {{
-    "id": "tool-download-pages-and-send-email",
     "name": "Download Pages",
     "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
     "author": "Shinkai",

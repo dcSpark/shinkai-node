@@ -1,7 +1,7 @@
 use super::{
     argument::ToolArgument,
     deno_tools::DenoToolResult,
-    tool_config::{BasicConfig, ToolConfig},
+    tool_config::{BasicConfig, OAuth, ToolConfig},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
@@ -52,6 +52,7 @@ pub struct ToolPlaygroundMetadata {
     // None -> All tools.
     // Empty vector -> No tools.
     pub tools: Option<Vec<String>>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>

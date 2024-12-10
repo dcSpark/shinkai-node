@@ -418,7 +418,7 @@ impl Node {
             js_code: payload.code.clone(),
             tools: payload.metadata.tools.clone(),
             config: payload.metadata.configurations.clone(),
-            oauth: None,
+            oauth: payload.metadata.oauth.clone(),
             description: payload.metadata.description.clone(),
             keywords: payload.metadata.keywords.clone(),
             input_args: payload.metadata.parameters.clone(),
@@ -689,7 +689,6 @@ impl Node {
         app_id: String,
         llm_provider: String,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -704,9 +703,6 @@ impl Node {
         // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
         let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
 
-        // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
-        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
-
         // Execute the tool directly
         let result = execute_tool(
             bearer,
@@ -719,7 +715,6 @@ impl Node {
             app_id,
             llm_provider,
             tool_configs,
-            oauth_configs,
             identity_manager,
             job_manager,
             encryption_secret_key,

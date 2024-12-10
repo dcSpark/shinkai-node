@@ -49,18 +49,18 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             raise ValueError(f'OAuth configuration not found for provider: {provider_name}')
         
         # Handle OAuth 1.0
-        if provider_config.get('version') == '1.0':
+        if provider_config.get('version') == '1.0' or provider_config.get('grantType') == 'authorization_code':
             return provider_config.get('accessToken', '')
             
         # Handle OAuth 2.0
         if provider_config.get('version') == '2.0':
             # Check for refresh token
-            refresh_token = os.environ.get(f'{provider_name.upper()}_REFRESH_TOKEN')
+            refresh_token = provider_config.get('refreshToken')
             if not refresh_token:
                 raise ValueError(f'No refresh token found for provider: {provider_name}')
             
             # Make request to refresh token endpoint
-            refresh_url = provider_config.get('refreshTokenUrl') or provider_config['tokenUrl']
+            refresh_url = provider_config.get('tokenUrl')
             response = requests.post(
                 refresh_url,
                 headers={'Content-Type': 'application/x-www-form-urlencoded'},

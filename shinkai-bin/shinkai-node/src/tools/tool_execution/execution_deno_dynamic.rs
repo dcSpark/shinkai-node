@@ -62,7 +62,6 @@ pub fn execute_deno_tool(
         support_files,
         parameters,
         extra_config,
-        oauth,
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),
