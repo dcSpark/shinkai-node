@@ -1,6 +1,7 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_tools_primitives::tools::tool_playground::{ToolPlayground, ToolPlaygroundMetadata};
 
 impl SqliteManager {
@@ -38,7 +39,8 @@ impl SqliteManager {
                     job_id = ?8,
                     job_id_history = ?9,
                     code = ?10,
-                WHERE tool_router_key = ?11",
+                    language = ?11
+                WHERE tool_router_key = ?12",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -50,6 +52,7 @@ impl SqliteManager {
                     tool.job_id,
                     job_id_history_str,
                     tool.code,
+                    tool.language.to_string(),
                     tool.tool_router_key.as_deref(),
                 ],
             )?;
@@ -57,8 +60,8 @@ impl SqliteManager {
             // Insert new entry
             tx.execute(
                 "INSERT INTO tool_playground (
-                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -70,7 +73,8 @@ impl SqliteManager {
                     tool.tool_router_key.as_deref(),
                     tool.job_id,
                     job_id_history_str,
-                    tool.code
+                    tool.code,
+                    tool.language.to_string(),
                 ],
             )?;
         }
@@ -104,7 +108,7 @@ impl SqliteManager {
     pub fn get_tool_playground(&self, tool_router_key: &str) -> Result<ToolPlayground, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
              FROM tool_playground WHERE tool_router_key = ?1",
         )?;
 
@@ -115,7 +119,12 @@ impl SqliteManager {
                 let parameters: String = row.get(5)?;
                 let result: String = row.get(6)?;
                 let job_id_history: String = row.get(9)?;
-
+                let language: String = row.get(11)?;
+                let code_language = match language.as_str() {
+                    "typescript" => CodeLanguage::Typescript,
+                    "python" => CodeLanguage::Python,
+                    _ => CodeLanguage::Typescript,
+                };
                 let configurations = serde_json::from_str(&configurations).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
@@ -133,6 +142,7 @@ impl SqliteManager {
                 })?;
 
                 Ok(ToolPlayground {
+                    language: code_language,
                     metadata: ToolPlaygroundMetadata {
                         name: row.get(0)?,
                         description: row.get(1)?,
@@ -167,7 +177,7 @@ impl SqliteManager {
     pub fn get_all_tool_playground(&self) -> Result<Vec<ToolPlayground>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
              FROM tool_playground",
         )?;
 
@@ -177,6 +187,12 @@ impl SqliteManager {
             let parameters: String = row.get(5)?;
             let result: String = row.get(6)?;
             let job_id_history: String = row.get(9)?;
+            let language: String = row.get(11)?;
+            let code_language = match language.as_str() {
+                "typescript" => CodeLanguage::Typescript,
+                "python" => CodeLanguage::Python,
+                _ => CodeLanguage::Typescript, // Default to TypeScript
+            };
 
             let configurations = serde_json::from_str(&configurations).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
@@ -189,6 +205,7 @@ impl SqliteManager {
             })?;
 
             Ok(ToolPlayground {
+                language: code_language,
                 metadata: ToolPlaygroundMetadata {
                     name: row.get(0)?,
                     description: row.get(1)?,
@@ -292,6 +309,7 @@ mod tests {
 
     fn create_test_tool_playground(tool_router_key: String) -> ToolPlayground {
         ToolPlayground {
+            language: CodeLanguage::TypeScript,
             metadata: ToolPlaygroundMetadata {
                 name: "Test Tool".to_string(),
                 description: "A tool for testing".to_string(),

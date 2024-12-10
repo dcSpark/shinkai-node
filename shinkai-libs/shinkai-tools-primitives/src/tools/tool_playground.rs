@@ -5,6 +5,7 @@ use super::{
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SqlTable {
@@ -26,6 +27,7 @@ pub struct ToolPlayground {
     #[serde(default)]
     pub job_id_history: Vec<String>,
     pub code: String,
+    pub language: CodeLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

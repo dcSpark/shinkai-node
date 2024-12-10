@@ -687,7 +687,7 @@ pub async fn set_playground_tool_handler(
     sender
         .send(NodeCommand::V2ApiSetPlaygroundTool {
             bearer,
-            payload,
+            payload, 
             res: res_sender,
         })
         .await

@@ -19,6 +19,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
 use super::argument::ToolOutputArg;
+use super::deno_tools::DenoToolResult;
 use super::tool_config::ToolConfig;
 use super::tool_playground::{SqlQuery, SqlTable};
 
@@ -36,7 +37,8 @@ pub struct PythonTool {
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
-    pub result: PythonToolResult,
+    // TODO Merge DenoToolResult and PythonToolResult
+    pub result: DenoToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
