@@ -10,7 +10,7 @@ use shinkai_http_api::{
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::CallbackAction,
+    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
     shinkai_utils::job_scope::JobScope,
 };
 use shinkai_message_primitives::{
