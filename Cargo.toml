@@ -51,7 +51,6 @@ serde = "1.0.188"
 base64 = "0.22.0"
 reqwest = "0.11.27"
 regex = "1"
-rocksdb = { version = "0.22.0", default-features = false }
 uuid = { version = "1.6.1" }
 rand = "=0.8.5"
 chrono-tz = "0.5"

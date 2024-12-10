@@ -1,4 +1,3 @@
-use super::db::fs_db::ProfileBoundWriteBatch;
 use super::vector_fs_permissions::PathPermission;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
@@ -1442,5 +1441,86 @@ impl VectorFS {
             .fs_core_resource
             .retrieve_node_and_embedding_at_path(writer.path.clone(), None)?;
         Ok(result)
+    }
+}
+
+/// Represents an operation to be performed in a transaction.
+#[derive(Debug, Clone)]
+pub enum TransactionOperation {
+    Write(String, String, Vec<u8>), // Represents a key-value pair to write
+    Delete(String, String),         // Represents a key to delete
+}
+
+/// A struct that offers a profile-bounded interface for write operations.
+/// All keys are prefixed with the profile name.
+pub struct ProfileBoundWriteBatch {
+    pub operations: Vec<TransactionOperation>,
+    pub profile_name: String,
+}
+
+impl ProfileBoundWriteBatch {
+    /// Create a new ProfileBoundWriteBatch with ShinkaiDBError wrapping
+    pub fn new(profile: &ShinkaiName) -> Result<Self, VectorFSError> {
+        // Also validates that the name includes a profile
+        let profile_name = Self::get_profile_name_string(profile)?;
+        // Create write batch
+        let operations = Vec::new();
+        Ok(Self {
+            profile_name,
+            operations,
+        })
+    }
+
+    /// Create a new ProfileBoundWriteBatch with VectorFSError wrapping
+    pub fn new_vfs_batch(profile: &ShinkaiName) -> Result<Self, VectorFSError> {
+        // Also validates that the name includes a profile
+        match Self::get_profile_name_string(profile) {
+            Ok(profile_name) => {
+                Ok(Self {
+                    operations: Vec::new(), // Initialize the operations vector
+                    profile_name,
+                })
+            }
+            Err(e) => Err(VectorFSError::FailedCreatingProfileBoundWriteBatch(e.to_string())),
+        }
+    }
+
+    /// Extracts the profile name with ShinkaiDBError wrapping
+    pub fn get_profile_name_string(profile: &ShinkaiName) -> Result<String, VectorFSError> {
+        profile
+            .get_profile_name_string()
+            .ok_or(VectorFSError::ShinkaiNameLacksProfile)
+    }
+
+    /// Saves the value inside of the key (profile-bound) at the provided column family.
+    pub fn pb_put_cf<V>(&mut self, cf_name: &str, key: &str, value: V)
+    where
+        V: AsRef<[u8]>,
+    {
+        let new_key = self.gen_pb_key(key);
+        self.operations.push(TransactionOperation::Write(
+            cf_name.to_string(),
+            new_key,
+            value.as_ref().to_vec(),
+        ));
+    }
+
+    /// Removes the value inside of the key (profile-bound) at the provided column family.
+    pub fn pb_delete_cf(&mut self, cf_name: &str, key: &str) {
+        let new_key = self.gen_pb_key(key);
+        self.operations
+            .push(TransactionOperation::Delete(cf_name.to_string(), new_key));
+    }
+
+    /// Given an input key, generates the profile bound key using the internal profile.
+    pub fn gen_pb_key(&self, key: &str) -> String {
+        Self::generate_profile_bound_key_from_str(key, &self.profile_name)
+    }
+
+    /// Prepends the profile name to the provided key to make it "profile bound"
+    pub fn generate_profile_bound_key_from_str(key: &str, profile_name: &str) -> String {
+        let mut prof_name = profile_name.to_string() + ":";
+        prof_name.push_str(key);
+        prof_name
     }
 }

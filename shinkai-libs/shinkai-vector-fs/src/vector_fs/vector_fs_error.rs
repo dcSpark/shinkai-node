@@ -11,7 +11,6 @@ use std::{io, str::Utf8Error};
 pub enum VectorFSError {
     ShinkaiNameError(ShinkaiNameError),
     SqliteManagerError(SqliteManagerError),
-    RocksDBError(rocksdb::Error),
     IOError(io::Error),
     InvalidIdentityType(String),
     Utf8ConversionError,
@@ -58,7 +57,6 @@ impl fmt::Display for VectorFSError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             VectorFSError::SqliteManagerError(e) => write!(f, "SqliteManager error: {}", e),
-            VectorFSError::RocksDBError(e) => write!(f, "RocksDB error: {}", e),
             VectorFSError::SomeError(e) => write!(f, "Some error: {}", e),
             VectorFSError::ShinkaiNameLacksProfile => write!(
                 f,
@@ -165,7 +163,6 @@ impl std::error::Error for VectorFSError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             VectorFSError::SqliteManagerError(e) => Some(e),
-            VectorFSError::RocksDBError(e) => Some(e),
             VectorFSError::JsonSerializationError(e) => Some(e),
             VectorFSError::IOError(e) => Some(e),
             VectorFSError::VRError(e) => Some(e),
@@ -188,7 +185,6 @@ impl PartialEq for VectorFSError {
             (VectorFSError::SqliteManagerError(e1), VectorFSError::SqliteManagerError(e2)) => {
                 e1.to_string() == e2.to_string()
             }
-            (VectorFSError::RocksDBError(e1), VectorFSError::RocksDBError(e2)) => e1.to_string() == e2.to_string(),
             (VectorFSError::Utf8ConversionError, VectorFSError::Utf8ConversionError) => true,
             (VectorFSError::JsonSerializationError(e1), VectorFSError::JsonSerializationError(e2)) => {
                 e1.to_string() == e2.to_string()
@@ -212,12 +208,6 @@ impl From<VRError> for VectorFSError {
 impl From<SqliteManagerError> for VectorFSError {
     fn from(error: SqliteManagerError) -> Self {
         VectorFSError::SqliteManagerError(error)
-    }
-}
-
-impl From<rocksdb::Error> for VectorFSError {
-    fn from(error: rocksdb::Error) -> Self {
-        VectorFSError::RocksDBError(error)
     }
 }
 

@@ -1,4 +1,3 @@
-pub mod db;
 pub mod vector_fs;
 pub mod vector_fs_error;
 pub mod vector_fs_internals;

@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use super::db::fs_db::ProfileBoundWriteBatch;
 use super::vector_fs::VectorFS;
 use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};

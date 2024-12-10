@@ -15,10 +15,6 @@ blake3 = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 chrono = { workspace = true }
 
-[dependencies.rocksdb]
-workspace = true
-features = ["lz4"]
-
 [dependencies.serde]
 workspace = true
 features = ["derive"]
