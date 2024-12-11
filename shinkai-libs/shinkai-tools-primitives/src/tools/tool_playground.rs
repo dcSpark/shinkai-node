@@ -215,7 +215,8 @@ mod tests {
             "tool_router_key": "example_key",
             "job_id": "job_123",
             "job_id_history": [],
-            "code": "console.log('Hello, world!');"
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
         }
         "#;
 
@@ -290,7 +291,8 @@ mod tests {
             },
             "job_id": "123",
             "job_id_history": [],
-            "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }"
+            "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }",
+            "language": "Typescript"
         }
         "#;
 
@@ -342,7 +344,8 @@ mod tests {
             "tool_router_key": "example_key",
             "job_id": "job_123",
             "job_id_history": [],
-            "code": "console.log('Hello, world!');"
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
         }
         "#;
 
