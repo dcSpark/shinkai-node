@@ -1,7 +1,9 @@
+use super::utils::db_handlers::setup_node_storage_path;
 use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
@@ -14,23 +16,23 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
 use super::utils::node_test_api::{
-    api_llm_provider_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job,
+    api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
+    api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
 };
 use mockito::Server;
 
 #[test]
 fn sandwich_messages_with_files_test() {
+    setup_node_storage_path();
     unsafe { std::env::set_var("WELCOME_MESSAGE", "false") };
     unsafe { std::env::set_var("ONLY_TESTING_JS_TOOLS", "true") };
-    
+
     let mut server = Server::new();
 
     run_test_one_node_network(|env| {
@@ -66,7 +68,7 @@ fn sandwich_messages_with_files_test() {
                 )
                 .await;
             }
-            
+
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
@@ -202,9 +204,7 @@ fn sandwich_messages_with_files_test() {
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(file_path)
-                    .map_err(|_| VRError::FailedPDFParsing)
-                    .unwrap();
+                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
