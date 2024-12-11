@@ -7,7 +7,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     argument::{ToolArgument, ToolOutputArg},
-    deno_tools::DenoToolResult,
+    deno_tools::ToolResult,
     tool_config::{BasicConfig, ToolConfig},
 };
 
@@ -43,7 +43,7 @@ impl JSToolkit {
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
 
-        let result = DenoToolResult {
+        let result = ToolResult {
             r#type: definition.result["type"].as_str().unwrap_or("object").to_string(),
             properties: definition.result["properties"].clone(),
             required: definition.result["required"]
@@ -57,6 +57,7 @@ impl JSToolkit {
             name: tool_name,
             author: definition.author.clone(),
             config,
+            oauth: None,
             js_code: definition.code.clone().unwrap_or_default(),
             tools: None,
             description: definition.description.clone(),

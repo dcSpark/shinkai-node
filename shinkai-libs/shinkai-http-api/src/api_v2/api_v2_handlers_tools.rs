@@ -252,9 +252,7 @@ pub struct ToolExecutionRequest {
     pub llm_provider: String,
     pub parameters: Value,
     #[serde(default = "default_map")]
-    pub extra_config: Value,
-    #[serde(default = "default_map")]
-    pub oauth: Value,
+    pub extra_config: Value
 }
 
 #[utoipa::path(
@@ -286,15 +284,6 @@ pub async fn tool_execution_handler(
         })),
     };
 
-    let oauth = match payload.oauth {
-        Value::Object(map) => map,
-        _ => return Err(warp::reject::custom(APIError {
-            code: 400,
-            error: "Invalid OAuth".to_string(),
-            message: "OAuth must be an object".to_string(),
-        })),
-    };
-
     let extra_config = match payload.extra_config {
         Value::Object(map) => map,
         _ => return Err(warp::reject::custom(APIError {
@@ -314,7 +303,6 @@ pub async fn tool_execution_handler(
             app_id,
             llm_provider: payload.llm_provider.clone(),
             extra_config,
-            oauth,
             res: res_sender,
         })
         .await
@@ -699,7 +687,7 @@ pub async fn set_playground_tool_handler(
     sender
         .send(NodeCommand::V2ApiSetPlaygroundTool {
             bearer,
-            payload,
+            payload, 
             res: res_sender,
         })
         .await
@@ -889,12 +877,18 @@ pub async fn get_tool_implementation_prompt_handler(
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
         .unwrap_or_default();
 
+    let code = query_params
+        .get("code")
+        .map_or("", |v| v)  
+        .to_string();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGenerateToolFetchQuery {
             bearer,
             language: language.unwrap(),
             tools,
+            code,
             res: res_sender,
         })
         .await

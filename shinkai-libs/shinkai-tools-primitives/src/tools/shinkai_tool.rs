@@ -87,6 +87,7 @@ impl ShinkaiTool {
                         ShinkaiTool::Rust(r, _) => r.toolkit_name(),
                         ShinkaiTool::Deno(j, _) => j.toolkit_name.to_string(),
                         ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
+                        ShinkaiTool::Python(p, _) => p.toolkit_name.clone(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
@@ -410,7 +411,7 @@ impl From<NetworkTool> for ShinkaiTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::deno_tools::{DenoTool, DenoToolResult};
+    use crate::tools::deno_tools::{DenoTool, ToolResult};
     use serde_json::json;
 
     #[test]
@@ -429,7 +430,7 @@ mod tests {
             keywords: vec![],
             activated: false,
             embedding: None,
-            result: DenoToolResult::new(
+            result: ToolResult::new(
                 "object".to_string(),
                 json!({
                     "markdowns": { "type": "array", "items": { "type": "string" } }
@@ -439,6 +440,7 @@ mod tests {
             sql_tables: None,
             sql_queries: None,
             file_inbox: None,
+            oauth: None,
         };
 
         // Create a ShinkaiTool instance
