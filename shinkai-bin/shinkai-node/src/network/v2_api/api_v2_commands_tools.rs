@@ -33,8 +33,12 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, python_tools::PythonTool, shinkai_tool::ShinkaiTool,
-    tool_config::ToolConfig, tool_playground::ToolPlayground,
+    argument::ToolOutputArg,
+    deno_tools::DenoTool,
+    python_tools::PythonTool,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{OAuth, ToolConfig},
+    tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -797,7 +801,7 @@ impl Node {
         tools: Vec<String>,
         parameters: Map<String, Value>,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
+        oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -812,7 +816,7 @@ impl Node {
         let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
 
         // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
-        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
+        // let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
 
         // Execute the tool directly
         let result = execute_code(
@@ -821,7 +825,7 @@ impl Node {
             tools,
             parameters,
             tool_configs,
-            oauth_configs,
+            oauth,
             db,
             tool_id,
             app_id,

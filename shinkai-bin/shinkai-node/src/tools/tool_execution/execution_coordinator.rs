@@ -29,7 +29,7 @@ use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-async fn handle_oauth(
+pub async fn handle_oauth(
     oauth: &Option<Vec<OAuth>>,
     db: &Arc<RwLock<SqliteManager>>,
     app_id: String,
@@ -265,8 +265,8 @@ pub async fn execute_code(
     tools: Vec<String>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<OAuth>,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
+    oauth: Option<Vec<OAuth>>,
+    db: Arc<RwLock<SqliteManager>>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -274,41 +274,45 @@ pub async fn execute_code(
     node_name: ShinkaiName,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
-
     // Route based on the prefix
     match tool_type {
         DynamicToolType::DenoDynamic => {
-            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(
                 bearer.clone(),
+                db.clone(),
                 node_name,
                 parameters,
                 extra_config,
-                oauth,
+                oauth.clone(),
                 tool_id,
                 app_id,
                 llm_provider,
                 support_files,
                 code,
             )
+            .await
         }
         DynamicToolType::PythonDynamic => {
-            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_python_tool(
                 bearer.clone(),
+                db.clone(),
                 node_name,
                 parameters,
                 extra_config,
+                oauth.clone(),
                 tool_id,
                 app_id,
                 llm_provider,
                 support_files,
                 code,
             )
+            .await
         }
     }
 }
