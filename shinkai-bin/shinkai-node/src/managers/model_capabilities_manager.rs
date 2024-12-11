@@ -450,37 +450,13 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("phi2") => 4_000,
             model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
             model_type if model_type.starts_with("llama-3.2") => 128_000,
+            model_type if model_type.starts_with("llama3.3") => 128_000,
+            model_type if model_type.starts_with("llama3.4") => 128_000,
             model_type if model_type.starts_with("llama-3.1") => 128_000,
-            model_type if model_type.starts_with("llama3.2") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
             model_type if model_type.starts_with("claude") => 200_000,
             _ => 4096, // Default token count if no specific model type matches
-        }
-    }
-
-    /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
-    pub async fn get_max_input_tokens_for_provider_or_agent(
-        provider_or_agent: ProviderOrAgent,
-        db: Arc<RwLock<SqliteManager>>,
-    ) -> Option<usize> {
-        match provider_or_agent {
-            ProviderOrAgent::LLMProvider(serialized_llm_provider) => Some(
-                ModelCapabilitiesManager::get_max_input_tokens(&serialized_llm_provider.model),
-            ),
-            ProviderOrAgent::Agent(agent) => {
-                let llm_id = &agent.llm_provider_id;
-                let profile = agent.full_identity_name.extract_profile().ok()?;
-                if let Some(llm_provider) = db.read().await.get_llm_provider(llm_id, &profile).ok() {
-                    if let Some(model) = llm_provider {
-                        Some(ModelCapabilitiesManager::get_max_input_tokens(&model.model))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
         }
     }
 

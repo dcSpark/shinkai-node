@@ -512,12 +512,10 @@ impl SqliteManager {
     // Search the FTS table
     pub fn search_tools_fts(&self, query: &str) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
         // Get a connection from the in-memory pool for FTS operations
-        let fts_conn = self.fts_pool.get().map_err(|e| {
-            rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error::new(1),
-                Some(e.to_string()),
-            )
-        })?;
+        let fts_conn = self
+            .fts_pool
+            .get()
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
 
         // Extract keyphrases using the `keyphrases` crate (RAKE under the hood).
         // Adjust top_n as needed (e.g. 5, 10) to extract more phrases.
@@ -549,10 +547,11 @@ impl SqliteManager {
                 // Only fetch tool header if we haven't seen this one already
                 if seen.insert(name.clone()) {
                     let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1")?;
-                    let tool_header_data: Vec<u8> = stmt.query_row(rusqlite::params![name], |row| row.get(0)).map_err(|e| {
-                        eprintln!("Persistent DB query error: {}", e);
-                        SqliteManagerError::DatabaseError(e)
-                    })?;
+                    let tool_header_data: Vec<u8> =
+                        stmt.query_row(rusqlite::params![name], |row| row.get(0)).map_err(|e| {
+                            eprintln!("Persistent DB query error: {}", e);
+                            SqliteManagerError::DatabaseError(e)
+                        })?;
 
                     let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
                         eprintln!("Deserialization error: {}", e);
@@ -589,10 +588,7 @@ impl SqliteManager {
             let name: String = row.get(1)?;
 
             // Delete the existing entry if it exists
-            fts_conn.execute(
-                "DELETE FROM shinkai_tools_fts WHERE rowid = ?1",
-                params![rowid],
-            )?;
+            fts_conn.execute("DELETE FROM shinkai_tools_fts WHERE rowid = ?1", params![rowid])?;
 
             // Insert the new entry
             fts_conn.execute(
@@ -616,7 +612,7 @@ mod tests {
     use shinkai_tools_primitives::tools::argument::ToolArgument;
     use shinkai_tools_primitives::tools::argument::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-    use shinkai_tools_primitives::tools::deno_tools::DenoToolResult;
+    use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -645,13 +641,14 @@ mod tests {
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: vec![],
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
@@ -707,12 +704,13 @@ mod tests {
             js_code: "console.log('Hello, Deno 1!');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "A Deno tool for testing 1".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -726,12 +724,13 @@ mod tests {
             js_code: "console.log('Hello, Deno 2!');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "A Deno tool for testing 2".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -745,12 +744,13 @@ mod tests {
             js_code: "console.log('Hello, Deno 3!');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "A Deno tool for testing 3".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -801,12 +801,13 @@ mod tests {
             js_code: "console.log('Tool 1');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "First Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool1".to_string()],
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -820,12 +821,13 @@ mod tests {
             js_code: "console.log('Tool 2');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "Second Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool2".to_string()],
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -839,12 +841,13 @@ mod tests {
             js_code: "console.log('Tool 3');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "Third Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool3".to_string()],
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
@@ -920,13 +923,14 @@ mod tests {
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],
+            oauth: None,
             description: "A Deno tool for testing duplicates".to_string(),
             keywords: vec!["deno".to_string(), "duplicate".to_string()],
             input_args: vec![],
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
@@ -963,12 +967,13 @@ mod tests {
                 js_code: "console.log('Tool 1');".to_string(),
                 tools: None,
                 config: vec![],
+                oauth: None,
                 description: "Process and manipulate images".to_string(),
                 keywords: vec!["image".to_string(), "processing".to_string()],
                 input_args: vec![],
                 activated: true,
                 embedding: None,
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
@@ -981,12 +986,13 @@ mod tests {
                 js_code: "console.log('Tool 2');".to_string(),
                 tools: None,
                 config: vec![],
+                oauth: None,
                 description: "Analyze text content".to_string(),
                 keywords: vec!["text".to_string(), "analysis".to_string()],
                 input_args: vec![],
                 activated: true,
                 embedding: None,
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
@@ -999,12 +1005,13 @@ mod tests {
                 js_code: "console.log('Tool 3');".to_string(),
                 tools: None,
                 config: vec![],
+                oauth: None,
                 description: "Visualize data sets".to_string(),
                 keywords: vec!["data".to_string(), "visualization".to_string()],
                 input_args: vec![],
                 activated: true,
                 embedding: None,
-                result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 output_arg: ToolOutputArg::empty(),
                 sql_tables: None,
                 sql_queries: None,
@@ -1065,11 +1072,12 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let disabled_tool = DenoTool {
@@ -1084,11 +1092,12 @@ mod tests {
             input_args: vec![],
             activated: false, // This tool is disabled
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         // Add both tools to the database
@@ -1149,11 +1158,12 @@ mod tests {
             input_args: vec![],
             activated: true,
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let disabled_non_network_tool = DenoTool {
@@ -1168,11 +1178,12 @@ mod tests {
             input_args: vec![],
             activated: false, // This tool is disabled
             embedding: None,
-            result: DenoToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            oauth: None,
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {

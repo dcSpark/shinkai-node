@@ -49,6 +49,7 @@ pub async fn generate_code_prompt(
     3. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
     4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
     5. If an external system requires to be used through a package (Deno, Node or NPM), or the API is unknown the NPM library may be used with the 'npm:' prefix.
+  * If OAuth is required, use the 'getAccessToken' function to get a valid OAuth AccessToken for the given provider.
 </agent_deno_libraries>
 
 <agent_code_format>
@@ -145,6 +146,7 @@ pub async fn generate_code_prompt(
   3. The code will be ran with Python Runtime, so prefer Python default and standard libraries. Import all used libraries as `from <library> import <function>` for example for Lists use `from typing import List`.
   4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
   5. If an external system has a well known and defined API, call the API endpoints.
+* If OAuth is required, use the 'get_access_token' function to get a valid OAuth AccessToken for the given provider.
 </agent_python_libraries>
 
 <agent_code_format>
@@ -207,10 +209,45 @@ class OUTPUT:
 }
 
 pub async fn tool_metadata_implementation_prompt(
-    _language: CodeLanguage,
+    language: CodeLanguage,
     code: String,
     tools: Vec<String>,
 ) -> Result<String, APIError> {
+    let has_oauth = (language == CodeLanguage::Typescript && code.contains("getAccessToken"))
+        || (language == CodeLanguage::Python && code.contains("get_access_token"));
+    let oauth_example = if has_oauth {
+        r#"[
+      {{
+        "name": "google",
+        "version": "2.0",
+        "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+        "redirectUrl": "https://secrets.shinkai.com/redirect",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "clientId": "YOUR_PROVIDER_CLIENT_ID",
+        "clientSecret": "YOUR_PROVIDER_CLIENT_SECRET",
+        "scopes": [
+          "https://www.googleapis.com/auth/userinfo.email",
+          "https://www.googleapis.com/auth/userinfo.profile"
+        ],
+        "grantType": "authorization_code",
+        "refreshToken": "",
+        "accessToken": ""
+      }}
+    ]"#
+    } else {
+        r#"[]"#
+    };
+    let oauth_explain = if has_oauth {
+        r#"\
+    * OAuth is required. For each get_access_token or getAccessToken function you must provide an OAuth configuration.
+    * getAccessToken(name) must match the metadata oauth name field.
+    * OAuth version 1.0 or 2.0 is supported, if possible prefer 1.0 over 2.0.
+    * Leave refreshToken and accessToken empty, they will be filled later on.\
+"#
+    } else {
+        r#""#
+    };
+
     Ok(format!(
         r####"
 <agent_metadata_schema>
@@ -263,6 +300,71 @@ pub async fn tool_metadata_implementation_prompt(
         }},
         "additionalProperties": {{
           "type": "boolean"
+        }}
+        "oauth": {{
+          "type": "array",
+          "description": "A list of OAuth integrations",
+          "items": {{
+            "type": "object",
+            "properties": {{
+              "name": {{
+                "type": "string",
+                "description": "The unique name of the OAuth integration."
+              }},
+              "version": {{
+                "type": "string",
+                "description": "The version of the OAuth integration: 1.0 or 2.0."
+              }},
+              "authorizationUrl": {{
+                "type": "string",
+                "format": "uri",
+                "description": "The endpoint to obtain authorization from the resource owner."
+              }},
+              "redirectUrl": {{
+                "type": "string",
+                "format": "uri",
+                "description": "The redirect URI for the OAuth integration.",
+                "default": "https://secrets.shinkai.com/redirect"
+              }},
+              "responseType": {{
+                "type": "string",
+                "description": "The OAuth 2.0 response type (e.g., 'token').",
+                "default": "token"
+              }},
+              "tokenUrl": {{
+                "type": "string",
+                "format": "uri",
+                "description": "The endpoint to exchange the authorization grant for an access token."
+              }},
+              "clientId": {{
+                "type": "string",
+                "description": "The client identifier issued to the client during registration."
+              }},
+              "clientSecret": {{
+                "type": "string",
+                "description": "The client secret issued during registration."
+              }},
+              "scopes": {{
+                "type": "array",
+                "description": "A list of scopes required for the integration.",
+                "items": {{
+                  "type": "string"
+                }}
+              }},
+              "grantType": {{
+                "type": "string",
+                "description": "The OAuth 2.0 grant type",
+                "default": "authorization_code"
+              }}
+            }},
+            "required": [
+              "authorizationUrl",
+              "tokenUrl",
+              "clientId",
+              "clientSecret"
+            ],
+            "additionalProperties": false
+          }}
         }}
       }},
       "required": [
@@ -392,7 +494,6 @@ pub async fn tool_metadata_implementation_prompt(
   ## Example 1:
   Output: ```json
   {{
-    "id": "coinbase-create-wallet",
     "name": "Coinbase Wallet Creator",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
@@ -450,9 +551,8 @@ pub async fn tool_metadata_implementation_prompt(
   ## Example 2:
   Output:```json
   {{
-    "id": "tool-download-pages",
     "name": "Download Pages",
-    "description": "Downloads one or more URLs and converts their HTML content to Markdown",
+    "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
     "author": "Shinkai",
     "keywords": [
       "HTML to Markdown",
@@ -495,7 +595,8 @@ pub async fn tool_metadata_implementation_prompt(
         "query": "SELECT * FROM downloaded_pages WHERE url = :url ORDER BY downloaded_at DESC LIMIT 1"
       }}
     ],
-    "tools": []
+    "tools": [],
+    "oauth": {oauth_example}
   }};
   ```
 </agent_metadata_examples>
@@ -504,6 +605,7 @@ pub async fn tool_metadata_implementation_prompt(
   * If the code uses shinkaiSqliteQueryExecutor then fill the sqlTables and sqlQueries sections, otherwise these sections are empty.
   * sqlTables contains the complete table structures, they should be same as in the code.
   * sqlQueries contains from 1 to 3 examples that show how the data should be retrieved for usage.
+{oauth_explain}
 </agent_metadata_rules>
 
 <available_tools>

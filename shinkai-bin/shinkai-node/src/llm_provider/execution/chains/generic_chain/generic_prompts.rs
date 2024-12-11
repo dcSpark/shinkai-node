@@ -60,13 +60,9 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
             }
-            eprintln!("Node content:\n");
             for node in ret_nodes {
-                // Print the content of each node to the console
-                eprintln!("{:?}", node.format_for_prompt(3500));
                 prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
             }
-            eprintln!("--- end ---");
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }

@@ -1,10 +1,11 @@
 use super::{
     argument::ToolArgument,
-    deno_tools::DenoToolResult,
-    tool_config::{BasicConfig, ToolConfig},
+    deno_tools::ToolResult,
+    tool_config::{BasicConfig, OAuth, ToolConfig},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SqlTable {
@@ -26,6 +27,7 @@ pub struct ToolPlayground {
     #[serde(default)]
     pub job_id_history: Vec<String>,
     pub code: String,
+    pub language: CodeLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,7 +40,7 @@ pub struct ToolPlaygroundMetadata {
     pub configurations: Vec<ToolConfig>,
     #[serde(deserialize_with = "deserialize_parameters")]
     pub parameters: Vec<ToolArgument>,
-    pub result: DenoToolResult,
+    pub result: ToolResult,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_tables")]
@@ -52,6 +54,7 @@ pub struct ToolPlaygroundMetadata {
     // None -> All tools.
     // Empty vector -> No tools.
     pub tools: Option<Vec<String>>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>
@@ -212,7 +215,8 @@ mod tests {
             "tool_router_key": "example_key",
             "job_id": "job_123",
             "job_id_history": [],
-            "code": "console.log('Hello, world!');"
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
         }
         "#;
 
@@ -287,7 +291,8 @@ mod tests {
             },
             "job_id": "123",
             "job_id_history": [],
-            "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }"
+            "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }",
+            "language": "Typescript"
         }
         "#;
 
@@ -339,7 +344,8 @@ mod tests {
             "tool_router_key": "example_key",
             "job_id": "job_123",
             "job_id_history": [],
-            "code": "console.log('Hello, world!');"
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
         }
         "#;
 

@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg,
-    error::ToolError,
-    python_tools::{PythonTool, PythonToolResult},
+    argument::ToolOutputArg, deno_tools::ToolResult, error::ToolError, python_tools::PythonTool,
     tool_config::ToolConfig,
 };
 
@@ -36,10 +34,11 @@ pub fn execute_python_tool(
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
-        result: PythonToolResult::new("object".to_string(), Value::Null, vec![]),
+        result: ToolResult::new("object".to_string(), Value::Null, vec![]),
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
+        oauth: None,
     };
 
     let mut envs = HashMap::new();

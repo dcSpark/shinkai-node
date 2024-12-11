@@ -29,6 +29,7 @@ pub enum ToolError {
     MissingConfigError(String),
     InvalidFunctionArguments(String),
     InvalidToolRouterKey(String),
+    OAuthError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -59,6 +60,7 @@ impl fmt::Display for ToolError {
             ToolError::MissingConfigError(ref e) => write!(f, "Missing config error: {}", e),
             ToolError::InvalidFunctionArguments(ref e) => write!(f, "Invalid function arguments: {}", e),
             ToolError::InvalidToolRouterKey(ref e) => write!(f, "Invalid tool router key: {}", e),
+            ToolError::OAuthError(ref e) => write!(f, "OAuth not setup: {}", e),
         }
     }
 }
