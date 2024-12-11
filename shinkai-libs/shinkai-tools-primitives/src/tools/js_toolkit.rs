@@ -3,7 +3,6 @@ use crate::tools::error::ToolError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
-use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     argument::{ToolArgument, ToolOutputArg},
@@ -64,10 +63,7 @@ impl JSToolkit {
             input_args,
             output_arg,
             activated: false,
-            embedding: definition.embedding_metadata.clone().map(|meta| Embedding {
-                id: "".to_string(),
-                vector: meta.embeddings,
-            }),
+            embedding: definition.embedding_metadata.clone().map(|meta| meta.embeddings),
             result,
             sql_tables: None,
             sql_queries: None,

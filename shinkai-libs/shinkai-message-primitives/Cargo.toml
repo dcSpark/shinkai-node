@@ -24,7 +24,7 @@ base64 = { workspace = true }
 utoipa = "4.2.3"
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
-async-trait = { workspace = true }
+async-trait = "0.1.74"
 
 tracing = { version = "0.1.40", optional = true }
 

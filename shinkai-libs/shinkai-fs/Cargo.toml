@@ -28,3 +28,12 @@ regex = { workspace = true }
 [dependencies.serde]
 workspace = true
 features = ["derive"]
+
+[[test]]
+name = "pdf_parsing_tests"
+path = "tests/pdf_parsing_tests.rs"
+required-features = ["static-pdf-parser"]
+
+# [[test]]
+# name = "vector_resource_tests"
+# path = "tests/vector_resource_tests.rs"

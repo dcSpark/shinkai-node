@@ -19,7 +19,6 @@ use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -35,7 +34,7 @@ pub struct DenoTool {
     pub input_args: Vec<ToolArgument>,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
-    pub embedding: Option<Embedding>,
+    pub embedding: Option<Vec<f32>>,
     pub result: DenoToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,

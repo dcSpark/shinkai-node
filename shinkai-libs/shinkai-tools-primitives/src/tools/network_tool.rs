@@ -1,5 +1,4 @@
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
-use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{argument::{ToolArgument, ToolOutputArg}, error::ToolError, tool_config::ToolConfig, shinkai_tool::ShinkaiTool};
 
@@ -15,7 +14,7 @@ pub struct NetworkTool {
     pub config: Vec<ToolConfig>,
     pub input_args: Vec<ToolArgument>,
     pub output_arg: ToolOutputArg,
-    pub embedding: Option<Embedding>,
+    pub embedding: Option<Vec<f32>>,
     pub restrictions: Option<String>, // Could be a JSON string or a more structured type
                                       // ^ What was this for? I think it was *internal* user restrictions (e.g. max_requests_per_day, max_total_budget etc.)
 }
@@ -34,7 +33,7 @@ impl NetworkTool {
         config: Vec<ToolConfig>,
         input_args: Vec<ToolArgument>,
         output_arg: ToolOutputArg,
-        embedding: Option<Embedding>,
+        embedding: Option<Vec<f32>>,
         restrictions: Option<String>,
     ) -> Self {
         Self {

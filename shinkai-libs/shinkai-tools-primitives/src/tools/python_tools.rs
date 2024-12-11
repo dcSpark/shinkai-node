@@ -15,7 +15,6 @@ use shinkai_tools_runner::tools::python_runner::PythonRunner;
 use shinkai_tools_runner::tools::python_runner_options::PythonRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
 use super::argument::ToolOutputArg;
@@ -35,7 +34,7 @@ pub struct PythonTool {
     pub input_args: Vec<ToolArgument>,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
-    pub embedding: Option<Embedding>,
+    pub embedding: Option<Vec<f32>>,
     pub result: PythonToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,

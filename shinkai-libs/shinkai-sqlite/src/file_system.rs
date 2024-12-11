@@ -36,7 +36,7 @@ pub struct FileChunk {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileChunkEmbedding {
     pub chunk_id: i64,
-    pub embedding: Vec<u8>, // Store your embeddings as binary or use another format
+    pub embedding: Vec<u8>, // TODO: change to f32
 }
 
 impl SqliteManager {

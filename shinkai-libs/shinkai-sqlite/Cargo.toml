@@ -14,7 +14,7 @@ r2d2 = "0.8.10"
 r2d2_sqlite = "0.25"
 keyphrases = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
-shinkai_vector_resources = { workspace = true }
+# shinkai_vector_resources = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_sheet = { workspace = true }
 reqwest = { workspace = true }

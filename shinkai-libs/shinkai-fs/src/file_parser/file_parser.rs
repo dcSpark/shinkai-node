@@ -10,7 +10,6 @@ pub struct ShinkaiFileParser;
 impl ShinkaiFileParser {
     pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
         use shinkai_ocr::image_parser::ImageParser;
-
         ImageParser::check_and_download_dependencies().await
     }
 
@@ -20,9 +19,8 @@ impl ShinkaiFileParser {
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
-        parsing_tags: &Vec<String>,
+        parsing_tags: &Vec<String>, // TODO: do we need this?
         max_node_text_size: u64,
-        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, ShinkaiFsError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
@@ -37,55 +35,12 @@ impl ShinkaiFileParser {
             source,
             parsing_tags,
             max_node_text_size,
-            distribution_info,
         )
         .await
     }
 
-    /// Processes the input file into a BaseVectorResource.
-    pub fn process_file_into_resource_blocking(
-        file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
-        file_name: String,
-        desc: Option<String>,
-        parsing_tags: &Vec<String>,
-        max_node_text_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, ShinkaiFsError> {
-        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-        let text_groups = ShinkaiFileParser::process_file_into_text_groups_blocking(
-            file_buffer,
-            file_name,
-            max_node_text_size,
-            source.clone(),
-        )?;
-
-        // Here, we switch to the blocking variant of `process_groups_into_resource`.
-        ShinkaiFileParser::process_groups_into_resource_blocking(
-            text_groups,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
-            max_node_text_size,
-            distribution_info,
-        )
-    }
-
     /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub async fn process_file_into_text_groups(
-        file_buffer: Vec<u8>,
-        file_name: String,
-        max_node_text_size: u64,
-        source: VRSourceReference,
-    ) -> Result<Vec<TextGroup>, ShinkaiFsError> {
-        LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
-    }
-
-    /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
-    pub fn process_file_into_text_groups_blocking(
         file_buffer: Vec<u8>,
         file_name: String,
         max_node_text_size: u64,
@@ -103,7 +58,6 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         parsing_tags: &Vec<String>,
         max_node_text_size: u64,
-        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, ShinkaiFsError> {
         Self::process_groups_into_resource_with_custom_collection(
             text_groups,
@@ -114,33 +68,8 @@ impl ShinkaiFileParser {
             parsing_tags,
             max_node_text_size,
             ShinkaiFileParser::collect_texts_and_indices,
-            distribution_info,
         )
         .await
-    }
-
-    /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
-    pub fn process_groups_into_resource_blocking(
-        text_groups: Vec<TextGroup>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<String>,
-        max_node_text_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, ShinkaiFsError> {
-        Self::process_groups_into_resource_blocking_with_custom_collection(
-            text_groups,
-            generator,
-            name,
-            desc,
-            source,
-            parsing_tags,
-            max_node_text_size,
-            ShinkaiFileParser::collect_texts_and_indices,
-            distribution_info,
-        )
     }
 
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
@@ -154,7 +83,6 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<String>,
         max_node_text_size: u64,
         collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
-        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, ShinkaiFsError> {
         let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
             text_groups,

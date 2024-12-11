@@ -80,11 +80,10 @@ impl ShinkaiFileParser {
 
             for (index, batch) in texts.chunks(max_batch_size as usize).enumerate() {
                 let batch_texts = batch.to_vec();
-                let batch_ids = ids[..batch.len()].to_vec();
                 let generator_clone = generator.box_clone(); // Clone the generator for use in the future.
 
                 // Use the `move` keyword to take ownership of `generator_clone` inside the async block.
-                let future = async move { generator_clone.generate_embeddings(&batch_texts, &batch_ids).await };
+                let future = async move { generator_clone.generate_embeddings(&batch_texts).await };
                 current_batch_futures.push(future);
 
                 // If we've collected 10 futures or are at the last batch, add them to all_futures and start a new vector
@@ -148,8 +147,7 @@ impl ShinkaiFileParser {
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
         let mut embeddings = Vec::new();
         for batch in texts.chunks(max_batch_size as usize) {
-            let batch_ids = &ids[..batch.len()];
-            match generator.generate_embeddings_blocking(&batch.to_vec(), &batch_ids.to_vec()) {
+            match generator.generate_embeddings_blocking(&batch.to_vec()) {
                 Ok(batch_embeddings) => {
                     embeddings.extend(batch_embeddings);
                 }
