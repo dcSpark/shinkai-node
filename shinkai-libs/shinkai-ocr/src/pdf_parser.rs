@@ -21,12 +21,17 @@ pub struct PDFText {
 
 impl PDFParser {
     pub fn new() -> anyhow::Result<Self> {
+        println!("Initializing PDFParser...");
         let image_parser = ImageParser::new()?;
+        println!("ImageParser initialized.");
 
         #[cfg(not(feature = "static"))]
         let pdfium = {
             let lib_path = match std::env::var("PDFIUM_DYNAMIC_LIB_PATH").ok() {
-                Some(lib_path) => lib_path,
+                Some(lib_path) => {
+                    println!("Using dynamic library path from environment: {}", lib_path);
+                    lib_path
+                }
                 None => {
                     #[cfg(target_os = "linux")]
                     let os = "linux";
@@ -43,28 +48,42 @@ impl PDFParser {
                     #[cfg(target_arch = "x86_64")]
                     let arch = "x64";
 
-                    format!("pdfium/{}-{}", os, arch)
+                    let path = format!("pdfium/{}-{}", os, arch);
+                    println!("Using default library path: {}", path);
+                    path
                 }
             };
 
-            // Look for the dynamic library in the specified path or fall back to the current directory.
+            println!("Using library path: {}", Pdfium::pdfium_platform_library_name_at_path(&lib_path).to_string_lossy().to_string());
             let bindings = match Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)) {
-                Ok(bindings) => bindings,
-                Err(_) => Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))?,
+                Ok(bindings) => {
+                    println!("Successfully bound to library at: {}", lib_path);
+                    bindings
+                }
+                Err(_) => {
+                    println!("Failed to bind to library at: {}. Falling back to current directory.", lib_path);
+                    Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))?
+                }
             };
 
             Pdfium::new(bindings)
         };
 
         #[cfg(feature = "static")]
-        let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
+        let pdfium = {
+            println!("Using statically linked library.");
+            Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap())
+        };
 
+        println!("PDFParser initialized successfully.");
         Ok(PDFParser { image_parser, pdfium })
     }
 
     pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
+        println!("Starting PDF file processing...");
         let start_time = Instant::now();
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
+        println!("PDF file loaded successfully.");
 
         struct TextPosition {
             #[allow(dead_code)]
@@ -89,24 +108,28 @@ impl PDFParser {
                     let title = tag.value();
                     if !title.is_empty() {
                         metadata_text.push_str(&format!("Title: {}\n", title));
+                        println!("Found title: {}", title);
                     }
                 }
                 PdfDocumentMetadataTagType::Author => {
                     let author = tag.value();
                     if !author.is_empty() {
                         metadata_text.push_str(&format!("Author: {}\n", author));
+                        println!("Found author: {}", author);
                     }
                 }
                 PdfDocumentMetadataTagType::Subject => {
                     let subject = tag.value();
                     if !subject.is_empty() {
                         metadata_text.push_str(&format!("Subject: {}\n", subject));
+                        println!("Found subject: {}", subject);
                     }
                 }
                 PdfDocumentMetadataTagType::Keywords => {
                     let keywords = tag.value();
                     if !keywords.is_empty() {
                         metadata_text.push_str(&format!("Keywords: {}\n", keywords));
+                        println!("Found keywords: {}", keywords);
                     }
                 }
                 _ => {}
@@ -122,11 +145,13 @@ impl PDFParser {
                 page_number: 0,
                 content: vec![pdf_text],
             });
+            println!("Metadata processed and added to PDF pages.");
         }
 
         // Process pages
         for (page_index, page) in document.pages().iter().enumerate() {
             let page_start_time = Instant::now();
+            println!("Processing page {}...", page_index + 1);
             let mut pdf_texts = Vec::new();
             let mut previous_text_position: Option<TextPosition> = None;
 
@@ -137,6 +162,7 @@ impl PDFParser {
                         let text = text_object.text();
 
                         if text.is_empty() {
+                            println!("Found empty text object, skipping.");
                             continue;
                         }
 
@@ -155,8 +181,14 @@ impl PDFParser {
                             | PdfFontWeight::Weight600
                             | PdfFontWeight::Weight700Bold
                             | PdfFontWeight::Weight800
-                            | PdfFontWeight::Weight900 => true,
-                            PdfFontWeight::Custom(weight) => weight >= 500,
+                            | PdfFontWeight::Weight900 => {
+                                println!("Text is bold.");
+                                true
+                            }
+                            PdfFontWeight::Custom(weight) => {
+                                println!("Text has custom weight: {}", weight);
+                                weight >= 500
+                            }
                             _ => false,
                         };
 
@@ -183,8 +215,10 @@ impl PDFParser {
                         if previous_text_position.is_some()
                             && current_text_position.y == previous_text_position.as_ref().unwrap().y
                         {
+                            println!("Appending text on the same line: {}", text);
                             page_text.push_str(&text);
                         } else if likely_heading {
+                            println!("Found likely heading: {}", text);
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
@@ -192,7 +226,6 @@ impl PDFParser {
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
-
                                 page_text.clear();
                             }
 
@@ -205,6 +238,7 @@ impl PDFParser {
                         }
                         // likely heading or new paragraph
                         else if likely_paragraph {
+                            println!("Found likely paragraph: {}", text);
                             // Save text from previous text objects.
                             if !page_text.is_empty() {
                                 let pdf_text = PDFText {
@@ -212,7 +246,6 @@ impl PDFParser {
                                     likely_heading: false,
                                 };
                                 pdf_texts.push(pdf_text);
-
                                 page_text.clear();
                             }
 
@@ -220,8 +253,10 @@ impl PDFParser {
                         }
                         // add new line
                         else if page_text.is_empty() {
+                            println!("Starting new text block: {}", text);
                             page_text.push_str(&text);
                         } else {
+                            println!("Adding new line before text: {}", text);
                             page_text.push_str(&format!("\n{}", &text));
                         }
 
@@ -229,6 +264,7 @@ impl PDFParser {
                         previous_text_font = Some(current_text_font);
                     }
                     PdfPageObjectType::Image => {
+                        println!("Processing image object.");
                         // Save text from previous text objects.
                         if !page_text.is_empty() {
                             let pdf_text = PDFText {
@@ -236,7 +272,6 @@ impl PDFParser {
                                 likely_heading: false,
                             };
                             pdf_texts.push(pdf_text);
-
                             page_text.clear();
                         }
 
@@ -249,6 +284,7 @@ impl PDFParser {
                         );
 
                         if width > 50.0 && height > 50.0 {
+                            println!("Processing image with width: {}, height: {}", width, height);
                             if let Ok(image) = image_object.get_raw_image() {
                                 if let Ok(text) = self.image_parser.process_image(image) {
                                     if !text.is_empty() {
@@ -257,6 +293,7 @@ impl PDFParser {
                                             likely_heading: false,
                                         };
                                         pdf_texts.push(pdf_text);
+                                        println!("Extracted text from image: {}", text);
                                     }
                                 }
                             }
@@ -273,6 +310,7 @@ impl PDFParser {
                     likely_heading: false,
                 };
                 pdf_texts.push(pdf_text);
+                println!("Added text for page number: {}", page_index + 1);
             }
 
             page_text.clear();
@@ -301,6 +339,7 @@ impl PDFParser {
                 })
                 .content
                 .push(pdf_text);
+            println!("Final text added to the last page.");
         }
 
         if std::env::var("DEBUG_VRKAI").is_ok() {
@@ -308,10 +347,12 @@ impl PDFParser {
             println!("Total PDF parsed in {:?}", total_duration);
         }
 
+        println!("PDF file processing completed.");
         Ok(pdf_pages)
     }
 
     fn normalize_parsed_text(parsed_text: &str) -> String {
+        println!("Normalizing parsed text...");
         let re_whitespaces = Regex::new(r"\s{2,}|\n").unwrap();
         let re_word_breaks = Regex::new(r"\s*").unwrap();
 
@@ -319,6 +360,7 @@ impl PDFParser {
         let normalized_text = re_word_breaks.replace_all(&normalized_text, "");
         let normalized_text = normalized_text.trim().to_string();
 
+        println!("Parsed text normalized.");
         normalized_text
     }
 }
