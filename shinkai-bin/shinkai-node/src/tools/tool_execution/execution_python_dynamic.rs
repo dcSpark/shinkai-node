@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::ToolResult, error::ToolError, python_tools::PythonTool,
-    tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg, deno_tools::ToolResult, error::ToolError, parameters::Parameters, python_tools::PythonTool, tool_config::ToolConfig
 };
 
 use crate::utils::environment::fetch_node_environment;
@@ -30,7 +29,7 @@ pub fn execute_python_tool(
         config: vec![],
         description: "Python runtime execution".to_string(),
         keywords: vec![],
-        input_args: vec![],
+        input_args: Parameters::new(),
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,

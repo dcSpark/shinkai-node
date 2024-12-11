@@ -3,8 +3,8 @@ use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::subprompts::SubPrompt;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::argument::ToolArgument;
-use shinkai_tools_primitives::tools::{argument::ToolOutputArg, shinkai_tool::ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::parameters::Parameters;
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::sync::Arc;
 
@@ -52,14 +52,12 @@ Example usage:
                 author: "Shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
-                input_args: vec![
-                    ToolArgument::new(
-                        "map_function".to_string(),
-                        "string".to_string(),
-                        "A function to map over resource content".to_string(),
-                        false,
-                    ),
-                ],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property("map_function".to_string(), "string".to_string(), "The map function to use".to_string(), false);
+                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to use".to_string(), true);
+                    params
+                },
                 output_arg: ToolOutputArg {
                     json: r#"{"type": "object", "properties": {"result": {"type": "string"}, "type": {"type": "string"}, "rowCount": {"type": "number"}, "rowsAffected": {"type": "number"}}}"#.to_string(),
                 },
