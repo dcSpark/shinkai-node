@@ -763,11 +763,17 @@ impl SqliteManager {
                 access_token TEXT,
                 refresh_token TEXT,
                 token_secret TEXT,             -- For OAuth 1.0 if needed
-                token_type VARCHAR(50),
+                token_type TEXT,
                 id_token TEXT,                 -- For OIDC tokens
                 scope TEXT,
                 expires_at TIMESTAMP,
                 metadata_json TEXT,
+                authorization_url TEXT,
+                token_url TEXT,
+                client_id TEXT,
+                client_secret TEXT,
+                redirect_url TEXT,
+                version TEXT NOT NULL DEFAULT '1.0.0',  -- Added version field with default
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );",

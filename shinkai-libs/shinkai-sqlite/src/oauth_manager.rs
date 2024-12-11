@@ -23,6 +23,12 @@ pub struct OAuthToken {
     #[serde(with = "chrono::serde::ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
     pub metadata_json: Option<String>,
+    pub authorization_url: Option<String>,
+    pub token_url: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub redirect_url: Option<String>,
+    pub version: String,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub created_at: DateTime<Utc>,
     #[serde(with = "chrono::serde::ts_seconds")]
@@ -36,10 +42,12 @@ impl SqliteManager {
 
         tx.execute(
             "INSERT INTO oauth_tokens (
-                id, connection_name, state, code, app_id, tool_id, tool_key,
+                connection_name, state, code, app_id, tool_id, tool_key,
                 access_token, refresh_token, token_secret, token_type,
-                id_token, scope, expires_at, metadata_json, created_at, updated_at
-            ) VALUES (NULL,?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                id_token, scope, expires_at, metadata_json, 
+                authorization_url, token_url, client_id, client_secret, redirect_url,
+                version, created_at, updated_at
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
             params![
                 token.connection_name,
                 token.state,
@@ -55,6 +63,12 @@ impl SqliteManager {
                 token.scope,
                 token.expires_at.map(|dt| dt.to_rfc3339()),
                 token.metadata_json,
+                token.authorization_url,
+                token.token_url,
+                token.client_id,
+                token.client_secret,
+                token.redirect_url,
+                token.version,
                 token.created_at.to_rfc3339(),
                 token.updated_at.to_rfc3339(),
             ],
@@ -80,7 +94,9 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "SELECT id, connection_name, state, code, app_id, tool_id, tool_key,
                     access_token, refresh_token, token_secret, token_type,
-                    id_token, scope, expires_at, metadata_json, created_at, updated_at
+                    id_token, scope, expires_at, metadata_json, 
+                    authorization_url, token_url, client_id, client_secret, redirect_url,
+                    version, created_at, updated_at
              FROM oauth_tokens WHERE connection_name = ?1 and tool_key = ?2",
         )?;
 
@@ -105,10 +121,16 @@ impl SqliteManager {
                     .get::<_, Option<String>>(13)?
                     .map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)),
                 metadata_json: row.get(14)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(15)?)
+                authorization_url: row.get(15)?,
+                token_url: row.get(16)?,
+                client_id: row.get(17)?,
+                client_secret: row.get(18)?,
+                redirect_url: row.get(19)?,
+                version: row.get(20)?,
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(21)?)
                     .unwrap()
                     .with_timezone(&Utc),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(16)?)
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(22)?)
                     .unwrap()
                     .with_timezone(&Utc),
             }))
@@ -137,8 +159,14 @@ impl SqliteManager {
                 scope = ?12,
                 expires_at = ?13,
                 metadata_json = ?14,
-                updated_at = ?15
-            WHERE connection_name = ?16 and tool_key = ?17",
+                authorization_url = ?15,
+                token_url = ?16,
+                client_id = ?17,
+                client_secret = ?18,
+                redirect_url = ?19,
+                version = ?20,
+                updated_at = ?21
+            WHERE connection_name = ?22 and tool_key = ?23",
             params![
                 token.connection_name,
                 token.state,
@@ -154,6 +182,12 @@ impl SqliteManager {
                 token.scope,
                 token.expires_at.map(|dt| dt.to_rfc3339()),
                 token.metadata_json,
+                token.authorization_url,
+                token.token_url,
+                token.client_id,
+                token.client_secret,
+                token.redirect_url,
+                token.version,
                 Utc::now().to_rfc3339(),
                 token.connection_name,
                 token.tool_key,
@@ -169,7 +203,9 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "SELECT id, connection_name, state, code, app_id, tool_id, tool_key,
                     access_token, refresh_token, token_secret, token_type,
-                    id_token, scope, expires_at, metadata_json, created_at, updated_at
+                    id_token, scope, expires_at, metadata_json,
+                    authorization_url, token_url, client_id, client_secret, redirect_url,
+                    version, created_at, updated_at
              FROM oauth_tokens",
         )?;
 
@@ -192,10 +228,16 @@ impl SqliteManager {
                     .get::<_, Option<String>>(13)?
                     .map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)),
                 metadata_json: row.get(14)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(15)?)
+                authorization_url: row.get(15)?,
+                token_url: row.get(16)?,
+                client_id: row.get(17)?,
+                client_secret: row.get(18)?,
+                redirect_url: row.get(19)?,
+                version: row.get(20)?,
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(21)?)
                     .unwrap()
                     .with_timezone(&Utc),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(16)?)
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(22)?)
                     .unwrap()
                     .with_timezone(&Utc),
             })
@@ -211,7 +253,9 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "SELECT id, connection_name, state, code, app_id, tool_id, tool_key,
                     access_token, refresh_token, token_secret, token_type,
-                    id_token, scope, expires_at, metadata_json, created_at, updated_at
+                    id_token, scope, expires_at, metadata_json,
+                    authorization_url, token_url, client_id, client_secret, redirect_url,
+                    version, created_at, updated_at
              FROM oauth_tokens WHERE state = ?1",
         )?;
 
@@ -236,10 +280,16 @@ impl SqliteManager {
                     .get::<_, Option<String>>(13)?
                     .map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc)),
                 metadata_json: row.get(14)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(15)?)
+                authorization_url: row.get(15)?,
+                token_url: row.get(16)?,
+                client_id: row.get(17)?,
+                client_secret: row.get(18)?,
+                redirect_url: row.get(19)?,
+                version: row.get(20)?,
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(21)?)
                     .unwrap()
                     .with_timezone(&Utc),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(16)?)
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(22)?)
                     .unwrap()
                     .with_timezone(&Utc),
             }))
@@ -268,7 +318,7 @@ mod tests {
 
     fn create_test_token() -> OAuthToken {
         OAuthToken {
-            id: 0, // Will be set by the database
+            id: 0,
             connection_name: "test_connection".to_string(),
             state: "test_state".to_string(),
             code: None,
@@ -283,6 +333,12 @@ mod tests {
             scope: Some("read write".to_string()),
             expires_at: Some(Utc::now()),
             metadata_json: Some(r#"{"key": "value"}"#.to_string()),
+            authorization_url: Some("https://example.com/oauth/authorize".to_string()),
+            token_url: Some("https://example.com/oauth/token".to_string()),
+            client_id: Some("client123".to_string()),
+            client_secret: Some("secret456".to_string()),
+            redirect_url: Some("https://example.com/callback".to_string()),
+            version: "1.0.0".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

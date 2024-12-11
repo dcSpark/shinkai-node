@@ -108,14 +108,15 @@ impl Node {
 
         let client = Client::new();
         let response = client
-            .post("https://github.com/login/oauth/access_token")
-            .query(&[
-                ("client_id", "Ov23liXMvcIH8Wu38M3F"),
-                ("client_secret", "f91323d3b04ec0511e888aa8da07ec2dc548d262"),
-                ("code", &code),
-                ("redirect_uri", "https://secrets.shinkai.com/redirect"),
-            ])
+            .post(&oauth_data.clone().token_url.unwrap_or_default())
             .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "client_id": oauth_data.client_id.as_deref().unwrap_or_default(),
+                "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
+                "code": code,
+                "redirect_uri": oauth_data.redirect_url.as_deref().unwrap_or_default()
+            }))
             .send()
             .await;
         if response.is_err() {
@@ -148,7 +149,7 @@ impl Node {
             oauth_data.scope = Some(scope.to_string());
         }
 
-        let update_result = db.read().await.update_oauth_token(&oauth_data);
+        let update_result = db.read().await.update_oauth_token(&oauth_data.clone());
         if update_result.is_err() {
             return Err(APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

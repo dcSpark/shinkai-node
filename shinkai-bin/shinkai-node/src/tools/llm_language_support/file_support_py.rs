@@ -50,36 +50,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
         if not provider_config:
             raise ValueError(f'OAuth configuration not found for provider: {provider_name}')
         
-        # Handle OAuth 1.0 and authorization_code
-        if provider_config.get('version') == '1.0' or provider_config.get('grantType') == 'authorization_code':
-            return provider_config.get('accessToken', '')
-            
-        # Handle OAuth 2.0
-        if provider_config.get('version') == '2.0':
-            # Check for refresh token
-            refresh_token = provider_config.get('refreshToken')
-            if not refresh_token:
-                raise ValueError(f'No refresh token found for provider: {provider_name}')
-            
-            # Make request to refresh token endpoint
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    provider_config['tokenUrl'],
-                    headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                    data={
-                        'grant_type': 'refresh_token',
-                        'refresh_token': refresh_token,
-                        'client_id': provider_config['clientId'],
-                        'client_secret': provider_config['clientSecret']
-                    }
-                ) as response:
-                    if response.status != 200:
-                        raise ValueError(f'Failed to refresh token: {await response.text()}')
-                        
-                    data = await response.json()
-                    return data.get('access_token')
-            
-        raise ValueError(f'Unsupported OAuth version for provider: {provider_name}')
+        return provider_config['accessToken'] or ''
     except Exception as e:
         print(f'Error getting access token: {str(e)}')
         return ''"#,
