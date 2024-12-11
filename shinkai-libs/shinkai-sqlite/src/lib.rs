@@ -174,7 +174,7 @@ impl SqliteManager {
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_vector_fs_internals_table(conn)?;
         Self::initialize_vector_resources_table(conn)?;
-        Self::initialize_vector_resource_embeddings_table(conn)?;
+        Self::initialize_vector_resource_embeddings_tables(conn)?;
         Self::initialize_vector_resource_nodes_table(conn)?;
         Self::initialize_vector_resource_headers_table(conn)?;
         Self::initialize_version_table(conn)?;
@@ -839,14 +839,25 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_vector_resource_embeddings_table(conn: &rusqlite::Connection) -> Result<()> {
+    fn initialize_vector_resource_embeddings_tables(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resource_embeddings USING vec0 (
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resource_embeddings_384 USING vec0 (
                 profile_name text,
                 vector_resource_id text partition key,
                 is_resource_embedding integer,
                 id text,
                 embedding float[384]
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resource_embeddings_768 USING vec0 (
+                profile_name text,
+                vector_resource_id text partition key,
+                is_resource_embedding integer,
+                id text,
+                embedding float[768]
             );",
             [],
         )?;

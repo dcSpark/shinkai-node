@@ -49,11 +49,14 @@ use crate::it::utils::shinkai_testing_framework::ShinkaiTestingFramework;
 use crate::it::vector_fs_api_tests::generate_message_with_payload;
 
 use super::utils;
+use super::utils::db_handlers::setup_node_storage_path;
 use super::utils::test_boilerplate::run_test_one_node_network;
 
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(path);
+
+    setup_node_storage_path();
 }
 
 fn default_test_profile() -> ShinkaiName {
@@ -1347,6 +1350,7 @@ async fn test_remove_code_blocks_with_parsed_user_message() {
 
 #[test]
 fn vector_search_multiple_embedding_models_test() {
+    setup();
     std::env::set_var("WELCOME_MESSAGE", "false");
 
     let server = Server::new();

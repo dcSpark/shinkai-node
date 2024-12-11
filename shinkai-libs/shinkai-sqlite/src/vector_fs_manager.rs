@@ -25,7 +25,7 @@ impl SqliteManager {
 
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO vector_fs_internals 
+            "INSERT OR REPLACE INTO vector_fs_internals 
                 (profile_name, core_resource_id, permissions_index, subscription_index, supported_embedding_models, last_read_index)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![profile_name, resource_id, permissions_index, subscription_index, serde_json::to_vec(&supported_embedding_models)

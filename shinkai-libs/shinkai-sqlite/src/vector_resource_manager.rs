@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use bytemuck::cast_slice;
 use rusqlite::{params, Transaction};
@@ -16,6 +16,8 @@ use shinkai_vector_resources::{
 };
 
 use crate::{errors::SqliteManagerError, SqliteManager};
+
+const SUPPORTED_EMBEDDING_LENGTHS: [usize; 2] = [384, 768];
 
 impl SqliteManager {
     pub fn save_resource(&self, resource: &BaseVectorResource, profile_name: &str) -> Result<(), SqliteManagerError> {
@@ -36,6 +38,9 @@ impl SqliteManager {
     ) -> Result<(), SqliteManagerError> {
         let vector_resource_id = &resource.as_trait_object().reference_string();
         let resource = resource.as_trait_object();
+
+        // Delete resource if it already exists
+        self.delete_resource_tx(&tx, vector_resource_id)?;
 
         // Insert into the vector_resources table
         tx.execute(
@@ -85,38 +90,76 @@ impl SqliteManager {
 
         // Insert resource_embedding into the vector_resource_embeddings table
         let resource_embedding = resource.resource_embedding();
-        tx.execute(
-            "INSERT INTO vector_resource_embeddings (
-                profile_name,
-                vector_resource_id,
-                id,
-                embedding,
-                is_resource_embedding
-                ) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                profile_name,
-                vector_resource_id,
-                resource_embedding.id,
-                cast_slice(&resource_embedding.vector),
-                true,
-            ],
-        )?;
+        let vector_len = if resource_embedding.vector.len() > 0 {
+            resource_embedding.vector.len()
+        } else {
+            SUPPORTED_EMBEDDING_LENGTHS[0]
+        };
 
-        // Insert embeddings into the vector_resource_embeddings table
-        for embedding in resource.get_root_embeddings() {
-            tx.execute(
-                "INSERT INTO vector_resource_embeddings (
+        if !SUPPORTED_EMBEDDING_LENGTHS.contains(&vector_len) {
+            return Err(SqliteManagerError::UnsupportedEmbeddingLength(vector_len));
+        }
+
+        let embedding_vector = if resource_embedding.vector.len() > 0 {
+            &resource_embedding.vector
+        } else {
+            &vec![0f32; vector_len]
+        };
+
+        tx.execute(
+            &format!(
+                "INSERT INTO vector_resource_embeddings_{} (
                     profile_name,
                     vector_resource_id,
                     id,
                     embedding,
                     is_resource_embedding
                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                vector_len
+            ),
+            params![
+                profile_name,
+                vector_resource_id,
+                resource_embedding.id,
+                cast_slice(embedding_vector),
+                true,
+            ],
+        )?;
+
+        // Insert embeddings into the vector_resource_embeddings table
+        for embedding in resource.get_root_embeddings() {
+            let vector_len = if embedding.vector.len() > 0 {
+                embedding.vector.len()
+            } else {
+                SUPPORTED_EMBEDDING_LENGTHS[0]
+            };
+
+            if !SUPPORTED_EMBEDDING_LENGTHS.contains(&vector_len) {
+                return Err(SqliteManagerError::UnsupportedEmbeddingLength(vector_len));
+            }
+
+            let embedding_vector = if embedding.vector.len() > 0 {
+                &embedding.vector
+            } else {
+                &vec![0f32; vector_len]
+            };
+
+            tx.execute(
+                &format!(
+                    "INSERT INTO vector_resource_embeddings_{} (
+                    profile_name,
+                    vector_resource_id,
+                    id,
+                    embedding,
+                    is_resource_embedding
+                    ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    vector_len
+                ),
                 params![
                     profile_name,
                     vector_resource_id,
                     embedding.id,
-                    cast_slice(&embedding.vector),
+                    cast_slice(embedding_vector),
                     false,
                 ],
             )?;
@@ -181,14 +224,27 @@ impl SqliteManager {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
+        self.delete_resource_tx(&tx, reference_string)?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn delete_resource_tx(&self, tx: &Transaction, reference_string: &str) -> Result<(), SqliteManagerError> {
         tx.execute(
             "DELETE FROM vector_resources WHERE vector_resource_id = ?",
             params![reference_string],
         )?;
-        tx.execute(
-            "DELETE FROM vector_resource_embeddings WHERE vector_resource_id = ?",
-            params![reference_string],
-        )?;
+        SUPPORTED_EMBEDDING_LENGTHS.iter().for_each(|&len| {
+            tx.execute(
+                &format!(
+                    "DELETE FROM vector_resource_embeddings_{} WHERE vector_resource_id = ?",
+                    len
+                ),
+                params![reference_string],
+            )
+            .unwrap();
+        });
         tx.execute(
             "DELETE FROM vector_resource_nodes WHERE vector_resource_id = ?",
             params![reference_string],
@@ -198,7 +254,6 @@ impl SqliteManager {
             params![reference_string],
         )?;
 
-        tx.commit()?;
         Ok(())
     }
 
@@ -265,8 +320,7 @@ impl SqliteManager {
                 .get_embeddings(vector_resource_id, profile, true)
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
                 .pop()
-                .ok_or(SqliteManagerError::MissingValue("resource_embedding".to_string()))
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                .unwrap_or(Embedding::new_empty());
 
             match resource_base_type {
                 VRBaseType::Document => {
@@ -358,23 +412,31 @@ impl SqliteManager {
             .ok_or(SqliteManagerError::InvalidIdentityName(profile.to_string()))?;
 
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("SELECT id, embedding FROM vector_resource_embeddings WHERE vector_resource_id = ? AND profile_name = ? AND is_resource_embedding = ?")?;
-        let embeddings = stmt.query_map(
-            params![vector_resource_id, profile_name, is_resource_embedding],
-            |row| {
-                let id: String = row.get(0)?;
-                let embedding_bytes: Vec<u8> = row.get(1)?;
-                let embedding: &[f32] = cast_slice(&embedding_bytes);
+        let mut embeddings = vec![];
 
-                Ok(Embedding {
-                    id,
-                    vector: embedding.to_vec(),
-                })
-            },
-        )?;
+        for &len in SUPPORTED_EMBEDDING_LENGTHS.iter() {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT id, embedding FROM vector_resource_embeddings_{} WHERE vector_resource_id = ? AND profile_name = ? AND is_resource_embedding = ?",
+                len
+            ))?;
+            let result = stmt.query_map(
+                params![vector_resource_id, profile_name, is_resource_embedding],
+                |row| {
+                    let id: String = row.get(0)?;
+                    let embedding_bytes: Vec<u8> = row.get(1)?;
+                    let embedding: &[f32] = cast_slice(&embedding_bytes);
 
-        let embeddings = embeddings.collect::<Result<Vec<Embedding>, _>>()?;
+                    Ok(Embedding {
+                        id,
+                        vector: embedding.to_vec(),
+                    })
+                },
+            )?;
+
+            let result = result.collect::<Result<Vec<Embedding>, _>>()?;
+
+            embeddings.extend(result);
+        }
 
         Ok(embeddings)
     }
@@ -548,7 +610,7 @@ impl SqliteManager {
         profile_name: &str,
     ) -> Result<(), SqliteManagerError> {
         tx.execute(
-            "INSERT INTO vector_resource_headers (
+            "INSERT OR REPLACE INTO vector_resource_headers (
                 profile_name,
                 vector_resource_id,
                 resource_name,
@@ -566,7 +628,7 @@ impl SqliteManager {
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 profile_name,
-                vr_header.resource_id,
+                vr_header.reference_string(),
                 vr_header.resource_name,
                 vr_header.resource_id,
                 serde_json::to_string(&vr_header.resource_base_type)
@@ -591,19 +653,37 @@ impl SqliteManager {
 
         // Insert resource_embedding into the vector_resource_embeddings table
         if let Some(resource_embedding) = &vr_header.resource_embedding {
+            let vector_len = if resource_embedding.vector.len() > 0 {
+                resource_embedding.vector.len()
+            } else {
+                SUPPORTED_EMBEDDING_LENGTHS[0]
+            };
+
+            if !SUPPORTED_EMBEDDING_LENGTHS.contains(&vector_len) {
+                return Err(SqliteManagerError::UnsupportedEmbeddingLength(vector_len));
+            }
+
+            let embedding_vector = if resource_embedding.vector.len() > 0 {
+                &resource_embedding.vector
+            } else {
+                &vec![0f32; vector_len]
+            };
             tx.execute(
-                "INSERT INTO vector_resource_embeddings (
+                &format!(
+                    "INSERT INTO vector_resource_embeddings_{} (
                     profile_name,
                     vector_resource_id,
                     id,
                     embedding,
                     is_resource_embedding
                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    vector_len
+                ),
                 params![
                     profile_name,
                     vr_header.reference_string(),
                     resource_embedding.id,
-                    cast_slice(&resource_embedding.vector),
+                    cast_slice(embedding_vector),
                     true,
                 ],
             )?;
