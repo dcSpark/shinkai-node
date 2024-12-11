@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
+use shinkai_sqlite::oauth_manager::OAuthToken;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
@@ -20,11 +21,85 @@ use tokio::sync::{Mutex, RwLock};
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
 
+use chrono::Utc;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+async fn handle_oauth(
+    oauth: &Option<Vec<OAuth>>,
+    db: &Arc<RwLock<SqliteManager>>,
+    app_id: String,
+    tool_id: String,
+    tool_router_key: String,
+) -> Result<(), ToolError> {
+    if let Some(oauth_vec) = oauth {
+        for o in oauth_vec {
+            let error = match &o.access_token {
+                Some(access_token) => access_token.is_empty(),
+                None => true,
+            };
+
+            if error {
+                // Check if OAuth token already exists
+                let existing_token = db
+                    .write()
+                    .await
+                    .get_oauth_token(o.name.clone(), tool_router_key.clone())
+                    .ok()
+                    .unwrap_or(None);
+
+                let uuid = if let Some(token) = existing_token {
+                    token.state
+                } else {
+                    let uuid = uuid::Uuid::new_v4().to_string();
+                    // Add new OAuth token record
+                    let oauth_token = OAuthToken {
+                        id: 0, // db will set this
+                        connection_name: o.name.clone(),
+                        state: uuid.clone(),
+                        code: None,
+                        app_id: app_id.clone(),
+                        tool_id: tool_id.clone(),
+                        tool_key: tool_router_key.clone(),
+                        access_token: None,
+                        refresh_token: None,
+                        token_secret: None,
+                        token_type: o.grant_type.clone(),
+                        id_token: None,
+                        scope: Some(o.scopes.join(" ")),
+                        expires_at: None,
+                        metadata_json: None,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    };
+
+                    db.write()
+                        .await
+                        .add_oauth_token(&oauth_token)
+                        .map_err(|e| ToolError::ExecutionError(format!("Failed to store OAuth token: {}", e)))?;
+
+                    uuid
+                };
+
+                // TODO This might be different for differnet OAuth versions and settings
+                let oauth_login_url = format!(
+                    "{}?client_id={}&redirect_uri={}&scope={}&state={}",
+                    o.authorization_url,
+                    o.client_id,
+                    urlencoding::encode(&o.redirect_url),
+                    o.scopes.join(" "),
+                    uuid
+                );
+
+                return Err(ToolError::OAuthError(oauth_login_url));
+            }
+        }
+    }
+    Ok(())
+}
 
 pub async fn execute_tool_cmd(
     bearer: String,
@@ -83,27 +158,20 @@ pub async fn execute_tool_cmd(
 
         match tool {
             ShinkaiTool::Python(python_tool, _) => {
+                handle_oauth(
+                    &python_tool.oauth,
+                    &db,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    tool_router_key.clone(),
+                )
+                .await?;
+
                 if let Some(oauth) = &python_tool.oauth {
                     envs.insert(
                         "SHINKAI_OAUTH".to_string(),
                         serde_json::to_string(oauth).unwrap_or_default(),
                     );
-                    for o in oauth {
-                        let error = match &o.access_token {
-                            Some(access_token) => access_token.is_empty(),
-                            None => true,
-                        };
-                        if error {
-                            let oauth_login_url = format!(
-                                "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
-                                o.authorization_url,
-                                o.client_id,
-                                urlencoding::encode(&o.redirect_url),
-                                o.scopes.join(" ")
-                            );
-                            return Err(ToolError::OAuthError(oauth_login_url.clone()));
-                        }
-                    }
                 }
 
                 let node_env = fetch_node_environment();
@@ -136,27 +204,20 @@ pub async fn execute_tool_cmd(
                     .map(|result| json!(result.data))
             }
             ShinkaiTool::Deno(deno_tool, _) => {
+                handle_oauth(
+                    &deno_tool.oauth,
+                    &db,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    tool_router_key.clone(),
+                )
+                .await?;
+
                 if let Some(oauth) = &deno_tool.oauth {
                     envs.insert(
                         "SHINKAI_OAUTH".to_string(),
                         serde_json::to_string(oauth).unwrap_or_default(),
                     );
-                    for o in oauth {
-                        let error = match &o.access_token {
-                            Some(access_token) => access_token.is_empty(),
-                            None => true,
-                        };
-                        if error {
-                            let oauth_login_url = format!(
-                                "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
-                                o.authorization_url,
-                                o.client_id,
-                                urlencoding::encode(&o.redirect_url),
-                                o.scopes.join(" ")
-                            );
-                            return Err(ToolError::OAuthError(oauth_login_url.clone()));
-                        }
-                    }
                 }
 
                 let node_env = fetch_node_environment();

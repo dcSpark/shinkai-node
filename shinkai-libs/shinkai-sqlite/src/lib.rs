@@ -24,6 +24,7 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
+pub mod oauth_manager;
 pub mod prompt_manager;
 pub mod retry_manager;
 pub mod settings_manager;
@@ -170,6 +171,7 @@ impl SqliteManager {
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
+        Self::initialize_oauth_table(conn)?;
         Ok(())
     }
 
@@ -745,6 +747,36 @@ impl SqliteManager {
             [],
         )?;
 
+        Ok(())
+    }
+
+    fn initialize_oauth_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS oauth_tokens (
+                id INTEGER PRIMARY KEY,       
+                connection_name TEXT NOT NULL, -- name used to identify the connection from the app
+                state TEXT NOT NULL UNIQUE,    -- verification code
+                code TEXT,
+                app_id TEXT NOT NULL,          -- app id
+                tool_id TEXT NOT NULL,         -- tool id
+                tool_key TEXT NOT NULL,        -- tool key
+                access_token TEXT,
+                refresh_token TEXT,
+                token_secret TEXT,             -- For OAuth 1.0 if needed
+                token_type VARCHAR(50),
+                id_token TEXT,                 -- For OIDC tokens
+                scope TEXT,
+                expires_at TIMESTAMP,
+                metadata_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );",
+            [],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_tokens_connection_name_tool_key ON oauth_tokens (connection_name, tool_key);",
+            [],
+        )?;
         Ok(())
     }
 

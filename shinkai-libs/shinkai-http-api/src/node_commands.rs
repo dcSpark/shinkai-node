@@ -1061,4 +1061,16 @@ pub enum NodeCommand {
         provider: SerializedLLMProvider,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
+    V2ApiGetOAuthToken {
+        bearer: String,
+        connection_name: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetOAuthToken {
+        bearer: String,
+        code: String,
+        state: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
