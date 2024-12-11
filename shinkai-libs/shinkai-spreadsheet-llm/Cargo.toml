@@ -5,7 +5,7 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-async-trait = "0.1.74"
+async-trait = { workspace = true }
 chrono = { workspace = true }
 ndarray = "0.16.1"
 regex = { workspace = true }

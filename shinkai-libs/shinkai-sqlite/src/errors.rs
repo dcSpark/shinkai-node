@@ -68,6 +68,10 @@ pub enum SqliteManagerError {
         query: String,
         source: rusqlite::Error,
     },
+    #[error("Directory not empty")]
+    DirectoryNotEmpty,
+    #[error("Directory not found")]
+    DirectoryNotFound,
     // Add other error variants as needed
 }
 

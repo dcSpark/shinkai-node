@@ -14,6 +14,7 @@ pub mod cron_task_manager;
 pub mod embedding_function;
 pub mod errors;
 pub mod file_inbox_manager;
+pub mod file_system;
 pub mod files;
 pub mod identity_manager;
 pub mod identity_registration;
@@ -170,6 +171,7 @@ impl SqliteManager {
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
+        Self::initialize_filesystem_tables(conn)?;
         Ok(())
     }
 
