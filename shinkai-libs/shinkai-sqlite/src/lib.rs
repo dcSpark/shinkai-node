@@ -792,6 +792,9 @@ impl SqliteManager {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_tokens_connection_name_tool_key ON oauth_tokens (connection_name, tool_key);",
             [],
         )?;
+        
+        Ok(())
+    }
 
     fn initialize_source_file_maps_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
