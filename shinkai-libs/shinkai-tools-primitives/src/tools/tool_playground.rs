@@ -157,7 +157,7 @@ mod tests {
                 "author": "Author Name",
                 "keywords": ["example", "test"],
                 "configurations": [],
-                "parameters": [],
+                "parameters": {},
                 "result": {
                     "type": "string",
                     "properties": "{}",
@@ -273,7 +273,7 @@ mod tests {
                 "author": "Author Name",
                 "keywords": ["sql", "test"],
                 "configurations": [],
-                "parameters": [],
+                "parameters": {},
                 "result": {
                     "type": "string",
                     "properties": "{}",
