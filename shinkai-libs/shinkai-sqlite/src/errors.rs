@@ -64,10 +64,9 @@ pub enum SqliteManagerError {
     #[error("Failed fetching value")]
     FailedFetchingValue,
     #[error("Query error: {query}, source: {source}")]
-    QueryError {
-        query: String,
-        source: rusqlite::Error,
-    },
+    QueryError { query: String, source: rusqlite::Error },
+    #[error("Unsupported embedding length: {0}")]
+    UnsupportedEmbeddingLength(usize),
     // Add other error variants as needed
 }
 

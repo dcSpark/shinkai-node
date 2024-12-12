@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use super::db::fs_db::ProfileBoundWriteBatch;
 use super::vector_fs::VectorFS;
 use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};
@@ -70,12 +69,6 @@ impl VFSReader {
         vector_fs
             .update_last_read_path(&profile, path.clone(), current_datetime, requester_name.clone())
             .await?;
-
-        let mut write_batch = ProfileBoundWriteBatch::new_vfs_batch(&profile)?;
-        vector_fs
-            .db
-            .wb_add_read_access_log(requester_name, &path, current_datetime, profile, &mut write_batch)?;
-        vector_fs.db.write_pb(write_batch)?;
 
         Ok(reader)
     }
@@ -162,20 +155,32 @@ impl VectorFS {
     /// at this path, an error will be returned.
     pub async fn retrieve_vector_resource(&self, reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
-        self.db.get_resource_by_fs_item(&fs_item, &reader.profile)
+        self.db
+            .read()
+            .await
+            .get_resource(&fs_item.resource_db_key(), &reader.profile)
+            .map_err(VectorFSError::from)
     }
 
     /// Attempts to retrieve the SourceFileMap from inside an FSItem at the path specified in reader. If this path does not currently exist, or
     /// a source_file is not saved at this path, then an error is returned.
     pub async fn retrieve_source_file_map(&self, reader: &VFSReader) -> Result<SourceFileMap, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
-        self.db.get_source_file_map_by_fs_item(&fs_item, &reader.profile)
+        self.db
+            .read()
+            .await
+            .get_source_file_map(&fs_item.source_file_map_db_key()?, &reader.profile)
+            .map_err(VectorFSError::from)
     }
 
     /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).
     pub async fn retrieve_vrkai(&self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
-        let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
+        let resource = self
+            .db
+            .read()
+            .await
+            .get_resource(&fs_item.resource_db_key(), &reader.profile)?;
         let sfm = self.retrieve_source_file_map(reader).await.ok();
 
         Ok(VRKai::new(resource, sfm))
