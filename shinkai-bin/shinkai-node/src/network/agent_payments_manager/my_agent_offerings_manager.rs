@@ -19,7 +19,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, network_tool::NetworkTool, shinkai_tool::ShinkaiToolHeader,
+    tool_output_arg::ToolOutputArg, network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::{Mutex, RwLock};
@@ -593,7 +593,7 @@ impl MyAgentOfferingsManager {
             tool_header.usage_type.expect("Usage type is required"),
             true, // Assuming the tool is activated by default
             tool_header.config.expect("Config is required"),
-            vec![], // TODO: Fix input_args
+            Parameters::new(), // TODO: Fix input_args
             ToolOutputArg { json: "".to_string() },
             None,
             None,

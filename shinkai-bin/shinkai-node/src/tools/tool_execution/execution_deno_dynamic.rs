@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_tools_primitives::tools::argument::ToolOutputArg;
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::{DenoTool, ToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
+use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 
 use super::execution_coordinator::handle_oauth;
@@ -37,7 +38,7 @@ pub async fn execute_deno_tool(
         oauth: oauth.clone(),
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
-        input_args: vec![],
+        input_args: Parameters::new(),
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,
@@ -105,7 +106,7 @@ pub fn check_deno_tool(
         oauth: None,
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
-        input_args: vec![],
+        input_args: Parameters::new(),
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,

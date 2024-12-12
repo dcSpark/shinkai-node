@@ -1047,6 +1047,7 @@ mod tests {
         let last_messages_inbox = db
             .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
             .unwrap();
+        eprintln!("last_messages_inbox: {:?}", last_messages_inbox);
 
         // Check the content of the messages
         assert_eq!(last_messages_inbox.len(), 3);

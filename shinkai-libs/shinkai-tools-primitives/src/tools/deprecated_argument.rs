@@ -1,13 +1,15 @@
+// ... existing code ...
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ToolArgument {
+pub struct DeprecatedArgument {
     pub name: String,
     pub arg_type: String,
     pub description: String,
     pub is_required: bool,
 }
 
-impl ToolArgument {
-    /// Creates a new ToolArgument
+impl DeprecatedArgument {
+    /// Creates a new DeprecatedArgument
     pub fn new(name: String, arg_type: String, description: String, is_required: bool) -> Self {
         Self {
             name,
@@ -15,16 +17,5 @@ impl ToolArgument {
             description,
             is_required,
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ToolOutputArg {
-    pub json: String,
-}
-
-impl ToolOutputArg {
-    pub fn empty() -> Self {
-        Self { json: "".to_string() }
     }
 }

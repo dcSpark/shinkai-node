@@ -33,11 +33,11 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg,
     deno_tools::DenoTool,
     python_tools::PythonTool,
     shinkai_tool::ShinkaiTool,
     tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;

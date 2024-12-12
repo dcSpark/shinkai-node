@@ -64,7 +64,7 @@ fn generate_parameters(tool: &ShinkaiToolHeader, include_defaults: bool) -> Stri
     let mut required_params: Vec<String> = Vec::new();
     let mut optional_params: Vec<String> = Vec::new();
 
-    for arg in &tool.input_args {
+    for arg in &tool.input_args.to_deprecated_arguments() {
         let type_str = json_type_to_python(&Value::String(arg.arg_type.clone()), None);
         let param = if arg.is_required {
             format!("{}: {}", arg.name, type_str)
@@ -92,7 +92,7 @@ fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
 
     // Parameter documentation
     doc.push_str(&format!("{}Args:\n", indent));
-    for arg in &tool.input_args {
+    for arg in &tool.input_args.to_deprecated_arguments() {
         doc.push_str(&format!(
             "{}    {}: {} {}\n",
             indent,
@@ -222,7 +222,7 @@ pub fn generate_python_definition(
         );
 
         // Add parameters
-        for arg in &tool.input_args {
+        for arg in &tool.input_args.to_deprecated_arguments() {
             python_output.push_str(&format!("            '{}': {},\n", arg.name, arg.name));
         }
 

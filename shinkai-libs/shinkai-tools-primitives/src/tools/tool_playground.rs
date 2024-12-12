@@ -1,6 +1,6 @@
 use super::{
-    argument::ToolArgument,
     deno_tools::ToolResult,
+    parameters::Parameters,
     tool_config::{BasicConfig, OAuth, ToolConfig},
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -38,8 +38,7 @@ pub struct ToolPlaygroundMetadata {
     pub keywords: Vec<String>,
     #[serde(deserialize_with = "deserialize_configurations")]
     pub configurations: Vec<ToolConfig>,
-    #[serde(deserialize_with = "deserialize_parameters")]
-    pub parameters: Vec<ToolArgument>,
+    pub parameters: Parameters,
     pub result: ToolResult,
 
     #[serde(default)]
@@ -105,53 +104,6 @@ where
     }
 }
 
-fn deserialize_parameters<'de, D>(deserializer: D) -> Result<Vec<ToolArgument>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: JsonValue = Deserialize::deserialize(deserializer)?;
-    match value {
-        JsonValue::Array(params) => {
-            // If it's already an array, assume it's a list of ToolArgument objects
-            let tool_arguments: Vec<ToolArgument> = params
-                .into_iter()
-                .map(|param| {
-                    // Assuming each param is a valid ToolArgument JSON object
-                    serde_json::from_value(param).map_err(serde::de::Error::custom)
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(tool_arguments)
-        }
-        JsonValue::Object(param_obj) => {
-            if let Some(JsonValue::Object(properties)) = param_obj.get("properties") {
-                let required_keys: Vec<String> = param_obj
-                    .get("required")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                    .unwrap_or_default();
-
-                let arguments = properties
-                    .iter()
-                    .map(|(key, val)| {
-                        let arg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let description = val
-                            .get("description")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let is_required = required_keys.contains(key);
-                        ToolArgument::new(key.clone(), arg_type, description, is_required)
-                    })
-                    .collect();
-
-                return Ok(arguments);
-            }
-            Err(serde::de::Error::custom("Invalid object structure for parameters"))
-        }
-        _ => Err(serde::de::Error::custom("Invalid type for parameters")),
-    }
-}
-
 fn deserialize_sql_tables<'de, D>(deserializer: D) -> Result<Vec<SqlTable>, D::Error>
 where
     D: Deserializer<'de>,
@@ -205,7 +157,7 @@ mod tests {
                 "author": "Author Name",
                 "keywords": ["example", "test"],
                 "configurations": [],
-                "parameters": [],
+                "parameters": {},
                 "result": {
                     "type": "string",
                     "properties": "{}",
@@ -321,7 +273,7 @@ mod tests {
                 "author": "Author Name",
                 "keywords": ["sql", "test"],
                 "configurations": [],
-                "parameters": [],
+                "parameters": {},
                 "result": {
                     "type": "string",
                     "properties": "{}",

@@ -6,11 +6,12 @@ use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg,
     deno_tools::ToolResult,
     error::ToolError,
+    parameters::Parameters,
     python_tools::PythonTool,
     tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
 };
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -38,7 +39,7 @@ pub async fn execute_python_tool(
         config: vec![],
         description: "Python runtime execution".to_string(),
         keywords: vec![],
-        input_args: vec![],
+        input_args: Parameters::new(),
         output_arg: ToolOutputArg { json: "".to_string() },
         activated: true,
         embedding: None,

@@ -348,13 +348,9 @@ impl SqliteManager {
             ],
         )?;
 
-        // Update the embedding in the shinkai_tools_vec_items table
-        tx.execute(
-            "UPDATE shinkai_tools_vec_items SET embedding = ?1 WHERE rowid = ?2",
-            params![cast_slice(&embedding), rowid],
-        )?;
+        // Update the vector using the same transaction
+        self.update_tools_vector(&tx, &tool_key, embedding)?;
 
-        eprintln!("Updating FTS table");
         // Update the FTS table using the in-memory connection
         self.update_tools_fts(&tool)?;
 
@@ -598,6 +594,36 @@ impl SqliteManager {
         }
         Ok(())
     }
+
+    pub fn update_tools_vector(
+        &self,
+        tx: &rusqlite::Transaction,
+        tool_key: &str,
+        embedding: Vec<f32>,
+    ) -> Result<(), SqliteManagerError> {
+        // Get is_enabled and is_network from the main database
+        let (is_enabled, is_network): (i32, i32) = tx.query_row(
+            "SELECT is_enabled, is_network FROM shinkai_tools WHERE tool_key = ?1",
+            params![tool_key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        tx.execute(
+            "UPDATE shinkai_tools_vec_items SET 
+                embedding = ?1,
+                is_enabled = ?2,
+                is_network = ?3
+             WHERE tool_key = ?4",
+            params![
+                cast_slice(&embedding),
+                is_enabled,
+                is_network,
+                tool_key
+            ],
+        )?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -609,11 +635,11 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
-    use shinkai_tools_primitives::tools::argument::ToolArgument;
-    use shinkai_tools_primitives::tools::argument::ToolOutputArg;
+    use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+    use shinkai_tools_primitives::tools::parameters::Parameters;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -644,7 +670,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -707,7 +733,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing 1".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -727,7 +753,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing 2".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -747,7 +773,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing 3".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -804,7 +830,7 @@ mod tests {
             oauth: None,
             description: "First Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool1".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -824,7 +850,7 @@ mod tests {
             oauth: None,
             description: "Second Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool2".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -844,7 +870,7 @@ mod tests {
             oauth: None,
             description: "Third Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool3".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -926,7 +952,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing duplicates".to_string(),
             keywords: vec!["deno".to_string(), "duplicate".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -970,7 +996,7 @@ mod tests {
                 oauth: None,
                 description: "Process and manipulate images".to_string(),
                 keywords: vec!["image".to_string(), "processing".to_string()],
-                input_args: vec![],
+                input_args: Parameters::new(),
                 activated: true,
                 embedding: None,
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -989,7 +1015,7 @@ mod tests {
                 oauth: None,
                 description: "Analyze text content".to_string(),
                 keywords: vec!["text".to_string(), "analysis".to_string()],
-                input_args: vec![],
+                input_args: Parameters::new(),
                 activated: true,
                 embedding: None,
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1008,7 +1034,7 @@ mod tests {
                 oauth: None,
                 description: "Visualize data sets".to_string(),
                 keywords: vec!["data".to_string(), "visualization".to_string()],
-                input_args: vec![],
+                input_args: Parameters::new(),
                 activated: true,
                 embedding: None,
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1069,7 +1095,7 @@ mod tests {
             config: vec![],
             description: "An enabled tool for testing".to_string(),
             keywords: vec!["enabled".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1089,8 +1115,8 @@ mod tests {
             config: vec![],
             description: "A disabled tool for testing".to_string(),
             keywords: vec!["disabled".to_string(), "test".to_string()],
-            input_args: vec![],
-            activated: false, // This tool is disabled
+            input_args: Parameters::new(),
+            activated: false,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
@@ -1129,7 +1155,7 @@ mod tests {
 
         // Test search including disabled tools
         let search_results: Vec<ShinkaiToolHeader> = manager
-            .tool_vector_search_with_vector(embedding_query, 10, true, true)
+            .tool_vector_search_with_vector(embedding_query.clone(), 10, true, true)
             .unwrap()
             .iter()
             .map(|(tool, _distance)| tool.clone())
@@ -1139,6 +1165,25 @@ mod tests {
         assert_eq!(search_results.len(), 2);
         assert!(search_results.iter().any(|t| t.name == "Enabled Test Tool"));
         assert!(search_results.iter().any(|t| t.name == "Disabled Test Tool"));
+
+        // Now disable the previously enabled tool
+        if let ShinkaiTool::Deno(mut deno_tool, _is_enabled) = shinkai_enabled {
+            deno_tool.activated = false;
+            let updated_tool = ShinkaiTool::Deno(deno_tool, false);
+            // Just update the tool status - no need to regenerate the vector
+            manager.update_tool_with_vector(updated_tool, SqliteManager::generate_vector_for_testing(0.1)).unwrap();
+        }
+
+        // Search again excluding disabled tools - should now return empty results
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(embedding_query, 10, false, true)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        // Should find no tools as both are now disabled
+        assert_eq!(search_results.len(), 0);
     }
 
     #[tokio::test]
@@ -1155,7 +1200,7 @@ mod tests {
             config: vec![],
             description: "An enabled non-network tool".to_string(),
             keywords: vec!["enabled".to_string(), "non-network".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1175,7 +1220,7 @@ mod tests {
             config: vec![],
             description: "A disabled non-network tool".to_string(),
             keywords: vec!["disabled".to_string(), "non-network".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: false, // This tool is disabled
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1196,6 +1241,8 @@ mod tests {
             amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
         }]));
 
+        let input_args = Parameters::with_single_property("message", "string", "The message to send", true);
+
         let enabled_network_tool = NetworkTool {
             name: "Enabled Network Tool".to_string(),
             toolkit_name: "Network Toolkit".to_string(),
@@ -1205,12 +1252,7 @@ mod tests {
             usage_type: usage_type.clone(),
             activated: true,
             config: vec![],
-            input_args: vec![ToolArgument {
-                name: "message".to_string(),
-                arg_type: "string".to_string(),
-                description: "".to_string(),
-                is_required: true,
-            }],
+            input_args: input_args.clone(),
             output_arg: ToolOutputArg { json: "".to_string() },
             embedding: None,
             restrictions: None,

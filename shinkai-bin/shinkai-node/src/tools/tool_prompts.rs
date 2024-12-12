@@ -568,7 +568,7 @@ pub async fn tool_metadata_implementation_prompt(
     "parameters": {{
       "type": "object",
       "properties": {{
-        "urls": {{ "type": "array", "items": {{ "type": "string" }} }},
+        "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string" }} }},
       }},
       "required": [
         "urls"

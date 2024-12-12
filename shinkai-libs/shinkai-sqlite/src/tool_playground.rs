@@ -258,9 +258,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_tools_primitives::tools::{
-        argument::ToolOutputArg,
-        deno_tools::{DenoTool, ToolResult},
-        shinkai_tool::ShinkaiTool,
+        tool_output_arg::ToolOutputArg, deno_tools::{DenoTool, ToolResult}, parameters::Parameters, shinkai_tool::ShinkaiTool
     };
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -286,7 +284,7 @@ mod tests {
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -316,7 +314,7 @@ mod tests {
                 author: "Test Author".to_string(),
                 keywords: vec!["test".to_string(), "tool".to_string()],
                 configurations: vec![],
-                parameters: vec![],
+                parameters: Parameters::new(),
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
                 sql_tables: vec![],
                 sql_queries: vec![],
@@ -409,7 +407,8 @@ mod tests {
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
+
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -480,7 +479,8 @@ mod tests {
             config: vec![],
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
+
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,

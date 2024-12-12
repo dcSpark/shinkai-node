@@ -169,7 +169,6 @@ impl SqliteManager {
         Self::initialize_source_file_maps_table(conn)?;
         Self::initialize_step_history_table(conn)?;
         Self::initialize_tools_table(conn)?;
-        Self::initialize_tools_vector_table(conn)?;
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
@@ -181,6 +180,14 @@ impl SqliteManager {
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
         Self::initialize_oauth_table(conn)?;
+        // Vector tables
+        Self::initialize_tools_vector_table(conn)?;
+        Ok(())
+    }
+
+    fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::initialize_tools_fts_table(conn)?;
+        Self::initialize_prompts_fts_table(conn)?;
         Ok(())
     }
 
@@ -546,14 +553,6 @@ impl SqliteManager {
         Ok(())
     }
 
-    // New method to initialize FTS tables
-    fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
-        Self::initialize_tools_fts_table(conn)?;
-        Self::initialize_prompts_fts_table(conn)?;
-
-        Ok(())
-    }
-
     // Initialize the FTS table for tool names
     fn initialize_tools_fts_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
@@ -792,7 +791,7 @@ impl SqliteManager {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_tokens_connection_name_tool_key ON oauth_tokens (connection_name, tool_key);",
             [],
         )?;
-        
+
         Ok(())
     }
 

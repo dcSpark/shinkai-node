@@ -1,6 +1,6 @@
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::argument::ToolArgument;
-use shinkai_tools_primitives::tools::{argument::ToolOutputArg, shinkai_tool::ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::parameters::Parameters;
+use shinkai_tools_primitives::tools::{tool_output_arg::ToolOutputArg, shinkai_tool::ShinkaiToolHeader};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embeddings::Embedding;
 use std::path::Path;
@@ -69,26 +69,13 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
                 author: "Shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
-                input_args: vec![
-                    ToolArgument::new(
-                        "database_name".to_string(),
-                        "string".to_string(),
-                        "Database name. Use 'default' to use default database".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "query".to_string(),
-                        "string".to_string(),
-                        "The SQL query to execute".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "query_params".to_string(),
-                        "any[]".to_string(),
-                        "The parameters to bind to the query".to_string(),
-                        false,
-                    ),
-                ],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property("database_name".to_string(), "string".to_string(), "The name of the database to query".to_string(), true);
+                    params.add_property("query".to_string(), "string".to_string(), "The SQL query to execute".to_string(), true);
+                    params.add_property("query_params".to_string(), "any[]".to_string(), "The parameters to pass to the query".to_string(), false);
+                    params
+                },
                 output_arg: ToolOutputArg {
                     json: r#"{"type": "object", "properties": {"result": {"oneOf": [{"type": "string"},{"type": "array"}]}, "type": {"type": "string"}, "rowCount": {"type": "number"}, "rowsAffected": {"type": "number"}}}"#.to_string(),
                 },
