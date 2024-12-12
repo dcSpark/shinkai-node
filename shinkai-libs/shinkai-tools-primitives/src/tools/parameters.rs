@@ -50,7 +50,7 @@ impl Parameters {
                 DeprecatedArgument::new(
                     name.clone(),
                     property.property_type.clone(),
-                    String::new(),
+                    property.description.clone(),
                     self.required.contains(name),
                 )
             })
