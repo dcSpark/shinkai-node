@@ -1,5 +1,6 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
+ARG BUILD_TYPE
 RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
 
 # Install nvm, npm and node
@@ -26,10 +27,10 @@ WORKDIR /app
 COPY . .
 
 # Build the dependencies (cached)
-
+RUN ./shinkai-libs/shinkai-ocr/ocrs/download-models.sh
 RUN cargo clean
 RUN rustup component add rustfmt
-RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build
+RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] && echo "--release")
 
 COPY .github/run-main*.sh /entrypoints/
 RUN chmod 755 /entrypoints/*.sh

@@ -258,7 +258,7 @@ impl Node {
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
         // Create an empty sheet using SheetManager
-        match sheet_manager_guard.create_empty_sheet() {
+        match sheet_manager_guard.create_empty_sheet().await {
             Ok(sheet_id) => {
                 // Update the sheet name
                 match sheet_manager_guard.update_sheet_name(&sheet_id, sheet_name).await {
@@ -329,7 +329,7 @@ impl Node {
         let mut sheet_manager_guard = sheet_manager.lock().await;
 
         // Remove the sheet using SheetManager
-        match sheet_manager_guard.remove_sheet(&sheet_id) {
+        match sheet_manager_guard.remove_sheet(&sheet_id).await {
             Ok(_) => {
                 let _ = res.send(Ok(json!(null))).await;
                 Ok(())
@@ -620,7 +620,7 @@ impl Node {
             return Ok(());
         }
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         if let Some(sheet_name) = &payload.sheet_name {
             let mut sheet_manager = sheet_manager.lock().await;

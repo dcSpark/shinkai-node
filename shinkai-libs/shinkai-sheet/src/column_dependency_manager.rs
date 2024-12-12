@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::schemas::sheet::{ColumnIndex, UuidString};
+use shinkai_message_primitives::schemas::sheet::UuidString;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ColumnDependencyManager {
@@ -10,7 +10,6 @@ pub struct ColumnDependencyManager {
     // Column -> Columns that depend on it
     pub reverse_dependencies: HashMap<UuidString, HashSet<UuidString>>,
 }
-
 
 impl ColumnDependencyManager {
     pub fn add_dependency(&mut self, from: UuidString, to: UuidString) {
@@ -56,7 +55,7 @@ impl ColumnDependencyManager {
                 }
             }
         }
-        
+
         // Add new dependencies
         for dep in dependencies {
             self.add_dependency(col.clone(), dep);

@@ -1,18 +1,21 @@
-use crate::tools::error::ToolError;
-use crate::tools::js_toolkit_headers::BasicConfig;
-use crate::tools::js_tools::JSTool;
+use crate::tools::deno_tools::DenoTool;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig, js_tools::JSToolResult};
+use super::{
+    tool_output_arg::ToolOutputArg,
+    deno_tools::ToolResult,
+    parameters::{Parameters, Property},
+    tool_config::{BasicConfig, ToolConfig},
+};
 
 /// A JSToolkit is a collection of JSTools.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JSToolkit {
     pub name: String,
-    pub tools: Vec<JSTool>,
+    pub tools: Vec<DenoTool>,
     pub author: String,
     pub version: String,
 }
@@ -34,13 +37,14 @@ impl JSToolkit {
         }
     }
 
-    fn create_js_tool(toolkit_name: &str, definition: ToolDefinition) -> JSTool {
+    fn create_js_tool(toolkit_name: &str, definition: ToolDefinition) -> DenoTool {
         let input_args = Self::extract_input_args(&definition);
+        let output_arg = Self::extract_output_arg(&definition);
         let config = Self::extract_config(&definition);
         let tool_name = Self::generate_tool_name(&definition.name);
 
-        let result = JSToolResult {
-            result_type: definition.result["type"].as_str().unwrap_or("object").to_string(),
+        let result = ToolResult {
+            r#type: definition.result["type"].as_str().unwrap_or("object").to_string(),
             properties: definition.result["properties"].clone(),
             required: definition.result["required"]
                 .as_array()
@@ -48,21 +52,27 @@ impl JSToolkit {
                 .unwrap_or_default(),
         };
 
-        JSTool {
+        DenoTool {
             toolkit_name: toolkit_name.to_string(),
             name: tool_name,
             author: definition.author.clone(),
             config,
+            oauth: None,
             js_code: definition.code.clone().unwrap_or_default(),
+            tools: None,
             description: definition.description.clone(),
             keywords: definition.keywords.clone(),
-            input_args,
+            input_args: input_args.clone(),
+            output_arg,
             activated: false,
             embedding: definition.embedding_metadata.clone().map(|meta| Embedding {
                 id: "".to_string(),
                 vector: meta.embeddings,
             }),
             result,
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
         }
     }
 
@@ -71,23 +81,35 @@ impl JSToolkit {
         name_pattern.replace_all(name, "_").to_lowercase()
     }
 
-    fn extract_input_args(definition: &ToolDefinition) -> Vec<ToolArgument> {
+    fn extract_output_arg(definition: &ToolDefinition) -> ToolOutputArg {
+        ToolOutputArg {
+            json: definition.result.to_string(),
+        }
+    }
+
+    fn extract_input_args(definition: &ToolDefinition) -> Parameters {
         if let Some(parameters) = definition.parameters.as_object() {
-            parameters["properties"].as_object().map_or(vec![], |props| {
-                props
-                    .iter()
-                    .map(|(key, value)| ToolArgument {
-                        name: key.clone(),
-                        arg_type: value["type"].as_str().unwrap_or("string").to_string(),
-                        description: value["description"].as_str().unwrap_or("").to_string(),
-                        is_required: definition.parameters["required"]
-                            .as_array()
-                            .map_or(false, |req| req.iter().any(|r| r == key)),
-                    })
-                    .collect()
-            })
+            let mut properties = std::collections::HashMap::new();
+            let required = parameters["required"]
+                .as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            if let Some(props) = parameters["properties"].as_object() {
+                for (key, value) in props {
+                    let property_type = value["type"].as_str().unwrap_or("string").to_string();
+                    let description = value["description"].as_str().unwrap_or_default().to_string();
+                    properties.insert(key.clone(), Property { property_type, description });
+                }
+            }
+
+            Parameters {
+                schema_type: parameters["type"].as_str().unwrap_or("object").to_string(),
+                properties,
+                required,
+            }
         } else {
-            vec![]
+            Parameters::new()
         }
     }
 
@@ -117,16 +139,6 @@ impl JSToolkit {
     pub fn gen_router_key(name: &str, author: &str) -> String {
         // We replace any `/` in order to not have the names break VRPaths
         format!("{}:::{}", author, name).replace('/', "|")
-    }
-
-    pub fn to_json(&self) -> Result<String, ToolError> {
-        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
-    }
-
-    /// Convert from json
-    pub fn from_json(json: &str) -> Result<Self, ToolError> {
-        let deserialized: Self = serde_json::from_str(json)?;
-        Ok(deserialized)
     }
 }
 
@@ -183,21 +195,20 @@ mod tests {
         assert_eq!(tool.name, "shinkai__weather_by_city");
         assert_eq!(tool.description, "Get weather information for a city name");
         assert_eq!(tool.js_code, "var tool;\n/******/ (() => { // webpackBootstrap\n/*");
-        assert_eq!(tool.input_args.len(), 1);
-        assert_eq!(tool.input_args[0].name, "city");
-        assert_eq!(tool.input_args[0].arg_type, "string");
-        assert!(tool.input_args[0].is_required);
+
+        // Check for input arguments
+        assert_eq!(tool.input_args.schema_type, "object");
+        assert_eq!(tool.input_args.properties.len(), 1);
+        assert_eq!(tool.input_args.properties.get("city").unwrap().property_type, "string");
+        assert_eq!(tool.input_args.required, vec!["city"]);
 
         // Check for config
         assert_eq!(tool.config.len(), 1);
         let config = &tool.config[0];
-        if let ToolConfig::BasicConfig(basic_config) = config {
-            assert_eq!(basic_config.key_name, "apiKey");
-            assert_eq!(basic_config.description, "");
-            assert!(basic_config.required);
-            assert_eq!(basic_config.key_value, None);
-        } else {
-            panic!("Expected BasicConfig");
-        }
+        let ToolConfig::BasicConfig(basic_config) = config;
+        assert_eq!(basic_config.key_name, "apiKey");
+        assert_eq!(basic_config.description, "");
+        assert!(basic_config.required);
+        assert_eq!(basic_config.key_value, None);
     }
 }

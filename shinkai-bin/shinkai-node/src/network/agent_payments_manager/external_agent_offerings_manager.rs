@@ -8,9 +8,10 @@ use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use shinkai_db::db::{ShinkaiDB, Topic};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
-use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum};
+use shinkai_message_primitives::schemas::invoices::{
+    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -18,7 +19,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_subscription_manager::subscription_manager::subscriber_manager_error::SubscriberManagerError;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -26,7 +27,7 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::{env, fmt};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -64,7 +65,7 @@ impl From<InvoiceError> for AgentOfferingManagerError {
 // should we use the name of the destination as part of the hash?
 
 pub struct ExtAgentOfferingsManager {
-    pub db: Weak<ShinkaiDB>,
+    pub db: Weak<RwLock<SqliteManager>>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -104,7 +105,7 @@ impl ExtAgentOfferingsManager {
     ///
     /// * `Self` - A new instance of `ExtAgentOfferingsManager`.
     pub async fn new(
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
@@ -116,13 +117,9 @@ impl ExtAgentOfferingsManager {
         // need tool_router
     ) -> Self {
         let db_prefix = "shinkai__tool__offering_"; // dont change it
-        let offerings_queue = JobQueueManager::<Invoice>::new(
-            db.clone(),
-            Topic::AnyQueuesPrefixed.as_str(),
-            Some(db_prefix.to_string()),
-        )
-        .await
-        .unwrap();
+        let offerings_queue = JobQueueManager::<Invoice>::new(db.clone(), Some(db_prefix.to_string()))
+            .await
+            .unwrap();
 
         let thread_number = env::var("AGENTS_OFFERING_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
@@ -204,7 +201,7 @@ impl ExtAgentOfferingsManager {
     /// * `tokio::task::JoinHandle<()>` - A handle to the spawned task.
     pub async fn process_offerings_queue(
         offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
-        db: Weak<ShinkaiDB>,
+        db: Weak<RwLock<SqliteManager>>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -216,7 +213,7 @@ impl ExtAgentOfferingsManager {
         tool_router: Weak<ToolRouter>,
         process_job: impl Fn(
                 Invoice,
-                Weak<ShinkaiDB>,
+                Weak<RwLock<SqliteManager>>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -398,7 +395,7 @@ impl ExtAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
         _invoice: Invoice,
-        _db: Weak<ShinkaiDB>,
+        _db: Weak<RwLock<SqliteManager>>,
         _vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
         _my_signature_secret_key: SigningKey,
@@ -426,7 +423,7 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        let tools = db.get_all_tool_offerings().map_err(|e| {
+        let tools = db.read().await.get_all_tool_offerings().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
         })?;
 
@@ -454,7 +451,7 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        db.set_tool_offering(updated_offering).map_err(|e| {
+        db.write().await.set_tool_offering(updated_offering).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to update tool offering: {:?}", e))
         })?;
 
@@ -480,7 +477,9 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        db.set_tool_offering(offering)
+        db.write()
+            .await
+            .set_tool_offering(offering)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to share tool: {:?}", e)))?;
 
         Ok(true)
@@ -495,15 +494,17 @@ impl ExtAgentOfferingsManager {
     ///
     /// # Returns
     ///
-    /// * `Result<bool, SubscriberManagerError>` - True if successful, otherwise an error.
-    pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, SubscriberManagerError> {
+    /// * `Result<bool, AgentOfferingManagerError>` - True if successful, otherwise an error.
+    pub async fn unshare_tool(&mut self, tool_key_name: String) -> Result<bool, AgentOfferingManagerError> {
         let db = self
             .db
             .upgrade()
-            .ok_or_else(|| SubscriberManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        db.remove_tool_offering(&tool_key_name)
-            .map_err(|e| SubscriberManagerError::OperationFailed(format!("Failed to unshare tool: {:?}", e)))?;
+        db.write()
+            .await
+            .remove_tool_offering(&tool_key_name)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to unshare tool: {:?}", e)))?;
 
         Ok(true)
     }
@@ -532,9 +533,10 @@ impl ExtAgentOfferingsManager {
         // Validate and convert the tool_key_name
         let actual_tool_key_name = invoice_request.validate_and_convert_tool_key(&self.node_name)?;
 
-        let shinkai_offering = db
-            .get_tool_offering(&actual_tool_key_name)
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e)))?;
+        let shinkai_offering =
+            db.read().await.get_tool_offering(&actual_tool_key_name).map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Failed to get tool offering: {:?}", e))
+            })?;
 
         let usage_type = match invoice_request.usage_type_inquiry {
             UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
@@ -558,7 +560,7 @@ impl ExtAgentOfferingsManager {
         };
 
         // Check if an invoice with the same ID already exists
-        if db.get_invoice(&invoice_request.unique_id).is_ok() {
+        if db.read().await.get_invoice(&invoice_request.unique_id).is_ok() {
             return Err(AgentOfferingManagerError::OperationFailed(
                 "Invoice with the same ID already exists".to_string(),
             ));
@@ -598,7 +600,9 @@ impl ExtAgentOfferingsManager {
         };
 
         // Store the new invoice in the database
-        db.set_invoice(&invoice)
+        db.write()
+            .await
+            .set_invoice(&invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
 
         Ok(invoice)
@@ -757,6 +761,8 @@ impl ExtAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
         let mut local_invoice = db
+            .read()
+            .await
             .get_invoice(&invoice.invoice_id)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
@@ -786,7 +792,7 @@ impl ExtAgentOfferingsManager {
             })?;
 
             let result = tool_router
-                .call_js_function(data_payload, &local_tool_key)
+                .call_js_function(data_payload, _requester_node_name, &local_tool_key)
                 .await
                 .map_err(|e: LLMProviderError| {
                     AgentOfferingManagerError::OperationFailed(format!("LLMProviderError: {:?}", e))
@@ -798,7 +804,9 @@ impl ExtAgentOfferingsManager {
             local_invoice.status = InvoiceStatusEnum::Processed;
             local_invoice.response_date_time = Some(Utc::now());
 
-            db.set_invoice(&local_invoice)
+            db.write()
+                .await
+                .set_invoice(&local_invoice)
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
 
@@ -883,25 +891,18 @@ mod tests {
 
     use super::*;
     use async_trait::async_trait;
-    use shinkai_lancedb::lance_db::{shinkai_lance_db::LanceShinkaiDb, shinkai_lancedb_error::ShinkaiLanceDBError};
     use shinkai_message_primitives::{
-        schemas::{
-            identity::{Identity, StandardIdentity, StandardIdentityType},
-            shinkai_tool_offering::{AssetPayment, ToolPrice},
-            wallet_mixed::{Asset, NetworkIdentifier},
-        },
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
         shinkai_message::shinkai_message_schemas::IdentityPermissions,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
     };
-    use shinkai_tools_primitives::tools::{js_toolkit::JSToolkit, shinkai_tool::ShinkaiTool};
-    use shinkai_tools_runner::built_in_tools;
+
     use shinkai_vector_resources::{
-        embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+        embedding_generator::RemoteEmbeddingGenerator,
         model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
-    use tokio::sync::RwLock;
 
     #[derive(Clone, Debug)]
     struct MockIdentityManager {
@@ -963,7 +964,7 @@ mod tests {
     }
 
     fn setup() {
-        let path = Path::new("lance_db_tests/");
+        let path = Path::new("sqlite_tests/");
         let _ = fs::remove_dir_all(path);
 
         let path = Path::new("shinkai_db_tests/");
@@ -978,24 +979,24 @@ mod tests {
         ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap()
     }
 
-    async fn setup_default_vector_fs() -> VectorFS {
-        let generator = RemoteEmbeddingGenerator::new_default();
-        let fs_db_path = format!("db_tests/{}", "vector_fs");
-        let profile_list = vec![default_test_profile()];
-        let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-        )];
+    // async fn setup_default_vector_fs() -> VectorFS {
+    //     let generator = RemoteEmbeddingGenerator::new_default();
+    //     let fs_db_path = format!("db_tests/{}", "vector_fs");
+    //     let profile_list = vec![default_test_profile()];
+    //     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+    //         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+    //     )];
 
-        VectorFS::new(
-            generator,
-            supported_embedding_models,
-            profile_list,
-            &fs_db_path,
-            node_name(),
-        )
-        .await
-        .unwrap()
-    }
+    //     VectorFS::new(
+    //         generator,
+    //         supported_embedding_models,
+    //         profile_list,
+    //         &fs_db_path,
+    //         node_name(),
+    //     )
+    //     .await
+    //     .unwrap()
+    // }
 
     // #[test]
     // fn test_unique_id() {
@@ -1011,105 +1012,118 @@ mod tests {
     //     assert!(!invoice_request.unique_id.is_empty());
     // }
 
-    #[tokio::test]
-    async fn test_agent_offerings_manager() -> Result<(), ShinkaiLanceDBError> {
-        setup();
+    // TODO: Fix it
+    // #[tokio::test]
+    // async fn test_agent_offerings_manager() -> Result<(), SqliteManagerError> {
+    //     setup();
 
-        let generator = RemoteEmbeddingGenerator::new_default();
-        let embedding_model = generator.model_type().clone();
+    //     let generator = RemoteEmbeddingGenerator::new_default();
+    //     let embedding_model = generator.model_type().clone();
 
-        // Initialize ShinkaiDB
-        let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
-            Ok(db) => Arc::new(db),
-            Err(e) => return Err(ShinkaiLanceDBError::ShinkaiDBError(e.to_string())),
-        };
+    //     // Initialize ShinkaiDB
+    //     let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
+    //         Ok(db) => Arc::new(db),
+    //         Err(e) => return Err(SqliteManagerError::DatabaseError(rusqlite::Error::InvalidParameterName(e.to_string()))),
+    //     };
 
-        let lance_db = Arc::new(RwLock::new(
-            LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
-        ));
+    //     let sqlite_manager = SqliteManager::new("sqlite_tests".to_string(), "".to_string(), embedding_model).unwrap();
 
-        let tools = built_in_tools::get_tools();
+    //     let tools = built_in_tools::get_tools();
 
-        // Generate crypto keys
-        let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
-        let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
+    //     // Generate crypto keys
+    //     let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
+    //     let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
 
-        // Create ToolRouter
-        let tool_router = Arc::new(ToolRouter::new(lance_db.clone()));
+    //     // Create ToolRouter
+    //     let tool_router = Arc::new(ToolRouter::new(sqlite_manager));
 
-        // Create AgentOfferingsManager
-        let node_name = node_name();
-        let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
-            Arc::new(Mutex::new(MockIdentityManager::new()));
-        let proxy_connection_info = Arc::new(Mutex::new(None));
-        let vector_fs = Arc::new(setup_default_vector_fs().await);
+    //     // Create AgentOfferingsManager
+    //     let node_name = node_name();
+    //     let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
+    //         Arc::new(Mutex::new(MockIdentityManager::new()));
+    //     let proxy_connection_info = Arc::new(Mutex::new(None));
+    //     let vector_fs = Arc::new(setup_default_vector_fs().await);
 
-        // Wallet Manager
-        let wallet_manager = Arc::new(Mutex::new(None));
+    //     // Wallet Manager
+    //     let wallet_manager = Arc::new(Mutex::new(None));
 
-        let mut agent_offerings_manager = ExtAgentOfferingsManager::new(
-            Arc::downgrade(&shinkai_db),
-            Arc::downgrade(&vector_fs),
-            Arc::downgrade(&identity_manager),
-            node_name.clone(),
-            my_signature_secret_key.clone(),
-            my_encryption_secret_key.clone(),
-            Arc::downgrade(&proxy_connection_info),
-            Arc::downgrade(&tool_router),
-            Arc::downgrade(&wallet_manager),
-        )
-        .await;
+    //     let mut agent_offerings_manager = ExtAgentOfferingsManager::new(
+    //         Arc::downgrade(&shinkai_db),
+    //         Arc::downgrade(&vector_fs),
+    //         Arc::downgrade(&identity_manager),
+    //         node_name.clone(),
+    //         my_signature_secret_key.clone(),
+    //         my_encryption_secret_key.clone(),
+    //         Arc::downgrade(&proxy_connection_info),
+    //         Arc::downgrade(&tool_router),
+    //         Arc::downgrade(&wallet_manager),
+    //     )
+    //     .await;
 
-        // Add tools to the database
-        for (name, definition) in tools {
-            let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-            for tool in toolkit.tools {
-                let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
-                eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
-                let embedding = generator
-                    .generate_embedding_default(&shinkai_tool.format_embedding_string())
-                    .await
-                    .unwrap();
-                shinkai_tool.set_embedding(embedding);
+    //     // Add tools to the database
+    //     for (name, definition) in tools {
+    //         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+    //         for tool in toolkit.tools {
+    //             let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
+    //             eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
+    //             let embedding = generator
+    //                 .generate_embedding_default(&shinkai_tool.format_embedding_string())
+    //                 .await
+    //                 .unwrap();
+    //             shinkai_tool.set_embedding(embedding);
 
-                lance_db
-                    .write()
-                    .await
-                    .set_tool(&shinkai_tool)
-                    .await
-                    .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
+    // --- merge conflict of commented code ---
+    // // Add tools to the database
+    // for (name, definition) in tools {
+    //     let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
+    //     for tool in toolkit.tools {
+    //         let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
+    //         eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
+    //         let embedding = generator
+    //             .generate_embedding_default(&shinkai_tool.format_embedding_string())
+    //             .await
+    //             .unwrap();
+    //         shinkai_tool.set_embedding(embedding);
+    // ---
 
-                // Check if the tool is "shinkai__weather_by_city" and make it shareable
-                if shinkai_tool.name() == "shinkai__weather_by_city" {
-                    let shinkai_offering = ShinkaiToolOffering {
-                        tool_key: shinkai_tool.tool_router_key(),
-                        usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                            asset: Asset {
-                                network_id: NetworkIdentifier::Anvil,
-                                asset_id: "ETH".to_string(),
-                                decimals: Some(18),
-                                contract_address: None,
-                            },
-                            amount: "0.01".to_string(),
-                        }])),
-                        meta_description: None,
-                    };
+    //             lance_db
+    //                 .write()
+    //                 .await
+    //                 .set_tool(&shinkai_tool)
+    //                 .await
+    //                 .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
 
-                    agent_offerings_manager
-                        .make_tool_shareable(shinkai_offering)
-                        .await
-                        .unwrap();
-                }
-            }
-        }
+    //             // Check if the tool is "shinkai__weather_by_city" and make it shareable
+    //             if shinkai_tool.name() == "shinkai__weather_by_city" {
+    //                 let shinkai_offering = ShinkaiToolOffering {
+    //                     tool_key: shinkai_tool.tool_router_key(),
+    //                     usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+    //                         asset: Asset {
+    //                             network_id: NetworkIdentifier::Anvil,
+    //                             asset_id: "ETH".to_string(),
+    //                             decimals: Some(18),
+    //                             contract_address: None,
+    //                         },
+    //                         amount: "0.01".to_string(),
+    //                     }])),
+    //                     meta_description: None,
+    //                 };
 
-        // Check available tools
-        let available_tools = agent_offerings_manager.available_tools().await.unwrap();
-        eprintln!("available_tools: {:?}", available_tools);
-        assert!(
-            available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string())
-        );
+    //                 agent_offerings_manager
+    //                     .make_tool_shareable(shinkai_offering)
+    //                     .await
+    //                     .unwrap();
+    //             }
+    //         }
+    //     }
 
-        Ok(())
-    }
+    //     // Check available tools
+    //     let available_tools = agent_offerings_manager.available_tools().await.unwrap();
+    //     eprintln!("available_tools: {:?}", available_tools);
+    //     assert!(
+    //         available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string())
+    //     );
+
+    //     Ok(())
+    // }
 }

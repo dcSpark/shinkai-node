@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{
@@ -17,7 +17,8 @@ use shinkai_message_primitives::{
     },
 };
 
-use tokio::sync::Mutex;
+use shinkai_sqlite::SqliteManager;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     managers::IdentityManager,
@@ -32,7 +33,7 @@ use crate::{
 
 impl Node {
     pub async fn v2_api_available_shared_items(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
@@ -158,7 +159,7 @@ impl Node {
     }
 
     pub async fn v2_api_available_shared_items_open(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
@@ -204,7 +205,7 @@ impl Node {
     }
 
     pub async fn v2_api_create_shareable_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
@@ -269,7 +270,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_shareable_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
@@ -320,7 +321,7 @@ impl Node {
     }
 
     pub async fn v2_api_unshare_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
@@ -368,7 +369,7 @@ impl Node {
     }
 
     pub async fn v2_api_subscribe_to_shared_folder(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         bearer: String,
@@ -441,7 +442,7 @@ impl Node {
     }
 
     pub async fn v2_api_unsubscribe(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
@@ -522,7 +523,7 @@ impl Node {
     }
 
     pub async fn v2_api_my_subscriptions(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -557,7 +558,7 @@ impl Node {
             return Ok(());
         }
 
-        let db_result = db.list_all_my_subscriptions();
+        let db_result = db.read().await.list_all_my_subscriptions();
 
         match db_result {
             Ok(subscriptions) => {
@@ -590,7 +591,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_my_subscribers(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         payload: APIGetMySubscribers,
@@ -622,7 +623,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_http_free_subscription_links(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         bearer: String,
         subscription_profile_path: String,
@@ -648,7 +649,7 @@ impl Node {
         let _profile = parts[0].to_string();
         let path = parts[1].to_string();
 
-        let folder_subscription = match db.get_folder_requirements(&path) {
+        let folder_subscription = match db.read().await.get_folder_requirements(&path) {
             Ok(result) => result,
             Err(e) => {
                 let api_error = APIError {
@@ -689,7 +690,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_last_notifications(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -724,7 +725,11 @@ impl Node {
             return Ok(());
         }
 
-        match db.get_last_notifications(requester_name.clone(), payload.count, payload.timestamp) {
+        match db
+            .read()
+            .await
+            .get_last_notifications(requester_name.clone(), payload.count, payload.timestamp)
+        {
             Ok(notifications) => {
                 let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
             }
@@ -742,7 +747,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_notifications_before_timestamp(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -777,7 +782,11 @@ impl Node {
             return Ok(());
         }
 
-        match db.get_notifications_before_timestamp(requester_name.clone(), payload.timestamp, payload.count) {
+        match db.read().await.get_notifications_before_timestamp(
+            requester_name.clone(),
+            payload.timestamp,
+            payload.count,
+        ) {
             Ok(notifications) => {
                 let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
             }

@@ -1,10 +1,16 @@
-use crate::{schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::MessageMetadata, shinkai_utils::job_scope::JobScope};
+use crate::{
+    schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::MessageMetadata,
+    shinkai_utils::job_scope::JobScope,
+};
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCodeSimple},
+    schemas::{
+        inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        registration_code::RegistrationCodeSimple,
+    },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -59,7 +65,6 @@ impl ShinkaiMessageBuilder {
             .external_metadata(receiver, sender)
             .build()
     }
-
 
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
@@ -131,8 +136,6 @@ impl ShinkaiMessageBuilder {
         content: String,
         files_inbox: String,
         parent_hash: String,
-        workflow_code: Option<String>,
-        workflow_name: Option<String>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -147,11 +150,10 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: Some(parent_hash),
-            workflow_code,
-            workflow_name,
             sheet_job_data: None,
             callback: None,
             metadata: None,
+            tool_key: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -174,6 +176,53 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub fn job_message_unencrypted(
+        job_id: String,
+        content: String,
+        files_inbox: String,
+        parent_hash: String,
+        my_signature_secret_key: SigningKey,
+        node_sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let job_id_clone = job_id.clone();
+        let job_message = JobMessage {
+            job_id,
+            content,
+            files_inbox,
+            parent: Some(parent_hash),
+            sheet_job_data: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+        };
+        let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
+
+        let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
+            .map_err(|_| "Failed to get job inbox name")?
+            .to_string();
+
+        let (placeholder_encryption_sk, placeholder_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        ShinkaiMessageBuilder::new(placeholder_encryption_sk, my_signature_secret_key, placeholder_encryption_pk)
+            .message_raw_content(body)
+            .internal_metadata_with_schema(
+                sender_subidentity.to_string(),
+                node_receiver_subidentity.clone(),
+                inbox,
+                MessageSchemaType::JobMessageSchema,
+                EncryptionMethod::None,
+                None,
+            )
+            .body_encryption(EncryptionMethod::None)
+            .external_metadata_with_intra_sender(node_receiver, node_sender, sender_subidentity)
+            .build()
+    }
+
     #[allow(dead_code)]
     pub fn job_message_from_llm_provider(
         job_id: String,
@@ -190,11 +239,10 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: None,
-            workflow_code: None, // the agent wont be sending you a workflow
-            workflow_name: None, // the agent wont be sending you a workflow
             sheet_job_data: None,
             callback: None,
             metadata,
+            tool_key: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

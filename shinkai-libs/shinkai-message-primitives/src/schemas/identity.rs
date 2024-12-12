@@ -86,7 +86,7 @@ pub struct RegistrationCode {
     pub permission_type: IdentityPermissions,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Identity {
     // IdentityType::Global or IdentityType::Profile
     Standard(StandardIdentity),
@@ -110,6 +110,14 @@ impl Identity {
             Identity::Standard(std_identity) => std_identity.permission_type == IdentityPermissions::Admin,
             Identity::LLMProvider(_) => false, // Assuming LLM providers don't have admin permissions
             Identity::Device(device) => device.permission_type == IdentityPermissions::Admin,
+        }
+    }
+
+    pub fn get_shinkai_name(&self) -> ShinkaiName {
+        match self {
+            Identity::Standard(std_identity) => std_identity.full_identity_name.clone(),
+            Identity::LLMProvider(agent) => agent.full_identity_name.clone(),
+            Identity::Device(device) => device.full_identity_name.clone(),
         }
     }
 }

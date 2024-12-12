@@ -1,5 +1,6 @@
 use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
@@ -296,7 +297,7 @@ pub enum AssociatedUI {
     // Add more variants as needed
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
     pub is_hidden: Option<bool>,
@@ -307,7 +308,9 @@ pub struct JobCreationInfo {
 pub enum CallbackAction {
     Job(JobMessage),
     Sheet(SheetManagerAction),
-    // Cron(CronManagerAction),
+    ToolPlayground(ToolPlaygroundAction),
+    // ImplementationCheck: (DynamicToolType, available_tools)
+    ImplementationCheck(DynamicToolType, Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
@@ -316,14 +319,13 @@ pub struct JobMessage {
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
-    #[serde(default)]
-    pub workflow_code: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_workflow_name")]
-    pub workflow_name: Option<String>,
     pub sheet_job_data: Option<String>,
+    // Whenever we need to chain actions, we can use this
     pub callback: Option<Box<CallbackAction>>,
+    // This is added from the node
     pub metadata: Option<MessageMetadata>,
-    // TODO: add tools here
+    // Whenever we want to force the use of a specific tool, we can use this
+    pub tool_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
@@ -339,19 +341,6 @@ pub struct FunctionCallMetadata {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
-}
-
-fn deserialize_workflow_name<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: Option<String> = Option::deserialize(deserializer).unwrap_or(None);
-    if let Some(ref s) = s {
-        if s == "undefined:::undefined" {
-            return Ok(None);
-        }
-    }
-    Ok(s)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
@@ -370,6 +359,12 @@ pub struct SheetManagerAction {
     pub job_message_next: Option<JobMessage>,
     // TODO: should this be m0re complex and have the actual desired action?
     pub sheet_action: SheetJobAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
+pub struct ToolPlaygroundAction {
+    pub tool_router_key: String,
+    pub code: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
@@ -814,7 +809,7 @@ impl fmt::Display for IdentityPermissions {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum RegistrationCodeType {
     Device(String),
     Profile,

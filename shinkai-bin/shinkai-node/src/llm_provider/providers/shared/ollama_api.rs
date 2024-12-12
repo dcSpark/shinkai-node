@@ -44,6 +44,19 @@ pub struct OllamaMessage {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct ToolCall {
+    pub function: Function,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct Function {
+    pub name: String,
+    pub arguments: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 pub fn ollama_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
@@ -55,6 +68,19 @@ pub fn ollama_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         Some("tool".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
+
+    // Check if the prompt is not empty but messages are empty
+    if !prompt.sub_prompts.is_empty() && chat_completion_messages.is_empty() {
+        // Calculate the number of tokens used by the prompt
+        let (_, used_tokens) = prompt.generate_chat_completion_messages(
+            Some("tool".to_string()),
+            &ModelCapabilitiesManager::num_tokens_from_llama3,
+        );
+        return Err(LLMProviderError::MessageTooLargeForLLM {
+            max_tokens: max_input_tokens,
+            used_tokens,
+        });
+    }
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&chat_completion_messages);
@@ -104,6 +130,7 @@ fn from_chat_completion_messages(
                 role: message.role.unwrap_or_default(),
                 content,
                 images,
+                tool_calls: None,
             });
         }
     }
@@ -295,16 +322,19 @@ mod tests {
                 role: "system".to_string(),
                 content: "You are a very helpful assistant that's very good at completing a task.".to_string(),
                 images: None,
+                tool_calls: None,
             },
             OllamaMessage {
                 role: "user".to_string(),
                 content: "The current main task at hand is: `describe this`".to_string(),
                 images: Some(vec!["iVBORw0KGgoAAAANSUhEUgAAAlgAAAJYCAYAAAC".to_string()]),
+                tool_calls: None,
             },
             OllamaMessage {
                 role: "system".to_string(),
                 content: "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs.".to_string(),
                 images: None,
+                tool_calls: None,
             },
         ];
 

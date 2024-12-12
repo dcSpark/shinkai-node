@@ -15,8 +15,9 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::Node;
-use shinkai_tools_primitives::tools::argument::ToolArgument;
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
@@ -315,6 +316,9 @@ fn micropayment_flow_test() {
                 meta_description: Some("Echo tool offering".to_string()),
             };
 
+            let mut input_args = Parameters::new();
+            input_args.add_property("message".to_string(), "string".to_string(), "The message to echo".to_string(), true);
+
             let shinkai_tool_header = ShinkaiToolHeader {
                 name: "network__echo".to_string(),
                 toolkit_name: "shinkai-tool-echo".to_string(),
@@ -324,12 +328,8 @@ fn micropayment_flow_test() {
                 formatted_tool_summary_for_ui:
                     "Tool Name: network__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message"
                         .to_string(),
-                input_args: vec![ToolArgument {
-                    arg_type: "string".to_string(),
-                    description: "".to_string(),
-                    is_required: true,
-                    name: "message".to_string(),
-                }],
+                input_args: input_args.clone(),
+                output_arg: ToolOutputArg::empty(),
                 author: "Shinkai".to_string(),
                 version: "v0.1".to_string(),
                 enabled: true,
@@ -371,7 +371,7 @@ fn micropayment_flow_test() {
                     Err(e) => panic!("Failed to retrieve shinkai tool: {:?}", e),
                 };
 
-                if let ShinkaiTool::JS(ref mut js_tool, _) = shinkai_tool {
+                if let ShinkaiTool::Deno(ref mut js_tool, _) = shinkai_tool {
                     js_tool.name = "network__echo".to_string();
                 }
 
@@ -493,7 +493,8 @@ fn micropayment_flow_test() {
                     usage_type: shinkai_tool_offering.usage_type.clone(),
                     activated: shinkai_tool_header.enabled,
                     config: shinkai_tool_header.config.clone().unwrap_or_default(),
-                    input_args: vec![],
+                    input_args: Parameters::new(),
+                    output_arg: ToolOutputArg::empty(),
                     embedding: None,
                     restrictions: None,
                 };

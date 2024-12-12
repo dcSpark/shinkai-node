@@ -5,7 +5,9 @@ mod tests {
         prompts::Prompt,
         subprompts::{SubPrompt, SubPromptType},
     };
-    use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
+    use shinkai_tools_primitives::tools::{
+        tool_output_arg::ToolOutputArg, parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool
+    };
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
@@ -15,33 +17,17 @@ mod tests {
         let tool = RustTool::new(
             "concat_strings".to_string(),
             concat_strings_desc.clone(),
-            vec![
-                ToolArgument::new(
-                    "first_string".to_string(),
-                    "string".to_string(),
-                    "The first string to concatenate".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "second_string".to_string(),
-                    "string".to_string(),
-                    "The second string to concatenate".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "third_string".to_string(),
-                    "string".to_string(),
-                    "The third string to concatenate (optional)".to_string(),
-                    false,
-                ),
-                ToolArgument::new(
-                    "fourth_string".to_string(),
-                    "string".to_string(),
-                    "The fourth string to concatenate (optional)".to_string(),
-                    false,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("first_string".to_string(), "string".to_string(), "The first string to concatenate".to_string(), true);
+                params.add_property("second_string".to_string(), "string".to_string(), "The second string to concatenate".to_string(), true);
+                params.add_property("third_string".to_string(), "string".to_string(), "The third string to concatenate (optional)".to_string(), false);
+                params.add_property("fourth_string".to_string(), "string".to_string(), "The fourth string to concatenate (optional)".to_string(), false);
+                params
+            },
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::concat_strings".to_string(),
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
@@ -104,7 +90,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust-toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({
@@ -153,33 +139,17 @@ mod tests {
         let tool = RustTool::new(
             "concat_strings".to_string(),
             concat_strings_desc.clone(),
-            vec![
-                ToolArgument::new(
-                    "first_string".to_string(),
-                    "string".to_string(),
-                    "The first string to concatenate".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "second_string".to_string(),
-                    "string".to_string(),
-                    "The second string to concatenate".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "third_string".to_string(),
-                    "string".to_string(),
-                    "The third string to concatenate (optional)".to_string(),
-                    false,
-                ),
-                ToolArgument::new(
-                    "fourth_string".to_string(),
-                    "string".to_string(),
-                    "The fourth string to concatenate (optional)".to_string(),
-                    false,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("first_string".to_string(), "string".to_string(), "The first string to concatenate".to_string(), true);
+                params.add_property("second_string".to_string(), "string".to_string(), "The second string to concatenate".to_string(), true);
+                params.add_property("third_string".to_string(), "string".to_string(), "The third string to concatenate (optional)".to_string(), false);
+                params.add_property("fourth_string".to_string(), "string".to_string(), "The fourth string to concatenate (optional)".to_string(), false);
+                params
+            },
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::concat_strings".to_string(),
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
@@ -235,7 +205,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust-toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({

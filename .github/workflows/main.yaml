@@ -1,16 +1,17 @@
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - ".github/workflows/main.yml"
+      - ".github/workflows/main.yaml"
       - "Cargo.*"
       - "shinkai-libs/**"
       - "shinkai-bin/**"
+
   pull_request:
-    branches: [ main ]
-    types: [ opened, reopened, synchronize, ready_for_review ]
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
     paths:
-      - ".github/workflows/main.yml"
+      - ".github/workflows/main.yaml"
       - "Cargo.*"
       - "shinkai-libs/**"
       - "shinkai-bin/**"
@@ -38,9 +39,6 @@ jobs:
       - name: Run tests primitives cargo tests
         run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}
 
-      - name: Run tests mirror cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-main-mirror-cargo-tests.sh testing_image:${SHORT_SHA}
-
       - name: Run tests main cargo tests
         run: docker run --rm -e AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' -e AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' -e AWS_URL='${{ secrets.AWS_URL }}' --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
 
@@ -50,26 +48,3 @@ jobs:
     env:
       FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
       FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
-
-  test-wasm:
-    runs-on: self-hosted
-    if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Add SHORT_SHA env property with commit short sha
-        run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
-
-      - name: Build testing image - shinkai-message-wasm
-        run: docker build -t testing_image_wasm:${SHORT_SHA} -f .github/Dockerfile.wasm .
-
-      - name: Run tests shinkai-message-wasm cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm:${SHORT_SHA}
-
-      - name: Run tests shinkai-message-pyo3 python tests
-        run: docker run --rm --entrypoint /entrypoints/run-python-tests.sh testing_image_wasm:${SHORT_SHA}
-
-      - name: Remove image
-        if: always()
-        run: docker rmi testing_image_wasm:${SHORT_SHA} || true

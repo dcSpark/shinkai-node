@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_sqlite::errors::SqliteManagerError;
+use shinkai_sqlite::SqliteManager;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Weak};
-use tokio::sync::{mpsc, Mutex};
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::db::db_errors::ShinkaiDBError;
+use tokio::sync::{mpsc, Mutex, RwLock};
 
 type MutexQueue<T> = Arc<Mutex<Vec<T>>>;
 type Subscriber<T> = mpsc::Sender<T>;
@@ -80,8 +80,7 @@ pub struct JobQueueManager<T: Debug> {
     queues: Arc<Mutex<HashMap<String, MutexQueue<T>>>>,
     subscribers: Arc<Mutex<HashMap<String, Vec<Subscriber<T>>>>>,
     all_subscribers: Arc<Mutex<Vec<Subscriber<T>>>>,
-    db: Weak<ShinkaiDB>,
-    cf_name: String,
+    db: Weak<RwLock<SqliteManager>>,
     prefix: Option<String>,
 }
 
@@ -89,12 +88,13 @@ pub struct JobQueueManager<T: Debug> {
 static BUFFER_SIZE: usize = 10;
 
 impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
-    pub async fn new(db: Weak<ShinkaiDB>, cf_name: &str, prefix: Option<String>) -> Result<Self, ShinkaiDBError> {
+    pub async fn new(db: Weak<RwLock<SqliteManager>>, prefix: Option<String>) -> Result<Self, SqliteManagerError> {
         // Lock the db for safe access
         let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db_read = db_arc.read().await;
 
         // Call the get_all_queues method to get all queue data from the db
-        match db_arc.get_all_queues(cf_name, prefix.clone()) {
+        match db_read.get_all_queues(prefix.clone()) {
             Ok(db_queues) => {
                 // Initialize the queues field with Mutex-wrapped Vecs from the db data
                 let manager_queues = db_queues
@@ -108,7 +108,6 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
                     subscribers: Arc::new(Mutex::new(HashMap::new())),
                     all_subscribers: Arc::new(Mutex::new(Vec::new())),
                     db: db.clone(),
-                    cf_name: cf_name.to_string(),
                     prefix,
                 })
             }
@@ -116,13 +115,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         }
     }
 
-    #[allow(dead_code)]
-    async fn get_queue(&self, key: &str) -> Result<Vec<T>, ShinkaiDBError> {
-        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db_arc.get_job_queues(&self.cf_name, key, self.prefix.clone())
-    }
-
-    pub async fn push(&mut self, key: &str, value: T) -> Result<(), ShinkaiDBError> {
+    pub async fn push(&mut self, key: &str, value: T) -> Result<(), SqliteManagerError> {
         // Lock the Mutex to get mutable access to the HashMap
         let mut queues = self.queues.lock().await;
 
@@ -136,7 +129,10 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
 
         // Persist queue to the database
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db_arc.persist_queue(&self.cf_name, key, &guarded_queue, self.prefix.clone())?;
+        db_arc
+            .write()
+            .await
+            .persist_queue(key, &guarded_queue, self.prefix.clone())?;
         drop(db_arc);
 
         // Notify subscribers
@@ -161,7 +157,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         Ok(())
     }
 
-    pub async fn dequeue(&mut self, key: &str) -> Result<Option<T>, ShinkaiDBError> {
+    pub async fn dequeue(&mut self, key: &str) -> Result<Option<T>, SqliteManagerError> {
         // Lock the Mutex to get mutable access to the HashMap
         let mut queues = self.queues.lock().await;
 
@@ -181,12 +177,15 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
 
         // Persist queue to the database
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db_arc.persist_queue(&self.cf_name, key, &guarded_queue, self.prefix.clone())?;
+        db_arc
+            .write()
+            .await
+            .persist_queue(key, &guarded_queue, self.prefix.clone())?;
 
         Ok(result)
     }
 
-    pub async fn peek(&self, key: &str) -> Result<Option<T>, ShinkaiDBError> {
+    pub async fn peek(&self, key: &str) -> Result<Option<T>, SqliteManagerError> {
         let queues = self.queues.lock().await;
         if let Some(queue) = queues.get(key) {
             let guarded_queue = queue.lock().await;
@@ -197,9 +196,9 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         Ok(None)
     }
 
-    pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
+    pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, SqliteManagerError> {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db")?;
-        let mut db_queues: HashMap<_, _> = db_arc.get_all_queues::<T>(&self.cf_name, self.prefix.clone())?;
+        let mut db_queues: HashMap<_, _> = db_arc.read().await.get_all_queues::<T>(self.prefix.clone())?;
 
         // Sort the keys based on the first element in each queue, falling back to key names
         let mut keys: Vec<_> = db_queues.keys().cloned().collect();
@@ -208,7 +207,9 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
             let b_first = db_queues.get(b).and_then(|q| q.first());
             match (a_first, b_first) {
                 (Some(a), Some(b)) => a.cmp(b),
-                _ => a.cmp(b),
+                (Some(_), None) => Ordering::Less,  // Consider Some < None
+                (None, Some(_)) => Ordering::Greater, // Consider None > Some
+                (None, None) => a.cmp(b), // Fallback to key comparison if both are None
             }
         });
 
@@ -255,7 +256,6 @@ impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
             subscribers: Arc::clone(&self.subscribers),
             all_subscribers: Arc::clone(&self.all_subscribers),
             db: self.db.clone(),
-            cf_name: self.cf_name.clone(),
             prefix: self.prefix.clone(),
         }
     }
@@ -264,25 +264,31 @@ impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value as JsonValue;
-    use shinkai_db::db::Topic;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-    use std::{fs, path::Path};
+    use shinkai_message_primitives::{
+        schemas::shinkai_name::ShinkaiName,
+        shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+    };
+    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
-    fn setup() {
-        let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(path);
+    fn setup() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
     #[tokio::test]
     async fn test_queue_manager() {
-        setup();
-        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
+        let db = setup();
+        let db = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db);
 
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, None).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
         let mut receiver = manager.subscribe("job_id::123::false").await;
@@ -319,11 +325,10 @@ mod tests {
                 content: "my content".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -338,14 +343,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_manager_consistency() {
-        setup();
-        let db_path = "db_tests/";
-        let db_arc = Arc::new(ShinkaiDB::new(db_path).unwrap());
+        let db = setup();
+        let db_arc = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db_arc);
-        let mut manager =
-            JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
-                .await
-                .unwrap();
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
+            .await
+            .unwrap();
 
         // Push to a queue
         let job = JobForProcessing::new(
@@ -354,11 +357,10 @@ mod tests {
                 content: "my content".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -369,11 +371,10 @@ mod tests {
                 content: "my content 2".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -385,10 +386,9 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         // Create a new manager and recover the state
-        let mut new_manager =
-            JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
-                .await
-                .unwrap();
+        let mut new_manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
+            .await
+            .unwrap();
 
         // Try to pop the job from the queue using the new manager
         match new_manager.dequeue("my_queue").await {
@@ -420,12 +420,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_manager_with_jsonvalue() {
-        setup();
-        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
+        let db = setup();
+        let db = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db);
-        let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak, Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+        let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak, None).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
         let mut receiver = manager.subscribe("my_queue").await;
@@ -460,12 +458,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_all_elements_interleave() {
-        setup();
-        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
+        let db = setup();
+        let db = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db);
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, None).await.unwrap();
 
         // Create jobs
         let job_a1 = JobForProcessing::new(
@@ -474,11 +470,10 @@ mod tests {
                 content: "content a1".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -489,11 +484,10 @@ mod tests {
                 content: "content a2".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -504,11 +498,10 @@ mod tests {
                 content: "content a3".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -520,11 +513,10 @@ mod tests {
                 content: "content b1".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -536,11 +528,10 @@ mod tests {
                 content: "content c1".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -552,11 +543,10 @@ mod tests {
                 content: "content c2".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
-                workflow_code: None,
-                workflow_name: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tool_key: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,

@@ -68,36 +68,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-  /v2/get_workflow_info:
-    get:
-      tags:
-      - crate
-      operationId: get_workflow_info_handler
-      parameters:
-      - name: keyname
-        in: query
-        description: Keyname of the workflow
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Successfully retrieved workflow info
-          content:
-            application/json:
-              schema: {}
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
   /v2/list_all_shinkai_tools:
     get:
       tags:
@@ -106,58 +76,6 @@ paths:
       responses:
         '200':
           description: Successfully listed all Shinkai tools
-          content:
-            application/json:
-              schema: {}
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-  /v2/list_all_workflows:
-    get:
-      tags:
-      - crate
-      operationId: list_all_workflows_handler
-      responses:
-        '200':
-          description: Successfully listed all workflows
-          content:
-            application/json:
-              schema: {}
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-  /v2/remove_workflow:
-    post:
-      tags:
-      - crate
-      operationId: remove_workflow_handler
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/APIWorkflowKeyname'
-        required: true
-      responses:
-        '200':
-          description: Successfully removed workflow
           content:
             application/json:
               schema: {}
@@ -203,36 +121,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-  /v2/search_workflows:
-    get:
-      tags:
-      - crate
-      operationId: search_workflows_handler
-      parameters:
-      - name: query
-        in: query
-        description: Search query for workflows
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Successfully searched workflows
-          content:
-            application/json:
-              schema: {}
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
+
   /v2/set_shinkai_tool:
     post:
       tags:
@@ -269,35 +158,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-  /v2/set_workflow:
-    post:
-      tags:
-      - crate
-      operationId: set_workflow_handler
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/APISetWorkflow'
-        required: true
-      responses:
-        '200':
-          description: Successfully set workflow
-          content:
-            application/json:
-              schema: {}
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
+
 components:
   schemas:
     APIError:
@@ -315,26 +176,7 @@ components:
           type: string
         message:
           type: string
-    APISetWorkflow:
-      type: object
-      required:
-      - workflow_raw
-      - description
-      properties:
-        description:
-          type: string
-        workflow_raw:
-          type: string
-    APIWorkflowKeyname:
-      type: object
-      required:
-      - name
-      - version
-      properties:
-        name:
-          type: string
-        version:
-          type: string
+    
 tags:
 - name: workflows
   description: Workflow API endpoints

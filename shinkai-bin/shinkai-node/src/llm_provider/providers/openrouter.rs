@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::{LLMInferenceResponse, FunctionCall};
+use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
@@ -13,11 +13,11 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_db::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenRouter};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSMetadata, WSUpdateHandler};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
@@ -128,7 +128,16 @@ impl LLMService for OpenRouter {
                     )
                     .await
                 } else {
-                    handle_non_streaming_response(client, url, payload, key.clone(), inbox_name, llm_stopper, Some(tools_json)).await
+                    handle_non_streaming_response(
+                        client,
+                        url,
+                        payload,
+                        key.clone(),
+                        inbox_name,
+                        llm_stopper,
+                        Some(tools_json),
+                    )
+                    .await
                 }
             } else {
                 Err(LLMProviderError::ApiKeyNotSet)
@@ -163,6 +172,7 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
     let mut function_call: Option<FunctionCall> = None;
+    let mut is_done_sent = false; // Track if any WS message with is_done: true has been sent
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -210,7 +220,8 @@ async fn handle_streaming_response(
                                             let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                                 tools_array.iter().find_map(|tool| {
                                                     if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                        tool.get("tool_router_key")
+                                                            .and_then(|key| key.as_str().map(|s| s.to_string()))
                                                     } else {
                                                         None
                                                     }
@@ -245,8 +256,13 @@ async fn handle_streaming_response(
                                     eval_count: data.get("eval_count").and_then(|c| c.as_u64()),
                                 };
 
-                                let ws_message_type = WSMessageType::Metadata(metadata);
+                                // Check if the message sent has is_done: true
+                                // The WS API is not reliable, so we need to check if the message sent has is_done: true
+                                if metadata.is_done {
+                                    is_done_sent = true;
+                                }
 
+                                let ws_message_type = WSMessageType::Metadata(metadata);
                                 let _ = m
                                     .queue_message(
                                         WSTopic::Inbox,
@@ -276,6 +292,36 @@ async fn handle_streaming_response(
                     format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
                 );
                 return Err(LLMProviderError::NetworkError(e.to_string()));
+            }
+        }
+    }
+
+    // If no WS message with is_done: true was sent, send a final message
+    if !is_done_sent {
+        if let Some(ref manager) = ws_manager_trait {
+            if let Some(ref inbox_name) = inbox_name {
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+
+                let metadata = WSMetadata {
+                    id: Some(session_id.clone()),
+                    is_done: true,
+                    done_reason: None,
+                    total_duration: None,
+                    eval_count: None,
+                };
+
+                let ws_message_type = WSMessageType::Metadata(metadata);
+
+                let _ = m
+                    .queue_message(
+                        WSTopic::Inbox,
+                        inbox_name_string,
+                        "".to_string(), // Empty content
+                        ws_message_type,
+                        true,
+                    )
+                    .await;
             }
         }
     }

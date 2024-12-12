@@ -4,7 +4,14 @@ use utoipa::ToSchema;
 
 use crate::shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::V2ChatMessage};
 
-use super::{job_config::JobConfig, llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName};
+use super::{
+    job_config::JobConfig,
+    llm_providers::{
+        agent::Agent,
+        serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+    },
+    shinkai_name::ShinkaiName,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct LLMProviderSubset {
@@ -21,6 +28,21 @@ impl LLMProviderSubset {
             model: serialized_llm_provider.model,
         }
     }
+
+    pub fn from_agent(agent: Agent, serialized_llm_provider: SerializedLLMProvider) -> Self {
+        Self {
+            id: agent.agent_id,
+            full_identity_name: agent.full_identity_name,
+            model: serialized_llm_provider.model,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
+pub enum ProviderType {
+    Agent,
+    LLMProvider,
+    Unknown,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -33,6 +55,7 @@ pub struct SmartInbox {
     pub job_scope: Option<Value>,
     pub agent: Option<LLMProviderSubset>,
     pub job_config: Option<JobConfig>,
+    pub provider_type: ProviderType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -45,4 +68,5 @@ pub struct V2SmartInbox {
     pub agent: Option<LLMProviderSubset>,
     pub job_scope: Option<Value>,
     pub job_config: Option<JobConfig>,
+    pub provider_type: ProviderType,
 }

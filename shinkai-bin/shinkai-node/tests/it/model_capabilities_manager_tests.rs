@@ -1,32 +1,42 @@
 #[cfg(test)]
 mod tests {
-    use shinkai_db::db::ShinkaiDB;
-    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider};
-    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
-    use shinkai_node::managers::model_capabilities_manager::{
-        ModelCapability, ModelCost, ModelPrivacy, ModelCapabilitiesManager,
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+        LLMProviderInterface, OpenAI, SerializedLLMProvider,
     };
-    use std::path::Path;
-    use std::sync::Arc;
-    use std::{env, fs};
+    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-    #[ignore]
-    fn setup() {
-        let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(path);
+    use shinkai_node::managers::model_capabilities_manager::{
+        ModelCapabilitiesManager, ModelCapability, ModelCost, ModelPrivacy,
+    };
+    use std::env;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    use shinkai_sqlite::SqliteManager;
+    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use tempfile::NamedTempFile;
+
+    fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
     #[tokio::test]
     async fn test_has_capability() {
-         
-        setup();
-        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db);
 
         let llm_provider_id = "agent_id1".to_string();
         let llm_provider_name =
-            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", llm_provider_id.clone()).to_string()).unwrap();
+            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", llm_provider_id.clone()).to_string())
+                .unwrap();
 
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
@@ -57,14 +67,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_gpt_4_vision_preview_capabilities() {
-         
-        setup();
-        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db);
 
         let llm_provider_id = "agent_id2".to_string();
         let llm_provider_name =
-            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", llm_provider_id.clone()).to_string()).unwrap();
+            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", llm_provider_id.clone()).to_string())
+                .unwrap();
 
         let open_ai = OpenAI {
             model_type: "gpt-4-vision-preview".to_string(),
@@ -91,9 +101,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_fake_gpt_model_capabilities() {
-         
-        setup();
-        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let db_weak = Arc::downgrade(&db);
 
         let agent_id = "agent_id3".to_string();

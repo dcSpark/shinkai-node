@@ -3,6 +3,7 @@ use crate::api_v2;
 
 use super::node_commands::NodeCommand;
 use async_channel::Sender;
+use hyper::server::conn::Http;
 use reqwest::StatusCode;
 use serde::Serialize;
 use serde_json::json;
@@ -10,13 +11,12 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use std::net::SocketAddr;
-use utoipa::ToSchema;
-use warp::Filter;
-use hyper::server::conn::Http;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::rustls::{self, ServerConfig};
 use tokio_rustls::TlsAcceptor;
-use std::sync::Arc;
+use utoipa::ToSchema;
+use warp::Filter;
 
 #[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct SendResponseBodyData {
@@ -120,7 +120,12 @@ pub async fn run_api(
     let cors = warp::cors()
         .allow_any_origin()
         .allow_methods(vec!["GET", "POST", "OPTIONS"])
-        .allow_headers(vec!["Content-Type", "Authorization"]);
+        .allow_headers(vec![
+            "Content-Type",
+            "Authorization",
+            "x-shinkai-tool-id",
+            "x-shinkai-app-id",
+        ]);
 
     let v1_routes = warp::path("v1").and(
         api_v1::api_v1_router::v1_routes(node_commands_sender.clone(), node_name.clone())

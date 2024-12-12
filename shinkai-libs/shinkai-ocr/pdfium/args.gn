@@ -4,8 +4,6 @@
 # clang_use_chrome_plugins = false
 is_clang = true
 is_debug = false
-is_component_build = false
-pdf_is_complete_lib = true
 pdf_is_standalone = true
 pdf_enable_fontations = false
 pdf_enable_xfa = false

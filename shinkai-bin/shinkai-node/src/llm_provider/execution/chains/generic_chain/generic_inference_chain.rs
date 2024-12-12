@@ -12,17 +12,16 @@ use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use async_trait::async_trait;
-use shinkai_db::db::ShinkaiDB;
-use shinkai_db::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
-};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::ws_types::{
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_sqlite::SqliteLogger;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
@@ -30,7 +29,7 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -68,6 +67,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
+            self.context.user_tool_selected.clone(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
@@ -81,7 +81,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
-            self.context.sqlite_logger.clone(),
+            // self.context.sqlite_logger.clone(),
             self.context.llm_stopper.clone(),
         )
         .await?;
@@ -102,10 +102,11 @@ impl GenericInferenceChain {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
+        user_tool_selected: Option<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
@@ -119,7 +120,7 @@ impl GenericInferenceChain {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        sqlite_logger: Option<Arc<SqliteLogger>>,
+        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         shinkai_log(
@@ -173,73 +174,124 @@ impl GenericInferenceChain {
             &format!("job_config: {:?}", job_config),
         );
         let mut tools = vec![];
-        let stream = job_config.as_ref().and_then(|config| config.stream);
-        let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(true);
-        let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
-            llm_provider.clone(),
-            db.clone(),
-            stream,
-        );
 
-        if use_tools && tools_allowed {
-            // If the llm_provider is an Agent, retrieve tools directly from the Agent struct
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                for tool_name in &agent.tools {
+        // Decision Process for Tool Selection:
+        // 1. Check if a specific tool was requested by the user
+        // 2. If not, fall back to automatic tool selection based on capabilities and context
+        if let Some(selected_tool_name) = user_tool_selected {
+            // CASE 1: User explicitly selected a tool
+            // This takes precedence over all other tool selection methods
+            if let Some(tool_router) = &tool_router {
+                match tool_router.get_tool_by_name(&selected_tool_name).await {
+                    Ok(Some(tool)) => tools.push(tool),
+                    Ok(None) => {
+                        return Err(LLMProviderError::ToolNotFound(format!(
+                            "Selected tool not found: {}",
+                            selected_tool_name
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(LLMProviderError::ToolRetrievalError(format!(
+                            "Error retrieving selected tool: {:?}",
+                            e
+                        )));
+                    }
+                }
+            }
+        } else {
+            // CASE 2: No specific tool selected - use automatic tool selection
+            // Check various conditions to determine if and which tools should be available
+
+            // 2a. Check if streaming is enabled in job config
+            let stream = job_config.as_ref().and_then(|config| config.stream);
+
+            // 2b. Check if tools are allowed by job config (defaults to true if not specified)
+            let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
+
+            // 2c. Check if the LLM provider is an agent
+            let is_agent = match &llm_provider {
+                ProviderOrAgent::Agent(_) => true,
+                ProviderOrAgent::LLMProvider(_) => false,
+            };
+
+            // 2d. Check if the LLM provider/agent has tool capabilities
+            let can_use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
+                llm_provider.clone(),
+                db.clone(),
+                stream,
+            )
+            .await;
+
+            // Only proceed with tool selection if both conditions are met:
+            // - Tools are allowed by configuration
+            // - The LLM provider has tool capabilities
+            if can_use_tools && tools_allowed || is_agent {
+                // CASE 2.1: If using an Agent, get its specifically configured tools
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    for tool_name in &agent.tools {
+                        if let Some(tool_router) = &tool_router {
+                            match tool_router.get_tool_by_name(tool_name).await {
+                                Ok(Some(tool)) => tools.push(tool),
+                                Ok(None) => {
+                                    return Err(LLMProviderError::ToolNotFound(format!(
+                                        "Tool not found for name: {}",
+                                        tool_name
+                                    )));
+                                }
+                                Err(e) => {
+                                    return Err(LLMProviderError::ToolRetrievalError(format!(
+                                        "Error retrieving tool: {:?}",
+                                        e
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // CASE 2.2: For regular LLM providers, perform vector search
+                    // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
-                        match tool_router.get_tool_by_name(tool_name).await {
-                            Ok(Some(tool)) => tools.push(tool),
-                            Ok(None) => {
-                                return Err(LLMProviderError::ToolNotFound(format!(
-                                    "Tool not found for name: {}",
-                                    tool_name
-                                )));
+                        let results = tool_router
+                            .combined_tool_search(&user_message.clone(), 5, false, true)
+                            .await;
+
+                        match results {
+                            Ok(results) => {
+                                for result in results {
+                                    match tool_router.get_tool_by_name(&result.tool_router_key).await {
+                                        Ok(Some(tool)) => tools.push(tool),
+                                        Ok(None) => {
+                                            return Err(LLMProviderError::ToolNotFound(format!(
+                                                "Tool not found for key: {}",
+                                                result.tool_router_key
+                                            )));
+                                        }
+                                        Err(e) => {
+                                            return Err(LLMProviderError::ToolRetrievalError(format!(
+                                                "Error retrieving tool: {:?}",
+                                                e
+                                            )));
+                                        }
+                                    }
+                                }
                             }
                             Err(e) => {
-                                return Err(LLMProviderError::ToolRetrievalError(format!(
-                                    "Error retrieving tool: {:?}",
+                                return Err(LLMProviderError::ToolSearchError(format!(
+                                    "Error during tool search: {:?}",
                                     e
                                 )));
                             }
                         }
                     }
                 }
-            } else {
-                // If the llm_provider is not an Agent, perform a vector search for tools
-                if let Some(tool_router) = &tool_router {
-                    let results = tool_router
-                        .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
-                        .await;
-
-                    match results {
-                        Ok(results) => {
-                            for result in results {
-                                match tool_router.get_tool_by_name(&result.tool_router_key).await {
-                                    Ok(Some(tool)) => tools.push(tool),
-                                    Ok(None) => {
-                                        return Err(LLMProviderError::ToolNotFound(format!(
-                                            "Tool not found for key: {}",
-                                            result.tool_router_key
-                                        )));
-                                    }
-                                    Err(e) => {
-                                        return Err(LLMProviderError::ToolRetrievalError(format!(
-                                            "Error retrieving tool: {:?}",
-                                            e
-                                        )));
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            return Err(LLMProviderError::ToolSearchError(format!(
-                                "Error during tool search: {:?}",
-                                e
-                            )));
-                        }
-                    }
-                }
             }
         }
+
+        // After this point, 'tools' vector contains either:
+        // 1. A single specifically requested tool
+        // 2. Tools from an Agent's configuration
+        // 3. Tools found through vector search
+        // 4. Empty vector if no tools were selected/allowed
 
         // 3) Generate Prompt
         // First, attempt to use the custom_prompt from the job's config.
@@ -252,17 +304,22 @@ impl GenericInferenceChain {
             }
         });
 
-        let custom_system_prompt = job_config.and_then(|config| config.custom_system_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_system_prompt.clone())
-            } else {
-                None
-            }
-        });
+        let custom_system_prompt = job_config
+            .and_then(|config| config.custom_system_prompt.clone())
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent
+                        .config
+                        .as_ref()
+                        .and_then(|config| config.custom_system_prompt.clone())
+                } else {
+                    None
+                }
+            });
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
-            custom_system_prompt,
-            custom_prompt,
+            custom_system_prompt.clone(),
+            custom_prompt.clone(),
             user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
@@ -317,6 +374,7 @@ impl GenericInferenceChain {
                     vector_fs.clone(),
                     full_job.clone(),
                     parsed_message,
+                    None,
                     message_hash_id.clone(),
                     image_files.clone(),
                     llm_provider.clone(),
@@ -330,13 +388,13 @@ impl GenericInferenceChain {
                     sheet_manager.clone(),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
-                    sqlite_logger.clone(),
+                    // sqlite_logger.clone(),
                     llm_stopper.clone(),
                 );
 
                 // 6) Call workflow or tooling
                 // Find the ShinkaiTool that has a tool with the function name
-                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
+                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default());
                 if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
@@ -349,7 +407,7 @@ impl GenericInferenceChain {
                 let function_response = match tool_router
                     .as_ref()
                     .unwrap()
-                    .call_function(function_call.clone(), &context, &shinkai_tool)
+                    .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
                     .await
                 {
                     Ok(response) => response,
@@ -375,8 +433,8 @@ impl GenericInferenceChain {
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
-                    None, // TODO: connect later on
-                    None, // TODO: connect later on
+                    custom_system_prompt.clone(),
+                    custom_prompt.clone(),
                     user_message.clone(),
                     image_files.clone(),
                     ret_nodes.clone(),

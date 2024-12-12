@@ -14,7 +14,7 @@ use crate::{
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{
@@ -29,8 +29,9 @@ use shinkai_message_primitives::{
         },
     },
 };
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
@@ -113,7 +114,7 @@ impl Node {
     }
 
     pub async fn api_subscription_my_subscriptions(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -148,7 +149,7 @@ impl Node {
             return Ok(());
         }
 
-        let db_result = db.list_all_my_subscriptions();
+        let db_result = db.read().await.list_all_my_subscriptions();
 
         match db_result {
             Ok(subscriptions) => {
@@ -182,7 +183,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_available_shared_items(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -364,7 +365,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_subscribe_to_shared_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -438,7 +439,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_create_shareable_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -504,7 +505,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_update_shareable_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -556,7 +557,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_unshare_folder(
-        _db: Arc<ShinkaiDB>,
+        _db: Arc<RwLock<SqliteManager>>,
         _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -652,7 +653,7 @@ impl Node {
     }
 
     pub async fn api_get_http_free_subscription_links(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         _node_name: ShinkaiName,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         subscription_id: String,
@@ -673,7 +674,7 @@ impl Node {
         let _profile = parts[0].to_string();
         let path = parts[1].to_string();
 
-        let folder_subscription = match db.get_folder_requirements(&path) {
+        let folder_subscription = match db.read().await.get_folder_requirements(&path) {
             Ok(result) => result,
             Err(e) => {
                 let api_error = APIError {
@@ -714,7 +715,7 @@ impl Node {
     }
 
     pub async fn api_get_last_notifications(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -747,7 +748,11 @@ impl Node {
             return Ok(());
         }
 
-        match db.get_last_notifications(requester_name.clone(), input_payload.count, input_payload.timestamp) {
+        match db.read().await.get_last_notifications(
+            requester_name.clone(),
+            input_payload.count,
+            input_payload.timestamp,
+        ) {
             Ok(notifications) => {
                 let _ = res.send(Ok(serde_json::to_value(notifications).unwrap())).await;
             }
@@ -765,7 +770,7 @@ impl Node {
     }
 
     pub async fn api_get_notifications_before_timestamp(
-        db: Arc<ShinkaiDB>,
+        db: Arc<RwLock<SqliteManager>>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -799,7 +804,7 @@ impl Node {
             return Ok(());
         }
 
-        match db.get_notifications_before_timestamp(
+        match db.read().await.get_notifications_before_timestamp(
             requester_name.clone(),
             input_payload.timestamp,
             input_payload.count,

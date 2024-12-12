@@ -4,7 +4,9 @@ use crate::managers::sheet_manager::SheetManager;
 use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
-use shinkai_tools_primitives::tools::{argument::ToolArgument, rust_tools::RustTool, shinkai_tool::ShinkaiTool};
+use shinkai_tools_primitives::tools::{
+    tool_output_arg::ToolOutputArg, parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool
+};
 use tokio::sync::Mutex;
 use umya_spreadsheet::new_file;
 use uuid::Uuid;
@@ -332,7 +334,7 @@ impl SheetRustFunctions {
         xlsx_data: Vec<u8>,
         sheet_name: Option<String>,
     ) -> Result<String, String> {
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
         let spreadsheet =
             umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(xlsx_data), true).map_err(|e| e.to_string())?;
 
@@ -522,84 +524,69 @@ impl SheetRustFunctions {
         let create_new_column_tool = RustTool::new(
             "create_new_column_with_values".to_string(),
             "Creates a new column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "values".to_string(),
-                    "string".to_string(),
-                    "The values to populate the new column, separated by commas".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("values".to_string(), "string".to_string(), "The values to create the column with".to_string(), true);
+                params
+            },
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::shinkai_sheet_ui_create_new_column_with_values".to_string(),
         );
 
         // Add the tool definition for update_column_with_values
         let update_column_tool = RustTool::new(
             "update_column_with_values".to_string(),
             "Updates an existing column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "column_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the column to update".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "values".to_string(),
-                    "string".to_string(),
-                    "The values to update the column with, separated by commas".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
+                params.add_property("values".to_string(), "string".to_string(), "The values to update the column with".to_string(), true);
+                params
+            },
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::shinkai_sheet_ui_update_column_with_values".to_string(),
         );
 
         // Add the tool definition for replace_value_at_position
         let replace_value_tool = RustTool::new(
             "replace_value_at_position".to_string(),
             "Replaces the value at the specified column and row position. Example: 'column_position, row_position, new_value'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "column_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the column".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "row_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the row".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "new_value".to_string(),
-                    "string".to_string(),
-                    "The new value to set".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
+                params.add_property("row_position".to_string(), "usize".to_string(), "The position of the row to update".to_string(), true);
+                params.add_property("new_value".to_string(), "string".to_string(), "The new value to replace the value at the specified position with".to_string(), true);
+                params
+            },
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::shinkai_sheet_ui_replace_value_at_position".to_string(),
         );
 
         // Add the tool definition for create_new_columns_with_csv
         let create_new_columns_tool = RustTool::new(
             "create_new_columns_with_csv".to_string(),
             "Creates new columns with the provided CSV data. Example: 'column1;column2\nvalue1;value2' It also supports comma separators.".to_string(),
-            vec![ToolArgument::new(
-                "csv_data".to_string(),
-                "string".to_string(),
-                "The CSV data to populate the new columns".to_string(),
-                true,
-            )],
+            {
+                let mut params = Parameters::new();
+                params.add_property("csv_data".to_string(), "string".to_string(), "The CSV data to create the columns with".to_string(), true);
+                params
+            },
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::shinkai_sheet_ui_create_new_columns_with_csv".to_string(),
         );
 
         // Add the tool definition for get_table
         let get_table_tool = RustTool::new(
             "get_table".to_string(),
             "Retrieves the entire table in ASCII format.".to_string(),
-            vec![],
+            Parameters::new(),
+            ToolOutputArg::empty(),
             None,
+            "local:::rust_toolkit:::shinkai_sheet_ui_get_table".to_string(),
         );
 
         vec![
@@ -618,14 +605,17 @@ mod tests {
     use crate::llm_provider::job_manager::JobManagerTrait;
     use async_trait::async_trait;
     use futures::Future;
-    use shinkai_db::{db::ShinkaiDB, schemas::ws_types::WSUpdateHandler};
+    use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+    
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
-    use shinkai_vector_resources::utils::hash_string;
-    use std::{fs, path::Path, sync::Arc};
-    use tokio::sync::Mutex;
+    use shinkai_sqlite::SqliteManager;
+    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use tempfile::NamedTempFile;
+    use std::{fs, path::{Path, PathBuf}, sync::Arc};
+    use tokio::sync::{Mutex, RwLock};
 
     struct MockJobManager;
 
@@ -650,25 +640,21 @@ mod tests {
         }
     }
 
-    pub fn setup() {
-        let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(path);
+    fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
-        let lance_path = Path::new("lance_db_tests/");
-        let _ = fs::remove_dir_all(lance_path);
-    }
-
-    pub fn create_testing_db(node_name: String) -> ShinkaiDB {
-        let db_path = format!("db_tests/{}", hash_string(&node_name));
-        ShinkaiDB::new(&db_path).unwrap()
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
     #[tokio::test]
     async fn test_set_column_with_mock_job_manager() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -681,7 +667,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Call create_new_column_with_values with the values: "USA, Chile, Canada"
         let mut args = HashMap::new();
@@ -747,10 +733,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_column_with_values() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -763,7 +748,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create a new column with values: "USA, Chile, Canada"
         let mut args = HashMap::new();
@@ -813,10 +798,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_replace_value_at_position() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -829,7 +813,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create a new column with values: "USA, Chile, Canada"
         let mut args = HashMap::new();
@@ -879,10 +863,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_columns_with_csv() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -895,7 +878,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create new columns with CSV data
         let csv_data = "Name,Age,Location\nAlice,30,USA\nBob,25,UK\nCharlie,35,Canada";
@@ -943,10 +926,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_columns_with_large_csv() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -959,7 +941,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create new columns with large CSV data from JSON content
         let json_content = r#"{
@@ -1197,10 +1179,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_new_columns_with_semicolon_csv() {
-        setup();
+        let db = setup_test_db();
+        let db = Arc::new(RwLock::new(db));
         let node_name = "@@test.arb-sep-shinkai".to_string();
-        let db = create_testing_db(node_name.clone());
-        let db = Arc::new(db);
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -1213,7 +1194,7 @@ mod tests {
         let mock_job_manager = Arc::new(Mutex::new(MockJobManager));
         sheet_manager.lock().await.set_job_manager(mock_job_manager);
 
-        let sheet_id = sheet_manager.lock().await.create_empty_sheet().unwrap();
+        let sheet_id = sheet_manager.lock().await.create_empty_sheet().await.unwrap();
 
         // Create new columns with semicolon-separated CSV data
         let csv_data = r#"Countries;New Column;New Column

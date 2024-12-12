@@ -1,13 +1,10 @@
-use crate::{
-    managers::model_capabilities_manager::ModelCapabilitiesManagerError,
-    workflows::sm_executor::WorkflowError,
-};
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManagerError;
 use anyhow::Error as AnyhowError;
-use shinkai_db::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, prompts::PromptError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::{error::ToolError, rust_tools::RustToolError};
 use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -29,7 +26,7 @@ pub enum LLMProviderError {
     JobMessageDeserializationFailed,
     MessageTypeParseFailed,
     IO(String),
-    ShinkaiDB(ShinkaiDBError),
+    ShinkaiDB(SqliteManagerError),
     VectorFS(VectorFSError),
     ShinkaiNameError(ShinkaiNameError),
     LLMProviderNotFound,
@@ -88,6 +85,7 @@ pub enum LLMProviderError {
     ToolRetrievalError(String),
     ToolSearchError(String),
     AgentNotFound(String),
+    MessageTooLargeForLLM { max_tokens: usize, used_tokens: usize },
 }
 
 impl fmt::Display for LLMProviderError {
@@ -178,13 +176,16 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::ToolRetrievalError(s) => write!(f, "Tool retrieval error: {}", s),
             LLMProviderError::ToolSearchError(s) => write!(f, "Tool search error: {}", s),
             LLMProviderError::AgentNotFound(s) => write!(f, "Agent not found: {}", s),
+            LLMProviderError::MessageTooLargeForLLM { max_tokens, used_tokens } => {
+                write!(f, "Message too large for LLM: Used {} tokens, but the maximum allowed is {}.", used_tokens, max_tokens)
+            }
         }
     }
 }
 
 impl LLMProviderError {
     /// Encodes the error as a JSON string that is easily parsable by frontends
-    pub fn to_error_json(&self) -> String {
+    pub fn to_error_message(&self) -> String {
         let error_name = match self {
             LLMProviderError::UrlNotSet => "UrlNotSet",
             LLMProviderError::ApiKeyNotSet => "ApiKeyNotSet",
@@ -258,15 +259,10 @@ impl LLMProviderError {
             LLMProviderError::ToolRetrievalError(_) => "ToolRetrievalError",
             LLMProviderError::ToolSearchError(_) => "ToolSearchError",
             LLMProviderError::AgentNotFound(_) => "AgentNotFound",
+            LLMProviderError::MessageTooLargeForLLM { .. } => "MessageTooLargeForLLM",
         };
 
-        let error_message = format!("{}", self);
-
-        serde_json::json!({
-            "error": error_name,
-            "error_message": error_message
-        })
-        .to_string()
+        format!("Error {} with message: {}", error_name, self)
     }
 }
 
@@ -293,8 +289,8 @@ impl From<reqwest::Error> for LLMProviderError {
     }
 }
 
-impl From<ShinkaiDBError> for LLMProviderError {
-    fn from(err: ShinkaiDBError) -> LLMProviderError {
+impl From<SqliteManagerError> for LLMProviderError {
+    fn from(err: SqliteManagerError) -> LLMProviderError {
         LLMProviderError::ShinkaiDB(err)
     }
 }
@@ -356,12 +352,6 @@ impl From<VectorFSError> for LLMProviderError {
 impl From<String> for LLMProviderError {
     fn from(err: String) -> LLMProviderError {
         LLMProviderError::WorkflowExecutionError(err)
-    }
-}
-
-impl From<WorkflowError> for LLMProviderError {
-    fn from(err: WorkflowError) -> LLMProviderError {
-        LLMProviderError::WorkflowExecutionError(err.to_string())
     }
 }
 

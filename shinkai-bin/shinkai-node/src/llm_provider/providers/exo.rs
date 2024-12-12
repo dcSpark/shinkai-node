@@ -13,13 +13,13 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_db::schemas::ws_types::WSMessageType;
-use shinkai_db::schemas::ws_types::WSMetadata;
-use shinkai_db::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Exo, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::WSMessageType;
+use shinkai_message_primitives::schemas::ws_types::WSMetadata;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::env;
@@ -70,8 +70,8 @@ impl LLMService for Exo {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        config: Option<JobConfig>,
-        llm_stopper: Arc<LLMStopper>,
+        _config: Option<JobConfig>,
+        _llm_stopper: Arc<LLMStopper>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {

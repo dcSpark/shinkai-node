@@ -3,10 +3,11 @@ use std::{collections::HashMap, net::SocketAddr};
 use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
         coinbase_mpc_config::CoinbaseMPCWalletConfig,
+        crontab::{CronTask, CronTaskAction},
         custom_prompt::CustomPrompt,
         identity::{Identity, StandardIdentity},
         job_config::JobConfig,
@@ -14,6 +15,7 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        shinkai_tools::{CodeLanguage, DynamicToolType},
         smart_inbox::{SmartInbox, V2SmartInbox},
         wallet_complementary::{WalletRole, WalletSource},
         wallet_mixed::NetworkIdentifier,
@@ -23,18 +25,21 @@ use shinkai_message_primitives::{
         shinkai_message_schemas::{
             APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
             APICreateShareableFolder, APIExportSheetPayload, APIGetLastNotifications, APIGetMySubscribers,
-            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APISetWorkflow,
+            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload,
             APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
             APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, APIWorkflowKeyname, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo,
-            JobMessage, RegistrationCodeType, V2ChatMessage,
+            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage,
+            RegistrationCodeType, V2ChatMessage,
         },
     },
     shinkai_utils::job_scope::JobScope,
 };
 
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_playground::ToolPlayground,
+};
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
 //         coinbase_mpc_wallet::CoinbaseMPCWalletConfig, local_ether_wallet::WalletSource, wallet_manager::WalletRole,
@@ -660,65 +665,6 @@ pub enum NodeCommand {
         payload: APIVecFsRetrieveSourceFile,
         res: Sender<Result<String, APIError>>,
     },
-    V2ApiAvailableSharedItems {
-        bearer: String,
-        payload: APIAvailableSharedItems,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiAvailableSharedItemsOpen {
-        bearer: String,
-        payload: APIAvailableSharedItems,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiCreateShareableFolder {
-        bearer: String,
-        payload: APICreateShareableFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiUpdateShareableFolder {
-        bearer: String,
-        payload: APIUpdateShareableFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiUnshareFolder {
-        bearer: String,
-        payload: APIUnshareFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiSubscribeToSharedFolder {
-        bearer: String,
-        payload: APISubscribeToSharedFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiUnsubscribe {
-        bearer: String,
-        payload: APIUnsubscribeToSharedFolder,
-        res: Sender<Result<String, APIError>>,
-    },
-    V2ApiMySubscriptions {
-        bearer: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetMySubscribers {
-        bearer: String,
-        payload: APIGetMySubscribers,
-        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
-    },
-    V2ApiGetHttpFreeSubscriptionLinks {
-        bearer: String,
-        subscription_profile_path: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetLastNotifications {
-        bearer: String,
-        payload: APIGetLastNotifications,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetNotificationsBeforeTimestamp {
-        bearer: String,
-        payload: APIGetNotificationsBeforeTimestamp,
-        res: Sender<Result<Value, APIError>>,
-    },
     V2ApiSearchWorkflows {
         bearer: String,
         query: String,
@@ -727,25 +673,6 @@ pub enum NodeCommand {
     V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiSetWorkflow {
-        bearer: String,
-        payload: APISetWorkflow,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiRemoveWorkflow {
-        bearer: String,
-        payload: APIWorkflowKeyname,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiGetWorkflowInfo {
-        bearer: String,
-        payload: APIWorkflowKeyname,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiListAllWorkflows {
-        bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiTools {
@@ -1000,10 +927,138 @@ pub enum NodeCommand {
         payload: APISetSheetUploadedFilesPayload,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiExecuteTool {
+        bearer: String,
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        extra_config: Map<String, Value>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExecuteCode {
+        bearer: String,
+        code: String,
+        tools: Vec<String>,
+        tool_type: DynamicToolType,
+        parameters: Map<String, Value>,
+        extra_config: Map<String, Value>,
+        oauth: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolDefinitions {
+        bearer: String,
+        language: CodeLanguage,
+        tools: Vec<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolFetchQuery {
+        bearer: String,
+        language: CodeLanguage,
+        tools: Vec<String>,
+        code: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGenerateToolImplementation {
+        bearer: String,
+        message: JobMessage,
+        language: CodeLanguage,
+        tools: Vec<String>,
+        post_check: bool,
+        raw: bool,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
+    },
+    V2ApiGenerateToolMetadataImplementation {
+        bearer: String,
+        job_id: String,
+        language: CodeLanguage,
+        tools: Vec<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiExportMessagesFromInbox {
         bearer: String,
         inbox_name: String,
         format: ExportInboxMessagesFormat,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetPlaygroundTool {
+        bearer: String,
+        payload: ToolPlayground,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListPlaygroundTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemovePlaygroundTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetPlaygroundTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiToolImplementationUndoTo {
+        bearer: String,
+        message_hash: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiToolImplementationCodeUpdate {
+        bearer: String,
+        job_id: String,
+        code: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExportTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiImportTool {
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiResolveShinkaiFileProtocol {
+        bearer: String,
+        shinkai_file_protocol: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiAddCronTask {
+        bearer: String,
+        cron: String,
+        action: CronTaskAction,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListAllCronTasks {
+        bearer: String,
+        res: Sender<Result<Vec<CronTask>, APIError>>,
+    },
+    V2ApiGetSpecificCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Option<CronTask>, APIError>>,
+    },
+    V2ApiRemoveCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetCronTaskLogs {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiTestLlmProvider {
+        bearer: String,
+        provider: SerializedLLMProvider,
+        res: Sender<Result<serde_json::Value, APIError>>,
     },
 }

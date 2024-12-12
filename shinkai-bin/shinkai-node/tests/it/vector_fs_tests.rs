@@ -20,6 +20,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_fs::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
@@ -39,6 +40,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
 
 use crate::it::utils::node_test_api::{
     api_initial_registration_with_no_code_for_device, api_llm_provider_registration,
@@ -46,11 +48,15 @@ use crate::it::utils::node_test_api::{
 use crate::it::utils::shinkai_testing_framework::ShinkaiTestingFramework;
 use crate::it::vector_fs_api_tests::generate_message_with_payload;
 
+use super::utils;
+use super::utils::db_handlers::setup_node_storage_path;
 use super::utils::test_boilerplate::run_test_one_node_network;
 
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(path);
+
+    setup_node_storage_path();
 }
 
 fn default_test_profile() -> ShinkaiName {
@@ -61,23 +67,16 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-async fn setup_default_vector_fs() -> VectorFS {
+async fn setup_default_vector_fs(db: Arc<RwLock<SqliteManager>>) -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
-    let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
     )];
 
-    VectorFS::new(
-        generator,
-        supported_embedding_models,
-        profile_list,
-        &fs_db_path,
-        node_name(),
-    )
-    .await
-    .unwrap()
+    VectorFS::new(generator, supported_embedding_models, profile_list, db, node_name())
+        .await
+        .unwrap()
 }
 
 pub async fn get_shinkai_intro_doc_async(
@@ -196,8 +195,9 @@ async fn test_vrkai_vrpack_vector_search() {
 #[tokio::test]
 async fn test_vector_fs_initializes_new_profile_automatically() {
     setup();
-    let generator = RemoteEmbeddingGenerator::new_default();
-    let mut vector_fs = setup_default_vector_fs().await;
+    let db = utils::db_handlers::setup_test_db();
+    let db = Arc::new(RwLock::new(db));
+    let vector_fs = setup_default_vector_fs(db.clone()).await;
 
     let fs_internals = vector_fs.get_profile_fs_internals_cloned(&default_test_profile()).await;
     assert!(fs_internals.is_ok())
@@ -206,8 +206,10 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
 #[tokio::test]
 async fn test_vector_fs_saving_reading() {
     setup();
+    let db = utils::db_handlers::setup_test_db();
+    let db = Arc::new(RwLock::new(db));
     let generator = RemoteEmbeddingGenerator::new_default();
-    let mut vector_fs = setup_default_vector_fs().await;
+    let mut vector_fs = setup_default_vector_fs(db.clone()).await;
 
     let path = VRPath::new();
     let writer = vector_fs
@@ -215,7 +217,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     let folder_name = "first_folder";
-    vector_fs.create_new_folder(&writer, folder_name.clone()).await.unwrap();
+    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
     let writer = vector_fs
         .new_writer(
             default_test_profile(),
@@ -578,8 +580,10 @@ async fn test_vector_fs_saving_reading() {
 #[tokio::test]
 async fn test_vector_fs_operations() {
     setup();
+    let db = utils::db_handlers::setup_test_db();
+    let db = Arc::new(RwLock::new(db));
     let generator = RemoteEmbeddingGenerator::new_default();
-    let mut vector_fs = setup_default_vector_fs().await;
+    let mut vector_fs = setup_default_vector_fs(db.clone()).await;
 
     let writer = vector_fs
         .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
@@ -1200,8 +1204,10 @@ async fn test_vector_fs_operations() {
 #[tokio::test]
 async fn test_folder_empty_check_reuse() {
     setup();
+    let db = utils::db_handlers::setup_test_db();
+    let db = Arc::new(RwLock::new(db));
     let generator = RemoteEmbeddingGenerator::new_default();
-    let vector_fs = setup_default_vector_fs().await;
+    let vector_fs = setup_default_vector_fs(db.clone()).await;
 
     // Create a new folder that will be checked for emptiness, then filled
     let folder_name = "test_folder";
@@ -1344,6 +1350,7 @@ async fn test_remove_code_blocks_with_parsed_user_message() {
 
 #[test]
 fn vector_search_multiple_embedding_models_test() {
+    setup();
     std::env::set_var("WELCOME_MESSAGE", "false");
 
     let server = Server::new();

@@ -1042,12 +1042,6 @@ components:
         sheet_job_data:
           type: string
           nullable: true
-        workflow_code:
-          type: string
-          nullable: true
-        workflow_name:
-          type: string
-          nullable: true
     JobMessageRequest:
       type: object
       required:

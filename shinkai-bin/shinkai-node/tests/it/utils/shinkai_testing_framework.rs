@@ -14,9 +14,6 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_subscription_manager::subscription_manager::http_manager::subscription_file_uploader::{
-    upload_file_http, FileDestination,
-};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -141,21 +138,6 @@ impl ShinkaiTestingFramework {
             0, // Example symmetric key index, adjust as needed
         )
         .await;
-    }
-
-    /// Updates a file to an HTTP destination.
-    pub async fn update_file_to_http(
-        &self,
-        destination: FileDestination,
-        file_contents: Vec<u8>,
-        file_path: &str,
-        file_name: &str,
-    ) {
-        let upload_result = upload_file_http(file_contents, file_path, file_name, destination.clone()).await;
-        match upload_result {
-            Ok(_) => println!("File successfully updated at HTTP destination."),
-            Err(e) => eprintln!("Failed to update file at HTTP destination: {:?}", e),
-        }
     }
 
     /// Retrieves file information.

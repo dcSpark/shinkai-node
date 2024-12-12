@@ -11,13 +11,10 @@ pub enum ToolError {
     ParseError(String),
     ToolkitNotFound,
     ToolkitVersionAlreadyInstalled(String, String),
-    JSToolkitExecutorNotAvailable,
-    JSToolkitExecutorFailedStarting,
     RequestError(ReqwestError),
     ToolNotFound(String),
     VRError(VRError),
     ToolAlreadyInstalled(String),
-    JSToolkitHeaderValidationFailed(String),
     ToolkitAlreadyActivated(String),
     ToolkitAlreadyDeactivated(String),
     SerializationError(String),
@@ -30,6 +27,9 @@ pub enum ToolError {
     MissingEmbedding,
     EmbeddingGenerationError(String),
     MissingConfigError(String),
+    InvalidFunctionArguments(String),
+    InvalidToolRouterKey(String),
+    OAuthError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -42,15 +42,10 @@ impl fmt::Display for ToolError {
             ToolError::ToolkitVersionAlreadyInstalled(ref s, ref e) => {
                 write!(f, "Toolkit with the same version is already installed: {} {}", s, e)
             }
-            ToolError::JSToolkitExecutorNotAvailable => {
-                write!(f, "Failed connecting to JS Toolkit Executor over HTTP.")
-            }
-            ToolError::JSToolkitExecutorFailedStarting => write!(f, "Failed starting local JS Toolkit Executor."),
             ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
             ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
             ToolError::VRError(ref e) => write!(f, "{}", e),
             ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
-            ToolError::JSToolkitHeaderValidationFailed(ref e) => write!(f, "Toolkit header validation failed: {}", e),
             ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
             ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
             ToolError::SerializationError(ref e) => write!(f, "Serialization error: {}", e),
@@ -63,6 +58,9 @@ impl fmt::Display for ToolError {
             ToolError::MissingEmbedding => write!(f, "Missing embedding."),
             ToolError::EmbeddingGenerationError(ref e) => write!(f, "Embedding generation error: {}", e),
             ToolError::MissingConfigError(ref e) => write!(f, "Missing config error: {}", e),
+            ToolError::InvalidFunctionArguments(ref e) => write!(f, "Invalid function arguments: {}", e),
+            ToolError::InvalidToolRouterKey(ref e) => write!(f, "Invalid tool router key: {}", e),
+            ToolError::OAuthError(ref e) => write!(f, "OAuth not setup: {}", e),
         }
     }
 }

@@ -1,15 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
 
-    use super::*;
     use shinkai_message_primitives::{
-        shinkai_message::{shinkai_message::{EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData}, shinkai_message_schemas::MessageSchemaType},
-        shinkai_utils::{encryption::{
-            encryption_public_key_to_string, ephemeral_encryption_keys, string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod
-        }, shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair},
+        shinkai_message::shinkai_message::{EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData},
+        shinkai_utils::encryption::{string_to_encryption_public_key, unsafe_deterministic_encryption_keypair},
     };
-    use x25519_dalek::{PublicKey, StaticSecret};
 
     #[test]
     fn test_decrypt_message_body_from_typescript_lib() {
@@ -18,7 +13,7 @@ mod tests {
             content: format!("encrypted:{}", encrypted_content),
         };
 
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         // let pk_string = encryption_public_key_to_string(my_encryption_pk);
         let sender_pk =
             string_to_encryption_public_key("3139fa22bc37ea6266d72a696a930777dec58123254f4a8ab41724421adb2949")
@@ -36,7 +31,7 @@ mod tests {
             content: format!("encrypted:{}", encrypted_content),
         };
 
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         // let pk_string = encryption_public_key_to_string(my_encryption_pk);
         let sender_pk =
             string_to_encryption_public_key("3139fa22bc37ea6266d72a696a930777dec58123254f4a8ab41724421adb2949")
@@ -54,7 +49,7 @@ mod tests {
             content: format!("encrypted:{}", encrypted_content),
         };
 
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let sender_pk =
             string_to_encryption_public_key("3139fa22bc37ea6266d72a696a930777dec58123254f4a8ab41724421adb2949")
                 .unwrap();

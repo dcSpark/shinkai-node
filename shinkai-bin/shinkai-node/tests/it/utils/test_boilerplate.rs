@@ -1,15 +1,14 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_db::db::ShinkaiDB;
+
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::managers::tool_router::ToolRouter;
-use shinkai_node::network::network_manager::external_subscriber_manager::ExternalSubscriberManager;
-use shinkai_node::network::network_manager::my_subscription_manager::MySubscriptionsManager;
+use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -50,9 +49,7 @@ pub struct TestEnvironment {
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
     pub node1_vecfs: Arc<VectorFS>,
-    pub node1_db: Arc<ShinkaiDB>,
-    pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-    pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
+    pub node1_db: Arc<RwLock<SqliteManager>>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
     pub node1_tool_router: Option<Arc<ToolRouter>>,
@@ -142,8 +139,6 @@ where
         let node1_locked = node1.lock().await;
         let node1_vecfs = node1_locked.vector_fs.clone();
         let node1_db = node1_locked.db.clone();
-        let node1_ext_subscription_manager = node1_locked.ext_subscription_manager.clone();
-        let node1_my_subscriptions_manager = node1_locked.my_subscription_manager.clone();
         let node1_sheet_manager = node1_locked.sheet_manager.clone();
         let node1_callback_manager = node1_locked.callback_manager.clone();
         let node1_tool_router = node1_locked.tool_router.clone();
@@ -179,8 +174,6 @@ where
             node1_device_encryption_pk,
             node1_vecfs,
             node1_db,
-            node1_ext_subscription_manager,
-            node1_my_subscriptions_manager,
             node1_sheet_manager,
             node1_callback_manager,
             node1_tool_router,

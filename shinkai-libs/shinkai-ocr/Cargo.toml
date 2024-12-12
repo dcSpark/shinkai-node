@@ -1,20 +1,21 @@
 [package]
 name = "shinkai_ocr"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [dependencies]
-anyhow = "1.0.86"
+anyhow = { workspace = true }
 image = "0.25.1"
 ocrs = "0.8.0"
 pdfium-render = { version = "=0.8.22" }
-regex = "1"
-reqwest = { version = "0.11.26" }
+regex = { workspace = true }
+reqwest = { workspace = true }
 rten = { version = "0.13.1" }
-uuid = { version = "1.6.1", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-tokio = { version = "1.36", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 [features]
 default = []

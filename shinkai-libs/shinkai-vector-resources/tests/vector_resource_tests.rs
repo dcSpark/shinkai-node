@@ -6,7 +6,7 @@ use shinkai_vector_resources::vector_resource::document_resource::DocumentVector
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
 use shinkai_vector_resources::vector_resource::vrkai::VRKai;
 use shinkai_vector_resources::vector_resource::vrpack::VRPack;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, VectorSearchMode};
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::{
     FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResourceCore,
     VectorResourceSearch,

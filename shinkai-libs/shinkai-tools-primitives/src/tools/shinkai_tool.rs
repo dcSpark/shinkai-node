@@ -1,13 +1,15 @@
 use std::env;
 
 use crate::tools::error::ToolError;
-use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
-use serde_json::{self};
+use serde_json::{self, Value};
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{argument::ToolArgument, js_toolkit_headers::ToolConfig, network_tool::NetworkTool, workflow_tool::WorkflowTool};
+use super::{
+    deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
+    tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
+};
 
 pub type IsEnabled = bool;
 
@@ -15,9 +17,9 @@ pub type IsEnabled = bool;
 #[serde(tag = "type", content = "content")]
 pub enum ShinkaiTool {
     Rust(RustTool, IsEnabled),
-    JS(JSTool, IsEnabled),
-    Workflow(WorkflowTool, IsEnabled),
     Network(NetworkTool, IsEnabled),
+    Deno(DenoTool, IsEnabled),
+    Python(PythonTool, IsEnabled),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -31,7 +33,8 @@ pub struct ShinkaiToolHeader {
     pub author: String,
     pub version: String,
     pub enabled: bool,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
+    pub output_arg: ToolOutputArg,
     pub config: Option<Vec<ToolConfig>>,
     pub usage_type: Option<UsageType>, // includes pricing
     // Note: do we need usage_type? it's already contained in the tool_offering
@@ -61,6 +64,7 @@ impl ShinkaiTool {
             version: self.version(),
             enabled: self.is_enabled(),
             input_args: self.input_args(),
+            output_arg: self.output_arg(),
             config: self.get_js_tool_config().cloned(),
             usage_type: self.get_usage_type(),
             tool_offering: None,
@@ -70,9 +74,6 @@ impl ShinkaiTool {
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
         match self {
-            ShinkaiTool::Workflow(w, _) => {
-                Self::gen_router_key("local".to_string(), w.workflow.author.clone(), w.get_name())
-            }
             ShinkaiTool::Network(n, _) => {
                 Self::gen_router_key(n.provider.to_string(), n.toolkit_name.clone(), n.name.clone())
             }
@@ -81,8 +82,9 @@ impl ShinkaiTool {
                     self.name(),
                     match self {
                         ShinkaiTool::Rust(r, _) => r.toolkit_name(),
-                        ShinkaiTool::JS(j, _) => j.toolkit_name.to_string(),
+                        ShinkaiTool::Deno(j, _) => j.toolkit_name.to_string(),
                         ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
+                        ShinkaiTool::Python(p, _) => p.toolkit_name.clone(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
@@ -93,28 +95,47 @@ impl ShinkaiTool {
 
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
+        // Replace any ':' in the components to avoid breaking the key format
+        let sanitized_source = source.replace(':', "_");
+        let sanitized_toolkit_name = toolkit_name.replace(':', "_");
+        let sanitized_name = name.replace(':', "_");
+
         // We replace any `/` in order to not have the names break VRPaths
-        format!("{}:::{}:::{}", source, toolkit_name, name)
+        let key = format!("{}:::{}:::{}", sanitized_source, sanitized_toolkit_name, sanitized_name)
             .replace('/', "|")
-            .to_lowercase()
+            .to_lowercase();
+
+        // Ensure the key fits the pattern [^a-z0-9_@]+
+        let valid_key = key
+            .chars()
+            .map(|c| {
+                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':' || c == '@' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+
+        valid_key
     }
 
     /// Tool name
     pub fn name(&self) -> String {
         match self {
             ShinkaiTool::Rust(r, _) => r.name.clone(),
-            ShinkaiTool::JS(j, _) => j.name.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_name(),
             ShinkaiTool::Network(n, _) => n.name.clone(),
+            ShinkaiTool::Deno(d, _) => d.name.clone(),
+            ShinkaiTool::Python(p, _) => p.name.clone(),
         }
     }
     /// Tool description
     pub fn description(&self) -> String {
         match self {
             ShinkaiTool::Rust(r, _) => r.description.clone(),
-            ShinkaiTool::JS(j, _) => j.description.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_description(),
             ShinkaiTool::Network(n, _) => n.description.clone(),
+            ShinkaiTool::Deno(d, _) => d.description.clone(),
+            ShinkaiTool::Python(p, _) => p.description.clone(),
         }
     }
 
@@ -122,19 +143,29 @@ impl ShinkaiTool {
     pub fn toolkit_name(&self) -> String {
         match self {
             ShinkaiTool::Rust(r, _) => r.toolkit_name(),
-            ShinkaiTool::JS(j, _) => j.toolkit_name.clone(),
-            ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
             ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
+            ShinkaiTool::Deno(d, _) => d.toolkit_name(),
+            ShinkaiTool::Python(p, _) => p.toolkit_name(),
         }
     }
 
     /// Returns the input arguments of the tool
-    pub fn input_args(&self) -> Vec<ToolArgument> {
+    pub fn input_args(&self) -> Parameters {
         match self {
             ShinkaiTool::Rust(r, _) => r.input_args.clone(),
-            ShinkaiTool::JS(j, _) => j.input_args.clone(),
-            ShinkaiTool::Workflow(w, _) => w.get_input_args(),
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
+            ShinkaiTool::Deno(d, _) => d.input_args.clone(),
+            ShinkaiTool::Python(p, _) => p.input_args.clone(),
+        }
+    }
+
+    /// Returns the input arguments of the tool
+    pub fn output_arg(&self) -> ToolOutputArg {
+        match self {
+            ShinkaiTool::Rust(r, _) => r.output_arg.clone(),
+            ShinkaiTool::Network(n, _) => n.output_arg.clone(),
+            ShinkaiTool::Deno(d, _) => d.output_arg.clone(),
+            ShinkaiTool::Python(p, _) => p.output_arg.clone(),
         }
     }
 
@@ -142,9 +173,9 @@ impl ShinkaiTool {
     pub fn tool_type(&self) -> &'static str {
         match self {
             ShinkaiTool::Rust(_, _) => "Rust",
-            ShinkaiTool::JS(_, _) => "JS",
-            ShinkaiTool::Workflow(_, _) => "Workflow",
             ShinkaiTool::Network(_, _) => "Network",
+            ShinkaiTool::Deno(_, _) => "Deno",
+            ShinkaiTool::Python(_, _) => "Python",
         }
     }
 
@@ -162,41 +193,32 @@ impl ShinkaiTool {
     pub fn set_embedding(&mut self, embedding: Embedding) {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
-            ShinkaiTool::JS(j, _) => j.embedding = Some(embedding),
-            ShinkaiTool::Workflow(w, _) => w.embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
+            ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
+            ShinkaiTool::Python(p, _) => p.embedding = Some(embedding),
         }
     }
 
     /// Returns the tool formatted as a JSON object for the function call format
     pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
-        let mut properties = serde_json::Map::new();
-        let mut required_args = vec![];
-
-        for arg in self.input_args() {
-            properties.insert(
-                arg.name.clone(),
-                serde_json::json!({
-                    "type": "string",
-                    "description": arg.description.clone(),
-                }),
-            );
-            if arg.is_required {
-                required_args.push(arg.name.clone());
-            }
-        }
+        // Store the tool_router_key in a variable to extend its lifetime
+        let tool_router_key = self.tool_router_key().clone();
+        let key_parts: Vec<&str> = tool_router_key.split(":::").collect();
+        let tool_name = if key_parts.len() == 3 {
+            key_parts[2].to_string()
+        } else {
+            return Err(ToolError::InvalidToolRouterKey(
+                "Tool router key is not in the expected format".to_string(),
+            ));
+        };
 
         let summary = serde_json::json!({
             "type": "function",
             "function": {
-                "name": self.name(),
+                "name": tool_name,
                 "description": self.description(),
-                "tool_router_key": self.tool_router_key(),
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required_args,
-                },
+                "tool_router_key": tool_router_key,
+                "parameters": self.input_args()
             },
         });
 
@@ -218,27 +240,35 @@ impl ShinkaiTool {
     pub fn get_embedding(&self) -> Option<Embedding> {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
-            ShinkaiTool::JS(j, _) => j.embedding.clone(),
-            ShinkaiTool::Workflow(w, _) => w.embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
+            ShinkaiTool::Deno(d, _) => d.embedding.clone(),
+            ShinkaiTool::Python(p, _) => p.embedding.clone(),
         }
     }
 
-    // TODO: refactor
-    /// Returns an Option<String> for a config based on an environment variable
-    pub fn get_config_from_env(&self) -> Option<String> {
+    /// Returns an Option<ToolConfig> based on an environment variable
+    pub fn get_config_from_env(&self) -> Option<ToolConfig> {
         let tool_key = self.tool_router_key().replace(":::", "___");
         let env_var_key = format!("TOOLKIT_{}", tool_key);
-        env::var(env_var_key).ok()
+
+        if let Ok(env_value) = env::var(env_var_key) {
+            // Attempt to parse the environment variable as JSON
+            if let Ok(value) = serde_json::from_str::<Value>(&env_value) {
+                // Attempt to deserialize the JSON value into a ToolConfig
+                return ToolConfig::from_value(&value);
+            }
+        }
+
+        None
     }
 
     /// Returns the author of the tool
     pub fn author(&self) -> String {
         match self {
             ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
-            ShinkaiTool::JS(j, _) => j.author.clone(),
-            ShinkaiTool::Workflow(w, _) => w.workflow.author.clone(),
             ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
+            ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
+            ShinkaiTool::Python(_p, _) => "unknown".to_string(),
         }
     }
 
@@ -246,9 +276,9 @@ impl ShinkaiTool {
     pub fn version(&self) -> String {
         match self {
             ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
-            ShinkaiTool::JS(_j, _) => "v0.1".to_string(),
-            ShinkaiTool::Workflow(w, _) => w.workflow.version.clone(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
+            ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
+            ShinkaiTool::Python(_p, _) => "unknown".to_string(),
         }
     }
 
@@ -265,9 +295,9 @@ impl ShinkaiTool {
     pub fn is_enabled(&self) -> bool {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled,
-            ShinkaiTool::JS(_, enabled) => *enabled,
-            ShinkaiTool::Workflow(_, enabled) => *enabled,
             ShinkaiTool::Network(_, enabled) => *enabled,
+            ShinkaiTool::Deno(_, enabled) => *enabled,
+            ShinkaiTool::Python(_, enabled) => *enabled,
         }
     }
 
@@ -275,9 +305,9 @@ impl ShinkaiTool {
     pub fn enable(&mut self) {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = true,
-            ShinkaiTool::JS(_, enabled) => *enabled = true,
-            ShinkaiTool::Workflow(_, enabled) => *enabled = true,
             ShinkaiTool::Network(_, enabled) => *enabled = true,
+            ShinkaiTool::Deno(_, enabled) => *enabled = true,
+            ShinkaiTool::Python(_, enabled) => *enabled = true,
         }
     }
 
@@ -285,15 +315,15 @@ impl ShinkaiTool {
     pub fn disable(&mut self) {
         match self {
             ShinkaiTool::Rust(_, enabled) => *enabled = false,
-            ShinkaiTool::JS(_, enabled) => *enabled = false,
-            ShinkaiTool::Workflow(_, enabled) => *enabled = false,
             ShinkaiTool::Network(_, enabled) => *enabled = false,
+            ShinkaiTool::Deno(_, enabled) => *enabled = false,
+            ShinkaiTool::Python(_, enabled) => *enabled = false,
         }
     }
 
     /// Get the config from a JSTool, return None if it's another type
     pub fn get_js_tool_config(&self) -> Option<&Vec<ToolConfig>> {
-        if let ShinkaiTool::JS(js_tool, _) = self {
+        if let ShinkaiTool::Deno(js_tool, _) = self {
             Some(&js_tool.config)
         } else {
             None
@@ -304,9 +334,9 @@ impl ShinkaiTool {
     pub fn can_be_enabled(&self) -> bool {
         match self {
             ShinkaiTool::Rust(_, _) => true,
-            ShinkaiTool::Workflow(_, _) => true,
-            ShinkaiTool::JS(js_tool, _) => js_tool.check_required_config_fields(),
             ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
+            ShinkaiTool::Deno(deno_tool, _) => deno_tool.check_required_config_fields(),
+            ShinkaiTool::Python(_, _) => true,
         }
     }
 
@@ -328,12 +358,7 @@ impl ShinkaiTool {
 
     /// Check if the tool is JS-based
     pub fn is_js_based(&self) -> bool {
-        matches!(self, ShinkaiTool::JS(_, _))
-    }
-
-    /// Check if the tool is Workflow-based
-    pub fn is_workflow_based(&self) -> bool {
-        matches!(self, ShinkaiTool::Workflow(_, _))
+        matches!(self, ShinkaiTool::Deno(_, _))
     }
 
     /// Check if the tool is Workflow-based
@@ -348,14 +373,142 @@ impl From<RustTool> for ShinkaiTool {
     }
 }
 
-impl From<JSTool> for ShinkaiTool {
-    fn from(tool: JSTool) -> Self {
-        ShinkaiTool::JS(tool, true)
+impl From<DenoTool> for ShinkaiTool {
+    fn from(tool: DenoTool) -> Self {
+        ShinkaiTool::Deno(tool, true)
     }
 }
 
 impl From<NetworkTool> for ShinkaiTool {
     fn from(tool: NetworkTool) -> Self {
         ShinkaiTool::Network(tool, true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::deno_tools::{DenoTool, ToolResult};
+    use serde_json::json;
+    use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
+
+    #[test]
+    fn test_gen_router_key() {
+        // Create a mock DenoTool with all required fields
+        let deno_tool = DenoTool {
+            name: "Shinkai: Download Pages".to_string(),
+            toolkit_name: "deno-toolkit".to_string(),
+            description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            config: vec![],
+            author: "unknown".to_string(),
+            js_code: "".to_string(),
+            tools: None,
+            keywords: vec![],
+            activated: false,
+            embedding: None,
+            result: ToolResult::new(
+                "object".to_string(),
+                json!({
+                    "markdowns": { "type": "array", "items": { "type": "string" } }
+                }),
+                vec!["markdowns".to_string()],
+            ),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        // Create a ShinkaiTool instance
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, false);
+
+        // Generate the router key
+        let router_key = shinkai_tool.tool_router_key();
+
+        // Expected pattern: [^a-z0-9_]+ (plus the :::)
+        let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
+
+        // Assert that the generated key matches the expected pattern
+        assert_eq!(router_key, expected_key);
+    }
+
+    #[test]
+    fn test_set_playground_tool() {
+        let tool_definition = ToolDefinition {
+            id: "shinkai-tool-download-website".to_string(),
+            name: "Download Website".to_string(),
+            description: "Downloads a website and converts its content into Markdown.".to_string(),
+            configurations: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch"
+                    }
+                },
+                "required": ["url"]
+            }),
+            result: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+            author: "@@my_local_ai.arb-sep-shinkai".to_string(),
+            keywords: vec![
+                "Deno".to_string(),
+                "Markdown".to_string(),
+                "HTML to Markdown".to_string(),
+            ],
+            code: Some("import { getHomePath } from './shinkai-local-support.ts';\n\n...".to_string()), // Truncated for brevity
+            embedding_metadata: None,
+        };
+
+        let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
+
+        let deno_tool = DenoTool {
+            toolkit_name: "deno_toolkit".to_string(),
+            name: "shinkai__download_website".to_string(),
+            description: tool_definition.description.clone(),
+            input_args: input_args.clone(),
+            output_arg: ToolOutputArg {
+                json: tool_definition.result.to_string(),
+            },
+            config: vec![],
+            author: tool_definition.author.clone(),
+            js_code: tool_definition.code.clone().unwrap_or_default(),
+            tools: None,
+            keywords: tool_definition.keywords.clone(),
+            activated: false,
+            embedding: None,
+            result: ToolResult::new(
+                "object".to_string(),
+                tool_definition.result["properties"].clone(),
+                vec![],
+            ),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
+        eprintln!("shinkai_tool: {:?}", shinkai_tool);
+
+        eprintln!("shinkai params: {:?}", shinkai_tool.input_args());
+
+        assert_eq!(shinkai_tool.name(), "shinkai__download_website");
+        assert_eq!(
+            shinkai_tool.description(),
+            "Downloads a website and converts its content into Markdown."
+        );
+        assert_eq!(shinkai_tool.tool_type(), "Deno");
+        assert!(shinkai_tool.is_enabled());
     }
 }

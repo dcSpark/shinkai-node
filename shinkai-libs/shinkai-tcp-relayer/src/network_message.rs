@@ -49,7 +49,6 @@ impl NetworkMessage {
         read_exact(&mut reader, &mut header_byte).await?;
         let message_type = match header_byte[0] {
             0x01 => NetworkMessageType::ShinkaiMessage,
-            0x02 => NetworkMessageType::VRKaiPathPair,
             0x03 => NetworkMessageType::ProxyMessage,
             _ => return Err(NetworkMessageError::UnknownMessageType(header_byte[0])),
         };

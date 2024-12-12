@@ -1,10 +1,9 @@
 use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use shinkai_dsl::dsl_schemas::Workflow;
 use shinkai_message_primitives::schemas::sheet::{
-    Cell, CellId, CellStatus, ColumnBehavior, ColumnDefinition, ColumnIndex, ColumnUuid, RowIndex, RowUuid, UuidString,
-    WorkflowSheetJobData,
+    Cell, CellId, CellStatus, CellUpdateData, CellUpdateInfo, ColumnBehavior, ColumnDefinition, ColumnUuid, RowUuid,
+    UuidString, WorkflowSheetJobData,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -20,24 +19,6 @@ const MAX_DEPENDENCY_DEPTH: usize = 20;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SheetUpdate {
     CellUpdated(CellUpdateInfo),
-}
-
-// Define the new struct
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct CellUpdateInfo {
-    pub sheet_id: String,
-    pub update_type: String,
-    pub data: CellUpdateData,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct CellUpdateData {
-    pub column_id: ColumnUuid,
-    pub input_hash: Option<String>,
-    pub last_updated: DateTime<Utc>,
-    pub row_id: RowUuid,
-    pub status: CellStatus,
-    pub value: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -530,29 +511,6 @@ impl Sheet {
         Ok(jobs)
     }
 
-    fn compute_input_hash(
-        &self,
-        input_cells: &[(RowIndex, ColumnIndex, ColumnDefinition)],
-        workflow: &Workflow,
-    ) -> Option<String> {
-        if input_cells.is_empty() {
-            return None;
-        }
-
-        let mut inputs: Vec<String> = input_cells
-            .iter()
-            .map(|(row, col, _)| format!("{}:{}", row, col))
-            .collect();
-        inputs.sort();
-        let concatenated = inputs.join(",");
-        let workflow_key = workflow.generate_key();
-        Some(
-            blake3::hash(format!("{}::{}", concatenated, workflow_key).as_bytes())
-                .to_hex()
-                .to_string(),
-        )
-    }
-
     pub fn to_ascii_table(&self) -> String {
         let mut table = String::new();
 
@@ -932,8 +890,6 @@ pub fn sheet_reducer(
                             }
                             ColumnBehavior::LLMCall {
                                 input: _, // used under the hood with get_input_cells_for_column
-                                workflow,
-                                workflow_name,
                                 llm_provider_name,
                                 input_hash: _,
                             } => {
@@ -945,8 +901,6 @@ pub fn sheet_reducer(
                                     row: row.clone(),
                                     col: reverse_dependent_col.clone(),
                                     col_definition: column_definition.clone(),
-                                    workflow: workflow.clone(),
-                                    workflow_name: workflow_name.clone(),
                                     input_cells,
                                     llm_provider_name: llm_provider_name.clone(),
                                 };
@@ -1015,8 +969,6 @@ pub fn sheet_reducer(
                     if let Some(column_definition) = state.columns.get(&col_uuid).cloned() {
                         if let ColumnBehavior::LLMCall {
                             input, // used under the hood with get_input_cells_for_column
-                            workflow,
-                            workflow_name,
                             llm_provider_name,
                             input_hash: _,
                         } = &column_definition.behavior
@@ -1034,8 +986,6 @@ pub fn sheet_reducer(
                                     row: row_uuid.clone(),
                                     col: col_uuid.clone(),
                                     col_definition: column_definition.clone(),
-                                    workflow: workflow.clone(),
-                                    workflow_name: workflow_name.clone(),
                                     input_cells,
                                     llm_provider_name: llm_provider_name.clone(),
                                 };
@@ -1126,8 +1076,6 @@ pub fn sheet_reducer(
                     // Add jobs for LLM columns
                     if let ColumnBehavior::LLMCall {
                         input: _, // used under the hood with get_input_cells_for_column
-                        workflow,
-                        workflow_name,
                         llm_provider_name,
                         input_hash: _,
                     } = &col_def.behavior
@@ -1138,8 +1086,6 @@ pub fn sheet_reducer(
                             row: row_uuid.clone(),
                             col: col_uuid.clone(),
                             col_definition: col_def.clone(),
-                            workflow: workflow.clone(),
-                            workflow_name: workflow_name.clone(),
                             input_cells,
                             llm_provider_name: llm_provider_name.clone(),
                         };
