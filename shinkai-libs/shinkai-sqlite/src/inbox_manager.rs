@@ -543,7 +543,7 @@ impl SqliteManager {
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone()).map_err(|e| SqliteManagerError::SomeError(e.to_string()))? {
                     InboxName::JobInbox { unique_id, .. } => {
-                        let job = self.get_job_with_options(&unique_id, false, false)?;
+                        let job = self.get_job_with_options(&unique_id, false)?;
                         let scope_value = job.scope.to_json_value()?;
                         job_scope_value = Some(scope_value);
                         job_config_value = job.config;
@@ -566,7 +566,7 @@ impl SqliteManager {
                             {
                                 InboxName::JobInbox { unique_id, .. } => {
                                     // Start the timer
-                                    let job = self.get_job_with_options(&unique_id, false, false)?;
+                                    let job = self.get_job_with_options(&unique_id, false)?;
                                     let agent_id = job.parent_agent_or_llm_provider_id;
 
                                     // Check if the agent_id is an LLM provider

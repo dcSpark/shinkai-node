@@ -166,7 +166,6 @@ impl SqliteManager {
         Self::initialize_settings_table(conn)?;
         Self::initialize_sheets_table(conn)?;
         Self::initialize_source_file_maps_table(conn)?;
-        Self::initialize_step_history_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
@@ -332,19 +331,6 @@ impl SqliteManager {
                 execution_context BLOB,
                 associated_ui BLOB,
                 config BLOB
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_step_history_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS step_history (
-                message_key TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                job_step_result BLOB NOT NULL
             );",
             [],
         )?;

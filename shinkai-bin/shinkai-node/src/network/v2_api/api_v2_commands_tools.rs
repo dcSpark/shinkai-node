@@ -33,8 +33,8 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    tool_output_arg::ToolOutputArg, deno_tools::DenoTool, python_tools::PythonTool, shinkai_tool::ShinkaiTool,
-    tool_config::ToolConfig, tool_playground::ToolPlayground,
+    deno_tools::DenoTool, python_tools::PythonTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -1059,7 +1059,7 @@ impl Node {
         }
 
         // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
-        let job = match db.read().await.get_job_with_options(&job_id, true, true) {
+        let job = match db.read().await.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1332,7 +1332,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {

@@ -280,7 +280,6 @@ impl SheetUIInferenceChain {
             image_files.clone(),
             ret_nodes.clone(),
             summary_node_text.clone(),
-            Some(full_job.step_history.clone()),
             tools.clone(),
             None,
         );
@@ -416,7 +415,6 @@ impl SheetUIInferenceChain {
                     image_files.clone(),
                     ret_nodes.clone(),
                     summary_node_text.clone(),
-                    Some(full_job.step_history.clone()),
                     tools.clone(),
                     Some(function_response),
                 );
