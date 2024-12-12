@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, io, thread};
 
-use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
@@ -16,8 +15,9 @@ use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
-use super::argument::ToolOutputArg;
+use super::tool_output_arg::ToolOutputArg;
 use super::deno_tools::ToolResult;
+use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_playground::{SqlQuery, SqlTable};
 
@@ -31,7 +31,7 @@ pub struct PythonTool {
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,

@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, io, thread};
 
-use super::argument::ToolOutputArg;
+use super::tool_output_arg::ToolOutputArg;
+use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_playground::{SqlQuery, SqlTable};
-use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value as JsonValue};
@@ -32,7 +32,7 @@ pub struct DenoTool {
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Embedding>,
@@ -357,7 +357,7 @@ impl DenoTool {
                     });
 
                     // Setup the engine with the code files and config
-                    let mut tool = DenoRunner::new(
+                    let tool = DenoRunner::new(
                         CodeFiles {
                             files: code_files.clone(),
                             entrypoint: "index.ts".to_string(),
@@ -408,10 +408,9 @@ impl DenoTool {
     /// Check if all required config fields are set
     pub fn check_required_config_fields(&self) -> bool {
         for config in &self.config {
-            if let ToolConfig::BasicConfig(basic_config) = config {
-                if basic_config.required && basic_config.key_value.is_none() {
-                    return false;
-                }
+            let ToolConfig::BasicConfig(basic_config) = config;
+            if basic_config.required && basic_config.key_value.is_none() {
+                return false;
             }
         }
         true

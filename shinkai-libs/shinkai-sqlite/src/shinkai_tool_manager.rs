@@ -609,11 +609,11 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
-    use shinkai_tools_primitives::tools::argument::ToolArgument;
-    use shinkai_tools_primitives::tools::argument::ToolOutputArg;
+    use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+    use shinkai_tools_primitives::tools::parameters::Parameters;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -644,7 +644,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -707,7 +707,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing 1".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -727,7 +727,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing 2".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -747,7 +747,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing 3".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -804,7 +804,7 @@ mod tests {
             oauth: None,
             description: "First Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool1".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -824,7 +824,7 @@ mod tests {
             oauth: None,
             description: "Second Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool2".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -844,7 +844,7 @@ mod tests {
             oauth: None,
             description: "Third Deno tool".to_string(),
             keywords: vec!["deno".to_string(), "tool3".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -926,7 +926,7 @@ mod tests {
             oauth: None,
             description: "A Deno tool for testing duplicates".to_string(),
             keywords: vec!["deno".to_string(), "duplicate".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -970,7 +970,7 @@ mod tests {
                 oauth: None,
                 description: "Process and manipulate images".to_string(),
                 keywords: vec!["image".to_string(), "processing".to_string()],
-                input_args: vec![],
+                input_args: Parameters::new(),
                 activated: true,
                 embedding: None,
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -989,7 +989,7 @@ mod tests {
                 oauth: None,
                 description: "Analyze text content".to_string(),
                 keywords: vec!["text".to_string(), "analysis".to_string()],
-                input_args: vec![],
+                input_args: Parameters::new(),
                 activated: true,
                 embedding: None,
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1008,7 +1008,7 @@ mod tests {
                 oauth: None,
                 description: "Visualize data sets".to_string(),
                 keywords: vec!["data".to_string(), "visualization".to_string()],
-                input_args: vec![],
+                input_args: Parameters::new(),
                 activated: true,
                 embedding: None,
                 result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1069,7 +1069,7 @@ mod tests {
             config: vec![],
             description: "An enabled tool for testing".to_string(),
             keywords: vec!["enabled".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1089,7 +1089,7 @@ mod tests {
             config: vec![],
             description: "A disabled tool for testing".to_string(),
             keywords: vec!["disabled".to_string(), "test".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: false, // This tool is disabled
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1155,7 +1155,7 @@ mod tests {
             config: vec![],
             description: "An enabled non-network tool".to_string(),
             keywords: vec!["enabled".to_string(), "non-network".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: true,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1175,7 +1175,7 @@ mod tests {
             config: vec![],
             description: "A disabled non-network tool".to_string(),
             keywords: vec!["disabled".to_string(), "non-network".to_string()],
-            input_args: vec![],
+            input_args: Parameters::new(),
             activated: false, // This tool is disabled
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
@@ -1196,6 +1196,8 @@ mod tests {
             amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
         }]));
 
+        let input_args = Parameters::with_single_property("message", "string", "The message to send", true);
+
         let enabled_network_tool = NetworkTool {
             name: "Enabled Network Tool".to_string(),
             toolkit_name: "Network Toolkit".to_string(),
@@ -1205,12 +1207,7 @@ mod tests {
             usage_type: usage_type.clone(),
             activated: true,
             config: vec![],
-            input_args: vec![ToolArgument {
-                name: "message".to_string(),
-                arg_type: "string".to_string(),
-                description: "".to_string(),
-                is_required: true,
-            }],
+            input_args: input_args.clone(),
             output_arg: ToolOutputArg { json: "".to_string() },
             embedding: None,
             restrictions: None,

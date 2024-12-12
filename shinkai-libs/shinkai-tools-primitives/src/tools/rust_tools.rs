@@ -1,11 +1,11 @@
 use std::fmt;
 
-use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
 
-use super::argument::ToolOutputArg;
+use super::tool_output_arg::ToolOutputArg;
+use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ impl std::error::Error for RustToolError {}
 pub struct RustTool {
     pub name: String,
     pub description: String,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub tool_embedding: Option<Embedding>,
     pub tool_router_key: String,
@@ -39,7 +39,7 @@ impl RustTool {
     pub fn new(
         name: String,
         description: String,
-        input_args: Vec<ToolArgument>,
+        input_args: Parameters,
         output_arg: ToolOutputArg,
         tool_embedding: Option<Embedding>,
         tool_router_key: String,

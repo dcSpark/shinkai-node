@@ -5,9 +5,7 @@ use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_tools_primitives::tools::{
-    argument::{ToolArgument, ToolOutputArg},
-    rust_tools::RustTool,
-    shinkai_tool::ShinkaiTool,
+    tool_output_arg::ToolOutputArg, parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool
 };
 use tokio::sync::Mutex;
 use umya_spreadsheet::new_file;
@@ -559,14 +557,11 @@ impl SheetRustFunctions {
         let create_new_column_tool = RustTool::new(
             "create_new_column_with_values".to_string(),
             "Creates a new column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "values".to_string(),
-                    "string".to_string(),
-                    "The values to populate the new column, separated by commas".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("values".to_string(), "string".to_string(), "The values to create the column with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_create_new_column_with_values".to_string(),
@@ -576,20 +571,12 @@ impl SheetRustFunctions {
         let update_column_tool = RustTool::new(
             "update_column_with_values".to_string(),
             "Updates an existing column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "column_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the column to update".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "values".to_string(),
-                    "string".to_string(),
-                    "The values to update the column with, separated by commas".to_string(),
-                    true,
-                ),
-            ],            
+            {
+                let mut params = Parameters::new();
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
+                params.add_property("values".to_string(), "string".to_string(), "The values to update the column with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_update_column_with_values".to_string(),
@@ -599,26 +586,13 @@ impl SheetRustFunctions {
         let replace_value_tool = RustTool::new(
             "replace_value_at_position".to_string(),
             "Replaces the value at the specified column and row position. Example: 'column_position, row_position, new_value'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "column_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the column".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "row_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the row".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "new_value".to_string(),
-                    "string".to_string(),
-                    "The new value to set".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
+                params.add_property("row_position".to_string(), "usize".to_string(), "The position of the row to update".to_string(), true);
+                params.add_property("new_value".to_string(), "string".to_string(), "The new value to replace the value at the specified position with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_replace_value_at_position".to_string(),
@@ -628,12 +602,11 @@ impl SheetRustFunctions {
         let create_new_columns_tool = RustTool::new(
             "create_new_columns_with_csv".to_string(),
             "Creates new columns with the provided CSV data. Example: 'column1;column2\nvalue1;value2' It also supports comma separators.".to_string(),
-            vec![ToolArgument::new(
-                "csv_data".to_string(),
-                "string".to_string(),
-                "The CSV data to populate the new columns".to_string(),
-                true,
-            )],
+            {
+                let mut params = Parameters::new();
+                params.add_property("csv_data".to_string(), "string".to_string(), "The CSV data to create the columns with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_create_new_columns_with_csv".to_string(),
@@ -643,7 +616,7 @@ impl SheetRustFunctions {
         let get_table_tool = RustTool::new(
             "get_table".to_string(),
             "Retrieves the entire table in ASCII format.".to_string(),
-            vec![],
+            Parameters::new(),
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_get_table".to_string(),
@@ -672,7 +645,7 @@ mod tests {
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
-    use shinkai_vector_resources::{model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference}, utils::hash_string};
+    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use tempfile::NamedTempFile;
     use std::{fs, path::{Path, PathBuf}, sync::Arc};
     use tokio::sync::{Mutex, RwLock};

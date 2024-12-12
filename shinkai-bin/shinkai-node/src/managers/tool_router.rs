@@ -23,11 +23,11 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::argument::ToolArgument;
-use shinkai_tools_primitives::tools::argument::ToolOutputArg;
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
@@ -214,12 +214,11 @@ impl ToolRouter {
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
-                input_args: vec![ToolArgument {
-                    name: "message".to_string(),
-                    arg_type: "string".to_string(),
-                    description: "".to_string(),
-                    is_required: true,
-                }],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property("message".to_string(), "string".to_string(), "The message to echo".to_string(), true);
+                    params
+                },
                 output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
@@ -244,12 +243,11 @@ impl ToolRouter {
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
-                input_args: vec![ToolArgument {
-                    name: "url".to_string(),
-                    arg_type: "string".to_string(),
-                    description: "The URL of the YouTube video".to_string(),
-                    is_required: true,
-                }],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true);
+                    params
+                },
                 output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
