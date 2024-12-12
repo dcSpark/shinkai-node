@@ -1,6 +1,6 @@
 use super::deprecated_argument::DeprecatedArgument;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Parameters {
     #[serde(rename = "type")]
     pub schema_type: String,
@@ -50,11 +50,62 @@ impl Parameters {
                 DeprecatedArgument::new(
                     name.clone(),
                     property.property_type.clone(),
-                    String::new(),
+                    property.description.clone(),
                     self.required.contains(name),
                 )
             })
             .collect()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Parameters {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct ParametersVisitor;
+
+        impl<'de> Visitor<'de> for ParametersVisitor {
+            type Value = Parameters;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a Parameters object")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Parameters, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                // If the map is empty, return default Parameters
+                if map.size_hint() == Some(0) {
+                    return Ok(Parameters::new());
+                }
+
+                let mut schema_type = None;
+                let mut properties = None;
+                let mut required = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => schema_type = Some(map.next_value()?),
+                        "properties" => properties = Some(map.next_value()?),
+                        "required" => required = Some(map.next_value()?),
+                        _ => { let _ = map.next_value::<de::IgnoredAny>()?; }
+                    }
+                }
+
+                Ok(Parameters {
+                    schema_type: schema_type.unwrap_or_else(|| "object".to_string()),
+                    properties: properties.unwrap_or_default(),
+                    required: required.unwrap_or_default(),
+                })
+            }
+        }
+
+        deserializer.deserialize_map(ParametersVisitor)
     }
 }
 
@@ -123,5 +174,15 @@ mod tests {
 
         // Check if the serialized Vec<DeprecatedArgument> matches the expected JSON
         assert_eq!(serialized_args, expected_args);
+    }
+
+    #[test]
+    fn test_deserialize_empty_json() {
+        let empty_json = "{}";
+        let result: Parameters = serde_json::from_str(empty_json).unwrap();
+        
+        // Should be equivalent to Parameters::new()
+        let expected = Parameters::new();
+        assert_eq!(result, expected);
     }
 }

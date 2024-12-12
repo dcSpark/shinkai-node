@@ -1066,7 +1066,7 @@ impl Node {
         let expected_full_identity_name = ShinkaiName::new(format!(
             "{}/main/agent/{}",
             requester_name.get_node_name_string(),
-            agent.agent_id
+            agent.agent_id.to_lowercase()
         ))
         .unwrap();
 

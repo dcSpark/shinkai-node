@@ -208,8 +208,14 @@ impl GenericInferenceChain {
             // 2b. Check if tools are allowed by job config (defaults to true if not specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
-            // 2c. Check if the LLM provider/agent has tool capabilities
-            let use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
+            // 2c. Check if the LLM provider is an agent
+            let is_agent = match &llm_provider {
+                ProviderOrAgent::Agent(_) => true,
+                ProviderOrAgent::LLMProvider(_) => false,
+            };
+
+            // 2d. Check if the LLM provider/agent has tool capabilities
+            let can_use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
                 llm_provider.clone(),
                 db.clone(),
                 stream,
@@ -219,7 +225,7 @@ impl GenericInferenceChain {
             // Only proceed with tool selection if both conditions are met:
             // - Tools are allowed by configuration
             // - The LLM provider has tool capabilities
-            if use_tools && tools_allowed {
+            if can_use_tools && tools_allowed || is_agent {
                 // CASE 2.1: If using an Agent, get its specifically configured tools
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
                     for tool_name in &agent.tools {
