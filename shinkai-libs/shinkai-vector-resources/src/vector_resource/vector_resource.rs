@@ -44,6 +44,7 @@ pub trait VectorResourceCore: Send + Sync {
     fn resource_base_type(&self) -> VRBaseType;
     fn embedding_model_used_string(&self) -> EmbeddingModelTypeString;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
+    fn node_count(&self) -> u64;
     fn distribution_info(&self) -> &DistributionInfo;
     fn set_distribution_info(&mut self, dist_info: DistributionInfo);
     fn data_tag_index(&self) -> &DataTagIndex;
