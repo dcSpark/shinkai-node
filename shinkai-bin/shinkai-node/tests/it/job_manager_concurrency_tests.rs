@@ -81,23 +81,16 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-async fn setup_default_vector_fs() -> VectorFS {
+async fn setup_default_vector_fs(db: Arc<RwLock<SqliteManager>>) -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
-    let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
     )];
 
-    VectorFS::new(
-        generator,
-        supported_embedding_models,
-        profile_list,
-        &fs_db_path,
-        node_name(),
-    )
-    .await
-    .unwrap()
+    VectorFS::new(generator, supported_embedding_models, profile_list, db, node_name())
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
@@ -105,7 +98,7 @@ async fn test_process_job_queue_concurrency() {
     let num_threads = 8;
     let db = utils::db_handlers::setup_test_db();
     let db = Arc::new(RwLock::new(db));
-    let vector_fs = Arc::new(setup_default_vector_fs().await);
+    let vector_fs = Arc::new(setup_default_vector_fs(db.clone()).await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
@@ -262,7 +255,7 @@ async fn test_sequential_process_for_same_job_id() {
     let num_threads = 8;
     let db = utils::db_handlers::setup_test_db();
     let db = Arc::new(RwLock::new(db));
-    let vector_fs = Arc::new(setup_default_vector_fs().await);
+    let vector_fs = Arc::new(setup_default_vector_fs(db.clone()).await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 

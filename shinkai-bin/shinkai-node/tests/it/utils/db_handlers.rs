@@ -25,3 +25,9 @@ pub fn setup_test_db() -> SqliteManager {
 
     SqliteManager::new(db_path, api_url, model_type).unwrap()
 }
+
+pub fn setup_node_storage_path() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = PathBuf::from(temp_file.path());
+    std::env::set_var("NODE_STORAGE_PATH", path.parent().unwrap());
+}
