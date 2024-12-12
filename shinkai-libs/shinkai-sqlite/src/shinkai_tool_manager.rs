@@ -348,13 +348,9 @@ impl SqliteManager {
             ],
         )?;
 
-        // Update the embedding in the shinkai_tools_vec_items table
-        tx.execute(
-            "UPDATE shinkai_tools_vec_items SET embedding = ?1 WHERE rowid = ?2",
-            params![cast_slice(&embedding), rowid],
-        )?;
+        // Update the vector using the same transaction
+        self.update_tools_vector(&tx, &tool_key, embedding)?;
 
-        eprintln!("Updating FTS table");
         // Update the FTS table using the in-memory connection
         self.update_tools_fts(&tool)?;
 
@@ -596,6 +592,36 @@ impl SqliteManager {
                 params![rowid, name],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn update_tools_vector(
+        &self,
+        tx: &rusqlite::Transaction,
+        tool_key: &str,
+        embedding: Vec<f32>,
+    ) -> Result<(), SqliteManagerError> {
+        // Get is_enabled and is_network from the main database
+        let (is_enabled, is_network): (i32, i32) = tx.query_row(
+            "SELECT is_enabled, is_network FROM shinkai_tools WHERE tool_key = ?1",
+            params![tool_key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        tx.execute(
+            "UPDATE shinkai_tools_vec_items SET 
+                embedding = ?1,
+                is_enabled = ?2,
+                is_network = ?3
+             WHERE tool_key = ?4",
+            params![
+                cast_slice(&embedding),
+                is_enabled,
+                is_network,
+                tool_key
+            ],
+        )?;
+
         Ok(())
     }
 }
@@ -1090,7 +1116,7 @@ mod tests {
             description: "A disabled tool for testing".to_string(),
             keywords: vec!["disabled".to_string(), "test".to_string()],
             input_args: Parameters::new(),
-            activated: false, // This tool is disabled
+            activated: false,
             embedding: None,
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             output_arg: ToolOutputArg::empty(),
@@ -1129,7 +1155,7 @@ mod tests {
 
         // Test search including disabled tools
         let search_results: Vec<ShinkaiToolHeader> = manager
-            .tool_vector_search_with_vector(embedding_query, 10, true, true)
+            .tool_vector_search_with_vector(embedding_query.clone(), 10, true, true)
             .unwrap()
             .iter()
             .map(|(tool, _distance)| tool.clone())
@@ -1139,6 +1165,25 @@ mod tests {
         assert_eq!(search_results.len(), 2);
         assert!(search_results.iter().any(|t| t.name == "Enabled Test Tool"));
         assert!(search_results.iter().any(|t| t.name == "Disabled Test Tool"));
+
+        // Now disable the previously enabled tool
+        if let ShinkaiTool::Deno(mut deno_tool, _is_enabled) = shinkai_enabled {
+            deno_tool.activated = false;
+            let updated_tool = ShinkaiTool::Deno(deno_tool, false);
+            // Just update the tool status - no need to regenerate the vector
+            manager.update_tool_with_vector(updated_tool, SqliteManager::generate_vector_for_testing(0.1)).unwrap();
+        }
+
+        // Search again excluding disabled tools - should now return empty results
+        let search_results: Vec<ShinkaiToolHeader> = manager
+            .tool_vector_search_with_vector(embedding_query, 10, false, true)
+            .unwrap()
+            .iter()
+            .map(|(tool, _distance)| tool.clone())
+            .collect();
+
+        // Should find no tools as both are now disabled
+        assert_eq!(search_results.len(), 0);
     }
 
     #[tokio::test]

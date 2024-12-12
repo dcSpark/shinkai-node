@@ -252,7 +252,7 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .vector_search_enabled_tools_with_network(&user_message.clone(), 5)
+                            .combined_tool_search(&user_message.clone(), 5, false, true)
                             .await;
 
                         match results {
