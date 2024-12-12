@@ -352,7 +352,7 @@ mod tests {
         let tool_key = token.tool_key.clone();
         let state = token.state.clone();
 
-        // let token_id = manager.add_oauth_token(&token).unwrap();
+        manager.add_oauth_token(&token).unwrap();
         let retrieved_token = manager.get_oauth_token(connection_name, tool_key).unwrap().unwrap();
 
         assert_eq!(retrieved_token.state, state);
@@ -363,7 +363,7 @@ mod tests {
         let manager = setup_test_db();
         let mut token = create_test_token();
 
-        // let token_id = manager.add_oauth_token(&token).unwrap();
+        let token_id = manager.add_oauth_token(&token).unwrap();
         token.access_token = Some("new_access_token".to_string());
 
         manager.update_oauth_token(&token).unwrap();
@@ -405,7 +405,9 @@ mod tests {
         let manager = setup_test_db();
         let token1 = create_test_token();
         let mut token2 = create_test_token();
-        token2.state = "test_state_2".to_string();
+        token2.state = format!("{}_2", token2.state);
+        token2.connection_name = format!("{}_2", token2.connection_name);
+        token2.tool_key = format!("{}_2", token2.tool_key);
 
         manager.add_oauth_token(&token1).unwrap();
         manager.add_oauth_token(&token2).unwrap();
