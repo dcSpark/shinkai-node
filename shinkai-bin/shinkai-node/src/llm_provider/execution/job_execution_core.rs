@@ -10,7 +10,6 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 
-use image::error;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -339,15 +338,6 @@ impl JobManager {
             format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
         );
 
-        // Save response data to DB
-        db.write().await.add_step_history(
-            job_message.job_id.clone(),
-            job_message.content,
-            Some(image_files),
-            inference_response_content.to_string(),
-            None,
-            None,
-        )?;
         db.write()
             .await
             .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)

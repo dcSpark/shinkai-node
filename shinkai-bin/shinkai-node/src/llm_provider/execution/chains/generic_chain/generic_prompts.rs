@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
 use serde_json::json;
-use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
@@ -20,7 +19,6 @@ impl JobPromptGenerator {
         image_files: HashMap<String, String>,
         ret_nodes: Vec<RetrievedNode>,
         _summary_text: Option<String>,
-        job_step_history: Option<Vec<JobStepResult>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
     ) -> Prompt {
@@ -34,12 +32,6 @@ impl JobPromptGenerator {
         prompt.add_content(system_prompt, SubPromptType::System, 98);
 
         let has_ret_nodes = !ret_nodes.is_empty();
-
-        // Add previous messages
-        // TODO: this should be full messages with assets and not just strings
-        if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 97);
-        }
 
         // Add tools if any. Decrease priority every 2 tools
         if !tools.is_empty() {

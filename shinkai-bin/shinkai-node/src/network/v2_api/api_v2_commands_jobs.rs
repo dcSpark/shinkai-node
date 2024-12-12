@@ -204,7 +204,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_message.job_id, false, false) {
+        let llm_provider = match db.read().await.get_job_with_options(&job_message.job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -661,7 +661,7 @@ impl Node {
 
         // Check if the job exists
         let db_read = db.read().await;
-        match db_read.get_job_with_options(&job_id, false, false) {
+        match db_read.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 drop(db_read);
 
@@ -709,7 +709,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_system_prompt: None,
@@ -1005,7 +1005,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        match db.read().await.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
                 match db.write().await.update_job_scope(job_id.clone(), job_scope.clone()) {
@@ -1060,7 +1060,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1123,7 +1123,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.read().await.get_job_with_options(&job_id, false, true) {
+        let source_job = match db.read().await.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
