@@ -5,11 +5,13 @@ use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_tools_primitives::tools::{
-    tool_output_arg::ToolOutputArg, parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool
+    parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg,
 };
 use tokio::sync::Mutex;
 use umya_spreadsheet::new_file;
 use uuid::Uuid;
+
+const MAX_ROWS: u32 = 100000;
 
 pub struct SheetRustFunctions;
 
@@ -301,38 +303,16 @@ impl SheetRustFunctions {
             }
         }
 
-        // Ensure the number of rows matches the number of records
-        {
+        // Add rows with values in chunks
+        for chunk in records.chunks(MAX_ROWS as usize) {
+            let mut rows = Vec::new();
+            for record in chunk {
+                let row_cells = record.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+                rows.push(row_cells);
+            }
+
             let mut sheet_manager = sheet_manager.lock().await;
-            while {
-                let (sheet, _) = sheet_manager.sheets.get_mut(&sheet_id).ok_or("Sheet ID not found")?;
-                sheet.rows.len() < records.len()
-            } {
-                sheet_manager.add_row(&sheet_id, None).await?;
-            }
-        }
-
-        // Set values for the new columns
-        let row_ids: Vec<String> = {
-            let sheet_manager = sheet_manager.lock().await;
-            let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
-            sheet.display_rows.clone()
-        };
-
-        for (row_index, record) in records.iter().enumerate() {
-            let row_id = row_ids.get(row_index).ok_or("Row ID not found")?.clone();
-            for (col_index, value) in record.iter().enumerate() {
-                let column_definition = &column_definitions[col_index];
-                let mut sheet_manager = sheet_manager.lock().await;
-                sheet_manager
-                    .set_cell_value(
-                        &sheet_id,
-                        row_id.clone(),
-                        column_definition.id.clone(),
-                        value.to_string(),
-                    )
-                    .await?;
-            }
+            sheet_manager.add_values(&sheet_id, rows).await?;
         }
 
         Ok("Columns created successfully".to_string())
@@ -385,49 +365,36 @@ impl SheetRustFunctions {
                 }
             }
 
-            let mut num_rows: u32 = 0;
-            for row_index in 1..u32::MAX {
-                let row_cells = worksheet.get_collection_by_row(&row_index);
-                let is_empty_row =
-                    row_cells.is_empty() || row_cells.into_iter().all(|cell| cell.get_cell_value().is_empty());
+            // Add rows with values in chunks
+            for chunk_start in (1..u32::MAX).step_by(MAX_ROWS as usize) {
+                let mut rows = Vec::new();
+                let mut is_empty_row = false;
+                for row_index in chunk_start..(chunk_start + MAX_ROWS) {
+                    let row_cells = worksheet.get_collection_by_row(&row_index);
+                    is_empty_row =
+                        row_cells.is_empty() || row_cells.into_iter().all(|cell| cell.get_cell_value().is_empty());
+
+                    if is_empty_row {
+                        break;
+                    }
+
+                    let mut row_cells = Vec::new();
+                    for col_index in 1..=num_columns {
+                        if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index)) {
+                            row_cells.push(cell.get_value().to_string());
+                        }
+                    }
+
+                    rows.push(row_cells);
+                }
+
+                if !rows.is_empty() {
+                    let mut sheet_manager = sheet_manager.lock().await;
+                    sheet_manager.add_values(&sheet_id, rows).await?;
+                }
 
                 if is_empty_row {
                     break;
-                }
-
-                num_rows += 1;
-            }
-
-            {
-                let mut sheet_manager = sheet_manager.lock().await;
-
-                for _ in 0..num_rows {
-                    sheet_manager.add_row(&sheet_id, None).await?;
-                }
-            }
-
-            let row_ids: Vec<String> = {
-                let sheet_manager = sheet_manager.lock().await;
-                let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
-                sheet.display_rows.clone()
-            };
-
-            for row_index in 1..=num_rows {
-                for col_index in 1..=num_columns {
-                    if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index)) {
-                        let cell_value = cell.get_value();
-                        let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
-
-                        let mut sheet_manager = sheet_manager.lock().await;
-                        sheet_manager
-                            .set_cell_value(
-                                &sheet_id,
-                                row_id,
-                                column_definitions[col_index as usize - 1].id.clone(),
-                                cell_value.to_string(),
-                            )
-                            .await?;
-                    }
                 }
             }
         }
@@ -639,15 +606,19 @@ mod tests {
     use async_trait::async_trait;
     use futures::Future;
     use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-    
+
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
     use tempfile::NamedTempFile;
-    use std::{fs, path::{Path, PathBuf}, sync::Arc};
     use tokio::sync::{Mutex, RwLock};
 
     struct MockJobManager;
