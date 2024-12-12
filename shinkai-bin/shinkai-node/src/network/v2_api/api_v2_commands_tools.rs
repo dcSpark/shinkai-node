@@ -8,6 +8,7 @@ use crate::{
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
+    utils::environment::NodeEnvironment,
 };
 use std::io::Read;
 
@@ -1737,6 +1738,113 @@ impl Node {
             Ok(Err(api_error)) => Err(format!("API error while updating job config: {}", api_error.message)),
             Err(err) => Err(format!("Failed to update job config: {}", err)),
         }
+    }
+
+    pub async fn v2_api_upload_tool_asset(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        _tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        node_env: NodeEnvironment,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
+        file_path.push(".tools_storage");
+        file_path.push(app_id);
+        // TODO
+        // keep this in sync with deno/python runner
+        file_path.push("assets");
+        // Create directories if they don't exist
+        if !file_path.exists() {
+            std::fs::create_dir_all(&file_path)?;
+        }
+        file_path.push(&file_name);
+        std::fs::write(&file_path, &file_data)?;
+
+        let response = json!({
+            "status": "success",
+            "message": "Tool asset uploaded successfully",
+            "file": file_data.len(),
+            "file_name": file_name
+        });
+        let _ = res.send(Ok(response)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_list_tool_assets(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        node_env: NodeEnvironment,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
+        file_path.push(".tools_storage");
+        file_path.push(app_id);
+        // TODO
+        // keep this in sync with deno/python runner
+        file_path.push("assets");
+        let files = std::fs::read_dir(&file_path).unwrap();
+        let file_names = files
+            .map(|file| file.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        let _ = res.send(Ok(file_names)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_delete_tool_asset(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        file_name: String,
+        node_env: NodeEnvironment,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
+        file_path.push(".tools_storage");
+        file_path.push(app_id);
+        // TODO
+        // keep this in sync with deno/python runner
+        file_path.push("assets");
+        file_path.push(&file_name);
+        let stat = std::fs::remove_file(&file_path).map_err(|err| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to delete file".to_string(),
+            message: format!("Failed to delete file: {}", err),
+        });
+        match stat {
+            Ok(_) => {
+                let response = json!({
+                    "status": "success",
+                    "message": "Tool asset deleted successfully",
+                    "file_name": file_name
+                });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+            }
+        }
+        Ok(())
     }
 }
 

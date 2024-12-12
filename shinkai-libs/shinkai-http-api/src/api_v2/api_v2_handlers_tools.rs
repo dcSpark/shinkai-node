@@ -7,6 +7,10 @@ use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
 use std::collections::HashMap;
+use bytes::Bytes;
+use futures::TryStreamExt;
+use warp::multipart::{FormData, Part};
+use bytes::Buf;
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
 use super::api_v2_router::{create_success_response, with_sender};
@@ -157,6 +161,32 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(import_tool_handler);
 
+    let tool_asset_route = warp::path("tool_asset")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::multipart::form())
+        .and_then(tool_asset_handler);
+
+    let list_tool_asset_route = warp::path("list_tool_asset")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
+        .and_then(list_tool_asset_handler);
+
+    let delete_tool_asset_route = warp::path("tool_asset")
+        .and(warp::delete())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(delete_tool_asset_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -177,6 +207,9 @@ pub fn tool_routes(
         .or(resolve_shinkai_file_protocol_route)
         .or(export_tool_route)
         .or(import_tool_route)
+        .or(tool_asset_route)
+        .or(list_tool_asset_route)
+        .or(delete_tool_asset_route)
 }
 
 #[utoipa::path(
@@ -335,7 +368,7 @@ pub struct ToolMetadata {
     pub parameters: Value,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct ToolImplementationRequest {
     pub message: JobMessage,
     pub language: CodeLanguage,
@@ -1297,3 +1330,204 @@ pub async fn resolve_shinkai_file_protocol_handler(
     )
 )]
 pub struct ToolsApiDoc;
+
+#[utoipa::path(
+    post,
+    path = "/v2/tool_asset",
+    responses(
+        (status = 200, description = "Successfully uploaded tool asset", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn tool_asset_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_id: String,
+    app_id: String,
+    mut form: FormData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let mut file_name = String::new();
+    let mut file_data: Option<Vec<u8>> = None;
+
+    while let Ok(Some(part)) = form.try_next().await {
+        match part.name() {
+            "file_name" => {
+                // Convert the part to bytes then to string
+                let mut bytes = Vec::new();
+                let mut stream = part.stream();
+                while let Ok(Some(chunk)) = stream.try_next().await {
+                    bytes.extend_from_slice(chunk.chunk());
+                }
+                file_name = String::from_utf8_lossy(&bytes).into_owned();
+            }
+            "file" => {
+                // Read file data
+                let mut bytes = Vec::new();
+                let mut stream = part.stream();
+                while let Ok(Some(chunk)) = stream.try_next().await {
+                    bytes.extend_from_slice(chunk.chunk());
+                }
+                file_data = Some(bytes);
+            }
+            _ => {}
+        }
+    }
+
+    // Validate we have both file name and data
+    let file_data = match file_data {
+        Some(data) => data,
+        None => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&APIError {
+                    code: 400,
+                    error: "Missing file".to_string(),
+                    message: "File data is required".to_string(),
+                }),
+                StatusCode::BAD_REQUEST,
+            ))
+        }
+    };
+
+    if file_name.is_empty() {
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&APIError {
+                code: 400,
+                error: "Missing file name".to_string(),
+                message: "File name is required".to_string(),
+            }),
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiUploadToolAsset {
+            bearer,
+            tool_id,
+            app_id,
+            file_name,
+            file_data,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/list_tool_asset",
+    responses(
+        (status = 200, description = "Successfully listed tool assets", body = Vec<String>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn list_tool_asset_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_id: String,
+    app_id: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiListToolAssets {
+            bearer,
+            tool_id,
+            app_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v2/tool_asset",
+    params(
+        ("file_name" = String, Query, description = "Name of the file to delete")
+    ),
+    responses(
+        (status = 200, description = "Successfully deleted tool asset", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn delete_tool_asset_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_id: String,
+    app_id: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let file_name = query_params
+        .get("file_name")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Missing file name".to_string(),
+                message: "File name is required".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiDeleteToolAsset {
+            bearer,
+            tool_id,
+            app_id,
+            file_name,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}

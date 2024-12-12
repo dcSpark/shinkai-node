@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, io, thread};
 
-use super::tool_output_arg::ToolOutputArg;
 use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
+use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -239,6 +239,26 @@ impl DenoTool {
                     support_files.iter().for_each(|(file_name, file_code)| {
                         code_files.insert(format!("{}.ts", file_name), file_code.clone());
                     });
+                    // Read all files in the assets directory
+                    let assets_path = Path::new(&node_storage_path)
+                        .join(".tools_storage")
+                        .join(&app_id)
+                        .join("assets");
+
+                    let mut assets_files = Vec::new();
+                    if assets_path.exists() {
+                        for entry in std::fs::read_dir(assets_path)
+                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+                        {
+                            let entry = entry.map_err(|e| {
+                                ToolError::ExecutionError(format!("Failed to read directory entry: {}", e))
+                            })?;
+                            let path = entry.path();
+                            if path.is_file() {
+                                assets_files.push(path);
+                            }
+                        }
+                    }
 
                     // Setup the engine with the code files and config
                     let tool = DenoRunner::new(
@@ -253,7 +273,7 @@ impl DenoTool {
                                 execution_id: tool_id.clone(),
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
-                                assets_files: vec![],
+                                assets_files,
                                 mount_files: vec![],
                             },
                             deno_binary_path: PathBuf::from(

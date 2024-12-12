@@ -15,10 +15,10 @@ use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
-use super::tool_output_arg::ToolOutputArg;
 use super::deno_tools::ToolResult;
 use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
+use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -239,6 +239,26 @@ impl PythonTool {
                         code_files.insert(format!("{}.py", file_name), file_code.clone());
                     });
 
+                    let assets_path = Path::new(&node_storage_path)
+                        .join(".tools_storage")
+                        .join(&app_id)
+                        .join("assets");
+
+                    let mut assets_files = Vec::new();
+                    if assets_path.exists() {
+                        for entry in std::fs::read_dir(assets_path)
+                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+                        {
+                            let entry = entry.map_err(|e| {
+                                ToolError::ExecutionError(format!("Failed to read directory entry: {}", e))
+                            })?;
+                            let path = entry.path();
+                            if path.is_file() {
+                                assets_files.push(path);
+                            }
+                        }
+                    }
+
                     // Setup the engine with the code files and config
                     let tool = PythonRunner::new(
                         CodeFiles {
@@ -252,7 +272,7 @@ impl PythonTool {
                                 execution_id: tool_id.clone(),
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
-                                assets_files: vec![],
+                                assets_files,
                                 mount_files: vec![],
                             },
                             uv_binary_path: PathBuf::from(

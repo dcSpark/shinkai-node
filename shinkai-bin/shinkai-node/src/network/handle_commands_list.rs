@@ -2736,6 +2736,49 @@ impl Node {
                     let _ = Node::v2_api_set_oauth_token(db_clone, bearer, code, state, res).await;
                 });
             }
+            NodeCommand::V2ApiUploadToolAsset {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                file_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_upload_tool_asset(
+                        db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiListToolAssets {
+                bearer,
+                tool_id,
+                app_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_tool_assets(db_clone, bearer, tool_id, app_id, node_env, res).await;
+                });
+            }
+            NodeCommand::V2ApiDeleteToolAsset {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_delete_tool_asset(db_clone, bearer, tool_id, app_id, file_name, node_env, res)
+                        .await;
+                });
+            }
             _ => (),
         }
     }
