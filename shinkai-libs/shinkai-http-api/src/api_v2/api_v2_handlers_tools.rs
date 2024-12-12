@@ -2,7 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobMessage};
-use shinkai_tools_primitives::tools::{tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, tool_config::OAuth, tool_playground::ToolPlayground};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
@@ -915,8 +915,7 @@ pub struct CodeExecutionRequest {
     pub parameters: Value,
     #[serde(default = "default_map")]
     pub extra_config: Value,
-    #[serde(default = "default_map")]
-    pub oauth: Value,
+    pub oauth: Option<Vec<OAuth>>,
     pub llm_provider: String,
     pub tools: Vec<String>,
 }
@@ -957,15 +956,6 @@ pub async fn code_execution_handler(
         })),
     };
 
-    let oauth = match payload.oauth {
-        Value::Object(map) => map,
-        _ => return Err(warp::reject::custom(APIError {
-            code: 400,
-            error: "Invalid OAuth".to_string(),
-            message: "OAuth must be an object".to_string(),
-        })),
-    };
-
     let extra_config = match payload.extra_config {
         Value::Object(map) => map,
         _ => return Err(warp::reject::custom(APIError {
@@ -984,7 +974,7 @@ pub async fn code_execution_handler(
             tools: payload.tools,
             parameters,
             extra_config,
-            oauth,
+            oauth: payload.oauth,
             tool_id: tool_id,
             app_id: app_id,
             llm_provider: payload.llm_provider,

@@ -38,6 +38,7 @@ use shinkai_message_primitives::{
 
 use shinkai_tools_primitives::tools::{
     shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_config::OAuth,
     tool_playground::ToolPlayground,
 };
 // use crate::{
@@ -944,7 +945,7 @@ pub enum NodeCommand {
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
+        oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -1060,5 +1061,17 @@ pub enum NodeCommand {
         bearer: String,
         provider: SerializedLLMProvider,
         res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiGetOAuthToken {
+        bearer: String,
+        connection_name: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetOAuthToken {
+        bearer: String,
+        code: String,
+        state: String,
+        res: Sender<Result<Value, APIError>>,
     },
 }

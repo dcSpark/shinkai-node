@@ -4,11 +4,13 @@ use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
+use blake3::Hash;
 use serde_json::json;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
+use shinkai_sqlite::oauth_manager::OAuthToken;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 
@@ -20,11 +22,98 @@ use tokio::sync::{Mutex, RwLock};
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
 
+use chrono::Utc;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+pub async fn handle_oauth(
+    oauth: &Option<Vec<OAuth>>,
+    db: &Arc<RwLock<SqliteManager>>,
+    app_id: String,
+    tool_id: String,
+    tool_router_key: String,
+) -> Result<Value, ToolError> {
+    let mut access_tokens: Vec<HashMap<String, String>> = vec![];
+    if let Some(oauth_vec) = oauth {
+        for o in oauth_vec {
+            // Check if OAuth token already exists
+            let existing_token = db
+                .write()
+                .await
+                .get_oauth_token(o.name.clone(), tool_router_key.clone())
+                .ok()
+                .unwrap_or(None);
+
+            let uuid = if let Some(token) = existing_token {
+                if token.access_token.is_some() {
+                    // push to access_token
+
+                    let mut oauth = HashMap::new();
+                    // TODO: Add more fields (?)
+                    oauth.insert("name".to_string(), token.connection_name.clone());
+                    oauth.insert("accessToken".to_string(), token.access_token.unwrap().to_string());
+                    oauth.insert("version".to_string(), token.version.to_string());
+                    access_tokens.push(oauth);
+                    continue;
+                }
+
+                // Token is not setup, so pass the current state to regen the link.
+                token.state
+            } else {
+                let uuid = uuid::Uuid::new_v4().to_string();
+                // Add new OAuth token record
+                let oauth_token = OAuthToken {
+                    id: 0, // db will set this
+                    connection_name: o.name.clone(),
+                    state: uuid.clone(),
+                    code: None,
+                    app_id: app_id.clone(),
+                    tool_id: tool_id.clone(),
+                    tool_key: tool_router_key.clone(),
+                    access_token: None,
+                    refresh_token: None,
+                    token_secret: None,
+                    token_type: o.grant_type.clone(),
+                    id_token: None,
+                    scope: Some(o.scopes.join(" ")),
+                    expires_at: None,
+                    metadata_json: None,
+                    authorization_url: Some(o.authorization_url.clone()),
+                    token_url: o.token_url.clone(),
+                    client_id: Some(o.client_id.clone()),
+                    client_secret: Some(o.client_secret.clone()),
+                    redirect_url: Some(o.redirect_url.clone()),
+                    version: o.version.clone(),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                };
+
+                db.write()
+                    .await
+                    .add_oauth_token(&oauth_token)
+                    .map_err(|e| ToolError::ExecutionError(format!("Failed to store OAuth token: {}", e)))?;
+
+                uuid
+            };
+
+            // TODO This might be different for differnet OAuth versions and settings
+            let oauth_login_url = format!(
+                "{}?client_id={}&redirect_uri={}&scope={}&state={}",
+                o.authorization_url,
+                o.client_id,
+                urlencoding::encode(&o.redirect_url),
+                o.scopes.join(" "),
+                uuid
+            );
+
+            return Err(ToolError::OAuthError(oauth_login_url));
+        }
+    }
+    Ok(serde_json::to_value(access_tokens).unwrap())
+}
 
 pub async fn execute_tool_cmd(
     bearer: String,
@@ -83,28 +172,16 @@ pub async fn execute_tool_cmd(
 
         match tool {
             ShinkaiTool::Python(python_tool, _) => {
-                if let Some(oauth) = &python_tool.oauth {
-                    envs.insert(
-                        "SHINKAI_OAUTH".to_string(),
-                        serde_json::to_string(oauth).unwrap_or_default(),
-                    );
-                    for o in oauth {
-                        let error = match &o.access_token {
-                            Some(access_token) => access_token.is_empty(),
-                            None => true,
-                        };
-                        if error {
-                            let oauth_login_url = format!(
-                                "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
-                                o.authorization_url,
-                                o.client_id,
-                                urlencoding::encode(&o.redirect_url),
-                                o.scopes.join(" ")
-                            );
-                            return Err(ToolError::OAuthError(oauth_login_url.clone()));
-                        }
-                    }
-                }
+                let oauth = handle_oauth(
+                    &python_tool.oauth,
+                    &db,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    tool_router_key.clone(),
+                )
+                .await?;
+
+                envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -136,28 +213,16 @@ pub async fn execute_tool_cmd(
                     .map(|result| json!(result.data))
             }
             ShinkaiTool::Deno(deno_tool, _) => {
-                if let Some(oauth) = &deno_tool.oauth {
-                    envs.insert(
-                        "SHINKAI_OAUTH".to_string(),
-                        serde_json::to_string(oauth).unwrap_or_default(),
-                    );
-                    for o in oauth {
-                        let error = match &o.access_token {
-                            Some(access_token) => access_token.is_empty(),
-                            None => true,
-                        };
-                        if error {
-                            let oauth_login_url = format!(
-                                "{}?client_id={}&redirect_uri={}&scope={}&state=1234567890",
-                                o.authorization_url,
-                                o.client_id,
-                                urlencoding::encode(&o.redirect_url),
-                                o.scopes.join(" ")
-                            );
-                            return Err(ToolError::OAuthError(oauth_login_url.clone()));
-                        }
-                    }
-                }
+                let oauth = handle_oauth(
+                    &deno_tool.oauth,
+                    &db,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    tool_router_key.clone(),
+                )
+                .await?;
+
+                envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -200,8 +265,8 @@ pub async fn execute_code(
     tools: Vec<String>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<OAuth>,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
+    oauth: Option<Vec<OAuth>>,
+    db: Arc<RwLock<SqliteManager>>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -209,41 +274,45 @@ pub async fn execute_code(
     node_name: ShinkaiName,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
-
     // Route based on the prefix
     match tool_type {
         DynamicToolType::DenoDynamic => {
-            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_deno_tool(
                 bearer.clone(),
+                db.clone(),
                 node_name,
                 parameters,
                 extra_config,
-                oauth,
+                oauth.clone(),
                 tool_id,
                 app_id,
                 llm_provider,
                 support_files,
                 code,
             )
+            .await
         }
         DynamicToolType::PythonDynamic => {
-            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, sqlite_manager, false)
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             execute_python_tool(
                 bearer.clone(),
+                db.clone(),
                 node_name,
                 parameters,
                 extra_config,
+                oauth.clone(),
                 tool_id,
                 app_id,
                 llm_provider,
                 support_files,
                 code,
             )
+            .await
         }
     }
 }

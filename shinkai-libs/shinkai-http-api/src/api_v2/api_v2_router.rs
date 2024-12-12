@@ -4,6 +4,7 @@ use super::api_v2_handlers_cron::cron_routes;
 use super::api_v2_handlers_ext_agent_offers::ext_agent_offers_routes;
 use super::api_v2_handlers_general::general_routes;
 use super::api_v2_handlers_jobs::job_routes;
+use super::api_v2_handlers_oauth::oauth_routes;
 use super::api_v2_handlers_prompts::prompt_routes;
 use super::api_v2_handlers_sheets::sheets_routes;
 use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
@@ -30,6 +31,7 @@ pub fn v2_routes(
     let sheets_routes = sheets_routes(node_commands_sender.clone());
     let tool_routes = tool_routes(node_commands_sender.clone());
     let cron_routes = cron_routes(node_commands_sender.clone(), node_name.clone());
+    let oauth_routes = oauth_routes(node_commands_sender.clone());
 
     general_routes
         .or(vecfs_routes)
@@ -41,6 +43,7 @@ pub fn v2_routes(
         .or(sheets_routes)
         .or(tool_routes)
         .or(cron_routes)
+        .or(oauth_routes)
 }
 
 pub fn with_sender(
