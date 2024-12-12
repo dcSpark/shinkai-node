@@ -456,6 +456,8 @@ impl SheetManager {
         // Update the sheet in the database
         let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
         db_strong
+            .write()
+            .await
             .save_sheet(sheet.clone(), self.user_profile.clone())
             .map_err(|e| e.to_string())?;
 

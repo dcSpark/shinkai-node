@@ -5,13 +5,13 @@ use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_tools_primitives::tools::{
-    tool_output_arg::ToolOutputArg, parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool
+    parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg,
 };
 use tokio::sync::Mutex;
 use umya_spreadsheet::new_file;
 use uuid::Uuid;
 
-const MAX_ROWS: u32 = 10000;
+const MAX_ROWS: u32 = 100000;
 
 pub struct SheetRustFunctions;
 
@@ -606,15 +606,19 @@ mod tests {
     use async_trait::async_trait;
     use futures::Future;
     use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-    
+
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
     use tempfile::NamedTempFile;
-    use std::{fs, path::{Path, PathBuf}, sync::Arc};
     use tokio::sync::{Mutex, RwLock};
 
     struct MockJobManager;
