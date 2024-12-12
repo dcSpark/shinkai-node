@@ -61,7 +61,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
     let mut output = String::new();
 
     if !declaration_only {
-        output.push_str("import os\nimport json\nimport aiohttp\nfrom typing import List, TypedDict, Optional\n\n");
+        output.push_str("import os\nimport json\nfrom typing import List, TypedDict, Optional\n\n");
     }
 
     for (name, doc, return_type, args, implementation, return_desc) in function_definitions {
