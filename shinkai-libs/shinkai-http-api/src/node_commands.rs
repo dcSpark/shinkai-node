@@ -1057,6 +1057,13 @@ pub enum NodeCommand {
         cron_task_id: i64,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiUpdateCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        cron: String,
+        action: CronTaskAction,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiTestLlmProvider {
         bearer: String,
         provider: SerializedLLMProvider,

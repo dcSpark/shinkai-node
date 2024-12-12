@@ -46,11 +46,19 @@ pub fn cron_routes(
         .and(warp::query::<i64>())
         .and_then(get_cron_task_logs_handler);
 
+    let update_cron_task_route = warp::path("update_cron_task")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_cron_task_handler);
+
     add_cron_task_route
         .or(list_all_cron_tasks_route)
         .or(get_specific_cron_task_route)
         .or(remove_cron_task_route)
         .or(get_cron_task_logs_route)
+        .or(update_cron_task_route)
 }
 
 #[derive(Deserialize)]
@@ -59,6 +67,12 @@ pub struct AddCronTaskRequest {
     action: CronTaskAction,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateCronTaskRequest {
+    cron_task_id: i64,
+    cron: String,
+    action: CronTaskAction,
+}
 
 #[utoipa::path(
     post,
@@ -259,6 +273,50 @@ pub async fn get_cron_task_logs_handler(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/v2/update_cron_task",
+    params(
+        ("cron_task_id" = i64, Query, description = "Cron task ID to update")
+    ),
+    request_body = UpdateCronTaskRequest,
+    responses(
+        (status = 200, description = "Successfully updated cron task", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_cron_task_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: UpdateCronTaskRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUpdateCronTask {
+            bearer,
+            cron_task_id: payload.cron_task_id,
+            cron: payload.cron,
+            action: payload.action,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -267,6 +325,7 @@ pub async fn get_cron_task_logs_handler(
         get_specific_cron_task_handler,
         remove_cron_task_handler,
         get_cron_task_logs_handler,
+        update_cron_task_handler,
     ),
     components(
         schemas(CronTask, CronTaskAction, APIError)
