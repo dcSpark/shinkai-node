@@ -185,7 +185,7 @@ impl fmt::Display for LLMProviderError {
 
 impl LLMProviderError {
     /// Encodes the error as a JSON string that is easily parsable by frontends
-    pub fn to_error_json(&self) -> String {
+    pub fn to_error_message(&self) -> String {
         let error_name = match self {
             LLMProviderError::UrlNotSet => "UrlNotSet",
             LLMProviderError::ApiKeyNotSet => "ApiKeyNotSet",
@@ -262,13 +262,7 @@ impl LLMProviderError {
             LLMProviderError::MessageTooLargeForLLM { .. } => "MessageTooLargeForLLM",
         };
 
-        let error_message = format!("{}", self);
-
-        serde_json::json!({
-            "error": error_name,
-            "error_message": error_message
-        })
-        .to_string()
+        format!("Error {} with message: {}", error_name, self)
     }
 }
 

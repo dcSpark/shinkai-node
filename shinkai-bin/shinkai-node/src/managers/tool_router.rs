@@ -802,4 +802,81 @@ impl ToolRouter {
 
         return Ok(result_str);
     }
+
+    pub async fn combined_tool_search(
+        &self,
+        query: &str,
+        num_of_results: u64,
+        include_disabled: bool,
+        include_network: bool,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        // Sanitize the query to handle special characters
+        let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+
+        // Start the timer for vector search
+        let vector_start_time = Instant::now();
+        let vector_search_result = self
+            .sqlite_manager
+            .read()
+            .await
+            .tool_vector_search(&sanitized_query, num_of_results, include_disabled, include_network)
+            .await;
+        let vector_elapsed_time = vector_start_time.elapsed();
+        println!("Time taken for vector search: {:?}", vector_elapsed_time);
+
+        // Start the timer for FTS search
+        let fts_start_time = Instant::now();
+        let fts_search_result = self
+            .sqlite_manager
+            .read()
+            .await
+            .search_tools_fts(&sanitized_query);
+        let fts_elapsed_time = fts_start_time.elapsed();
+        println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        match (vector_search_result, fts_search_result) {
+            (Ok(vector_tools), Ok(fts_tools)) => {
+                let mut combined_tools = Vec::new();
+                let mut seen_ids = std::collections::HashSet::new();
+
+                // Always add the first FTS result if available
+                if let Some(first_fts_tool) = fts_tools.first() {
+                    if seen_ids.insert(first_fts_tool.tool_router_key.clone()) {
+                        combined_tools.push(first_fts_tool.clone());
+                    }
+                }
+
+                // Check if the top vector search result has a score under 0.2
+                if let Some((tool, score)) = vector_tools.first() {
+                    if *score < 0.2 {
+                        if seen_ids.insert(tool.tool_router_key.clone()) {
+                            combined_tools.push(tool.clone());
+                        }
+                    }
+                }
+
+                // Add remaining FTS results
+                for tool in fts_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Add remaining vector search results
+                for (tool, _) in vector_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Log the result count if LOG_ALL is set to 1
+                if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
+                    println!("Number of combined tool results: {}", combined_tools.len());
+                }
+
+                Ok(combined_tools)
+            }
+            (Err(e), _) | (_, Err(e)) => Err(ToolError::DatabaseError(e.to_string())),
+        }
+    }
 }
