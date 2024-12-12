@@ -24,6 +24,7 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
+pub mod oauth_manager;
 pub mod prompt_manager;
 pub mod retry_manager;
 pub mod settings_manager;
@@ -178,7 +179,7 @@ impl SqliteManager {
         Self::initialize_vector_resource_headers_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
-
+        Self::initialize_oauth_table(conn)?;
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
         Ok(())
@@ -187,7 +188,6 @@ impl SqliteManager {
     fn initialize_fts_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::initialize_tools_fts_table(conn)?;
         Self::initialize_prompts_fts_table(conn)?;
-
         Ok(())
     }
 
@@ -752,6 +752,43 @@ impl SqliteManager {
         // Create an index for the file_inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_oauth_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS oauth_tokens (
+                id INTEGER PRIMARY KEY,       
+                connection_name TEXT NOT NULL, -- name used to identify the connection from the app
+                state TEXT NOT NULL UNIQUE,    -- verification code
+                code TEXT,
+                app_id TEXT NOT NULL,          -- app id
+                tool_id TEXT NOT NULL,         -- tool id
+                tool_key TEXT NOT NULL,        -- tool key
+                access_token TEXT,
+                refresh_token TEXT,
+                token_secret TEXT,             -- For OAuth 1.0 if needed
+                token_type TEXT,
+                id_token TEXT,                 -- For OIDC tokens
+                scope TEXT,
+                expires_at TIMESTAMP,
+                metadata_json TEXT,
+                authorization_url TEXT,
+                token_url TEXT,
+                client_id TEXT,
+                client_secret TEXT,
+                redirect_url TEXT,
+                version TEXT NOT NULL DEFAULT '1.0.0',  -- Added version field with default
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );",
+            [],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_tokens_connection_name_tool_key ON oauth_tokens (connection_name, tool_key);",
             [],
         )?;
 

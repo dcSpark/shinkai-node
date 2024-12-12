@@ -8,14 +8,19 @@ use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 
+use super::execution_coordinator::handle_oauth;
 use crate::utils::environment::fetch_node_environment;
+use shinkai_sqlite::SqliteManager;
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
 
-pub fn execute_deno_tool(
+pub async fn execute_deno_tool(
     bearer: String,
+    db: Arc<RwLock<SqliteManager>>,
     node_name: ShinkaiName,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
-    oauth: Vec<OAuth>,
+    oauth: Option<Vec<OAuth>>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -30,7 +35,7 @@ pub fn execute_deno_tool(
         js_code: code,
         tools: None,
         config: vec![],
-        oauth: None,
+        oauth: oauth.clone(),
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
         input_args: Parameters::new(),
@@ -49,6 +54,16 @@ pub fn execute_deno_tool(
     envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
+
+    let oauth = handle_oauth(
+        &oauth.clone(),
+        &db,
+        app_id.clone(),
+        tool_id.clone(),
+        "code-execution".to_string(),
+    )
+    .await?;
+    envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
     let node_env = fetch_node_environment();
     let node_storage_path = node_env

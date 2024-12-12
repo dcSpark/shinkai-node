@@ -1,18 +1,28 @@
 use std::collections::HashMap;
 
+use super::execution_coordinator::handle_oauth;
+use crate::utils::environment::fetch_node_environment;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    tool_output_arg::ToolOutputArg, deno_tools::ToolResult, error::ToolError, parameters::Parameters, python_tools::PythonTool, tool_config::ToolConfig
+    deno_tools::ToolResult,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
 };
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
 
-use crate::utils::environment::fetch_node_environment;
-
-pub fn execute_python_tool(
+pub async fn execute_python_tool(
     bearer: String,
+    db: Arc<RwLock<SqliteManager>>,
     node_name: ShinkaiName,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
+    oauth: Option<Vec<OAuth>>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -37,7 +47,7 @@ pub fn execute_python_tool(
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
-        oauth: None,
+        oauth: oauth.clone(),
     };
 
     let mut envs = HashMap::new();
@@ -46,6 +56,16 @@ pub fn execute_python_tool(
     envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
+
+    let oauth = handle_oauth(
+        &oauth.clone(),
+        &db,
+        app_id.clone(),
+        tool_id.clone(),
+        "code-execution".to_string(),
+    )
+    .await?;
+    envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
     let node_env = fetch_node_environment();
     let node_storage_path = node_env

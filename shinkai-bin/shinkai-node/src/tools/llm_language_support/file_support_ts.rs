@@ -41,62 +41,26 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
     type ProviderConfig = {
         name: string,
         version: string,
-        authorizationUrl: string,
-        redirectUrl: string,
-        tokenUrl: string,
-        clientId: string,
-        clientSecret: string,
-        scopes: string[],
-        grantType: string,
-        refreshToken?: string,
+        // authorizationUrl: string,
+        // redirectUrl: string,
+        // tokenUrl: string,
+        // clientId: string,
+        // clientSecret: string,
+        // scopes: string[],
+        // grantType: string,
+        // refreshToken?: string,
         accessToken?: string,
     }            
-    const oauthConfig: ProviderConfig[] | undefined = JSON.parse(Deno.env.get('SHINKAI_OAUTH') || '{}');
+    const oauthConfig: ProviderConfig[] | undefined = JSON.parse(Deno.env.get('SHINKAI_OAUTH') || '[]');
     if (!oauthConfig) {
         throw new Error(`OAuth configuration not defined. Fix tool configuration.`);
     }
-    const providerConfig: ProviderConfig = oauthConfig.find(config => config.name === providerName);
+    const providerConfig: ProviderConfig | undefined = oauthConfig.find(config => config.name === providerName);
     if (!providerConfig) {
         throw new Error(`OAuth configuration not found for provider: ${providerName}`);
     }
-
-    try {
-        if (providerConfig.version === '1.0' || providerConfig.grantType === 'authorization_code') {
-            return providerConfig.accessToken || '';
-        }
-        if (providerConfig.version === '2.0') {
-            // Check if we have a refresh token
-            const refreshToken = providerConfig.refreshToken
-            if (!refreshToken) {
-                throw new Error(`No refresh token found for provider: ${providerName}`);
-            }
-
-            // Make request to refresh token endpoint
-            const response = await fetch(providerConfig.tokenUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    grant_type: 'refresh_token',
-                    refresh_token: refreshToken,
-                    client_id: providerConfig.clientId,
-                    client_secret: providerConfig.clientSecret,
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to refresh token: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            return data.access_token;
-        }
-        throw new Error(`Unsupported OAuth version for provider: ${providerName}`);
-    } catch (error) {
-        console.error('Error getting access token:', error);
-        return '';
-    }"#,
+    return providerConfig.accessToken || '';
+    "#,
                 "OAuth access token"
             ),
         ];

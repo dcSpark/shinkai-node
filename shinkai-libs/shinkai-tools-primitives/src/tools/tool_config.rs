@@ -143,6 +143,8 @@ pub struct OAuth {
     pub refresh_token: Option<String>, // filled by autentication flow (OAuth 2.0)
     #[serde(rename = "accessToken")]
     pub access_token: Option<String>, // filled by autentication flow
+    #[serde(rename = "tokenUrl")]
+    pub token_url: Option<String>, // filled by autentication flow
 }
 
 impl OAuth {
@@ -204,6 +206,7 @@ impl OAuth {
                 pkce: Some(oauth_obj.get("pkce").and_then(|v| v.as_bool()).unwrap_or(false)),
                 refresh_token: oauth_obj.get("refreshToken").and_then(|v| v.as_str()).map(String::from),
                 access_token: oauth_obj.get("accessToken").and_then(|v| v.as_str()).map(String::from),
+                token_url: oauth_obj.get("tokenUrl").and_then(|v| v.as_str()).map(String::from),
             })
         } else {
             None

@@ -22,11 +22,11 @@ pub async fn generate_code_prompt(
                 .map(|(name, content)| {
                     format!(
                         "Import these functions with the format: `import {{ xx }} from './{name}.ts'                   
-# <{name}>
+  <file-name={name}>
 ```{language}
 {content}
 ```
-  </{name}>
+  </file-name={name}>
 "
                     )
                 })
@@ -120,10 +120,11 @@ pub async fn generate_code_prompt(
                 .map(|(name, content)| {
                     format!(
                         "Import these functions with the format: `from {name} import xx`                  
-# <{name}>
+  <file-name={name}>
 ```{language}
 {content}
 ```
+  </file-name={name}>
 "
                     )
                 })
@@ -152,6 +153,12 @@ pub async fn generate_code_prompt(
 <agent_code_format>
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
   ```{language}
+# /// script
+# dependencies = [
+#   "requests",
+# ]
+# ///
+
 from typing import Dict, Any, Optional, List
 
 class CONFIG:
@@ -197,6 +204,25 @@ class OUTPUT:
   * Write a single implementation file, only one typescript code block.
   * Implements the code in {language} for the following input_command tag
 </agent_code_implementation>
+
+<agent_pip_requirements>
+  * At the start of the file add a commented toml code block with the dependencies used and required to be downloaded by pip.
+  * Only add the dependencies that are required to be downloaded by pip, do not add the dependencies that are already available in the Python environment.
+  * This is an example of the commented script block that MUST be present before any python code or imports.
+
+# /// script
+# dependencies = [
+#   "requests",
+#   "ruff >=0.3.0",
+#   "torch ==2.2.2",
+#   "other_dependency",
+#   "other_dependency_2",
+# ]
+# ///
+
+  * Always add "requests" to the dependencies list.
+
+</agent_pip_requirements>
 
 <input_command>
 {prompt}

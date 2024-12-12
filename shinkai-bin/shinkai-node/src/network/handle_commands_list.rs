@@ -2714,6 +2714,28 @@ impl Node {
                     let _ = Node::v2_api_get_playground_tool(db_clone, bearer, tool_key, res).await;
                 });
             }
+            NodeCommand::V2ApiGetOAuthToken {
+                bearer,
+                connection_name,
+                tool_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_oauth_token(db_clone, bearer, connection_name, tool_key, res).await;
+                });
+            }
+            NodeCommand::V2ApiSetOAuthToken {
+                bearer,
+                code,
+                state,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_oauth_token(db_clone, bearer, code, state, res).await;
+                });
+            }
             _ => (),
         }
     }
