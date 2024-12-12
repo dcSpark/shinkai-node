@@ -226,7 +226,7 @@ impl Node {
             embedding_generator.clone(),
             vec![embedding_generator.model_type.clone()],
             profile_list,
-            &vector_fs_db_path,
+            db_arc.clone(),
             node_name.clone(),
         )
         .await
@@ -1113,7 +1113,6 @@ impl Node {
                     retry_message.message.external_metadata
                 ),
             );
-            
 
             // Retry the message
             Node::send(

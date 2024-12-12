@@ -42,7 +42,6 @@ db/.secret
 vector_fs_db
 storage
 .vscode/*
-rocksdb_logs
 perf_testing_storage.zip
 shinkai-libs/shinkai-fs-mirror/db_tests_persistence
 db_tests_persistence

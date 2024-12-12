@@ -753,24 +753,24 @@ mod tests {
         ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap()
     }
 
-    async fn setup_default_vector_fs() -> VectorFS {
-        let generator = RemoteEmbeddingGenerator::new_default();
-        let fs_db_path = format!("db_tests/{}", "vector_fs");
-        let profile_list = vec![default_test_profile()];
-        let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-        )];
+    // async fn setup_default_vector_fs() -> VectorFS {
+    //     let generator = RemoteEmbeddingGenerator::new_default();
+    //     let fs_db_path = format!("db_tests/{}", "vector_fs");
+    //     let profile_list = vec![default_test_profile()];
+    //     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+    //         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+    //     )];
 
-        VectorFS::new(
-            generator,
-            supported_embedding_models,
-            profile_list,
-            &fs_db_path,
-            node_name(),
-        )
-        .await
-        .unwrap()
-    }
+    //     VectorFS::new(
+    //         generator,
+    //         supported_embedding_models,
+    //         profile_list,
+    //         &fs_db_path,
+    //         node_name(),
+    //     )
+    //     .await
+    //     .unwrap()
+    // }
 
     // TODO: fix
     // #[tokio::test]
