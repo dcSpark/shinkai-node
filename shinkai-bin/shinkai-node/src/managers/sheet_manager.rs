@@ -449,6 +449,28 @@ impl SheetManager {
         Ok(())
     }
 
+    pub async fn add_values(&mut self, sheet_id: &str, values: Vec<Vec<String>>) -> Result<(), String> {
+        let (sheet, _) = self.sheets.get_mut(sheet_id).ok_or("Sheet ID not found")?;
+        let jobs = sheet.add_values(values).await.map_err(|e| e.to_string())?;
+
+        // Update the sheet in the database
+        let db_strong = self.db.upgrade().ok_or("Couldn't convert to strong db".to_string())?;
+        db_strong
+            .write()
+            .await
+            .save_sheet(sheet.clone(), self.user_profile.clone())
+            .map_err(|e| e.to_string())?;
+
+        // Create and chain JobMessages, and add the first one to the job queue
+        if let Some(job_manager) = &self.job_manager {
+            Self::create_and_chain_job_messages(jobs, job_manager, &self.user_profile).await?;
+        } else {
+            return Err("JobManager not set".to_string());
+        }
+
+        Ok(())
+    }
+
     async fn handle_updates(
         receiver: Receiver<SheetUpdate>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
