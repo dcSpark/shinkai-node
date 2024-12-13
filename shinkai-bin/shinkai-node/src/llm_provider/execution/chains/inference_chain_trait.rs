@@ -65,7 +65,6 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn message_hash_id(&self) -> Option<String>;
     fn image_files(&self) -> &HashMap<String, String>;
     fn agent(&self) -> &ProviderOrAgent;
-    fn execution_context(&self) -> &HashMap<String, String>;
     fn generator(&self) -> &RemoteEmbeddingGenerator;
     fn user_profile(&self) -> &ShinkaiName;
     fn max_iterations(&self) -> u64;
@@ -132,10 +131,6 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn agent(&self) -> &ProviderOrAgent {
         &self.llm_provider
-    }
-
-    fn execution_context(&self) -> &HashMap<String, String> {
-        &self.execution_context
     }
 
     fn generator(&self) -> &RemoteEmbeddingGenerator {
@@ -207,8 +202,6 @@ pub struct InferenceChainContext {
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
-    /// Job's execution context, used to store potentially relevant data across job steps.
-    pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
@@ -235,7 +228,6 @@ impl InferenceChainContext {
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
-        execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
@@ -257,7 +249,6 @@ impl InferenceChainContext {
             message_hash_id,
             image_files,
             llm_provider,
-            execution_context,
             generator,
             user_profile,
             max_iterations,
@@ -296,7 +287,6 @@ impl fmt::Debug for InferenceChainContext {
             .field("message_hash_id", &self.message_hash_id)
             .field("image_files", &self.image_files.len())
             .field("llm_provider", &self.llm_provider)
-            .field("execution_context", &self.execution_context)
             .field("generator", &self.generator)
             .field("user_profile", &self.user_profile)
             .field("max_iterations", &self.max_iterations)
@@ -319,15 +309,13 @@ pub struct InferenceChainResult {
     pub response: String,
     pub tps: Option<String>,
     pub answer_duration: Option<String>,
-    pub new_job_execution_context: HashMap<String, String>,
     pub tool_calls: Option<Vec<FunctionCall>>,
 }
 
 impl InferenceChainResult {
-    pub fn new(response: String, new_job_execution_context: HashMap<String, String>) -> Self {
+    pub fn new(response: String) -> Self {
         Self {
             response,
-            new_job_execution_context,
             tps: None,
             answer_duration: None,
             tool_calls: None,
@@ -338,24 +326,14 @@ impl InferenceChainResult {
         response: String,
         tps: Option<String>,
         answer_duration_ms: Option<String>,
-        new_job_execution_context: HashMap<String, String>,
         tool_calls: Option<Vec<FunctionCall>>,
     ) -> Self {
         Self {
             response,
             tps,
             answer_duration: answer_duration_ms,
-            new_job_execution_context,
             tool_calls,
         }
-    }
-
-    pub fn new_empty_execution_context(response: String) -> Self {
-        Self::new(response, HashMap::new())
-    }
-
-    pub fn new_empty() -> Self {
-        Self::new_empty_execution_context(String::new())
     }
 
     pub fn tool_calls_metadata(&self) -> Option<Vec<FunctionCallMetadata>> {
@@ -452,10 +430,6 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).agent()
     }
 
-    fn execution_context(&self) -> &HashMap<String, String> {
-        (**self).execution_context()
-    }
-
     fn generator(&self) -> &RemoteEmbeddingGenerator {
         (**self).generator()
     }
@@ -517,7 +491,6 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 pub struct MockInferenceChainContext {
     pub user_message: ParsedUserMessage,
     pub image_files: HashMap<String, String>,
-    pub execution_context: HashMap<String, String>,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
     pub iteration_count: u64,
@@ -535,7 +508,6 @@ impl MockInferenceChainContext {
     #[allow(dead_code)]
     pub fn new(
         user_message: ParsedUserMessage,
-        execution_context: HashMap<String, String>,
         user_profile: ShinkaiName,
         max_iterations: u64,
         iteration_count: u64,
@@ -550,7 +522,6 @@ impl MockInferenceChainContext {
         Self {
             user_message,
             image_files: HashMap::new(),
-            execution_context,
             user_profile,
             max_iterations,
             iteration_count,
@@ -575,7 +546,6 @@ impl Default for MockInferenceChainContext {
         Self {
             user_message,
             image_files: HashMap::new(),
-            execution_context: HashMap::new(),
             user_profile,
             max_iterations: 10,
             iteration_count: 0,
@@ -633,10 +603,6 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn agent(&self) -> &ProviderOrAgent {
         unimplemented!()
-    }
-
-    fn execution_context(&self) -> &HashMap<String, String> {
-        &self.execution_context
     }
 
     fn generator(&self) -> &RemoteEmbeddingGenerator {
@@ -701,7 +667,6 @@ impl Clone for MockInferenceChainContext {
         Self {
             user_message: self.user_message.clone(),
             image_files: self.image_files.clone(),
-            execution_context: self.execution_context.clone(),
             user_profile: self.user_profile.clone(),
             max_iterations: self.max_iterations,
             iteration_count: self.iteration_count,

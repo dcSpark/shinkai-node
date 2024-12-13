@@ -167,7 +167,7 @@ impl SqliteManager {
         Self::initialize_settings_table(conn)?;
         Self::initialize_sheets_table(conn)?;
         Self::initialize_source_file_maps_table(conn)?;
-        Self::initialize_step_history_table(conn)?;
+        Self::initialize_job_prompts_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
@@ -329,7 +329,6 @@ impl SqliteManager {
                 scope BLOB NOT NULL,
                 scope_with_files BLOB,
                 conversation_inbox_name TEXT NOT NULL,
-                execution_context BLOB,
                 associated_ui BLOB,
                 config BLOB
             );",
@@ -339,12 +338,12 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_step_history_table(conn: &rusqlite::Connection) -> Result<()> {
+    fn initialize_job_prompts_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS step_history (
+            "CREATE TABLE IF NOT EXISTS job_prompts (
                 message_key TEXT NOT NULL,
                 job_id TEXT NOT NULL,
-                job_step_result BLOB NOT NULL
+                prompt BLOB NOT NULL
             );",
             [],
         )?;

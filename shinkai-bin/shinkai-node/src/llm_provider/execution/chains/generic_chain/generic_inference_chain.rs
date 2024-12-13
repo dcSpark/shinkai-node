@@ -71,7 +71,6 @@ impl InferenceChain for GenericInferenceChain {
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
-            self.context.execution_context.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
             self.context.max_iterations,
@@ -110,7 +109,6 @@ impl GenericInferenceChain {
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
-        execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
@@ -324,7 +322,7 @@ impl GenericInferenceChain {
             image_files.clone(),
             ret_nodes.clone(),
             summary_node_text.clone(),
-            Some(full_job.step_history.clone()),
+            full_job.prompts.clone(),
             tools.clone(),
             None,
         );
@@ -378,7 +376,6 @@ impl GenericInferenceChain {
                     message_hash_id.clone(),
                     image_files.clone(),
                     llm_provider.clone(),
-                    execution_context.clone(),
                     generator.clone(),
                     user_profile.clone(),
                     max_iterations,
@@ -394,7 +391,10 @@ impl GenericInferenceChain {
 
                 // 6) Call workflow or tooling
                 // Find the ShinkaiTool that has a tool with the function name
-                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default());
+                let shinkai_tool = tools.iter().find(|tool| {
+                    tool.name() == function_call.name
+                        || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default()
+                });
                 if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
@@ -439,7 +439,7 @@ impl GenericInferenceChain {
                     image_files.clone(),
                     ret_nodes.clone(),
                     summary_node_text.clone(),
-                    Some(full_job.step_history.clone()),
+                    full_job.prompts.clone(),
                     tools.clone(),
                     Some(function_response),
                 );
@@ -451,7 +451,6 @@ impl GenericInferenceChain {
                     response.response_string,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
-                    execution_context.clone(),
                     Some(tool_calls_history.clone()),
                 );
 

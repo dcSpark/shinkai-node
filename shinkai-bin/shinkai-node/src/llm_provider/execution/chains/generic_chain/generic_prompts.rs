@@ -20,7 +20,7 @@ impl JobPromptGenerator {
         image_files: HashMap<String, String>,
         ret_nodes: Vec<RetrievedNode>,
         _summary_text: Option<String>,
-        job_step_history: Option<Vec<JobStepResult>>,
+        job_prompts: Vec<Prompt>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
     ) -> Prompt {
@@ -36,9 +36,12 @@ impl JobPromptGenerator {
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages
-        // TODO: this should be full messages with assets and not just strings
-        if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 97);
+        if !job_prompts.is_empty() {
+            let sub_prompts = job_prompts
+                .into_iter()
+                .flat_map(|prompt| prompt.sub_prompts.clone())
+                .collect();
+            prompt.add_sub_prompts_with_new_priority(sub_prompts, 97);
         }
 
         // Add tools if any. Decrease priority every 2 tools
