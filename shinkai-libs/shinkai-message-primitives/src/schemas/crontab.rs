@@ -6,6 +6,8 @@ use super::job_config::JobConfig;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct CronTask {
+    pub name: String,
+    pub description: Option<String>,
     pub task_id: i32,
     pub cron: String,
     pub created_at: String,

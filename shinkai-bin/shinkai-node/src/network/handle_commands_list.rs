@@ -1485,6 +1485,34 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiAddMessagesGodMode {
+                bearer,
+                job_id,
+                messages,
+                res,
+            } => {
+                let db_clone = self.db.clone();
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_add_messages_god_mode(
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        bearer,
+                        job_id,
+                        messages,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiGetLastMessagesFromInbox {
                 bearer,
                 inbox_name,
@@ -2603,11 +2631,37 @@ impl Node {
                 bearer,
                 cron,
                 action,
+                name,
+                description,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, res).await;
+                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, name, description, res).await;
+                });
+            }
+            NodeCommand::V2ApiUpdateCronTask {
+                bearer,
+                cron_task_id,
+                cron,
+                action,
+                name,
+                description,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_cron_task(
+                        db_clone,
+                        bearer,
+                        cron_task_id,
+                        cron,
+                        action,
+                        name,
+                        description,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiListAllCronTasks { bearer, res } => {

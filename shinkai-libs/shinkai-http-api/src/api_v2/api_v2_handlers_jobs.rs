@@ -169,6 +169,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(export_messages_from_inbox_handler);
 
+    let add_messages_god_mode_route = warp::path("add_messages_god_mode")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_messages_god_mode_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -188,6 +195,7 @@ pub fn job_routes(
         .or(fork_job_messages_route)
         .or(remove_job_route)
         .or(export_messages_from_inbox_route)
+        .or(add_messages_god_mode_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -251,6 +259,12 @@ pub struct RemoveJobRequest {
 pub struct ExportInboxMessagesRequest {
     pub inbox_name: String,
     pub format: ExportInboxMessagesFormat,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AddMessagesGodModeRequest {
+    pub job_id: String,
+    pub messages: Vec<JobMessage>,
 }
 
 #[utoipa::path(
@@ -1127,6 +1141,46 @@ pub async fn export_messages_from_inbox_handler(
     match result {
         Ok(response) => {
             let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_messages_god_mode",
+    request_body = AddMessagesGodModeRequest,
+    responses(
+        (status = 200, description = "Successfully added messages", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_messages_god_mode_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: AddMessagesGodModeRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiAddMessagesGodMode {
+            bearer,
+            job_id: payload.job_id,
+            messages: payload.messages,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(json!({ "result": response }));
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
         }
         Err(error) => Ok(warp::reply::with_status(

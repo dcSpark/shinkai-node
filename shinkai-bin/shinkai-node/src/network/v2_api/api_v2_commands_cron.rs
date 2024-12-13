@@ -14,6 +14,8 @@ impl Node {
         bearer: String,
         cron: String,
         action: CronTaskAction,
+        name: String,
+        description: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -22,7 +24,7 @@ impl Node {
         }
 
         // Add the cron task
-        match db.write().await.add_cron_task(&cron, &action) {
+        match db.write().await.add_cron_task(&name, description.as_deref(), &cron, &action) {
             Ok(task_id) => {
                 let response = json!({ "status": "success", "task_id": task_id });
                 let _ = res.send(Ok(response)).await;
@@ -150,6 +152,40 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to get cron task logs: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_update_cron_task(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        task_id: i64,
+        cron: String,
+        action: CronTaskAction,
+        name: String,
+        description: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Update the cron task
+        match db.write().await.update_cron_task(task_id, &name, description.as_deref(), &cron, &action) {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Cron task updated successfully" });
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update cron task: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
