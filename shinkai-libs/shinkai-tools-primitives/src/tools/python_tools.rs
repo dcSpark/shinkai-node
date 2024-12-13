@@ -195,8 +195,8 @@ impl PythonTool {
                     );
                     println!(
                         "[Running DenoTool] Code: {} ... {}",
-                        &code[..120.min(code.len())],
-                        &code[code.len().saturating_sub(400)..]
+                        code.chars().take(120).collect::<String>(),
+                        code.chars().rev().take(400).collect::<String>().chars().rev().collect::<String>()
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
