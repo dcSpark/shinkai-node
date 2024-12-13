@@ -417,6 +417,59 @@ impl Node {
             re.replace_all(&name, "").to_string()
         };
 
+        let mut updated_payload = payload.clone();
+
+        let shinkai_tool = match payload.language {
+            CodeLanguage::Typescript => {
+                let tool = DenoTool {
+                    toolkit_name,
+                    name: payload.metadata.name.clone(),
+                    author: payload.metadata.author.clone(),
+                    js_code: payload.code.clone(),
+                    tools: payload.metadata.tools.clone(),
+                    config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
+                    description: payload.metadata.description.clone(),
+                    keywords: payload.metadata.keywords.clone(),
+                    input_args: payload.metadata.parameters.clone(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    embedding: None,
+                    result: payload.metadata.result,
+                    sql_tables: Some(payload.metadata.sql_tables),
+                    sql_queries: Some(payload.metadata.sql_queries),
+                    file_inbox: None,
+                    assets: payload.assets.clone(),
+                };
+                ShinkaiTool::Deno(tool, false)
+            }
+            CodeLanguage::Python => {
+                let tool = PythonTool {
+                    toolkit_name,
+                    name: payload.metadata.name.clone(),
+                    author: payload.metadata.author.clone(),
+                    py_code: payload.code.clone(),
+                    tools: payload.metadata.tools.clone(),
+                    config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
+                    description: payload.metadata.description.clone(),
+                    keywords: payload.metadata.keywords.clone(),
+                    input_args: payload.metadata.parameters.clone(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    embedding: None,
+                    result: payload.metadata.result,
+                    sql_tables: Some(payload.metadata.sql_tables),
+                    sql_queries: Some(payload.metadata.sql_queries),
+                    file_inbox: None,
+                    assets: payload.assets.clone(),
+                };
+                ShinkaiTool::Python(tool, false)
+            }
+        };
+
+        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
+
         let storage_path = node_env.node_storage_path.unwrap_or_default();
         // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
         let mut origin_path: PathBuf = PathBuf::from(storage_path.clone());
@@ -439,11 +492,11 @@ impl Node {
             }
         }
 
-        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{toolkit_name}.assets/
+        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{tool_key}.assets/
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
-        perm_file_path.push(toolkit_name.clone());
+        perm_file_path.push(shinkai_tool.tool_router_key());
         if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -480,60 +533,6 @@ impl Node {
                 }
             }
         }
-
-        // TODO: check that job_id exists
-        let mut updated_payload = payload.clone();
-
-        let shinkai_tool = match payload.language {
-            CodeLanguage::Typescript => {
-                let tool = DenoTool {
-                    toolkit_name,
-                    name: payload.metadata.name.clone(),
-                    author: payload.metadata.author.clone(),
-                    js_code: payload.code.clone(),
-                    tools: payload.metadata.tools.clone(),
-                    config: payload.metadata.configurations.clone(),
-                    oauth: payload.metadata.oauth.clone(),
-                    description: payload.metadata.description.clone(),
-                    keywords: payload.metadata.keywords.clone(),
-                    input_args: payload.metadata.parameters.clone(),
-                    output_arg: ToolOutputArg { json: "".to_string() },
-                    activated: false, // TODO: maybe we want to add this as an option in the UI?
-                    embedding: None,
-                    result: payload.metadata.result,
-                    sql_tables: Some(payload.metadata.sql_tables),
-                    sql_queries: Some(payload.metadata.sql_queries),
-                    file_inbox: None,
-                    assets: payload.assets,
-                };
-                ShinkaiTool::Deno(tool, false)
-            }
-            CodeLanguage::Python => {
-                let tool = PythonTool {
-                    toolkit_name,
-                    name: payload.metadata.name.clone(),
-                    author: payload.metadata.author.clone(),
-                    py_code: payload.code.clone(),
-                    tools: payload.metadata.tools.clone(),
-                    config: payload.metadata.configurations.clone(),
-                    oauth: payload.metadata.oauth.clone(),
-                    description: payload.metadata.description.clone(),
-                    keywords: payload.metadata.keywords.clone(),
-                    input_args: payload.metadata.parameters.clone(),
-                    output_arg: ToolOutputArg { json: "".to_string() },
-                    activated: false, // TODO: maybe we want to add this as an option in the UI?
-                    embedding: None,
-                    result: payload.metadata.result,
-                    sql_tables: Some(payload.metadata.sql_tables),
-                    sql_queries: Some(payload.metadata.sql_queries),
-                    file_inbox: None,
-                    assets: payload.assets,
-                };
-                ShinkaiTool::Python(tool, false)
-            }
-        };
-
-        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
 
         // Function to handle saving metadata and sending response
         async fn save_metadata_and_respond(
@@ -1525,6 +1524,7 @@ impl Node {
     pub async fn v2_api_export_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
+        node_env: NodeEnvironment,
         tool_key_path: String,
         res: Sender<Result<Vec<u8>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1544,8 +1544,26 @@ impl Node {
 
                 let mut zip = ZipWriter::new(file);
 
-                // TODO Add Assets to the zip file
-                zip.start_file::<_, ()>("tool.json", FileOptions::default())
+                let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
+                    .join(".tools_storage")
+                    .join("tools")
+                    .join(tool.tool_router_key());
+                if assets.exists() {
+                    for entry in std::fs::read_dir(assets).unwrap() {
+                        let entry = entry.unwrap();
+                        let path = entry.path();
+                        if path.is_file() {
+                            zip.start_file::<_, ()>(
+                                path.file_name().unwrap().to_str().unwrap(),
+                                FileOptions::default(),
+                            )
+                            .unwrap();
+                            zip.write_all(&fs::read(path).await.unwrap()).unwrap();
+                        }
+                    }
+                }
+
+                zip.start_file::<_, ()>("__tool.json", FileOptions::default())
                     .map_err(|e| NodeError::from(e.to_string()))?;
                 zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
                 zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
@@ -1573,6 +1591,7 @@ impl Node {
     pub async fn v2_api_import_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
+        node_env: NodeEnvironment,
         url: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1581,7 +1600,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_internal(db, url).await;
+        let result = Self::v2_api_import_tool_internal(db, node_env, url).await;
         match result {
             Ok(response) => {
                 let _ = res.send(Ok(response)).await;
@@ -1593,7 +1612,11 @@ impl Node {
         Ok(())
     }
 
-    async fn v2_api_import_tool_internal(db: Arc<RwLock<SqliteManager>>, url: String) -> Result<Value, APIError> {
+    async fn v2_api_import_tool_internal(
+        db: Arc<RwLock<SqliteManager>>,
+        node_env: NodeEnvironment,
+        url: String,
+    ) -> Result<Value, APIError> {
         // Download the zip file
         let response = match reqwest::get(&url).await {
             Ok(response) => response,
@@ -1636,7 +1659,7 @@ impl Node {
         // Extract and parse tool.json
         let mut buffer = Vec::new();
         {
-            let mut tool_file = match archive.by_name("tool.json") {
+            let mut tool_file = match archive.by_name("__tool.json") {
                 Ok(file) => file,
                 Err(_) => {
                     return Err(APIError {
@@ -1672,12 +1695,70 @@ impl Node {
         // Save the tool to the database
         let mut db_write = db.write().await;
         match db_write.add_tool(tool).await {
-            Ok(tool) => Ok(json!({
-                "status": "success",
-                "message": "Tool imported successfully",
-                "tool_key": tool.tool_router_key(),
-                "tool": tool
-            })),
+            Ok(tool) => {
+                let archive_clone = archive.clone();
+                let files = archive_clone.file_names();
+                for file in files {
+                    println!("File: {:?}", file);
+                    if file == "__tool.json" {
+                        continue;
+                    }
+                    let mut buffer = Vec::new();
+                    {
+                        let file = archive.by_name(file);
+                        let mut tool_file = match file {
+                            Ok(file) => file,
+                            Err(_) => {
+                                return Err(APIError {
+                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                    error: "Invalid Tool Archive".to_string(),
+                                    message: "Archive does not contain tool.json".to_string(),
+                                });
+                            }
+                        };
+
+                        // Read the tool file contents into a buffer
+                        if let Err(err) = tool_file.read_to_end(&mut buffer) {
+                            return Err(APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Read Error".to_string(),
+                                message: format!("Failed to read tool.json contents: {}", err),
+                            });
+                        }
+                    } // `tool_file` goes out of scope here
+
+                    let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
+                        .join(".tools_storage")
+                        .join("tools")
+                        .join(tool.tool_router_key());
+                    if !file_path.exists() {
+                        let s = std::fs::create_dir_all(&file_path);
+                        if s.is_err() {
+                            return Err(APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Failed to create directory".to_string(),
+                                message: format!("Failed to create directory: {}", s.err().unwrap()),
+                            });
+                        }
+                    }
+                    file_path.push(file);
+                    let s = std::fs::write(&file_path, &buffer);
+                    if s.is_err() {
+                        return Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Failed to write file".to_string(),
+                            message: format!("Failed to write file: {}", s.err().unwrap()),
+                        });
+                    }
+                }
+
+                Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool.tool_router_key(),
+                    "tool": tool
+                }))
+            }
             Err(err) => Err(APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Database Error".to_string(),

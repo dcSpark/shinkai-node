@@ -2563,14 +2563,16 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_export_tool(db_clone, bearer, tool_key_path, res).await;
+                    let _ = Node::v2_api_export_tool(db_clone, bearer, node_env, tool_key_path, res).await;
                 });
             }
             NodeCommand::V2ApiImportTool { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool(db_clone, bearer, url, res).await;
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, res).await;
                 });
             }
             NodeCommand::V2ApiResolveShinkaiFileProtocol {
