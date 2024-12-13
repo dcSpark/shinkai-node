@@ -565,6 +565,12 @@ pub enum NodeCommand {
         job_message: JobMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
+    V2ApiAddMessagesGodMode {
+        bearer: String,
+        job_id: String,
+        messages: Vec<JobMessage>,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiForkJobMessages {
         bearer: String,
         job_id: String,
