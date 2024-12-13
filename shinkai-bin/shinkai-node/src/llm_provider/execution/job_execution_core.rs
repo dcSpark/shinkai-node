@@ -273,14 +273,6 @@ impl JobManager {
             ShinkaiLogLevel::Debug,
             &format!("Retrieved {} image files", image_files.len()),
         );
-
-        // Setup initial data to get ready to call a specific inference chain
-        let prev_execution_context = full_job.execution_context.clone();
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            &format!("Prev Execution Context: {:?}", prev_execution_context),
-        );
         let start = Instant::now();
 
         // Call the inference chain router to choose which chain to use, and call it
@@ -292,7 +284,6 @@ impl JobManager {
             job_message.clone(),
             message_hash_id,
             image_files.clone(),
-            prev_execution_context,
             generator,
             user_profile.clone(),
             ws_manager.clone(),
@@ -305,7 +296,6 @@ impl JobManager {
         )
         .await?;
         let inference_response_content = inference_response.response.clone();
-        let new_execution_context = inference_response.new_job_execution_context.clone();
 
         let duration = start.elapsed();
         shinkai_log(
@@ -352,9 +342,6 @@ impl JobManager {
             .await
             .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
-        db.write()
-            .await
-            .set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         // Check for callbacks and add them to the JobManagerQueue if required
         if let Some(callback) = &job_message.callback {
@@ -466,7 +453,6 @@ impl JobManager {
                 job_message.clone(),
                 message_hash_id,
                 empty_files,
-                HashMap::new(), // Assuming prev_execution_context is an empty HashMap
                 generator,
                 user_profile.clone(),
                 ws_manager.clone(),

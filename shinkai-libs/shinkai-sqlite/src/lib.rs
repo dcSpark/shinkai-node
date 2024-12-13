@@ -329,7 +329,6 @@ impl SqliteManager {
                 scope BLOB NOT NULL,
                 scope_with_files BLOB,
                 conversation_inbox_name TEXT NOT NULL,
-                execution_context BLOB,
                 associated_ui BLOB,
                 config BLOB
             );",

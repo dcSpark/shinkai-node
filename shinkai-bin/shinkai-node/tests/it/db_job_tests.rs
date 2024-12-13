@@ -248,7 +248,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Update step history
+        // Update prompts
         shinkai_db
             .write()
             .await
@@ -275,7 +275,7 @@ mod tests {
             )
             .unwrap();
 
-        // Retrieve the job and check that step history is updated
+        // Retrieve the job and check that prompt is updated
         let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
         assert_eq!(job.prompts.len(), 2);
     }
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_job_inbox_tree_structure_with_prompts_and_execution_context() {
+    async fn test_job_inbox_tree_structure_with_prompts() {
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
@@ -550,7 +550,7 @@ mod tests {
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
-            // Add a step history
+            // Add a prompt
             let result = format!("Result {}", i);
             shinkai_db
                 .write()
@@ -567,15 +567,6 @@ mod tests {
 
             // Add the result to the results vector
             results.push(result);
-
-            // Set job execution context
-            let mut execution_context = HashMap::new();
-            execution_context.insert("context".to_string(), results.join(", "));
-            shinkai_db
-                .write()
-                .await
-                .set_job_execution_context(job_id.clone(), execution_context, None)
-                .unwrap();
 
             // Update the parent message according to the tree structure
             if i == 1 {
@@ -628,17 +619,8 @@ mod tests {
         let job_message_4: JobMessage = serde_json::from_str(&message_content_4).unwrap();
         assert_eq!(job_message_4.content, "Hello World 4".to_string());
 
-        // Check the step history and execution context
+        // Check the prompts
         let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
-        eprintln!("job execution context: {:?}", job.execution_context);
-
-        // Check the execution context
-        assert_eq!(
-            job.execution_context.get("context").unwrap(),
-            "Result 1, Result 2, Result 4"
-        );
-
-        // Check the step history
         let prompt1 = &job.prompts[0];
         let prompt2 = &job.prompts[1];
         let prompt4 = &job.prompts[2];

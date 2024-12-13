@@ -45,10 +45,9 @@ impl SqliteManager {
                 scope,
                 scope_with_files,
                 conversation_inbox_name,
-                execution_context,
                 associated_ui,
                 config
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )?;
 
         stmt.execute(params![
@@ -60,9 +59,6 @@ impl SqliteManager {
             scope_bytes,
             scope_with_files_bytes,
             job_inbox_name.clone(),
-            serde_json::to_vec(&HashMap::<String, String>::new()).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
             serde_json::to_vec(&associated_ui).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?,
@@ -126,7 +122,6 @@ impl SqliteManager {
             parent_agent_id,
             conversation_inbox,
             prompts,
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -142,7 +137,6 @@ impl SqliteManager {
             scope_with_files,
             conversation_inbox_name: conversation_inbox,
             prompts,
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -165,7 +159,6 @@ impl SqliteManager {
             parent_agent_id,
             conversation_inbox,
             _,
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -181,7 +174,6 @@ impl SqliteManager {
             scope_with_files,
             conversation_inbox_name: conversation_inbox,
             prompts: Vec::new(),
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -206,7 +198,6 @@ impl SqliteManager {
             String,
             InboxName,
             Vec<Prompt>,
-            HashMap<String, String>,
             Option<AssociatedUI>,
             Option<JobConfig>,
             Vec<ForkedJob>,
@@ -230,7 +221,6 @@ impl SqliteManager {
             scope,
             {scope_with_files},
             conversation_inbox_name,
-            execution_context,
             associated_ui,
             config
             FROM jobs WHERE job_id = ?1"
@@ -248,9 +238,8 @@ impl SqliteManager {
         let inbox_name: String = row.get(7)?;
         let conversation_inbox: InboxName =
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-        let execution_context_bytes: Option<Vec<u8>> = row.get(8)?;
-        let associated_ui_bytes: Option<Vec<u8>> = row.get(9)?;
-        let config_bytes: Option<Vec<u8>> = row.get(10)?;
+        let associated_ui_bytes: Option<Vec<u8>> = row.get(8)?;
+        let config_bytes: Option<Vec<u8>> = row.get(9)?;
 
         let scope = serde_json::from_slice(&scope_bytes)?;
         let scope_with_files = if fetch_scope_with_files {
@@ -266,7 +255,6 @@ impl SqliteManager {
             Vec::new()
         };
 
-        let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
         let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
         let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
 
@@ -294,7 +282,6 @@ impl SqliteManager {
             parent_agent_id,
             conversation_inbox,
             prompts,
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -319,12 +306,10 @@ impl SqliteManager {
             let inbox_name: String = row.get(7)?;
             let conversation_inbox: InboxName =
                 InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-            let execution_context_bytes: Option<Vec<u8>> = row.get(8)?;
-            let associated_ui_bytes: Option<Vec<u8>> = row.get(9)?;
-            let config_bytes: Option<Vec<u8>> = row.get(10)?;
+            let associated_ui_bytes: Option<Vec<u8>> = row.get(8)?;
+            let config_bytes: Option<Vec<u8>> = row.get(9)?;
             let scope = serde_json::from_slice(&scope_bytes)?;
             let scope_with_files = serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?;
-            let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
             let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
             let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
 
@@ -354,7 +339,6 @@ impl SqliteManager {
                 scope_with_files,
                 conversation_inbox_name: conversation_inbox,
                 prompts: Vec::new(),
-                execution_context,
                 associated_ui,
                 config,
                 forked_jobs,
@@ -397,12 +381,10 @@ impl SqliteManager {
             let inbox_name: String = row.get(7)?;
             let conversation_inbox: InboxName =
                 InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-            let execution_context_bytes: Option<Vec<u8>> = row.get(8)?;
-            let associated_ui_bytes: Option<Vec<u8>> = row.get(9)?;
-            let config_bytes: Option<Vec<u8>> = row.get(10)?;
+            let associated_ui_bytes: Option<Vec<u8>> = row.get(8)?;
+            let config_bytes: Option<Vec<u8>> = row.get(9)?;
             let scope = serde_json::from_slice(&scope_bytes)?;
             let scope_with_files = serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?;
-            let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
             let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
             let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
 
@@ -431,7 +413,6 @@ impl SqliteManager {
                 scope_with_files,
                 conversation_inbox_name: conversation_inbox,
                 prompts: Vec::new(),
-                execution_context,
                 associated_ui,
                 config,
                 forked_jobs,
@@ -441,36 +422,6 @@ impl SqliteManager {
         }
 
         Ok(jobs.into_iter().map(|job| Box::new(job) as Box<dyn JobLike>).collect())
-    }
-
-    pub fn set_job_execution_context(
-        &self,
-        job_id: String,
-        context: HashMap<String, String>,
-        _message_key: Option<String>,
-    ) -> Result<(), SqliteManagerError> {
-        let conn = self.get_connection()?;
-
-        let context_bytes = serde_json::to_vec(&context)?;
-
-        let mut stmt = conn.prepare("UPDATE jobs SET execution_context = ?1 WHERE job_id = ?2")?;
-
-        stmt.execute(params![context_bytes, job_id])?;
-
-        Ok(())
-    }
-
-    pub fn get_job_execution_context(&self, job_id: &str) -> Result<HashMap<String, String>, SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT execution_context FROM jobs WHERE job_id = ?1")?;
-        let mut rows = stmt.query(params![job_id])?;
-
-        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
-
-        let execution_context_bytes: Vec<u8> = row.get(0)?;
-        let execution_context = serde_json::from_slice(&execution_context_bytes)?;
-
-        Ok(execution_context)
     }
 
     pub fn update_job_to_finished(&self, job_id: &str) -> Result<(), SqliteManagerError> {
@@ -1063,7 +1014,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_job_inbox_tree_structure_with_job_prompt_and_execution_context() {
+    async fn test_job_inbox_tree_structure_with_job_prompt() {
         let db = setup_test_db();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -1130,12 +1081,6 @@ mod tests {
             // Add the result to the results vector
             results.push(result);
 
-            // Set job execution context
-            let mut execution_context = HashMap::new();
-            execution_context.insert("context".to_string(), results.join(", "));
-            db.set_job_execution_context(job_id.clone(), execution_context, None)
-                .unwrap();
-
             // Update the parent message according to the tree structure
             if i == 1 {
                 parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
@@ -1183,17 +1128,8 @@ mod tests {
         let job_message_4: JobMessage = serde_json::from_str(&message_content_4).unwrap();
         assert_eq!(job_message_4.content, "Hello World 4".to_string());
 
-        // Check the step history and execution context
+        // Check the prompts
         let job = db.get_job(&job_id.clone()).unwrap();
-        eprintln!("job execution context: {:?}", job.execution_context);
-
-        // Check the execution context
-        assert_eq!(
-            job.execution_context.get("context").unwrap(),
-            "Result 1, Result 2, Result 4"
-        );
-
-        // Check the step history
         let prompt1 = &job.prompts[0];
         let prompt2 = &job.prompts[1];
         let prompt4 = &job.prompts[2];

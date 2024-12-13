@@ -46,9 +46,6 @@ pub struct Job {
     /// Under the hood this is a tree, but it looks like a simple Vec because we only care about the latest valid path
     /// based on the last message sent by the user.
     pub prompts: Vec<Prompt>,
-    /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
-    /// Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
-    pub execution_context: HashMap<String, String>,
     /// A link to the UI where the user can view the job e.g. Sheet UI
     pub associated_ui: Option<AssociatedUI>,
     /// The job's configuration

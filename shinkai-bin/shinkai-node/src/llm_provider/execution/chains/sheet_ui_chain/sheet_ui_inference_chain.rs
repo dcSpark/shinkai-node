@@ -66,7 +66,6 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
-            self.context.execution_context.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
             self.context.max_iterations,
@@ -81,8 +80,7 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.llm_stopper.clone(),
         )
         .await?;
-        let job_execution_context = self.context.execution_context.clone();
-        Ok(InferenceChainResult::new(response, job_execution_context))
+        Ok(InferenceChainResult::new(response))
     }
 }
 
@@ -110,7 +108,6 @@ impl SheetUIInferenceChain {
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
-        execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
@@ -380,7 +377,6 @@ impl SheetUIInferenceChain {
                         message_hash_id.clone(),
                         image_files.clone(),
                         llm_provider.clone(),
-                        execution_context.clone(),
                         generator.clone(),
                         user_profile.clone(),
                         max_iterations,

@@ -24,7 +24,7 @@ use tokio::sync::{Mutex, RwLock};
 impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
     /// and then starts using the chosen chain.
-    /// Returns the final String result from the inferencing, and a new execution context.
+    /// Returns the final String result from the inferencing.
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
         db: Arc<RwLock<SqliteManager>>,
@@ -34,7 +34,6 @@ impl JobManager {
         job_message: JobMessage,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
-        prev_execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -75,7 +74,6 @@ impl JobManager {
             message_hash_id,
             image_files,
             llm_provider,
-            prev_execution_context,
             generator,
             user_profile,
             3,
