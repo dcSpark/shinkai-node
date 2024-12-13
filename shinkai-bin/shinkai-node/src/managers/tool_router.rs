@@ -540,11 +540,21 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
-                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
-                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+
+                let bearer = context
+                    .db()
+                    .read()
+                    .await
+                    .read_api_v2_key()
+                    .unwrap_or_default()
+                    .unwrap_or_default();
+                let llm_provider = context.agent().clone().get_id().to_string();
+                let uuid = uuid::Uuid::new_v4().to_string();
+                envs.insert("BEARER".to_string(), bearer);
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), format!("call_function-{}", uuid));
+                envs.insert("X_SHINKAI_APP_ID".to_string(), format!("app_id-{}", uuid));
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), format!("instance_id-{}", uuid));
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
                 let result = python_tool
                     .run(
                         envs,
@@ -602,11 +612,20 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
-                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
-                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+                let bearer = context
+                    .db()
+                    .read()
+                    .await
+                    .read_api_v2_key()
+                    .unwrap_or_default()
+                    .unwrap_or_default();
+                let uuid = uuid::Uuid::new_v4().to_string();
+                let llm_provider = context.agent().clone().get_id().to_string();
+                envs.insert("BEARER".to_string(), bearer);
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), format!("call_function-{}", uuid));
+                envs.insert("X_SHINKAI_APP_ID".to_string(), format!("app_id-{}", uuid));
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), format!("instance_id-{}", uuid));
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
                 let result = deno_tool
                     .run(
                         envs,
