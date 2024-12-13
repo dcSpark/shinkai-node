@@ -23,7 +23,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
@@ -31,6 +30,7 @@ use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use tokio::sync::RwLock;
@@ -216,7 +216,12 @@ impl ToolRouter {
                 config: vec![],
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("message".to_string(), "string".to_string(), "The message to echo".to_string(), true);
+                    params.add_property(
+                        "message".to_string(),
+                        "string".to_string(),
+                        "The message to echo".to_string(),
+                        true,
+                    );
                     params
                 },
                 output_arg: ToolOutputArg { json: "".to_string() },
@@ -446,9 +451,10 @@ impl ToolRouter {
                         function_config_vec,
                         node_storage_path,
                         app_id,
-                        tool_id,
+                        tool_id.clone(),
                         node_name,
                         false,
+                        Some(tool_id),
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -791,10 +797,11 @@ impl ToolRouter {
                 function_config_vec,
                 node_storage_path,
                 app_id,
-                tool_id,
+                tool_id.clone(),
                 // TODO Is this correct?
                 requester_node_name,
                 true,
+                Some(tool_id),
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =
@@ -826,11 +833,7 @@ impl ToolRouter {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = self
-            .sqlite_manager
-            .read()
-            .await
-            .search_tools_fts(&sanitized_query);
+        let fts_search_result = self.sqlite_manager.read().await.search_tools_fts(&sanitized_query);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
 

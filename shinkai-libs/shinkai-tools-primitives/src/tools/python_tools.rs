@@ -73,18 +73,23 @@ impl PythonTool {
         tool_id: String,
         node_name: ShinkaiName,
         is_temporary: bool,
+        files_tool_router_key: Option<String>,
     ) -> Result<RunResult, ToolError> {
-        let path = PathBuf::from(&node_storage_path)
-            .join(".tools_storage")
-            .join("tools")
-            .join(self.toolkit_name.clone());
-        let assets_files = self
-            .assets
-            .clone()
-            .unwrap_or(vec![])
-            .iter()
-            .map(|asset| path.clone().join(asset))
-            .collect();
+        let assets_files = match files_tool_router_key {
+            Some(tool_router_key) => {
+                let path = PathBuf::from(&node_storage_path)
+                    .join(".tools_storage")
+                    .join("tools")
+                    .join(tool_router_key);
+                self.assets
+                    .clone()
+                    .unwrap_or(vec![])
+                    .iter()
+                    .map(|asset| path.clone().join(asset))
+                    .collect()
+            }
+            None => vec![],
+        };
 
         self.run_on_demand(
             envs,
