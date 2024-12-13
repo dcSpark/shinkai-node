@@ -10,13 +10,14 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 
-use image::error;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    CallbackAction, MessageMetadata, MiddlewareTool,
+};
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -36,6 +37,9 @@ use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
+
+use super::chains::inference_chain_trait::{FunctionCall, InferenceChainContext};
+use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
@@ -117,6 +121,27 @@ impl JobManager {
         .await;
         if let Err(e) = process_files_result {
             return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
+        }
+
+        // 1.5.- Process middleware tools
+        if let Some(middleware_tools) = &job_message.job_message.middleware_tools {
+            if let Some(tool_router) = &tool_router {
+                Self::process_middleware_tools(
+                    tool_router,
+                    &job_message.job_message,
+                    middleware_tools,
+                    user_profile.clone(),
+                    db.clone(),
+                    vector_fs.clone(),
+                    &full_job,
+                    generator.clone(),
+                    ws_manager.clone(),
+                    llm_stopper.clone(),
+                    llm_provider_found.clone(),
+                )
+                .await?;
+                // if we return a string here, we need to update the job message to have the new content
+            }
         }
 
         // 2.- *If* a sheet job is found, processing job message is taken over by this alternate logic
@@ -907,5 +932,89 @@ impl JobManager {
         }
 
         Ok(files_map)
+    }
+
+    /// Process middleware tools by getting the tool and calling its function
+    pub async fn process_middleware_tools(
+        tool_router: &Arc<ToolRouter>,
+        job_message: &JobMessage,
+        middleware_tools: &Vec<MiddlewareTool>,
+        user_profile: ShinkaiName,
+        db: Arc<RwLock<SqliteManager>>,
+        vector_fs: Arc<VectorFS>,
+        full_job: &Job,
+        generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        llm_stopper: Arc<LLMStopper>,
+        llm_provider_found: Option<ProviderOrAgent>,
+    ) -> Result<(), LLMProviderError> {
+        // ^ eddie do we want to return a string after all of the processing?
+        let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
+        let model = {
+            if let ProviderOrAgent::LLMProvider(llm_provider) = llm_provider.clone() {
+                &llm_provider.model.clone()
+            } else {
+                // If it's an agent, we need to get the LLM provider from the agent
+                let llm_id = llm_provider.get_llm_provider_id();
+                let llm_provider = db
+                    .read()
+                    .await
+                    .get_llm_provider(llm_id, &user_profile)
+                    .map_err(|e| e.to_string())?
+                    .ok_or(LLMProviderError::LLMProviderNotFound)?;
+                &llm_provider.model.clone()
+            }
+        };
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&model);
+        let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
+
+        for middleware_tool in middleware_tools {
+            // Get the tool router key - required for tool lookup
+            let tool_router_key = middleware_tool.tool_router_key.clone();
+
+            // Get the tool by name and handle the Option and Result
+            let shinkai_tool = tool_router
+                .get_tool_by_name(&tool_router_key)
+                .await
+                .map_err(|e| LLMProviderError::ToolRouterError(format!("Failed to get tool: {}", e)))?
+                .ok_or_else(|| LLMProviderError::ToolRouterError(format!("Tool not found: {}", tool_router_key)))?;
+
+            // Create proper context for the tool execution
+            let context = InferenceChainContext::new(
+                db.clone(),
+                vector_fs.clone(),
+                full_job.clone(),
+                parsed_user_message.clone(),
+                job_message.tool_key.clone(),
+                None,
+                HashMap::new(),
+                llm_provider.clone(),
+                HashMap::new(),
+                generator.clone(),
+                user_profile.clone(),
+                3,
+                max_tokens_in_prompt,
+                ws_manager.clone(),
+                Some(tool_router.clone()),
+                None, // No sheet manager needed
+                None, // No agent payments manager needed
+                None, // No external agent payments manager needed
+                llm_stopper.clone(),
+            );
+
+            let function_call = FunctionCall {
+                name: "".to_string(),              // Eddie more logic here
+                arguments: serde_json::Map::new(), // Eddie more logic here
+                tool_router_key: None,             // Not needed
+            };
+
+            // Call the function with the context
+            tool_router
+                .call_function(function_call, &context, &shinkai_tool, user_profile.clone())
+                .await
+                .map_err(|e| LLMProviderError::ToolRouterError(format!("Failed to call function: {}", e)))?;
+        }
+
+        Ok(())
     }
 }

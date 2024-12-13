@@ -1390,6 +1390,7 @@ impl Node {
             callback: None,
             metadata: None,
             tool_key: None,
+            middleware_tools: None,
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(

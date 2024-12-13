@@ -236,6 +236,7 @@ impl SheetManager {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             };
 
             job_messages.push((job_message, job_data));
