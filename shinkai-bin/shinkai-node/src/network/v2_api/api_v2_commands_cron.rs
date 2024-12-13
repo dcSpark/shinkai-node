@@ -24,7 +24,7 @@ impl Node {
         }
 
         // Add the cron task
-        match db.write().await.add_cron_task(&name, &description, &cron, &action) {
+        match db.write().await.add_cron_task(&name, description.as_deref(), &cron, &action) {
             Ok(task_id) => {
                 let response = json!({ "status": "success", "task_id": task_id });
                 let _ = res.send(Ok(response)).await;
@@ -175,7 +175,7 @@ impl Node {
         }
 
         // Update the cron task
-        match db.write().await.update_cron_task(task_id, &name, &description, &cron, &action) {
+        match db.write().await.update_cron_task(task_id, &name, description.as_deref(), &cron, &action) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Cron task updated successfully" });
                 let _ = res.send(Ok(response)).await;
