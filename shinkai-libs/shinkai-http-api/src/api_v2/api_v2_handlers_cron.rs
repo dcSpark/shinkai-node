@@ -65,6 +65,8 @@ pub fn cron_routes(
 pub struct AddCronTaskRequest {
     cron: String,
     action: CronTaskAction,
+    name: String,
+    description: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -72,12 +74,14 @@ pub struct UpdateCronTaskRequest {
     cron_task_id: i64,
     cron: String,
     action: CronTaskAction,
+    name: String,
+    description: Option<String>,
 }
 
 #[utoipa::path(
     post,
     path = "/v2/add_cron_task",
-    request_body = CronTaskAction,
+    request_body = AddCronTaskRequest,
     responses(
         (status = 200, description = "Successfully added cron task", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -94,6 +98,8 @@ pub async fn add_cron_task_handler(
     node_commands_sender
         .send(NodeCommand::V2ApiAddCronTask {
             bearer,
+            name: payload.name,
+            description: payload.description,
             cron: payload.cron,
             action: payload.action,
             res: res_sender,
@@ -299,6 +305,8 @@ pub async fn update_cron_task_handler(
             cron_task_id: payload.cron_task_id,
             cron: payload.cron,
             action: payload.action,
+            name: payload.name,
+            description: payload.description,
             res: res_sender,
         })
         .await

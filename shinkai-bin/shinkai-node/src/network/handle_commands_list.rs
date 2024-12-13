@@ -2597,11 +2597,13 @@ impl Node {
                 bearer,
                 cron,
                 action,
+                name,
+                description,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, res).await;
+                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, name, description, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateCronTask {
@@ -2609,11 +2611,23 @@ impl Node {
                 cron_task_id,
                 cron,
                 action,
+                name,
+                description,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_update_cron_task(db_clone, bearer, cron_task_id, cron, action, res).await;
+                    let _ = Node::v2_api_update_cron_task(
+                        db_clone,
+                        bearer,
+                        cron_task_id,
+                        cron,
+                        action,
+                        name,
+                        description,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiListAllCronTasks { bearer, res } => {
