@@ -711,6 +711,8 @@ impl SqliteManager {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS cron_tasks (
                 task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
                 cron TEXT NOT NULL,
                 created_at TEXT NOT NULL, -- Field to track when the task was created
                 last_modified TEXT NOT NULL,
