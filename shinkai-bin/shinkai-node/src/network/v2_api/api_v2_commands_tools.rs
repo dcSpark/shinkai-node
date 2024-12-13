@@ -419,10 +419,10 @@ impl Node {
 
         let storage_path = node_env.node_storage_path.unwrap_or_default();
         // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
-        let mut origin_path = PathBuf::from(storage_path.clone());
-        origin_path.push("tools_storage");
+        let mut origin_path: PathBuf = PathBuf::from(storage_path.clone());
+        origin_path.push(".tools_storage");
+        origin_path.push("playground");
         origin_path.push(app_id);
-        origin_path.push("assets");
         if let Some(assets) = payload.assets.clone() {
             for file_name in assets {
                 let mut asset_path: PathBuf = origin_path.clone();
@@ -442,7 +442,8 @@ impl Node {
         // Copy asset to permanent tool_storage folder {storage}/tool_storage/{toolkit_name}.assets/
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
-        perm_file_path.push(format!(".{}.assets", toolkit_name));
+        perm_file_path.push("tools");
+        perm_file_path.push(toolkit_name.clone());
         if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1806,10 +1807,8 @@ impl Node {
 
         let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
         file_path.push(".tools_storage");
+        file_path.push("playground");
         file_path.push(app_id);
-        // TODO
-        // keep this in sync with deno/python runner
-        file_path.push("assets");
         // Create directories if they don't exist
         if !file_path.exists() {
             std::fs::create_dir_all(&file_path)?;
@@ -1842,11 +1841,14 @@ impl Node {
 
         let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
         file_path.push(".tools_storage");
+        file_path.push("playground");
         file_path.push(app_id);
-        // TODO
-        // keep this in sync with deno/python runner
-        file_path.push("assets");
-        let files = std::fs::read_dir(&file_path).unwrap();
+        let files = std::fs::read_dir(&file_path);
+        if files.is_err() {
+            let _ = res.send(Ok(vec![])).await;
+            return Ok(());
+        }
+        let files = files.unwrap();
         let file_names = files
             .map(|file| file.unwrap().file_name().to_string_lossy().to_string())
             .collect();
@@ -1870,10 +1872,8 @@ impl Node {
 
         let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
         file_path.push(".tools_storage");
+        file_path.push("playground");
         file_path.push(app_id);
-        // TODO
-        // keep this in sync with deno/python runner
-        file_path.push("assets");
         file_path.push(&file_name);
         let stat = std::fs::remove_file(&file_path).map_err(|err| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

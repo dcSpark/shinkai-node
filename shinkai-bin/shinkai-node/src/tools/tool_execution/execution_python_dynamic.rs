@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use super::execution_coordinator::handle_oauth;
 use crate::utils::environment::fetch_node_environment;
@@ -74,6 +74,27 @@ pub async fn execute_python_tool(
         .clone()
         .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
 
+    // Get Assets for Playground;
+    // Read all files in the assets directory
+    let assets_path = PathBuf::from(&node_storage_path)
+        .join(".tools_storage")
+        .join("playground")
+        .join(app_id.clone());
+
+    let mut assets_files = Vec::new();
+    if assets_path.exists() {
+        for entry in std::fs::read_dir(assets_path)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+        {
+            let entry =
+                entry.map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
+            let path = entry.path();
+            if path.is_file() {
+                assets_files.push(path);
+            }
+        }
+    }
+
     match tool.run_on_demand(
         envs,
         node_env.api_listen_address.ip().to_string(),
@@ -86,6 +107,7 @@ pub async fn execute_python_tool(
         tool_id.clone(),
         node_name,
         false,
+        assets_files,
     ) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
